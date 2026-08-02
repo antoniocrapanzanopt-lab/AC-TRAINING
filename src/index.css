@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-primary: #eab308; /* Giallo Oro */
+    --color-primary-hover: #ca8a04;
+    --color-secondary: #64748b; /* Grigio secondario */
+    --color-bg: #09090b; /* Nero / Antracite molto scuro */
+    --color-panel: #18181b; /* Grigio scuro pannelli */
+    --color-panel-border: #27272a;
+    --color-text: #f4f4f5;
+    --color-danger: #ef4444; /* Rosso per avvisi e criticità */
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
