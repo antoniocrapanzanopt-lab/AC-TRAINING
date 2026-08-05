@@ -10,12 +10,12 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
+  public state: State & { error?: Error } = {
     hasError: false,
   };
 
-  public static getDerivedStateFromError(): State {
-    return { hasError: true };
+  public static getDerivedStateFromError(error: Error): State & { error: Error } {
+    return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -40,6 +40,13 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-slate-300 text-sm mb-6 leading-relaxed">
               L'applicazione ha riscontrato un problema temporaneo durante il caricamento della pagina. Può riprovare ricaricando la scheda.
             </p>
+
+            {this.state.error && (
+              <div className="bg-red-950/50 p-4 rounded-xl text-left overflow-auto mb-6 text-xs text-red-200 border border-red-500/30">
+                <p className="font-bold mb-1">{this.state.error.toString()}</p>
+                <pre className="whitespace-pre-wrap">{this.state.error.stack}</pre>
+              </div>
+            )}
 
             <button
               onClick={this.handleReload}

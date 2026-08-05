@@ -1,8 +1,8 @@
 # Regole Operative del Progetto - Builder Athlete Manager
 
 ## 1. Natura del Progetto
-- Il progetto è esclusivamente una **demo didattica locale**.
-- Non dichiarare mai come reale una funzione che è solo simulata.
+- L'applicazione è una **piattaforma gestionale in cloud reale**.
+- Le funzionalità sono operative e connesse a un database di produzione (Supabase).
 
 ## 2. Standard di Codice e TypeScript
 - Utilizzare **React** e **TypeScript** senza disabilitare i controlli del compilatore.
@@ -10,10 +10,9 @@
 - **Vietato usare `@ts-ignore` o `@ts-expect-error`**.
 
 ## 3. Gestione Dati e Persistenza
-- Non aggiungere Supabase, Firebase o altri database esterni senza richiesta esplicita dell'utente.
-- Usare `localStorage` esclusivamente tramite **chiavi centralizzate**.
-- **Vietato usare `localStorage.clear()`**.
-- **Vietato inserire dati reali**: nessun dato personale, medico, finanziario o credenziale reale deve essere presente nel codice o nei dati dimostrativi.
+- Il backend ufficiale è **Supabase**. Qualsiasi operazione di lettura/scrittura va effettuata tramite le API di Supabase e le policy RLS.
+- L'uso di `localStorage` è deprecato per i dati sensibili, ed è limitato unicamente a preferenze visive (es. stato della sidebar o tab attive).
+- I dati inseriti ora sono **reali e sensibili**, va sempre garantita la massima sicurezza e riservatezza.
 
 ## 4. Design e Interfaccia Utente
 - Mantenere la palette visiva stabilita: **tema nero/antracite** con accenti **giallo oro** e avvisi/errori in **rosso**.

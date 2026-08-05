@@ -53,11 +53,16 @@ const athleteStatusColors: Record<AthleteStatus, string> = {
   trial: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
 };
 
-export const AthleteStatusBadge: React.FC<{ status: AthleteStatus }> = ({ status }) => (
-  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${athleteStatusColors[status]}`}>
-    {athleteStatusLabel[status]}
-  </span>
-);
+export const AthleteStatusBadge: React.FC<{ status?: AthleteStatus }> = ({ status }) => {
+  const safeStatus = status || 'active';
+  const color = athleteStatusColors[safeStatus] || athleteStatusColors.active;
+  const label = athleteStatusLabel[safeStatus] || safeStatus;
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${color}`}>
+      {label}
+    </span>
+  );
+};
 
 // ─── Badge Pagamento ───────────────────────────────────────────────────────────
 
@@ -69,8 +74,14 @@ const paymentStatusColors: Record<AthletePaymentStatus, string> = {
   none: 'bg-slate-700/50 text-slate-500 border-slate-600/30',
 };
 
-export const PaymentStatusBadge: React.FC<{ status: AthletePaymentStatus }> = ({ status }) => (
-  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${paymentStatusColors[status]}`}>
-    {paymentStatusLabel[status]}
-  </span>
-);
+export const PaymentStatusBadge: React.FC<{ status?: AthletePaymentStatus }> = ({ status }) => {
+  const safeStatus = status || 'none';
+  const color = paymentStatusColors[safeStatus] || paymentStatusColors.none;
+  const label = paymentStatusLabel[safeStatus] || safeStatus;
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${color}`}>
+      {label}
+    </span>
+  );
+};
+

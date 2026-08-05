@@ -116,16 +116,7 @@ export const AthletesPage: React.FC = () => {
     danger?: boolean;
   }>({ open: false, title: '', message: '', onConfirm: () => undefined });
 
-  // ─── Dettaglio Atleta ────────────────────────────────────────────────────────
-
-  if (selectedAthleteId) {
-    return (
-      <AthleteDetailPage
-        athleteId={selectedAthleteId}
-        onBack={() => setSelectedAthleteId(null)}
-      />
-    );
-  }
+  // (Il blocco Dettaglio Atleta è stato spostato in basso per rispettare le Rules of Hooks)
 
   // ─── Lista Filtrata e Ordinata ───────────────────────────────────────────────
 
@@ -277,6 +268,15 @@ export const AthletesPage: React.FC = () => {
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
+  if (selectedAthleteId) {
+    return (
+      <AthleteDetailPage
+        athleteId={selectedAthleteId}
+        onBack={() => setSelectedAthleteId(null)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Intestazione */}
@@ -422,29 +422,36 @@ export const AthletesPage: React.FC = () => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col">
-                          <span className="font-semibold text-white">{athlete.fullName}</span>
+                          <span onClick={() => setSelectedAthleteId(athlete.id)}
+                            className="font-semibold text-white hover:text-[var(--color-primary)] cursor-pointer transition-colors"
+                            title="Apri profilo atleta">
+                            {athlete.fullName || `${athlete.firstName || ''} ${athlete.lastName || ''}`.trim() || 'Atleta'}
+                          </span>
                           <span className="text-xs text-slate-400">{athlete.email || athlete.phone}</span>
-                          {(athlete.tags ?? []).length > 0 && (
-                            <div className="flex gap-1 mt-1 flex-wrap">
-                              {(athlete.tags ?? []).slice(0, 2).map(tag => (
-                                <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-semibold">
-                                  {tag}
-                                </span>
-                              ))}
-                              {(athlete.tags ?? []).length > 2 && (
-                                <span className="text-[10px] text-slate-500">+{(athlete.tags ?? []).length - 2}</span>
-                              )}
-                            </div>
-                          )}
+                          {(() => {
+                            const safeTags = Array.isArray(athlete.tags) ? athlete.tags : [];
+                            return safeTags.length > 0 && (
+                              <div className="flex gap-1 mt-1 flex-wrap">
+                                {safeTags.slice(0, 2).map(tag => (
+                                  <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-semibold">
+                                    {tag}
+                                  </span>
+                                ))}
+                                {safeTags.length > 2 && (
+                                  <span className="text-[10px] text-slate-500">+{safeTags.length - 2}</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="px-4 py-3"><AthleteStatusBadge status={athlete.status} /></td>
                       <td className="px-4 py-3"><PaymentStatusBadge status={athlete.paymentStatus} /></td>
                       <td className="px-4 py-3">
-                        <span className="text-sm text-slate-300">{athlete.assignedCoachName}</span>
+                        <span className="text-sm text-slate-300">{athlete.assignedCoachName || '—'}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-slate-400">{athlete.createdAt.slice(0, 10)}</span>
+                        <span className="text-xs text-slate-400">{athlete.createdAt ? athlete.createdAt.slice(0, 10) : '—'}</span>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
@@ -462,12 +469,12 @@ export const AthletesPage: React.FC = () => {
                               setConfirmModal({
                                 open: true,
                                 title: 'Archiviare atleta?',
-                                message: `${athlete.fullName} verrà spostato negli archivi.`,
+                                message: `${athlete.fullName || 'L\'atleta'} verrà spostato negli archivi.`,
                                 danger: false,
                                 onConfirm: () => {
                                   archiveAthlete(athlete.id);
                                   setConfirmModal(prev => ({ ...prev, open: false }));
-                                  showInfo('Archiviato', `${athlete.fullName} archiviato.`);
+                                  showInfo('Archiviato', `${athlete.fullName || 'Atleta'} archiviato.`);
                                 },
                               });
                             }}
@@ -503,20 +510,30 @@ export const AthletesPage: React.FC = () => {
                         {isSelected && <Check className="w-3 h-3 text-black" />}
                       </button>
                       <div>
-                        <p className="font-bold text-white text-sm">{athlete.fullName}</p>
-                        <p className="text-xs text-slate-400">{athlete.phone}</p>
+                        <p onClick={() => setSelectedAthleteId(athlete.id)}
+                          className="font-bold text-white text-sm hover:text-[var(--color-primary)] cursor-pointer transition-colors">
+                          {athlete.fullName || `${athlete.firstName || ''} ${athlete.lastName || ''}`.trim() || 'Atleta'}
+                        </p>
+                        <p className="text-xs text-slate-400">{athlete.phone || athlete.email}</p>
                       </div>
                     </div>
-                    <button onClick={() => handleEdit(athlete)}
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-[var(--color-primary)] border border-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/10 transition-colors shrink-0">
-                      Modifica
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={() => setSelectedAthleteId(athlete.id)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-300 border border-slate-600 hover:bg-slate-800 hover:text-white transition-colors"
+                        title="Apri scheda atleta">
+                        <Eye className="w-3 h-3" />Apri
+                      </button>
+                      <button onClick={() => handleEdit(athlete)}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-[var(--color-primary)] border border-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/10 transition-colors">
+                        Modifica
+                      </button>
+                    </div>
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <AthleteStatusBadge status={athlete.status} />
                     <PaymentStatusBadge status={athlete.paymentStatus} />
                   </div>
-                  <p className="text-xs text-slate-400">Coach: {athlete.assignedCoachName}</p>
+                  <p className="text-xs text-slate-400">Coach: {athlete.assignedCoachName || '—'}</p>
                 </div>
               );
             })

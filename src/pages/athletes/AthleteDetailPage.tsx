@@ -96,6 +96,22 @@ const timelineTypeIcon: Record<TimelineEvent['type'], string> = {
   other: '⚙️',
 };
 
+// ─── Utility Data Sicure ───────────────────────────────────────────────────────
+
+const formatDate = (dateStr?: string): string => {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('it-IT');
+};
+
+const formatDateTime = (dateStr?: string): string => {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('it-IT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
 // ─── Componente Informazione Riga ─────────────────────────────────────────────
 
 const InfoRow: React.FC<{ label: string; value?: string | React.ReactNode; missing?: string }> = ({
@@ -145,7 +161,7 @@ const NotesTab: React.FC<{
   const [visibility, setVisibility] = useState<NoteVisibility>('coach');
 
   const sorted = useMemo(() =>
-    [...notes].sort((a, b) => {
+    [...notes].filter(Boolean).sort((a, b) => {
       if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     }),
@@ -233,9 +249,9 @@ const NotesTab: React.FC<{
               </div>
               <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{note.content}</p>
               <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                <User className="w-3 h-3" />{note.authorName}
+                <User className="w-3 h-3" />{note.authorName || 'Coach'}
                 <span>·</span>
-                <Calendar className="w-3 h-3" />{new Date(note.createdAt).toLocaleString('it-IT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                <Calendar className="w-3 h-3" />{formatDateTime(note.createdAt)}
               </div>
             </div>
           ))}
@@ -247,8 +263,8 @@ const NotesTab: React.FC<{
 
 // ─── Scheda Timeline ──────────────────────────────────────────────────────────
 
-const TimelineTab: React.FC<{ events: TimelineEvent[] }> = ({ events }) => {
-  if (events.length === 0) {
+const TimelineTab: React.FC<{ events: TimelineEvent[] }> = ({ events = [] }) => {
+  if (!events || events.length === 0) {
     return (
       <div className="text-center py-12">
         <Clock className="w-8 h-8 text-slate-600 mx-auto mb-2" />
@@ -258,9 +274,11 @@ const TimelineTab: React.FC<{ events: TimelineEvent[] }> = ({ events }) => {
     );
   }
 
-  const sorted = [...events].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const sorted = [...(events || [])].filter(Boolean).sort((a, b) => {
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+  });
 
   return (
     <div className="relative pl-6 space-y-0">
@@ -271,7 +289,7 @@ const TimelineTab: React.FC<{ events: TimelineEvent[] }> = ({ events }) => {
         <div key={event.id} className={`relative flex gap-4 ${idx < sorted.length - 1 ? 'pb-5' : ''}`}>
           {/* Pallino */}
           <div className="absolute -left-6 mt-1 w-3.5 h-3.5 rounded-full border-2 border-[var(--color-primary)] bg-[var(--color-bg)] flex items-center justify-center shrink-0 z-10 text-[10px]">
-            {timelineTypeIcon[event.type]}
+            {timelineTypeIcon[event.type] || '⚙️'}
           </div>
 
           <div className="flex-1 bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-xl p-3 hover:border-slate-600 transition-colors">
@@ -280,13 +298,10 @@ const TimelineTab: React.FC<{ events: TimelineEvent[] }> = ({ events }) => {
               <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{event.description}</p>
             )}
             <div className="flex items-center gap-2 mt-2 text-[11px] text-slate-500">
-              <User className="w-3 h-3" />{event.authorName}
+              <User className="w-3 h-3" />{event.authorName || 'Sistema'}
               <span>·</span>
               <Calendar className="w-3 h-3" />
-              {new Date(event.createdAt).toLocaleString('it-IT', {
-                day: '2-digit', month: 'short', year: 'numeric',
-                hour: '2-digit', minute: '2-digit',
-              })}
+              {formatDateTime(event.createdAt)}
             </div>
           </div>
         </div>
@@ -320,12 +335,12 @@ interface AthleteDetailPageProps {
 }
 
 export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId, onBack }) => {
-  const { getAthleteById, notes, timeline } = useAthletes();
+  const { getAthleteById, notes = {}, timeline = {} } = useAthletes();
   const [activeTab, setActiveTab] = useState<DetailTab>('panoramica');
 
   const athlete = getAthleteById(athleteId);
-  const athleteNotes = notes[athleteId] ?? [];
-  const athleteTimeline = timeline[athleteId] ?? [];
+  const athleteNotes = notes?.[athleteId] ?? [];
+  const athleteTimeline = timeline?.[athleteId] ?? [];
 
   if (!athlete) {
     return (
@@ -339,6 +354,10 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
     );
   }
 
+  const safeTags = Array.isArray(athlete.tags) ? athlete.tags : [];
+  const hasEmergencyContact = athlete.emergencyContact && typeof athlete.emergencyContact === 'object';
+  const safeFullName = athlete.fullName || [athlete.firstName, athlete.lastName].filter(Boolean).join(' ') || '—';
+
   const renderTab = (): React.ReactNode => {
     switch (activeTab) {
       case 'panoramica':
@@ -346,8 +365,8 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
           <div className="space-y-4">
             {/* Dati Anagrafici */}
             <CollapsibleSection title="Dati Anagrafici" icon={<User className="w-4 h-4" />}>
-              <InfoRow label="Nome completo" value={athlete.fullName} />
-              <InfoRow label="Data di nascita" value={athlete.dateOfBirth ? new Date(athlete.dateOfBirth).toLocaleDateString('it-IT') : undefined} />
+              <InfoRow label="Nome completo" value={safeFullName} />
+              <InfoRow label="Data di nascita" value={formatDate(athlete.dateOfBirth)} />
               <InfoRow label="Codice Fiscale" value={athlete.fiscalCode} missing="Non fornito" />
               <InfoRow label="Indirizzo" value={athlete.address} missing="Non fornito" />
               <InfoRow label="Città" value={athlete.city ? `${athlete.city}${athlete.province ? ` (${athlete.province})` : ''}` : undefined} />
@@ -370,16 +389,16 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 ) : undefined}
                 missing="Non fornita"
               />
-              <InfoRow label="Canale preferito" value={contactChannelLabel[athlete.contactChannel]} />
-              <InfoRow label="Fonte acquisizione" value={acquisitionSourceLabel[athlete.acquisitionSource]} />
+              <InfoRow label="Canale preferito" value={athlete.contactChannel ? (contactChannelLabel[athlete.contactChannel] || athlete.contactChannel) : undefined} />
+              <InfoRow label="Fonte acquisizione" value={athlete.acquisitionSource ? (acquisitionSourceLabel[athlete.acquisitionSource] || athlete.acquisitionSource) : undefined} />
             </CollapsibleSection>
 
             {/* Contatto di Emergenza */}
-            {athlete.emergencyContact && (
+            {hasEmergencyContact && (
               <CollapsibleSection title="Contatto di Emergenza" icon={<Shield className="w-4 h-4" />} defaultOpen={false}>
-                <InfoRow label="Nome" value={athlete.emergencyContact.name} />
-                <InfoRow label="Telefono" value={athlete.emergencyContact.phone} />
-                <InfoRow label="Relazione" value={athlete.emergencyContact.relationship} />
+                <InfoRow label="Nome" value={(athlete.emergencyContact as any).name} />
+                <InfoRow label="Telefono" value={(athlete.emergencyContact as any).phone} />
+                <InfoRow label="Relazione" value={(athlete.emergencyContact as any).relationship} />
               </CollapsibleSection>
             )}
 
@@ -396,17 +415,17 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Coach assegnato</span>
-                  <span className="text-sm text-slate-200">{athlete.assignedCoachName}</span>
+                  <span className="text-sm text-slate-200">{athlete.assignedCoachName || '—'}</span>
                 </div>
-                <InfoRow label="Iscrizione" value={new Date(athlete.createdAt).toLocaleDateString('it-IT')} />
+                <InfoRow label="Iscrizione" value={formatDate(athlete.createdAt)} />
               </div>
             </CollapsibleSection>
 
             {/* Obiettivi e Disciplina */}
             <CollapsibleSection title="Obiettivi e Disciplina" icon={<Target className="w-4 h-4" />} defaultOpen={false}>
-              {(athlete.tags ?? []).length > 0 && (
+              {safeTags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-3">
-                  {(athlete.tags ?? []).map(tag => (
+                  {safeTags.map(tag => (
                     <span key={tag} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 text-[var(--color-primary)]">
                       {tag}
                     </span>
@@ -426,7 +445,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 </p>
                 <div className="mt-3 flex items-center justify-center gap-2">
                   <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400">
-                    Scadenza certificato: <span className="ml-1 text-slate-300 font-semibold">Non registrata</span>
+                    Scadenza certificato: <span className="ml-1 text-slate-300 font-semibold">{formatDate(athlete.medicalCertificateExpiryDate)}</span>
                   </span>
                 </div>
               </div>
@@ -436,7 +455,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             <CollapsibleSection title="Consensi" icon={<Shield className="w-4 h-4" />} defaultOpen={false}>
               <InfoRow label="Privacy"
                 value={athlete.privacyConsent ? (
-                  <span className="text-emerald-400 font-semibold">✓ Acquisito{athlete.privacyConsentDate ? ` il ${new Date(athlete.privacyConsentDate).toLocaleDateString('it-IT')}` : ''}</span>
+                  <span className="text-emerald-400 font-semibold">✓ Acquisito{athlete.privacyConsentDate && formatDate(athlete.privacyConsentDate) !== '—' ? ` il ${formatDate(athlete.privacyConsentDate)}` : ''}</span>
                 ) : (
                   <span className="text-red-400 font-semibold">✗ Non acquisito</span>
                 )}
@@ -520,7 +539,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
               <User className="w-5 h-5 text-[var(--color-primary)]" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-xl font-black text-white tracking-tight truncate">{athlete.fullName}</h2>
+              <h2 className="text-xl font-black text-white tracking-tight truncate">{safeFullName !== '—' ? safeFullName : 'Atleta'}</h2>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <AthleteStatusBadge status={athlete.status} />
                 <PaymentStatusBadge status={athlete.paymentStatus} />
