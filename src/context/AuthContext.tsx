@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserProfile, Organization, OrganizationMember, UserRole } from '../types';
-import { getLocalOwnerProfile, saveOwnerProfile } from '../lib/ownerProfile';
+import { getLocalOwnerProfile } from '../lib/ownerProfile';
 import { getStorageItem, setStorageItem } from '../lib/storage';
-import { STORAGE_KEYS } from '../config/storageKeys';
 import { hasPermission } from '../lib/permissionsMatrix';
 import { supabase } from '../lib/supabase';
 
@@ -28,14 +27,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const getDefaultMembers = (orgId: string): OrganizationMember[] => {
+const getDefaultMembers = (_orgId: string): OrganizationMember[] => {
   return [];
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [ownerProfile, setOwnerProfileState] = useState(() => getLocalOwnerProfile());
+  const [ownerProfile] = useState(() => getLocalOwnerProfile());
   const [simulatedRole, setSimulatedRole] = useState<UserRole>('owner');
 
   const currentOrganization: Organization = {
@@ -122,7 +121,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     persistMembers(updated);
   }, [members, persistMembers]);
 
-  const transferOwnership = useCallback((newOwnerMemberId: string): boolean => {
+  const transferOwnership = useCallback((_newOwnerMemberId: string): boolean => {
     return false; // Disabled for now in cloud version until fully refactored
   }, []);
 

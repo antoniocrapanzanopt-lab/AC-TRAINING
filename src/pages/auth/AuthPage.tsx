@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dumbbell, ShieldAlert, ArrowRight, KeyRound, Info, UserCheck } from 'lucide-react';
+import { Dumbbell, ShieldAlert, ArrowRight, KeyRound, Info } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../../components/common/Modal';
 
