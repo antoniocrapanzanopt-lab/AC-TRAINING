@@ -85,3 +85,4 @@ npm run check
 ## 🎓 Scopo Educativo
 
 Questo progetto è stato creato a scopo didattico e dimostrativo per mostrare le migliori pratiche di sviluppo in **React e TypeScript**, la gestione reattiva dello stato locale e la progettazione di un'interfaccia utente moderna ed accessibile.
+# AC-TRAINING
