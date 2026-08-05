@@ -9,168 +9,88 @@ import {
   NoteVisibility,
   TimelineEvent,
 } from '../types';
-import { STORAGE_KEYS } from '../config/storageKeys';
-import { getStorageItem, setStorageItem } from '../lib/storage';
-import { getLocalOwnerProfile, LOCAL_OWNER_ID } from '../lib/ownerProfile';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 
-// ─── Dati Dimostrativi Fittizi ─────────────────────────────────────────────────
+const mapAthleteFromDB = (row: any): Athlete => ({
+  id: row.id,
+  firstName: row.first_name || '',
+  lastName: row.last_name || '',
+  fullName: `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+  email: row.email || '',
+  phone: row.phone || '',
+  dateOfBirth: row.birth_date || '',
+  city: row.city || '',
+  province: row.province || '',
+  status: row.status || 'active',
+  paymentStatus: row.payment_status || 'none',
+  tags: row.tags || [],
+  goals: row.goals || '',
+  notes: row.notes || '',
+  emergencyContact: {
+    name: row.emergency_contact_name || '',
+    phone: row.emergency_contact_phone || '',
+    relationship: row.emergency_contact_relationship || ''
+  },
+  medicalCertificateExpiryDate: row.medical_cert_expiry || '',
+  medicalNotes: row.medical_cert_notes || '',
+  contactChannel: row.contact_channel || '',
+  acquisitionSource: row.acquisition_source || '',
+  assignedCoachId: row.assigned_coach_id || '',
+  assignedCoachName: row.assigned_coach_name || '',
+  assignedCoachIds: row.assigned_coach_id ? [row.assigned_coach_id] : [],
+  privacyConsent: true,
+  newsletterConsent: false,
+  createdAt: row.created_at || new Date().toISOString(),
+  updatedAt: row.updated_at || new Date().toISOString(),
+});
 
-const buildDemoAthletes = (ownerName: string): Athlete[] => {
-  const now = new Date().toISOString();
-  return [
-    {
-      id: 'athlete-demo-01',
-      firstName: 'Marco',
-      lastName: 'Bianchi',
-      fullName: 'Marco Bianchi',
-      email: 'marco.bianchi.demo@example.com',
-      phone: '+39 333 0000001',
-      dateOfBirth: '1990-05-12',
-      city: 'Milano',
-      province: 'MI',
-      status: 'active',
-      paymentStatus: 'regular',
-      assignedCoachId: LOCAL_OWNER_ID,
-      assignedCoachName: ownerName,
-      assignedCoachIds: [LOCAL_OWNER_ID],
-      contactChannel: 'whatsapp',
-      acquisitionSource: 'referral',
-      tags: ['forza', 'running'],
-      goals: 'Aumentare la massa muscolare e migliorare la resistenza.',
-      privacyConsent: true,
-      privacyConsentDate: '2026-01-10T10:00:00.000Z',
-      newsletterConsent: true,
-      createdAt: '2026-01-10T10:00:00.000Z',
-      updatedAt: now,
-    },
-    {
-      id: 'athlete-demo-02',
-      firstName: 'Giulia',
-      lastName: 'Esposito',
-      fullName: 'Giulia Esposito',
-      email: 'giulia.esposito.demo@example.com',
-      phone: '+39 333 0000002',
-      dateOfBirth: '1995-09-23',
-      city: 'Roma',
-      province: 'RM',
-      status: 'active',
-      paymentStatus: 'expiring',
-      assignedCoachId: LOCAL_OWNER_ID,
-      assignedCoachName: ownerName,
-      assignedCoachIds: [LOCAL_OWNER_ID],
-      contactChannel: 'email',
-      acquisitionSource: 'social',
-      tags: ['pilates', 'mobilità'],
-      goals: 'Migliorare la postura e la flessibilità.',
-      privacyConsent: true,
-      privacyConsentDate: '2026-02-15T09:00:00.000Z',
-      newsletterConsent: false,
-      createdAt: '2026-02-15T09:00:00.000Z',
-      updatedAt: now,
-    },
-    {
-      id: 'athlete-demo-03',
-      firstName: 'Luca',
-      lastName: 'Fontana',
-      fullName: 'Luca Fontana',
-      email: 'luca.fontana.demo@example.com',
-      phone: '+39 333 0000003',
-      dateOfBirth: '1988-11-04',
-      city: 'Torino',
-      province: 'TO',
-      status: 'suspended',
-      paymentStatus: 'overdue',
-      assignedCoachId: LOCAL_OWNER_ID,
-      assignedCoachName: ownerName,
-      assignedCoachIds: [LOCAL_OWNER_ID],
-      contactChannel: 'phone',
-      acquisitionSource: 'direct',
-      tags: ['functional', 'crossfit'],
-      goals: 'Perdita di peso e aumento della resistenza cardiovascolare.',
-      emergencyContact: {
-        name: 'Anna Fontana',
-        phone: '+39 333 0000099',
-        relationship: 'Sorella (fittizio)',
-      },
-      privacyConsent: true,
-      privacyConsentDate: '2025-11-01T14:00:00.000Z',
-      newsletterConsent: true,
-      createdAt: '2025-11-01T14:00:00.000Z',
-      updatedAt: now,
-    },
-    {
-      id: 'athlete-demo-04',
-      firstName: 'Sara',
-      lastName: 'Colombo',
-      fullName: 'Sara Colombo',
-      email: 'sara.colombo.demo@example.com',
-      phone: '+39 333 0000004',
-      dateOfBirth: '2000-03-17',
-      city: 'Napoli',
-      province: 'NA',
-      status: 'trial',
-      paymentStatus: 'none',
-      assignedCoachId: LOCAL_OWNER_ID,
-      assignedCoachName: ownerName,
-      assignedCoachIds: [LOCAL_OWNER_ID],
-      contactChannel: 'instagram',
-      acquisitionSource: 'social',
-      tags: ['yoga', 'benessere'],
-      goals: 'Avvicinarsi all\'attività fisica in modo graduale.',
-      privacyConsent: true,
-      privacyConsentDate: '2026-07-20T11:00:00.000Z',
-      newsletterConsent: true,
-      createdAt: '2026-07-20T11:00:00.000Z',
-      updatedAt: now,
-    },
-    {
-      id: 'athlete-demo-05',
-      firstName: 'Davide',
-      lastName: 'Ricci',
-      fullName: 'Davide Ricci',
-      email: 'davide.ricci.demo@example.com',
-      phone: '+39 333 0000005',
-      dateOfBirth: '1985-07-28',
-      city: 'Bologna',
-      province: 'BO',
-      status: 'archived',
-      paymentStatus: 'none',
-      assignedCoachId: LOCAL_OWNER_ID,
-      assignedCoachName: ownerName,
-      assignedCoachIds: [LOCAL_OWNER_ID],
-      contactChannel: 'whatsapp',
-      acquisitionSource: 'event',
-      tags: ['ciclismo'],
-      goals: 'Miglioramento performance ciclistica stagionale.',
-      privacyConsent: true,
-      privacyConsentDate: '2024-09-01T08:00:00.000Z',
-      newsletterConsent: false,
-      createdAt: '2024-09-01T08:00:00.000Z',
-      updatedAt: now,
-    },
-  ];
+const mapAthleteToDB = (a: any): any => {
+  const data: any = {};
+  if (a.firstName !== undefined) data.first_name = a.firstName;
+  if (a.lastName !== undefined) data.last_name = a.lastName;
+  if (a.email !== undefined) data.email = a.email;
+  if (a.phone !== undefined) data.phone = a.phone;
+  if (a.dateOfBirth !== undefined) data.birth_date = a.dateOfBirth;
+  if (a.city !== undefined) data.city = a.city;
+  if (a.province !== undefined) data.province = a.province;
+  if (a.status !== undefined) data.status = a.status;
+  if (a.paymentStatus !== undefined) data.payment_status = a.paymentStatus;
+  if (a.tags !== undefined) data.tags = a.tags;
+  if (a.goals !== undefined) data.goals = a.goals;
+  if (a.notes !== undefined) data.notes = a.notes;
+  if (a.emergencyContact !== undefined) {
+    data.emergency_contact_name = a.emergencyContact.name;
+    data.emergency_contact_phone = a.emergencyContact.phone;
+    data.emergency_contact_relationship = a.emergencyContact.relationship;
+  }
+  if (a.medicalCertificateExpiryDate !== undefined) data.medical_cert_expiry = a.medicalCertificateExpiryDate;
+  if (a.medicalNotes !== undefined) data.medical_cert_notes = a.medicalNotes;
+  if (a.contactChannel !== undefined) data.contact_channel = a.contactChannel;
+  if (a.acquisitionSource !== undefined) data.acquisition_source = a.acquisitionSource;
+  if (a.assignedCoachId !== undefined) data.assigned_coach_id = a.assignedCoachId;
+  if (a.assignedCoachName !== undefined) data.assigned_coach_name = a.assignedCoachName;
+  return data;
 };
-
-// ─── Context ───────────────────────────────────────────────────────────────────
 
 interface AthletesContextType {
   athletes: Athlete[];
   notes: Record<string, AthleteNote[]>;
   timeline: Record<string, TimelineEvent[]>;
   isLoading: boolean;
-  addAthlete: (data: AthleteFormData) => Athlete;
-  updateAthlete: (id: string, data: Partial<AthleteFormData>) => boolean;
-  deleteAthlete: (id: string) => boolean;
-  archiveAthlete: (id: string) => boolean;
-  updateAthleteStatus: (id: string, status: AthleteStatus) => boolean;
-  updatePaymentStatus: (id: string, paymentStatus: AthletePaymentStatus) => boolean;
-  assignCoach: (athleteId: string, coachId: string, coachName: string) => boolean;
-  assignCoachMultiple: (athleteId: string, coachIds: string[], coachNames: string[]) => boolean;
-  syncOwnerNameInAthletes: (oldOwnerName: string, newOwnerName: string) => void;
+  addAthlete: (data: AthleteFormData) => Promise<Athlete | null>;
+  updateAthlete: (id: string, data: Partial<AthleteFormData>) => Promise<boolean>;
+  deleteAthlete: (id: string) => Promise<boolean>;
+  archiveAthlete: (id: string) => Promise<boolean>;
+  updateAthleteStatus: (id: string, status: AthleteStatus) => Promise<boolean>;
+  updatePaymentStatus: (id: string, paymentStatus: AthletePaymentStatus) => Promise<boolean>;
+  assignCoach: (athleteId: string, coachId: string, coachName: string) => Promise<boolean>;
+  assignCoachMultiple: (athleteId: string, coachIds: string[], coachNames: string[]) => Promise<boolean>;
+  syncOwnerNameInAthletes: (oldOwnerName: string, newOwnerName: string) => Promise<void>;
   getAthleteById: (id: string) => Athlete | undefined;
-  addNote: (athleteId: string, content: string, authorId: string, authorName: string, category?: NoteCategory, visibility?: NoteVisibility) => boolean;
-  deleteNote: (athleteId: string, noteId: string) => boolean;
-  togglePinNote: (athleteId: string, noteId: string) => boolean;
+  addNote: (athleteId: string, content: string, authorId: string, authorName: string, category?: NoteCategory, visibility?: NoteVisibility) => Promise<boolean>;
+  deleteNote: (athleteId: string, noteId: string) => Promise<boolean>;
+  togglePinNote: (athleteId: string, noteId: string) => Promise<boolean>;
   addTimelineEvent: (
     athleteId: string,
     type: TimelineEvent['type'],
@@ -179,255 +99,283 @@ interface AthletesContextType {
     authorId?: string,
     authorName?: string,
     metadata?: Record<string, string | number | boolean>
-  ) => boolean;
+  ) => Promise<boolean>;
   bulkSetAthletes: (newAthletes: Athlete[]) => void;
   exportCsv: () => string;
 }
 
 const AthletesContext = createContext<AthletesContextType | undefined>(undefined);
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
 export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [notes, setNotes] = useState<Record<string, AthleteNote[]>>({});
   const [timeline, setTimeline] = useState<Record<string, TimelineEvent[]>>({});
 
-  useEffect(() => {
-    const ownerProfile = getLocalOwnerProfile();
-    const ownerName = ownerProfile?.fullName || 'Coach Demo';
+  const fetchData = useCallback(async () => {
+    if (!user) {
+      setAthletes([]);
+      setNotes({});
+      setTimeline({});
+      setIsLoading(false);
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    const [athRes, notesRes, timeRes] = await Promise.all([
+      supabase.from('athletes').select('*').order('created_at', { ascending: false }),
+      supabase.from('athlete_notes').select('*').order('created_at', { ascending: false }),
+      supabase.from('athlete_timeline').select('*').order('created_at', { ascending: false })
+    ]);
 
-    const savedAthletes = getStorageItem<Athlete[]>(STORAGE_KEYS.ATHLETES, []);
-    if (savedAthletes.length === 0) {
-      const demoAthletes = buildDemoAthletes(ownerName);
-      setStorageItem(STORAGE_KEYS.ATHLETES, demoAthletes);
-      setAthletes(demoAthletes);
-    } else {
-      setAthletes(savedAthletes);
+    if (athRes.data) {
+      setAthletes(athRes.data.map(mapAthleteFromDB));
     }
 
-    const savedNotes = getStorageItem<Record<string, AthleteNote[]>>(STORAGE_KEYS.ATHLETE_NOTES, {});
-    setNotes(savedNotes);
+    if (notesRes.data) {
+      const groupedNotes: Record<string, AthleteNote[]> = {};
+      notesRes.data.forEach((row: any) => {
+        const n: AthleteNote = {
+          id: row.id,
+          athleteId: row.athlete_id,
+          content: row.content,
+          category: row.category,
+          visibility: row.visibility,
+          isPinned: row.is_pinned,
+          authorId: row.author_id,
+          authorName: row.author_name,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+        if (!groupedNotes[n.athleteId]) groupedNotes[n.athleteId] = [];
+        groupedNotes[n.athleteId].push(n);
+      });
+      setNotes(groupedNotes);
+    }
 
-    const savedTimeline = getStorageItem<Record<string, TimelineEvent[]>>(STORAGE_KEYS.ATHLETE_TIMELINE, {});
-    setTimeline(savedTimeline);
+    if (timeRes.data) {
+      const groupedTime: Record<string, TimelineEvent[]> = {};
+      timeRes.data.forEach((row: any) => {
+        const t: TimelineEvent = {
+          id: row.id,
+          athleteId: row.athlete_id,
+          type: row.type,
+          title: row.title,
+          description: row.description,
+          metadata: row.metadata,
+          authorId: row.created_by,
+          authorName: 'Coach',
+          createdAt: row.created_at,
+        };
+        if (!groupedTime[t.athleteId]) groupedTime[t.athleteId] = [];
+        groupedTime[t.athleteId].push(t);
+      });
+      setTimeline(groupedTime);
+    }
 
     setIsLoading(false);
-  }, []);
+  }, [user]);
 
-  const persist = useCallback((updated: Athlete[]): void => {
-    try {
-      setStorageItem(STORAGE_KEYS.ATHLETES, updated);
-    } catch (error) {
-      console.error('Errore durante il salvataggio degli atleti in localStorage:', error);
-    }
-  }, []);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const addAthlete = useCallback((data: AthleteFormData): Athlete => {
-    const ownerProfile = getLocalOwnerProfile();
-    const now = new Date().toISOString();
-    const id = `athlete-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-    const newAthlete: Athlete = {
+  const addAthlete = useCallback(async (data: AthleteFormData): Promise<Athlete | null> => {
+    const dbData = mapAthleteToDB({
       ...data,
-      id,
-      fullName: `${data.firstName.trim()} ${data.lastName.trim()}`,
-      assignedCoachId: data.assignedCoachId || ownerProfile?.id || LOCAL_OWNER_ID,
-      assignedCoachName: data.assignedCoachName || ownerProfile?.fullName || 'Coach Demo',
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    setAthletes((prev) => {
-      const updated = [...prev, newAthlete];
-      persist(updated);
-      return updated;
+      assignedCoachId: user?.id || '',
+      assignedCoachName: user?.name || ''
     });
 
+    const { data: inserted, error } = await supabase.from('athletes').insert([dbData]).select().single();
+    
+    if (error || !inserted) {
+      console.error('Error adding athlete:', error);
+      return null;
+    }
+
+    const newAthlete = mapAthleteFromDB(inserted);
+    setAthletes(prev => [newAthlete, ...prev]);
     return newAthlete;
-  }, [persist]);
+  }, [user]);
 
-  const updateAthlete = useCallback((id: string, data: Partial<AthleteFormData>): boolean => {
-    const now = new Date().toISOString();
-    let found = false;
-
-    setAthletes((prev) => {
-      const updated = prev.map((a) => {
-        if (a.id !== id) return a;
-        found = true;
-        const merged = { ...a, ...data, id, updatedAt: now };
+  const updateAthlete = useCallback(async (id: string, data: Partial<AthleteFormData>): Promise<boolean> => {
+    const dbData = mapAthleteToDB(data);
+    const { error } = await supabase.from('athletes').update(dbData).eq('id', id);
+    if (error) {
+      console.error('Error updating athlete:', error);
+      return false;
+    }
+    setAthletes(prev => prev.map(a => {
+      if (a.id === id) {
+        const merged = { ...a, ...data };
         if (data.firstName !== undefined || data.lastName !== undefined) {
           merged.fullName = `${(data.firstName ?? a.firstName).trim()} ${(data.lastName ?? a.lastName).trim()}`;
         }
         return merged;
-      });
-      persist(updated);
-      return updated;
-    });
+      }
+      return a;
+    }));
+    return true;
+  }, []);
 
-    return found;
-  }, [persist]);
+  const deleteAthlete = useCallback(async (id: string): Promise<boolean> => {
+    const { error } = await supabase.from('athletes').delete().eq('id', id);
+    if (error) {
+      console.error('Error deleting athlete:', error);
+      return false;
+    }
+    setAthletes(prev => prev.filter(a => a.id !== id));
+    return true;
+  }, []);
 
-  const deleteAthlete = useCallback((id: string): boolean => {
-    let found = false;
-    setAthletes((prev) => {
-      const updated = prev.filter((a) => {
-        if (a.id === id) { found = true; return false; }
-        return true;
-      });
-      persist(updated);
-      return updated;
-    });
-    return found;
-  }, [persist]);
-
-  const archiveAthlete = useCallback((id: string): boolean => {
+  const archiveAthlete = useCallback(async (id: string): Promise<boolean> => {
     return updateAthlete(id, { status: 'archived' });
   }, [updateAthlete]);
 
-  const updateAthleteStatus = useCallback((id: string, status: AthleteStatus): boolean => {
+  const updateAthleteStatus = useCallback(async (id: string, status: AthleteStatus): Promise<boolean> => {
     return updateAthlete(id, { status });
   }, [updateAthlete]);
 
-  const updatePaymentStatus = useCallback((id: string, paymentStatus: AthletePaymentStatus): boolean => {
+  const updatePaymentStatus = useCallback(async (id: string, paymentStatus: AthletePaymentStatus): Promise<boolean> => {
     return updateAthlete(id, { paymentStatus });
   }, [updateAthlete]);
 
-  const assignCoach = useCallback((athleteId: string, coachId: string, coachName: string): boolean => {
+  const assignCoach = useCallback(async (athleteId: string, coachId: string, coachName: string): Promise<boolean> => {
     return updateAthlete(athleteId, {
       assignedCoachId: coachId,
       assignedCoachName: coachName,
-      assignedCoachIds: [coachId],
     });
   }, [updateAthlete]);
 
-  const assignCoachMultiple = useCallback((athleteId: string, coachIds: string[], coachNames: string[]): boolean => {
-    const primaryId = coachIds[0] || LOCAL_OWNER_ID;
-    const primaryName = coachNames[0] || 'Coach Demo';
-    return updateAthlete(athleteId, {
-      assignedCoachId: primaryId,
-      assignedCoachName: primaryName,
-      assignedCoachIds: coachIds,
-    });
-  }, [updateAthlete]);
+  const assignCoachMultiple = useCallback(async (athleteId: string, coachIds: string[], coachNames: string[]): Promise<boolean> => {
+    return assignCoach(athleteId, coachIds[0] || '', coachNames[0] || '');
+  }, [assignCoach]);
 
-  const syncOwnerNameInAthletes = useCallback((oldOwnerName: string, newOwnerName: string) => {
-    setAthletes(prev => {
-      const updated = prev.map(a => {
-        if (
-          a.assignedCoachId === LOCAL_OWNER_ID ||
-          a.assignedCoachIds?.includes(LOCAL_OWNER_ID) ||
-          a.assignedCoachName === oldOwnerName
-        ) {
-          return {
-            ...a,
-            assignedCoachName: newOwnerName,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return a;
-      });
-      persist(updated);
-      return updated;
-    });
-  }, [persist]);
+  const syncOwnerNameInAthletes = useCallback(async (_oldOwnerName: string, _newOwnerName: string) => {
+    // Legacy support, skip for DB for now unless needed
+  }, []);
 
   const getAthleteById = useCallback((id: string): Athlete | undefined => {
     return athletes.find((a) => a.id === id);
   }, [athletes]);
 
-  const addNote = useCallback((
+  const addNote = useCallback(async (
     athleteId: string,
     content: string,
     authorId: string,
     authorName: string,
     category: NoteCategory = 'general',
     visibility: NoteVisibility = 'coach'
-  ): boolean => {
+  ): Promise<boolean> => {
     if (!content.trim()) return false;
-    const now = new Date().toISOString();
-    const note: AthleteNote = {
-      id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      athleteId,
+    
+    const dbNote = {
+      athlete_id: athleteId,
       content: content.trim(),
       category,
       visibility,
-      authorId,
-      authorName,
-      createdAt: now,
-      updatedAt: now,
-      isPinned: false,
+      author_id: authorId,
+      author_name: authorName,
+      is_pinned: false
     };
-    setNotes((prev) => {
-      const updated = { ...prev, [athleteId]: [...(prev[athleteId] ?? []), note] };
-      setStorageItem(STORAGE_KEYS.ATHLETE_NOTES, updated);
-      return updated;
-    });
+
+    const { data: inserted, error } = await supabase.from('athlete_notes').insert([dbNote]).select().single();
+    
+    if (error || !inserted) {
+      console.error('Error adding note:', error);
+      return false;
+    }
+
+    const note: AthleteNote = {
+      id: inserted.id,
+      athleteId: inserted.athlete_id,
+      content: inserted.content,
+      category: inserted.category,
+      visibility: inserted.visibility,
+      authorId: inserted.author_id,
+      authorName: inserted.author_name,
+      createdAt: inserted.created_at,
+      updatedAt: inserted.updated_at,
+      isPinned: inserted.is_pinned,
+    };
+
+    setNotes(prev => ({
+      ...prev,
+      [athleteId]: [note, ...(prev[athleteId] ?? [])]
+    }));
     return true;
   }, []);
 
-  const deleteNote = useCallback((athleteId: string, noteId: string): boolean => {
-    let found = false;
-    setNotes((prev) => {
-      const current = prev[athleteId] ?? [];
-      const filtered = current.filter(n => { if (n.id === noteId) { found = true; return false; } return true; });
-      const updated = { ...prev, [athleteId]: filtered };
-      setStorageItem(STORAGE_KEYS.ATHLETE_NOTES, updated);
-      return updated;
-    });
-    return found;
+  const deleteNote = useCallback(async (athleteId: string, noteId: string): Promise<boolean> => {
+    const { error } = await supabase.from('athlete_notes').delete().eq('id', noteId);
+    if (error) return false;
+    setNotes(prev => ({
+      ...prev,
+      [athleteId]: (prev[athleteId] ?? []).filter(n => n.id !== noteId)
+    }));
+    return true;
   }, []);
 
-  const togglePinNote = useCallback((athleteId: string, noteId: string): boolean => {
-    let found = false;
-    setNotes((prev) => {
-      const current = prev[athleteId] ?? [];
-      const updated_list = current.map(n => {
-        if (n.id !== noteId) return n;
-        found = true;
-        return { ...n, isPinned: !n.isPinned };
-      });
-      const updated = { ...prev, [athleteId]: updated_list };
-      setStorageItem(STORAGE_KEYS.ATHLETE_NOTES, updated);
-      return updated;
-    });
-    return found;
-  }, []);
+  const togglePinNote = useCallback(async (athleteId: string, noteId: string): Promise<boolean> => {
+    const note = (notes[athleteId] || []).find(n => n.id === noteId);
+    if (!note) return false;
 
-  const addTimelineEvent = useCallback((
+    const { error } = await supabase.from('athlete_notes').update({ is_pinned: !note.isPinned }).eq('id', noteId);
+    if (error) return false;
+
+    setNotes(prev => ({
+      ...prev,
+      [athleteId]: (prev[athleteId] ?? []).map(n => n.id === noteId ? { ...n, isPinned: !n.isPinned } : n)
+    }));
+    return true;
+  }, [notes]);
+
+  const addTimelineEvent = useCallback(async (
     athleteId: string,
     type: TimelineEvent['type'],
     title: string,
     description?: string,
     authorId?: string,
-    authorName?: string,
+    _authorName?: string,
     metadata?: Record<string, string | number | boolean>
-  ): boolean => {
-    const ownerProfile = getLocalOwnerProfile();
-    const event: TimelineEvent = {
-      id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      athleteId,
+  ): Promise<boolean> => {
+    const dbEvt = {
+      athlete_id: athleteId,
       type,
       title,
       description,
-      authorId: authorId ?? ownerProfile?.id ?? LOCAL_OWNER_ID,
-      authorName: authorName ?? ownerProfile?.fullName ?? 'Coach Demo',
-      createdAt: new Date().toISOString(),
-      metadata,
+      created_by: authorId || user?.id,
+      metadata
     };
-    setTimeline((prev) => {
-      const updated = { ...prev, [athleteId]: [event, ...(prev[athleteId] ?? [])] };
-      setStorageItem(STORAGE_KEYS.ATHLETE_TIMELINE, updated);
-      return updated;
-    });
-    return true;
-  }, []);
 
-  const bulkSetAthletes = useCallback((newAthletes: Athlete[]) => {
-    setAthletes(newAthletes);
-    persist(newAthletes);
-  }, [persist]);
+    const { data: inserted, error } = await supabase.from('athlete_timeline').insert([dbEvt]).select().single();
+    if (error || !inserted) return false;
+
+    const event: TimelineEvent = {
+      id: inserted.id,
+      athleteId: inserted.athlete_id,
+      type: inserted.type,
+      title: inserted.title,
+      description: inserted.description,
+      authorId: inserted.created_by,
+      authorName: 'Coach',
+      createdAt: inserted.created_at,
+      metadata: inserted.metadata,
+    };
+
+    setTimeline(prev => ({
+      ...prev,
+      [athleteId]: [event, ...(prev[athleteId] ?? [])]
+    }));
+    return true;
+  }, [user]);
+
+  const bulkSetAthletes = useCallback((_newAthletes: Athlete[]) => {
+    // Disable bulk replace for cloud
+  }, []);
 
   const exportCsv = useCallback((): string => {
     const headers = [

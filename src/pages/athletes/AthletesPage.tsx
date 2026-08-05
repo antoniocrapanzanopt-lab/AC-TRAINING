@@ -175,13 +175,13 @@ export const AthletesPage: React.FC = () => {
 
   // ─── Azioni ──────────────────────────────────────────────────────────────────
 
-  const handleSaveAthlete = (data: AthleteFormData) => {
+  const handleSaveAthlete = async (data: AthleteFormData) => {
     if (editingAthlete) {
-      const ok = updateAthlete(editingAthlete.id, data);
+      const ok = await updateAthlete(editingAthlete.id, data);
       ok ? showSuccess('Atleta aggiornato', `${data.firstName} ${data.lastName} è stato modificato.`)
          : showError('Errore', 'Impossibile aggiornare l\'atleta.');
     } else {
-      addAthlete(data);
+      await addAthlete(data);
       showSuccess('Atleta aggiunto', `${data.firstName} ${data.lastName} è stato aggiunto.`);
     }
     setEditingAthlete(null);
@@ -198,12 +198,12 @@ export const AthletesPage: React.FC = () => {
       title: `Eliminare ${selectedIds.size} atleti?`,
       message: 'Questa operazione rimuove definitivamente gli atleti selezionati dalla demo locale. Puoi aggiungerli di nuovo in qualsiasi momento.',
       danger: true,
-      onConfirm: () => {
+      onConfirm: async () => {
         let count = 0;
-        selectedIds.forEach(id => { if (deleteAthlete(id)) count++; });
+        for (const id of Array.from(selectedIds)) { if (await deleteAthlete(id)) count++; }
         clearSelection();
         setConfirmModal(prev => ({ ...prev, open: false }));
-        showSuccess('Atleti eliminati', `${count} atleti rimossi dalla demo.`);
+        showSuccess('Atleti eliminati', `${count} atleti rimossi.`);
       },
     });
   };
@@ -214,9 +214,9 @@ export const AthletesPage: React.FC = () => {
       title: `Archiviare ${selectedIds.size} atleti?`,
       message: 'Gli atleti selezionati verranno archiviati e rimossi dalla lista attiva.',
       danger: false,
-      onConfirm: () => {
+      onConfirm: async () => {
         let count = 0;
-        selectedIds.forEach(id => { if (archiveAthlete(id)) count++; });
+        for (const id of Array.from(selectedIds)) { if (await archiveAthlete(id)) count++; }
         clearSelection();
         setConfirmModal(prev => ({ ...prev, open: false }));
         showSuccess('Atleti archiviati', `${count} atleti archiviati.`);
@@ -224,11 +224,11 @@ export const AthletesPage: React.FC = () => {
     });
   };
 
-  const handleAssignCoachSelected = () => {
+  const handleAssignCoachSelected = async () => {
     const ownerName = user?.name ?? 'Coach Demo';
     const ownerId = user?.id ?? 'local-owner';
     let count = 0;
-    selectedIds.forEach(id => { if (assignCoach(id, ownerId, ownerName)) count++; });
+    for (const id of Array.from(selectedIds)) { if (await assignCoach(id, ownerId, ownerName)) count++; }
     clearSelection();
     showInfo('Coach assegnato', `${ownerName} assegnato a ${count} atleti.`);
   };

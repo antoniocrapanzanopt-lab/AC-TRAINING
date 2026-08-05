@@ -167,9 +167,9 @@ const NotesTab: React.FC<{
     }),
     [notes]);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!content.trim()) { showError('Nota vuota', 'Scrivi il contenuto prima di salvare.'); return; }
-    const ok = addNote(
+    const ok = await addNote(
       athleteId,
       content,
       user?.id ?? 'local-owner',
