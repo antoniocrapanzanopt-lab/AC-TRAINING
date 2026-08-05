@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserProfile, Organization, OrganizationMember, UserRole } from '../types';
 import { getLocalOwnerProfile, saveOwnerProfile } from '../lib/ownerProfile';
-import { getStorageItem, setStorageItem, removeStorageItem } from '../lib/storage';
+import { getStorageItem, setStorageItem } from '../lib/storage';
 import { STORAGE_KEYS } from '../config/storageKeys';
 import { hasPermission } from '../lib/permissionsMatrix';
+import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -19,66 +20,23 @@ interface AuthContextType {
   toggleMemberStatus: (memberId: string) => void;
   transferOwnership: (newOwnerMemberId: string) => boolean;
   loginAsOwner: () => void;
-  loginWithCredentials: (email: string) => void;
-  logout: () => void;
-  requestPasswordReset: (email: string) => { success: boolean; message: string };
+  loginWithCredentials: (email: string, password?: string) => Promise<{ error: Error | null }>;
+  logout: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
   refreshAuthProfile: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const getDefaultMembers = (orgId: string, owner: ReturnType<typeof getLocalOwnerProfile>): OrganizationMember[] => {
-  return [
-    {
-      id: 'member-owner',
-      organizationId: orgId,
-      userId: owner?.id || 'local-owner',
-      fullName: owner?.fullName || 'Proprietario Demo',
-      email: owner?.email || 'owner.demo@example.com',
-      role: 'owner',
-      canViewFinancials: true,
-      status: 'active',
-    },
-    {
-      id: 'member-admin',
-      organizationId: orgId,
-      userId: 'user-admin-01',
-      fullName: 'Marco Rossi',
-      email: 'marco.admin@example.com',
-      role: 'admin',
-      canViewFinancials: true,
-      status: 'active',
-    },
-    {
-      id: 'member-coach',
-      organizationId: orgId,
-      userId: 'user-coach-01',
-      fullName: 'Giuseppe Trainer',
-      email: 'giuseppe.coach@example.com',
-      role: 'coach',
-      canViewFinancials: false,
-      status: 'active',
-    },
-    {
-      id: 'member-receptionist',
-      organizationId: orgId,
-      userId: 'user-reception-01',
-      fullName: 'Laura Bianchi',
-      email: 'laura.frontdesk@example.com',
-      role: 'receptionist',
-      canViewFinancials: false,
-      status: 'active',
-    },
-  ];
+const getDefaultMembers = (orgId: string): OrganizationMember[] => {
+  return [];
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    return getStorageItem<UserProfile | null>(STORAGE_KEYS.USER_SESSION, null);
-  });
-
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [ownerProfile, setOwnerProfileState] = useState(() => getLocalOwnerProfile());
-  const [simulatedRole, setSimulatedRole] = useState<UserRole>(user?.role || 'owner');
+  const [simulatedRole, setSimulatedRole] = useState<UserRole>('owner');
 
   const currentOrganization: Organization = {
     id: 'org-demo-01',
@@ -88,9 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const [members, setMembers] = useState<OrganizationMember[]>(() => {
-    const saved = getStorageItem<OrganizationMember[]>('builder_athlete_members', []);
-    if (saved.length > 0) return saved;
-    return getDefaultMembers(currentOrganization.id, ownerProfile);
+    return getStorageItem<OrganizationMember[]>('builder_athlete_members', getDefaultMembers(currentOrganization.id));
   });
 
   const persistMembers = useCallback((updated: OrganizationMember[]) => {
@@ -98,35 +54,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStorageItem('builder_athlete_members', updated);
   }, []);
 
-  const refreshAuthProfile = useCallback(() => {
-    const activeOwner = getLocalOwnerProfile();
-    setOwnerProfileState(activeOwner);
-
-    if (user && activeOwner) {
-      const updatedUser: UserProfile = {
-        ...user,
-        name: activeOwner.fullName,
-        email: activeOwner.email,
-      };
-      setUser(updatedUser);
-      setStorageItem(STORAGE_KEYS.USER_SESSION, updatedUser);
-    }
-
-    setMembers(prev => {
-      const updated = prev.map(m => {
-        if (m.role === 'owner') {
-          return {
-            ...m,
-            fullName: activeOwner?.fullName || m.fullName,
-            email: activeOwner?.email || m.email,
-          };
-        }
-        return m;
-      });
-      setStorageItem('builder_athlete_members', updated);
-      return updated;
+  useEffect(() => {
+    // 1. Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+          email: session.user.email || '',
+          role: 'owner',
+          canViewFinancials: true,
+        });
+      }
+      setLoading(false);
     });
-  }, [user]);
+
+    // 2. Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+          email: session.user.email || '',
+          role: 'owner',
+          canViewFinancials: true,
+        });
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const refreshAuthProfile = useCallback(() => {
+    // Legacy refresh, kept for compatibility
+  }, []);
 
   const switchSimulatedRole = useCallback((role: UserRole) => {
     setSimulatedRole(role);
@@ -138,124 +102,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: `member-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       organizationId: currentOrganization.id,
     };
-
     const updated = [...members, newMember];
     persistMembers(updated);
     return newMember;
   }, [members, currentOrganization.id, persistMembers]);
 
   const updateMemberRole = useCallback((memberId: string, role: UserRole) => {
-    const updated = members.map(m => {
-      if (m.id === memberId) {
-        return { ...m, role };
-      }
-      return m;
-    });
+    const updated = members.map(m => m.id === memberId ? { ...m, role } : m);
     persistMembers(updated);
   }, [members, persistMembers]);
 
   const toggleFinancialVisibility = useCallback((memberId: string) => {
-    const updated = members.map(m => {
-      if (m.id === memberId) {
-        return { ...m, canViewFinancials: !m.canViewFinancials };
-      }
-      return m;
-    });
+    const updated = members.map(m => m.id === memberId ? { ...m, canViewFinancials: !m.canViewFinancials } : m);
     persistMembers(updated);
   }, [members, persistMembers]);
 
   const toggleMemberStatus = useCallback((memberId: string) => {
-    const updated = members.map(m => {
-      if (m.id === memberId) {
-        return { ...m, status: (m.status === 'active' ? 'inactive' : 'active') as 'active' | 'pending' | 'inactive' };
-      }
-      return m;
-    });
+    const updated = members.map(m => m.id === memberId ? { ...m, status: (m.status === 'active' ? 'inactive' : 'active') as any } : m);
     persistMembers(updated);
   }, [members, persistMembers]);
 
   const transferOwnership = useCallback((newOwnerMemberId: string): boolean => {
-    const target = members.find(m => m.id === newOwnerMemberId);
-    if (!target) return false;
-
-    const parts = target.fullName.split(' ');
-    saveOwnerProfile({
-      firstName: parts[0] || 'Nuovo',
-      lastName: parts.slice(1).join(' ') || 'Proprietario',
-      email: target.email,
-      organizationName: currentOrganization.name,
-    });
-
-    const updated = members.map(m => {
-      if (m.id === newOwnerMemberId) {
-        return { ...m, role: 'owner' as UserRole, canViewFinancials: true };
-      }
-      if (m.role === 'owner') {
-        return { ...m, role: 'admin' as UserRole };
-      }
-      return m;
-    });
-
-    persistMembers(updated);
-    refreshAuthProfile();
-    return true;
-  }, [members, currentOrganization.name, persistMembers, refreshAuthProfile]);
+    return false; // Disabled for now in cloud version until fully refactored
+  }, []);
 
   const loginAsOwner = () => {
-    const activeOwner = getLocalOwnerProfile();
-    const ownerUser: UserProfile = {
-      id: activeOwner?.id || 'local-owner',
-      name: activeOwner?.fullName || 'Proprietario Demo',
-      email: activeOwner?.email || 'owner.demo@example.com',
-      role: 'owner',
-      canViewFinancials: true,
-    };
-
-    setUser(ownerUser);
-    setSimulatedRole('owner');
-    setStorageItem(STORAGE_KEYS.USER_SESSION, ownerUser);
+    // Deprecated in real cloud version
   };
 
-  const loginWithCredentials = (email: string) => {
-    const activeOwner = getLocalOwnerProfile();
-    const cleanEmail = email.trim();
-
-    const loggedUser: UserProfile = {
-      id: activeOwner?.id || 'local-owner',
-      name: activeOwner?.fullName || 'Proprietario Demo',
-      email: cleanEmail || activeOwner?.email || 'owner.demo@example.com',
-      role: 'owner',
-      canViewFinancials: true,
-    };
-
-    setUser(loggedUser);
-    setSimulatedRole('owner');
-    setStorageItem(STORAGE_KEYS.USER_SESSION, loggedUser);
+  const loginWithCredentials = async (email: string, password?: string) => {
+    if (!password) password = "password123"; // Fallback safety
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    return { error };
   };
 
-  const logout = () => {
-    setUser(null);
-    removeStorageItem(STORAGE_KEYS.USER_SESSION);
+  const logout = async () => {
+    await supabase.auth.signOut();
   };
 
-  const requestPasswordReset = (_email: string) => {
-    return {
-      success: true,
-      message: 'SIMULAZIONE DEMO: Nessuna email è stata realmente inviata.',
-    };
-  };
-
-  useEffect(() => {
-    if (user) {
-      setStorageItem(STORAGE_KEYS.USER_SESSION, user);
+  const requestPasswordReset = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) {
+      return { success: false, message: error.message };
     }
-  }, [user]);
+    return { success: true, message: 'Email di reset inviata. Controlla la tua casella.' };
+  };
 
   const activeCanViewFinancials = hasPermission(
     simulatedRole,
     'viewFinancials',
     user?.role === 'owner' ? true : !!user?.canViewFinancials
   );
+
+  // Non mostrare l'app finché non controlliamo la sessione
+  if (loading) {
+    return <div className="h-screen w-screen bg-black flex items-center justify-center text-white">Caricamento in corso...</div>;
+  }
 
   return (
     <AuthContext.Provider

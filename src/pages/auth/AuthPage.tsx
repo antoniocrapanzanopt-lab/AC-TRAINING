@@ -1,34 +1,41 @@
 import React, { useState } from 'react';
 import { Dumbbell, ShieldAlert, ArrowRight, KeyRound, Info, UserCheck } from 'lucide-react';
-import { DemoBanner } from '../../components/common/DemoBanner';
 import { useAuth } from '../../context/AuthContext';
-import { getLocalOwnerProfile } from '../../lib/ownerProfile';
 import { Modal } from '../../components/common/Modal';
 
 export const AuthPage: React.FC = () => {
-  const { loginAsOwner, loginWithCredentials, requestPasswordReset } = useAuth();
-  const ownerProfile = getLocalOwnerProfile();
+  const { loginWithCredentials, requestPasswordReset } = useAuth();
 
-  const [email, setEmail] = useState(ownerProfile?.email || 'owner.demo@example.com');
-  const [password, setPassword] = useState('••••••••');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [resetEmail, setResetEmail] = useState(ownerProfile?.email || '');
+  const [resetEmail, setResetEmail] = useState('');
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    loginWithCredentials(email);
+    setLoginError(null);
+    setIsLoading(true);
+    const { error } = await loginWithCredentials(email, password);
+    if (error) {
+      setLoginError(error.message);
+    }
+    setIsLoading(false);
   };
 
-  const handleResetSubmit = (e: React.FormEvent) => {
+  const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = requestPasswordReset(resetEmail);
+    const result = await requestPasswordReset(resetEmail);
     setResetMessage(result.message);
   };
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] text-white flex flex-col justify-between">
-      <DemoBanner />
+      <div className="bg-[var(--color-primary)] text-black text-center py-2 text-xs font-bold shadow-md relative z-10 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-4 px-4">
+        <span className="flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> APPLICAZIONE LIVE CLOUD (SUPABASE)</span>
+      </div>
 
       <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
@@ -39,41 +46,9 @@ export const AuthPage: React.FC = () => {
             <h1 className="text-2xl font-black tracking-tight text-white uppercase">
               Builder <span className="text-[var(--color-primary)]">Athlete</span>
             </h1>
-            <p className="text-xs text-slate-400 font-medium">Accesso Demo alla Piattaforma</p>
+            <p className="text-xs text-slate-400 font-medium">Accesso Piattaforma Cloud</p>
           </div>
 
-          {/* Profilo Proprietario Rilevato */}
-          <div className="p-3 bg-slate-900/80 border border-[var(--color-primary)]/30 rounded-xl flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 overflow-hidden">
-              <div className="w-9 h-9 rounded-lg bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/40 flex items-center justify-center shrink-0">
-                <UserCheck className="w-5 h-5 text-[var(--color-primary)]" />
-              </div>
-              <div className="truncate">
-                <p className="text-xs font-bold text-white truncate">{ownerProfile?.fullName || 'Proprietario Demo'}</p>
-                <p className="text-[10px] text-slate-400 truncate">{ownerProfile?.organizationName || 'Organizzazione Demo'}</p>
-              </div>
-            </div>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--color-primary)] text-black shrink-0 uppercase">
-              Proprietario
-            </span>
-          </div>
-
-          {/* Pulsante di Accesso Diretto per il Proprietario */}
-          <button
-            onClick={loginAsOwner}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[var(--color-primary)] text-black font-extrabold text-xs uppercase tracking-wider hover:bg-[var(--color-primary-hover)] transition-all shadow-lg shadow-[var(--color-primary)]/20"
-          >
-            <span>ACCEDI SUBITO IN MODALITÀ DEMO</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-
-          <div className="relative flex py-1 items-center">
-            <div className="flex-grow border-t border-slate-800"></div>
-            <span className="flex-shrink mx-3 text-[11px] uppercase font-semibold text-slate-500">oppure simula il login</span>
-            <div className="flex-grow border-t border-slate-800"></div>
-          </div>
-
-          {/* Form Demonstrativo Credenziali */}
           <form onSubmit={handleFormSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">Email</label>
@@ -88,7 +63,7 @@ export const AuthPage: React.FC = () => {
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-slate-300">Password (Simulata)</label>
+                <label className="block text-xs font-semibold text-slate-300">Password</label>
                 <button
                   type="button"
                   onClick={() => setIsResetModalOpen(true)}
@@ -106,34 +81,36 @@ export const AuthPage: React.FC = () => {
               />
             </div>
 
-            {/* Avviso Autenticazione Simulata */}
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2.5 text-amber-300 text-xs">
-              <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>L'autenticazione è puramente simulata in locale. Nessuna password viene verificata su server remoti.</span>
-            </div>
+            {loginError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-2.5 text-red-400 text-xs">
+                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{loginError}</span>
+              </div>
+            )}
 
             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs hover:bg-slate-700 transition-all border border-slate-700"
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-bold text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-lg shadow-[var(--color-primary)]/20 disabled:opacity-50"
             >
-              <span>Accedi con Credenziali Demo</span>
+              <span>{isLoading ? 'Accesso in corso...' : 'Accedi'}</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </form>
         </div>
       </div>
 
-      {/* Modale Recupero Password Simulata */}
       <Modal
         isOpen={isResetModalOpen}
         onClose={() => {
           setIsResetModalOpen(false);
           setResetMessage(null);
         }}
-        title="Recupero Password Dimostrativo"
+        title="Recupero Password"
       >
         <div className="space-y-4">
           <p className="text-xs text-slate-300 leading-relaxed">
-            Inserisci l'indirizzo email per verificare la simulazione di invio del link di ripristino.
+            Inserisci l'indirizzo email per ricevere il link di ripristino.
           </p>
 
           <form onSubmit={handleResetSubmit} className="space-y-3">
@@ -153,7 +130,7 @@ export const AuthPage: React.FC = () => {
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-bold text-xs hover:bg-[var(--color-primary-hover)] transition-colors"
             >
               <KeyRound className="w-4 h-4" />
-              <span>Invia Link di Ripristino (Simulato)</span>
+              <span>Invia Link di Ripristino</span>
             </button>
           </form>
 
@@ -167,7 +144,7 @@ export const AuthPage: React.FC = () => {
       </Modal>
 
       <footer className="p-4 text-center text-xs text-slate-500 border-t border-[var(--color-panel-border)]/40">
-        Builder Athlete Manager — Demo Didattica Locale
+        Builder Athlete Manager — Piattaforma Cloud
       </footer>
     </div>
   );
