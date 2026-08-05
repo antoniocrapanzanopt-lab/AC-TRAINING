@@ -181,8 +181,12 @@ export const AthletesPage: React.FC = () => {
       ok ? showSuccess('Atleta aggiornato', `${data.firstName} ${data.lastName} è stato modificato.`)
          : showError('Errore', 'Impossibile aggiornare l\'atleta.');
     } else {
-      await addAthlete(data);
-      showSuccess('Atleta aggiunto', `${data.firstName} ${data.lastName} è stato aggiunto.`);
+      const added = await addAthlete(data);
+      if (added) {
+        showSuccess('Atleta aggiunto', `${data.firstName} ${data.lastName} è stato aggiunto.`);
+      } else {
+        showError('Errore Database', 'Controlla la console per i dettagli. Impossibile salvare su Supabase.');
+      }
     }
     setEditingAthlete(null);
   };

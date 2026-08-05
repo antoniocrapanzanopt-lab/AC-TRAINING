@@ -193,6 +193,7 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     if (error || !inserted) {
       console.error('Error adding athlete:', error);
+      alert('ERRORE DATABASE: ' + (error?.message || 'Errore sconosciuto'));
       return null;
     }
 
