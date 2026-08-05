@@ -51,7 +51,7 @@ const mapAthleteToDB = (a: any): any => {
   if (a.lastName !== undefined) data.last_name = a.lastName;
   if (a.email !== undefined) data.email = a.email;
   if (a.phone !== undefined) data.phone = a.phone;
-  if (a.dateOfBirth !== undefined) data.birth_date = a.dateOfBirth;
+  if (a.dateOfBirth !== undefined) data.birth_date = a.dateOfBirth || null;
   if (a.city !== undefined) data.city = a.city;
   if (a.province !== undefined) data.province = a.province;
   if (a.status !== undefined) data.status = a.status;
@@ -64,7 +64,7 @@ const mapAthleteToDB = (a: any): any => {
     data.emergency_contact_phone = a.emergencyContact.phone;
     data.emergency_contact_relationship = a.emergencyContact.relationship;
   }
-  if (a.medicalCertificateExpiryDate !== undefined) data.medical_cert_expiry = a.medicalCertificateExpiryDate;
+  if (a.medicalCertificateExpiryDate !== undefined) data.medical_cert_expiry = a.medicalCertificateExpiryDate || null;
   if (a.medicalNotes !== undefined) data.medical_cert_notes = a.medicalNotes;
   if (a.contactChannel !== undefined) data.contact_channel = a.contactChannel;
   if (a.acquisitionSource !== undefined) data.acquisition_source = a.acquisitionSource;
