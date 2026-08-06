@@ -15,12 +15,14 @@ import { CommunicationsProvider } from './context/CommunicationsContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { FirstRunSetupPage } from './pages/setup/FirstRunSetupPage';
 import { AuthPage } from './pages/auth/AuthPage';
+import { InvitePage } from './pages/auth/InvitePage';
 import { MainLayout } from './MainLayout';
+import { AthleteLayout } from './pages/athlete/AthleteLayout';
 import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { isLoading, isSetupComplete, setOwnerProfile } = useApp();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   // 1. Schermata di caricamento iniziale senza lampi
   if (isLoading) {
@@ -36,17 +38,28 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // 2. Se il profilo proprietario non è stato ancora configurato
+  // 2. Controllo se è un link di invito (L'atleta non deve mai vedere il Setup)
+  const urlParams = new URLSearchParams(window.location.search);
+  const inviteEmail = urlParams.get('invite');
+  if (inviteEmail && !isAuthenticated) {
+    return <InvitePage email={inviteEmail} />;
+  }
+
+  // 3. Se il profilo proprietario non è stato ancora configurato (e non è un invito)
   if (!isSetupComplete) {
     return <FirstRunSetupPage onComplete={(profile) => setOwnerProfile(profile)} />;
   }
 
-  // 3. Se l'utente non ha avviato la sessione demo
+  // 4. Se l'utente non ha effettuato il login
   if (!isAuthenticated) {
     return <AuthPage />;
   }
 
   // 4. Se la sessione è attiva, mostra il layout principale
+  if (user?.role === 'athlete') {
+    return <AthleteLayout />;
+  }
+
   return <MainLayout />;
 };
 

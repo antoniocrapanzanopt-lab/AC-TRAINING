@@ -22,7 +22,10 @@ interface AuthContextType {
   loginWithCredentials: (email: string, password?: string) => Promise<{ error: Error | null }>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
+  signUpAthlete: (email: string, password: string) => Promise<{ error: any }>;
   refreshAuthProfile: () => void;
+  loginAsDemoCoach: () => void;
+  loginAsDemoAthlete: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,34 +57,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
-    // 1. Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
+    const checkUserRoleAndSet = async (sessionUser: any) => {
+      if (!sessionUser) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      
+      const email = sessionUser.email;
+      if (!email) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      // Check if the user is an athlete
+      const { data: athleteData } = await supabase
+        .from('athletes')
+        .select('id, first_name, last_name')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (athleteData) {
+        // Se è un atleta e non ha ancora l'auth_user_id, facciamo l'auto-link
+        if (!athleteData.auth_user_id) {
+          await supabase
+            .from('athletes')
+            .update({ auth_user_id: sessionUser.id })
+            .eq('id', athleteData.id);
+        }
+
         setUser({
-          id: session.user.id,
-          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
+          id: athleteData.id,
+          name: `${athleteData.first_name} ${athleteData.last_name}`,
+          email: email,
+          role: 'athlete',
+          canViewFinancials: false,
+        });
+      } else {
+        setUser({
+          id: sessionUser.id,
+          name: sessionUser.user_metadata?.full_name || email.split('@')[0] || 'User',
+          email: email,
           role: 'owner',
           canViewFinancials: true,
         });
       }
       setLoading(false);
+    };
+
+    // 1. Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      checkUserRoleAndSet(session?.user);
     });
 
     // 2. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
-          role: 'owner',
-          canViewFinancials: true,
-        });
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
+      checkUserRoleAndSet(session?.user);
     });
 
     return () => subscription.unsubscribe();
@@ -129,11 +161,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Deprecated in real cloud version
   };
 
+  const loginAsDemoCoach = () => {
+    setUser({
+      id: 'demo-local',
+      name: 'Coach Demo',
+      email: 'coach@demo.local',
+      role: 'owner',
+      canViewFinancials: true,
+    });
+  };
+
+  const loginAsDemoAthlete = () => {
+    setUser({
+      id: 'demo-local',
+      name: 'Atleta Demo',
+      email: 'atleta@demo.local',
+      role: 'athlete',
+      canViewFinancials: false,
+    });
+  };
+
   const loginWithCredentials = async (email: string, password?: string) => {
     if (!password) password = "password123"; // Fallback safety
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password
+    });
+    return { error };
+  };
+
+  const signUpAthlete = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
     });
     return { error };
   };
@@ -178,6 +238,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         transferOwnership,
         loginAsOwner,
         loginWithCredentials,
+        loginAsDemoCoach,
+        loginAsDemoAthlete,
+        signUpAthlete,
         logout,
         requestPasswordReset,
         refreshAuthProfile,

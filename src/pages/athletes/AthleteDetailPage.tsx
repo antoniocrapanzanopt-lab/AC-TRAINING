@@ -26,6 +26,7 @@ import { useAthletes } from '../../context/AthletesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { AthleteStatusBadge, PaymentStatusBadge, contactChannelLabel, acquisitionSourceLabel } from '../../components/athletes/AthleteBadges';
+import { Copy, Link as LinkIcon } from 'lucide-react';
 
 // ─── Tipi Tab ─────────────────────────────────────────────────────────────────
 
@@ -524,11 +525,22 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
     }
   };
 
+  const handleCopyInviteLink = () => {
+    if (!athlete.email) {
+      showError('Email mancante', 'Imposta l\'email dell\'atleta prima di generare l\'invito.');
+      return;
+    }
+    const inviteUrl = `${window.location.origin}/?invite=${encodeURIComponent(athlete.email)}`;
+    navigator.clipboard.writeText(inviteUrl);
+    showSuccess('Link copiato!', 'Ora puoi inviare questo link all\'atleta (es. su WhatsApp) per fargli creare la password.');
+  };
+
   return (
     <div className="space-y-5">
       {/* Intestazione */}
-      <div className="flex items-start gap-4">
-        <button onClick={onBack}
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <button onClick={onBack}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white transition-colors shrink-0 mt-1">
           <ArrowLeft className="w-4 h-4" />
           <span className="hidden sm:inline">Tutti gli atleti</span>
@@ -548,9 +560,21 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                     <Mail className="w-3 h-3" />{athlete.email}
                   </span>
                 )}
-              </div>
             </div>
           </div>
+        </div>
+        </div>
+        </div>
+        
+        {/* Pulsanti Azione Header */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCopyInviteLink}
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-black border border-[var(--color-primary)]/30 rounded-xl text-xs font-bold transition-all shadow-lg"
+          >
+            <LinkIcon className="w-4 h-4" />
+            <span>Genera Invito</span>
+          </button>
         </div>
       </div>
 
