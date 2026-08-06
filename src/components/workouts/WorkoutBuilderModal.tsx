@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Save, Trash2, GripVertical, Dumbbell, Calendar, Clock, Copy, Sliders, Repeat } from 'lucide-react';
+import { X, Plus, Save, Trash2, GripVertical, Dumbbell, Calendar, Clock, Copy, Sliders, Repeat, Sparkles } from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useExercises } from '../../context/ExercisesContext';
 import { useToast } from '../../context/ToastContext';
 import { calculateEstimatedWorkoutTime } from '../../utils/workoutUtils';
+import { AICoPilotModal } from './AICoPilotModal';
+import { AIWorkoutExercise } from '../../lib/ai/workoutGenerator';
 
 interface WorkoutBuilderModalProps {
   athleteId?: string;
@@ -31,6 +33,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const [expandedExerciseIndex, setExpandedExerciseIndex] = useState<number | null>(0);
   const [isLoadingExercises, setIsLoadingExercises] = useState(!!initialWorkout);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCoPilotOpen, setIsCoPilotOpen] = useState(false);
 
   useEffect(() => {
     if (initialWorkout) {
@@ -61,6 +64,29 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   );
 
   const estimatedTime = calculateEstimatedWorkoutTime(currentWeekDayExercises);
+
+  const handleAIGenerated = (aiExercises: AIWorkoutExercise[]) => {
+    // Trasforma AIWorkoutExercise in Partial<WorkoutExercise>
+    const mapped = aiExercises.map(ex => ({
+      ...ex,
+      is_time_based: false, // Defaulting to false, IA setta in genere sets/reps classici
+    }));
+
+    setExercises(mapped);
+
+    // Aggiorna le settimane totali in base al massimo generato
+    const maxW = Math.max(...mapped.map(e => e.week_number || 1), 1);
+    setTotalWeeks(maxW);
+
+    // Aggiorna i giorni unici generati
+    const uniqueDays = Array.from(new Set(mapped.map(e => e.day_name || 'Giorno A')));
+    if (uniqueDays.length > 0) {
+      setDaysList(uniqueDays);
+      setActiveDay(uniqueDays[0]); // Seleziona il primo giorno generato
+    }
+    setActiveWeek(1);
+    setExpandedExerciseIndex(null); // Chiudi espansioni per vista pulita
+  };
 
   const addExercise = () => {
     const newEx: Partial<WorkoutExercise> = {
@@ -203,9 +229,18 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-800">
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsCoPilotOpen(true)}
+              className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 hover:bg-indigo-500/30 rounded-xl transition-all font-bold text-xs"
+            >
+              <Sparkles className="w-4 h-4 text-indigo-400" />
+              Genera con IA
+            </button>
+            <button onClick={onClose} className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-800">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Body */}
@@ -602,6 +637,13 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
           </option>
         ))}
       </datalist>
+
+      {isCoPilotOpen && (
+        <AICoPilotModal
+          onClose={() => setIsCoPilotOpen(false)}
+          onGenerate={handleAIGenerated}
+        />
+      )}
     </div>
   );
 };
