@@ -86,7 +86,7 @@ CREATE POLICY "athlete_read_assigned_workouts" ON public.workouts
             SELECT 1 FROM public.athlete_assigned_workouts aaw
             JOIN public.athletes a ON a.id::uuid = aaw.athlete_id::uuid
             WHERE aaw.workout_id::uuid = workouts.id::uuid 
-            AND a.email::text = (auth.jwt()->>'email')::text
+            AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text))
         )
     );
 
@@ -110,7 +110,7 @@ CREATE POLICY "athlete_read_exercises" ON public.workout_exercises
             SELECT 1 FROM public.athlete_assigned_workouts aaw
             JOIN public.athletes a ON a.id::uuid = aaw.athlete_id::uuid
             WHERE aaw.workout_id::uuid = workout_exercises.workout_id::uuid 
-            AND a.email::text = (auth.jwt()->>'email')::text
+            AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text))
         )
     );
 
@@ -127,7 +127,7 @@ CREATE POLICY "athlete_read_assignments" ON public.athlete_assigned_workouts
     USING (
         EXISTS (
             SELECT 1 FROM public.athletes a 
-            WHERE a.id::uuid = athlete_assigned_workouts.athlete_id::uuid AND a.email::text = (auth.jwt()->>'email')::text
+            WHERE a.id::uuid = athlete_assigned_workouts.athlete_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text))
         )
     );
 
@@ -138,7 +138,7 @@ CREATE POLICY "athlete_manage_sessions" ON public.workout_sessions
     USING (
         EXISTS (
             SELECT 1 FROM public.athletes a 
-            WHERE a.id::uuid = workout_sessions.athlete_id::uuid AND a.email::text = (auth.jwt()->>'email')::text
+            WHERE a.id::uuid = workout_sessions.athlete_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text))
         )
     );
 
@@ -149,7 +149,7 @@ CREATE POLICY "athlete_manage_logs" ON public.exercise_logs
         EXISTS (
             SELECT 1 FROM public.workout_sessions ws
             JOIN public.athletes a ON a.id::uuid = ws.athlete_id::uuid
-            WHERE ws.id::uuid = exercise_logs.session_id::uuid AND a.email::text = (auth.jwt()->>'email')::text
+            WHERE ws.id::uuid = exercise_logs.session_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text))
         )
     );
 

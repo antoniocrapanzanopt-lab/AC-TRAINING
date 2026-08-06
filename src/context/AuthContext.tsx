@@ -72,11 +72,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Check if the user is an athlete
-      const { data: athleteData } = await supabase
+      const { data: athleteData, error: athleteError } = await supabase
         .from('athletes')
         .select('id, first_name, last_name, auth_user_id')
-        .eq('email', email)
+        .ilike('email', email.trim())
         .maybeSingle();
+
+      console.log('Login Auth Check -> email:', email, 'athleteData:', athleteData, 'error:', athleteError);
 
       if (athleteData) {
         // Se è un atleta e non ha ancora l'auth_user_id, facciamo l'auto-link
