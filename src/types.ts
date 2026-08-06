@@ -13,7 +13,8 @@ export type NavigationTab =
   | 'report'
   | 'collaboratori'
   | 'impostazioni'
-  | 'atleta_portale';
+  | 'atleta_portale'
+  | 'schede';
 
 export type UserRole = 'owner' | 'admin' | 'coach' | 'receptionist' | 'athlete' | 'collaborator';
 

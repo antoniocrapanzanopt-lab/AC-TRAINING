@@ -18,6 +18,7 @@ import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { CollaboratorsPage } from './pages/collaborators/CollaboratorsPage';
 import { AtletaPortalePage } from './pages/athlete-portal/AtletaPortalePage';
+import { WorkoutsPage } from './pages/workouts/WorkoutsPage';
 import { useApp } from './context/AppContext';
 import { NavigationTab } from './types';
 
@@ -37,6 +38,7 @@ const tabTitles: Record<NavigationTab, string> = {
   collaboratori: 'Gestione Collaboratori',
   impostazioni: 'Impostazioni Sistema',
   atleta_portale: 'Portale riservato Atleta',
+  schede: 'Schede di Allenamento',
 };
 
 const renderPage = (tab: NavigationTab): React.ReactNode => {
@@ -69,6 +71,8 @@ const renderPage = (tab: NavigationTab): React.ReactNode => {
       return <CollaboratorsPage />;
     case 'impostazioni':
       return <SettingsPage />;
+    case 'schede':
+      return <WorkoutsPage />;
     case 'atleta_portale':
       return <AtletaPortalePage />;
     default:

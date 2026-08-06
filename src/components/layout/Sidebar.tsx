@@ -16,6 +16,7 @@ import {
   Settings,
   User,
   X,
+  Dumbbell,
 } from 'lucide-react';
 import { NavigationTab } from '../../types';
 
@@ -29,6 +30,7 @@ interface SidebarProps {
 const menuItems: { id: NavigationTab; label: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'atleti', label: 'Atleti', icon: Users },
+  { id: 'schede', label: 'Schede Allenamento', icon: Dumbbell },
   { id: 'pacchetti', label: 'Pacchetti', icon: Package },
   { id: 'abbonamenti', label: 'Abbonamenti', icon: CreditCard },
   { id: 'pagamenti', label: 'Pagamenti', icon: Euro },
