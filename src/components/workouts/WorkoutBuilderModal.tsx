@@ -1,24 +1,41 @@
 import React, { useState } from 'react';
 import { X, Plus, Save, Trash2, GripVertical, Dumbbell } from 'lucide-react';
-import { WorkoutExercise } from '../../types/workout';
+import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useToast } from '../../context/ToastContext';
 
 interface WorkoutBuilderModalProps {
-  athleteId: string;
+  athleteId?: string;
+  initialWorkout?: WorkoutTemplate | null;
   onClose: () => void;
 }
 
-export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId, onClose }) => {
-  const { createWorkoutTemplate, assignWorkoutToAthlete } = useWorkouts();
+export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId, initialWorkout, onClose }) => {
+  const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout } = useWorkouts();
   const { showSuccess, showError } = useToast();
   
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [exercises, setExercises] = useState<Partial<WorkoutExercise>[]>([
+  const [title, setTitle] = useState(initialWorkout?.title || '');
+  const [description, setDescription] = useState(initialWorkout?.description || '');
+  const [exercises, setExercises] = useState<Partial<WorkoutExercise[]> | any[]>([
     { name: '', sets: 3, reps_target: '10', rest_seconds: 60 }
   ]);
+  const [isLoadingExercises, setIsLoadingExercises] = useState(!!initialWorkout);
   const [isSaving, setIsSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (initialWorkout) {
+      setIsLoadingExercises(true);
+      getExercisesForWorkout(initialWorkout.id).then((fetchedExercises) => {
+        if (fetchedExercises && fetchedExercises.length > 0) {
+          setExercises(fetchedExercises);
+        }
+        setIsLoadingExercises(false);
+      }).catch((err) => {
+        console.error("Error fetching exercises:", err);
+        setIsLoadingExercises(false);
+      });
+    }
+  }, [initialWorkout]);
 
   const addExercise = () => {
     setExercises([...exercises, { name: '', sets: 3, reps_target: '10', rest_seconds: 60 }]);
@@ -52,24 +69,37 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     setIsSaving(true);
 
     try {
-      // 1. Creiamo la scheda base (salvandola come template per il coach)
-      const { success, error, workoutId } = await createWorkoutTemplate(
-        { title, description, is_template: false }, 
-        validExercises
-      );
+      if (initialWorkout) {
+        // Aggiorna la scheda esistente
+        const { success, error } = await updateWorkoutTemplate(
+          initialWorkout.id,
+          { title, description },
+          validExercises
+        );
+        if (!success) throw new Error(error);
+        showSuccess('Scheda aggiornata con successo!');
+      } else {
+        // Creazione nuova scheda
+        const { success, error, workoutId } = await createWorkoutTemplate(
+          { title, description, is_template: !athleteId }, 
+          validExercises
+        );
 
-      if (!success) throw new Error(error);
+        if (!success) throw new Error(error);
 
-      // 2. L'assegniamo all'atleta (ho modificato il context per ritornare l'id)
-      if (workoutId) {
-        await assignWorkoutToAthlete(athleteId, workoutId);
+        // Se specifichiamo l'atleta, l'assegniamo
+        if (workoutId && athleteId) {
+          await assignWorkoutToAthlete(athleteId, workoutId);
+          showSuccess('Scheda creata e assegnata con successo!');
+        } else {
+          showSuccess('Scheda salvata nel catalogo!');
+        }
       }
       
-      showSuccess('Scheda creata e assegnata con successo!');
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      showError('Errore durante il salvataggio della scheda');
+      showError('Errore durante il salvataggio della scheda: ' + (err.message || ''));
     } finally {
       setIsSaving(false);
     }
@@ -86,8 +116,12 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
               <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">Costruttore Scheda</h2>
-              <p className="text-sm text-slate-400">Assegna un nuovo allenamento all'atleta</p>
+              <h2 className="text-xl font-bold text-white">
+                {initialWorkout ? 'Modifica Scheda' : 'Costruttore Scheda'}
+              </h2>
+              <p className="text-sm text-slate-400">
+                {initialWorkout ? 'Modifica i dettagli e gli esercizi del programma' : athleteId ? 'Assegna un nuovo allenamento all\'atleta' : 'Crea un nuovo programma per il tuo catalogo'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-800">
@@ -214,7 +248,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
           </button>
           <button 
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || isLoadingExercises}
             className="flex items-center gap-2 px-6 py-2.5 bg-[var(--color-primary)] text-black text-sm font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-all disabled:opacity-50"
           >
             {isSaving ? (
@@ -222,7 +256,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
             ) : (
               <Save className="w-4 h-4" />
             )}
-            {isSaving ? 'Salvataggio...' : 'Salva e Assegna'}
+            {isSaving ? 'Salvataggio...' : initialWorkout ? 'Salva Modifiche' : athleteId ? 'Salva e Assegna' : 'Salva Scheda'}
           </button>
         </div>
 

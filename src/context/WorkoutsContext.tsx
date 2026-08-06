@@ -7,6 +7,8 @@ interface WorkoutsContextType {
   // Coach specific
   coachTemplates: WorkoutTemplate[];
   createWorkoutTemplate: (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string; workoutId?: string }>;
+  updateWorkoutTemplate: (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
+  deleteWorkoutTemplate: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
   assignWorkoutToAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
   getAssignedWorkoutsForAthlete: (athleteId: string) => Promise<AthleteAssignedWorkout[]>;
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
@@ -87,6 +89,73 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: true, workoutId: newWorkout.id };
     } catch (error: any) {
       console.error("Error creating workout:", error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const updateWorkoutTemplate = async (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+
+    try {
+      const { error: workoutError } = await supabase
+        .from('workouts')
+        .update({
+          title: workout.title,
+          description: workout.description,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', workoutId);
+
+      if (workoutError) throw workoutError;
+
+      const { error: deleteError } = await supabase
+        .from('workout_exercises')
+        .delete()
+        .eq('workout_id', workoutId);
+
+      if (deleteError) throw deleteError;
+
+      if (exercises.length > 0) {
+        const exercisesToInsert = exercises.map((ex, index) => ({
+          workout_id: workoutId,
+          name: ex.name,
+          sets: ex.sets || 1,
+          reps_target: ex.reps_target || '10',
+          rest_seconds: ex.rest_seconds || 60,
+          order_index: index,
+          notes: ex.notes || null,
+        }));
+
+        const { error: exercisesError } = await supabase
+          .from('workout_exercises')
+          .insert(exercisesToInsert);
+
+        if (exercisesError) throw exercisesError;
+      }
+
+      await loadCoachTemplates();
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error updating workout:", error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const deleteWorkoutTemplate = async (workoutId: string) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+
+    try {
+      const { error } = await supabase
+        .from('workouts')
+        .delete()
+        .eq('id', workoutId);
+
+      if (error) throw error;
+
+      await loadCoachTemplates();
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error deleting workout:", error);
       return { success: false, error: error.message };
     }
   };
@@ -230,6 +299,8 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       value={{
         coachTemplates,
         createWorkoutTemplate,
+        updateWorkoutTemplate,
+        deleteWorkoutTemplate,
         assignWorkoutToAthlete,
         getAssignedWorkoutsForAthlete,
         getExercisesForWorkout,

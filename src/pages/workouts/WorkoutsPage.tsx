@@ -1,20 +1,42 @@
 import React, { useState } from 'react';
-import { Plus, Search, Dumbbell, FileText } from 'lucide-react';
+import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import { useWorkouts } from '../../context/WorkoutsContext';
+import { useToast } from '../../context/ToastContext';
 import { WorkoutBuilderModal } from '../../components/workouts/WorkoutBuilderModal';
 import { AssignWorkoutModal } from '../../components/workouts/AssignWorkoutModal';
 import { WorkoutTemplate } from '../../types/workout';
 
 export const WorkoutsPage: React.FC = () => {
-  const { coachTemplates } = useWorkouts();
+  const { coachTemplates, deleteWorkoutTemplate } = useWorkouts();
+  const { showSuccess, showError } = useToast();
+  
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [editingWorkout, setEditingWorkout] = useState<WorkoutTemplate | null>(null);
+  const [deletingWorkout, setDeletingWorkout] = useState<WorkoutTemplate | null>(null);
   const [assigningWorkout, setAssigningWorkout] = useState<WorkoutTemplate | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredTemplates = coachTemplates.filter(template => 
     template.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     template.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleDelete = async () => {
+    if (!deletingWorkout) return;
+    setIsDeleting(true);
+    try {
+      const { success, error } = await deleteWorkoutTemplate(deletingWorkout.id);
+      if (!success) throw new Error(error);
+      showSuccess('Scheda eliminata con successo!');
+      setDeletingWorkout(null);
+    } catch (err: any) {
+      console.error(err);
+      showError('Errore durante l\'eliminazione della scheda: ' + (err.message || ''));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -64,9 +86,24 @@ export const WorkoutsPage: React.FC = () => {
                   {template.description || 'Nessuna descrizione'}
                 </p>
                 <div className="mt-4 pt-4 border-t border-slate-700/50 flex justify-between items-center">
-                   <button className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1">
-                     <FileText className="w-3.5 h-3.5" /> Vedi Dettagli
-                   </button>
+                   <div className="flex items-center gap-1">
+                     <button 
+                       onClick={() => setEditingWorkout(template)}
+                       className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
+                       title="Modifica scheda"
+                     >
+                       <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                       <span>Modifica</span>
+                     </button>
+                     <button 
+                       onClick={() => setDeletingWorkout(template)}
+                       className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700/50 rounded-lg transition-colors"
+                       title="Elimina scheda"
+                     >
+                       <Trash2 className="w-3.5 h-3.5" />
+                     </button>
+                   </div>
+
                    <button 
                      onClick={() => setAssigningWorkout(template)}
                      className="px-3 py-1.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
@@ -92,8 +129,15 @@ export const WorkoutsPage: React.FC = () => {
 
       {isBuilderOpen && (
         <WorkoutBuilderModal
-          athleteId="" // Stringa vuota indica che stiamo creando un template generico, non per un atleta specifico
+          athleteId="" // Stringa vuota indica che stiamo creando un template generico
           onClose={() => setIsBuilderOpen(false)}
+        />
+      )}
+
+      {editingWorkout && (
+        <WorkoutBuilderModal
+          initialWorkout={editingWorkout}
+          onClose={() => setEditingWorkout(null)}
         />
       )}
 
@@ -102,6 +146,45 @@ export const WorkoutsPage: React.FC = () => {
           workout={assigningWorkout}
           onClose={() => setAssigningWorkout(null)}
         />
+      )}
+
+      {/* Modal di conferma eliminazione */}
+      {deletingWorkout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400">
+              <div className="p-3 bg-red-500/10 rounded-xl">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Elimina Scheda</h3>
+                <p className="text-xs text-slate-400">Questa azione non può essere annullata</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-300">
+              Sei sicuro di voler eliminare la scheda <strong className="text-white">"{deletingWorkout.title}"</strong>?
+            </p>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button 
+                onClick={() => setDeletingWorkout(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white transition-colors"
+              >
+                Annulla
+              </button>
+              <button 
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {isDeleting && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                {isDeleting ? 'Eliminazione...' : 'Elimina Definitivamente'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
