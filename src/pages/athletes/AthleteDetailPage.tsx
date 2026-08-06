@@ -19,8 +19,11 @@ import {
   CreditCard,
   FileText,
   Activity,
-  MessageSquare
+  MessageSquare,
+  Pencil
 } from 'lucide-react';
+import { AthleteModal } from '../../components/athletes/AthleteModal';
+import { AthleteFormData } from '../../types';
 import { AthleteNote, NoteCategory, NoteVisibility, TimelineEvent } from '../../types';
 import { useAthletes } from '../../context/AthletesContext';
 import { useAuth } from '../../context/AuthContext';
@@ -131,19 +134,31 @@ const CollapsibleSection: React.FC<{
   icon?: React.ReactNode;
   children: React.ReactNode;
   defaultOpen?: boolean;
-}> = ({ title, icon, children, defaultOpen = true }) => {
+  onEdit?: () => void;
+}> = ({ title, icon, children, defaultOpen = true, onEdit }) => {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-xl overflow-hidden">
-      <button onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-900/30 transition-colors">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-4 py-3 bg-slate-900/40 border-b border-slate-800/60">
+        <button onClick={() => setOpen(v => !v)}
+          className="flex items-center gap-2 text-left hover:text-white transition-colors flex-1">
           {icon && <span className="text-[var(--color-primary)]">{icon}</span>}
           <span className="text-xs font-bold uppercase tracking-wider text-slate-300">{title}</span>
-        </div>
-        {open ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
-      </button>
-      {open && <div className="px-4 pb-4">{children}</div>}
+          {open ? <ChevronUp className="w-4 h-4 text-slate-500 ml-1" /> : <ChevronDown className="w-4 h-4 text-slate-500 ml-1" />}
+        </button>
+
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-[var(--color-primary)] px-2.5 py-1 rounded-lg hover:bg-slate-800 transition-colors"
+            title="Modifica questa sezione"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            <span>Modifica</span>
+          </button>
+        )}
+      </div>
+      {open && <div className="px-4 pb-4 pt-3">{children}</div>}
     </div>
   );
 };
@@ -336,9 +351,10 @@ interface AthleteDetailPageProps {
 }
 
 export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId, onBack }) => {
-  const { getAthleteById, notes = {}, timeline = {} } = useAthletes();
+  const { getAthleteById, updateAthlete, notes = {}, timeline = {} } = useAthletes();
   const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<DetailTab>('panoramica');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const athlete = getAthleteById(athleteId);
   const athleteNotes = notes?.[athleteId] ?? [];
@@ -357,7 +373,6 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   }
 
   const safeTags = Array.isArray(athlete.tags) ? athlete.tags : [];
-  const hasEmergencyContact = athlete.emergencyContact && typeof athlete.emergencyContact === 'object';
   const safeFullName = athlete.fullName || [athlete.firstName, athlete.lastName].filter(Boolean).join(' ') || '—';
 
   const renderTab = (): React.ReactNode => {
@@ -366,7 +381,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
         return (
           <div className="space-y-4">
             {/* Dati Anagrafici */}
-            <CollapsibleSection title="Dati Anagrafici" icon={<User className="w-4 h-4" />}>
+            <CollapsibleSection title="Dati Anagrafici" icon={<User className="w-4 h-4" />} onEdit={() => setIsEditModalOpen(true)}>
               <InfoRow label="Nome completo" value={safeFullName} />
               <InfoRow label="Data di nascita" value={formatDate(athlete.dateOfBirth)} />
               <InfoRow label="Codice Fiscale" value={athlete.fiscalCode} missing="Non fornito" />
@@ -375,7 +390,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             </CollapsibleSection>
 
             {/* Contatti */}
-            <CollapsibleSection title="Contatti" icon={<Phone className="w-4 h-4" />}>
+            <CollapsibleSection title="Contatti" icon={<Phone className="w-4 h-4" />} onEdit={() => setIsEditModalOpen(true)}>
               <InfoRow label="Telefono"
                 value={athlete.phone ? (
                   <a href={`tel:${athlete.phone}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1">
@@ -396,16 +411,14 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             </CollapsibleSection>
 
             {/* Contatto di Emergenza */}
-            {hasEmergencyContact && (
-              <CollapsibleSection title="Contatto di Emergenza" icon={<Shield className="w-4 h-4" />} defaultOpen={false}>
-                <InfoRow label="Nome" value={(athlete.emergencyContact as any).name} />
-                <InfoRow label="Telefono" value={(athlete.emergencyContact as any).phone} />
-                <InfoRow label="Relazione" value={(athlete.emergencyContact as any).relationship} />
-              </CollapsibleSection>
-            )}
+            <CollapsibleSection title="Contatto di Emergenza" icon={<Shield className="w-4 h-4" />} defaultOpen={true} onEdit={() => setIsEditModalOpen(true)}>
+              <InfoRow label="Nome" value={(athlete.emergencyContact as any)?.name} missing="Non specificato" />
+              <InfoRow label="Telefono" value={(athlete.emergencyContact as any)?.phone} missing="Non specificato" />
+              <InfoRow label="Relazione" value={(athlete.emergencyContact as any)?.relationship} missing="Non specificato" />
+            </CollapsibleSection>
 
             {/* Stato e Pagamenti */}
-            <CollapsibleSection title="Stato e Situazione" icon={<Activity className="w-4 h-4" />}>
+            <CollapsibleSection title="Stato e Situazione" icon={<Activity className="w-4 h-4" />} onEdit={() => setIsEditModalOpen(true)}>
               <div className="flex flex-col gap-3 pt-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stato Atleta</span>
@@ -424,7 +437,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             </CollapsibleSection>
 
             {/* Obiettivi e Disciplina */}
-            <CollapsibleSection title="Obiettivi e Disciplina" icon={<Target className="w-4 h-4" />} defaultOpen={false}>
+            <CollapsibleSection title="Obiettivi e Disciplina" icon={<Target className="w-4 h-4" />} defaultOpen={true} onEdit={() => setIsEditModalOpen(true)}>
               {safeTags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {safeTags.map(tag => (
@@ -438,23 +451,19 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
               <InfoRow label="Note interne" value={athlete.notes} missing="Nessuna nota" />
             </CollapsibleSection>
 
-            {/* Certificato Medico (demo) */}
-            <CollapsibleSection title="Certificato Medico (demo)" icon={<FileText className="w-4 h-4" />} defaultOpen={false}>
-              <div className="py-3 text-center">
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  In questa sezione demo vengono indicate le date del certificato medico sportivo. <br />
-                  <span className="font-semibold text-amber-400">Non inserire mai dati sanitari reali in questa applicazione.</span>
+            {/* Certificato Medico */}
+            <CollapsibleSection title="Certificato Medico" icon={<FileText className="w-4 h-4" />} defaultOpen={true} onEdit={() => setIsEditModalOpen(true)}>
+              <div className="py-2">
+                <p className="text-xs text-slate-400 leading-relaxed mb-3">
+                  Gestione delle scadenze e note del certificato medico sportivo dell'atleta.
                 </p>
-                <div className="mt-3 flex items-center justify-center gap-2">
-                  <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-400">
-                    Scadenza certificato: <span className="ml-1 text-slate-300 font-semibold">{formatDate(athlete.medicalCertificateExpiryDate)}</span>
-                  </span>
-                </div>
+                <InfoRow label="Scadenza certificato" value={formatDate(athlete.medicalCertificateExpiryDate)} missing="Nessuna data impostata" />
+                <InfoRow label="Note medico" value={athlete.medicalNotes} missing="Nessuna nota" />
               </div>
             </CollapsibleSection>
 
             {/* Consensi */}
-            <CollapsibleSection title="Consensi" icon={<Shield className="w-4 h-4" />} defaultOpen={false}>
+            <CollapsibleSection title="Consensi" icon={<Shield className="w-4 h-4" />} defaultOpen={false} onEdit={() => setIsEditModalOpen(true)}>
               <InfoRow label="Privacy"
                 value={athlete.privacyConsent ? (
                   <span className="text-emerald-400 font-semibold">✓ Acquisito{athlete.privacyConsentDate && formatDate(athlete.privacyConsentDate) !== '—' ? ` il ${formatDate(athlete.privacyConsentDate)}` : ''}</span>
@@ -570,6 +579,14 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
         {/* Pulsanti Azione Header */}
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setIsEditModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold transition-all shadow-lg"
+          >
+            <Pencil className="w-4 h-4 text-[var(--color-primary)]" />
+            <span>Modifica Atleta</span>
+          </button>
+          
+          <button
             onClick={handleCopyInviteLink}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-black border border-[var(--color-primary)]/30 rounded-xl text-xs font-bold transition-all shadow-lg"
           >
@@ -595,6 +612,24 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
 
       {/* Contenuto Tab */}
       <div>{renderTab()}</div>
+
+      {/* Modal Modifica Atleta */}
+      {isEditModalOpen && (
+        <AthleteModal
+          isOpen={isEditModalOpen}
+          editingAthlete={athlete}
+          onClose={() => setIsEditModalOpen(false)}
+          onSave={async (formData: AthleteFormData) => {
+            const ok = await updateAthlete(athlete.id, formData);
+            if (ok) {
+              showSuccess('Atleta aggiornato', 'I dati dell\'atleta sono stati modificati con successo.');
+              setIsEditModalOpen(false);
+            } else {
+              showError('Errore', 'Si è verificato un errore durante l\'aggiornamento dell\'atleta.');
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
