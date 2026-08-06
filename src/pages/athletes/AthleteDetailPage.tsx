@@ -19,15 +19,13 @@ import {
   CreditCard,
   FileText,
   Activity,
-  MessageSquare,
-  Dumbbell
+  MessageSquare
 } from 'lucide-react';
 import { AthleteNote, NoteCategory, NoteVisibility, TimelineEvent } from '../../types';
 import { useAthletes } from '../../context/AthletesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { AthleteStatusBadge, PaymentStatusBadge, contactChannelLabel, acquisitionSourceLabel } from '../../components/athletes/AthleteBadges';
-import { WorkoutBuilderModal } from '../../components/workouts/WorkoutBuilderModal';
 import { Link as LinkIcon } from 'lucide-react';
 
 // ─── Tipi Tab ─────────────────────────────────────────────────────────────────
@@ -40,12 +38,10 @@ type DetailTab =
   | 'documenti'
   | 'attivita'
   | 'comunicazioni'
-  | 'timeline'
-  | 'allenamenti';
+  | 'timeline';
 
 const tabs: { id: DetailTab; label: string; icon: React.ReactNode }[] = [
   { id: 'panoramica', label: 'Panoramica', icon: <User className="w-4 h-4" /> },
-  { id: 'allenamenti', label: 'Allenamenti', icon: <Dumbbell className="w-4 h-4" /> },
   { id: 'note', label: 'Note', icon: <StickyNote className="w-4 h-4" /> },
   { id: 'abbonamenti', label: 'Abbonamenti', icon: <BookOpen className="w-4 h-4" /> },
   { id: 'pagamenti', label: 'Pagamenti', icon: <CreditCard className="w-4 h-4" /> },
@@ -343,7 +339,6 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   const { getAthleteById, notes = {}, timeline = {} } = useAthletes();
   const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<DetailTab>('panoramica');
-  const [isWorkoutBuilderOpen, setIsWorkoutBuilderOpen] = useState(false);
 
   const athlete = getAthleteById(athleteId);
   const athleteNotes = notes?.[athleteId] ?? [];
@@ -475,29 +470,6 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 )}
               />
             </CollapsibleSection>
-          </div>
-        );
-
-      case 'allenamenti':
-        return (
-          <div className="flex flex-col items-center justify-center py-20 text-center bg-slate-900 border border-slate-800 rounded-xl">
-            <Dumbbell className="w-12 h-12 text-[var(--color-primary)] opacity-50 mb-4" />
-            <p className="text-white font-bold text-lg mb-2">Costruttore di Schede</p>
-            <p className="text-slate-400 text-sm max-w-sm mb-6">Da qui potrai creare e assegnare le schede di allenamento per {athlete.firstName}. L'atleta le riceverà direttamente sulla sua app.</p>
-            <button 
-              onClick={() => setIsWorkoutBuilderOpen(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-bold hover:bg-[var(--color-primary-hover)] transition-all shadow-md"
-            >
-              <Dumbbell className="w-4 h-4 fill-current" />
-              + Crea Nuova Scheda
-            </button>
-            
-            {isWorkoutBuilderOpen && (
-              <WorkoutBuilderModal 
-                athleteId={athleteId} 
-                onClose={() => setIsWorkoutBuilderOpen(false)} 
-              />
-            )}
           </div>
         );
 
