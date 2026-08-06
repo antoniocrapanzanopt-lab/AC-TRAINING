@@ -1,8 +1,19 @@
+export interface WorkoutFolder {
+  id: string;
+  coach_id: string;
+  parent_id?: string | null;
+  name: string;
+  color?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface WorkoutTemplate {
   id: string;
   title: string;
   description?: string;
   coach_id: string;
+  folder_id?: string | null;
   is_template: boolean;
   total_weeks?: number;
   created_at: string;

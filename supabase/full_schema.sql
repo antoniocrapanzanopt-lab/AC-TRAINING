@@ -77,12 +77,23 @@ CREATE TABLE IF NOT EXISTS public.exercises (
 CREATE UNIQUE INDEX IF NOT EXISTS unique_exercise_name_per_coach 
 ON public.exercises (LOWER(TRIM(name)), (COALESCE(coach_id, '00000000-0000-0000-0000-000000000000'::uuid)));
 
--- 4. WORKOUTS (PROGRAMMI MADRE)
+-- 4. WORKOUT FOLDERS & WORKOUTS
+CREATE TABLE IF NOT EXISTS public.workout_folders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coach_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    parent_id UUID REFERENCES public.workout_folders(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    color TEXT DEFAULT '#EAB308',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS public.workouts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
     description TEXT,
     coach_id UUID REFERENCES auth.users(id) NOT NULL,
+    folder_id UUID REFERENCES public.workout_folders(id) ON DELETE SET NULL,
     is_template BOOLEAN DEFAULT false,
     total_weeks INTEGER DEFAULT 1,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -165,6 +176,7 @@ ALTER TABLE public.athletes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.athlete_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.athlete_timeline ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exercises ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.workout_folders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workout_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.athlete_assigned_workouts ENABLE ROW LEVEL SECURITY;
@@ -184,6 +196,10 @@ CREATE POLICY "read_exercises_policy" ON public.exercises FOR SELECT TO authenti
 
 DROP POLICY IF EXISTS "coach_manage_own_exercises" ON public.exercises;
 CREATE POLICY "coach_manage_own_exercises" ON public.exercises FOR ALL TO authenticated USING (coach_id::uuid = auth.uid()::uuid) WITH CHECK (coach_id::uuid = auth.uid()::uuid);
+
+-- POLICIES WORKOUT FOLDERS
+DROP POLICY IF EXISTS "coach_manage_folders" ON public.workout_folders;
+CREATE POLICY "coach_manage_folders" ON public.workout_folders FOR ALL TO authenticated USING (coach_id::uuid = auth.uid()::uuid) WITH CHECK (coach_id::uuid = auth.uid()::uuid);
 
 -- POLICIES WORKOUTS
 DROP POLICY IF EXISTS "coach_manage_workouts" ON public.workouts;

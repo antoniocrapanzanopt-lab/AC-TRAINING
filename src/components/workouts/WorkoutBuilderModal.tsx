@@ -12,12 +12,13 @@ interface WorkoutBuilderModalProps {
 }
 
 export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId, initialWorkout, onClose }) => {
-  const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout } = useWorkouts();
+  const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout, folders } = useWorkouts();
   const { exercises: libraryExercises } = useExercises();
   const { showSuccess, showError } = useToast();
 
   const [title, setTitle] = useState(initialWorkout?.title || '');
   const [description, setDescription] = useState(initialWorkout?.description || '');
+  const [folderId, setFolderId] = useState<string | null>(initialWorkout?.folder_id || null);
   const [totalWeeks, setTotalWeeks] = useState<number>(initialWorkout?.total_weeks || 1);
   const [activeWeek, setActiveWeek] = useState<number>(1);
   const [activeDay, setActiveDay] = useState<string>('Giorno A');
@@ -139,7 +140,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
         // Aggiorna la scheda esistente
         const { success, error } = await updateWorkoutTemplate(
           initialWorkout.id,
-          { title, description, total_weeks: totalWeeks },
+          { title, description, total_weeks: totalWeeks, folder_id: folderId },
           validExercises
         );
         if (!success) throw new Error(error);
@@ -147,7 +148,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       } else {
         // Creazione nuova scheda
         const { success, error, workoutId } = await createWorkoutTemplate(
-          { title, description, is_template: !athleteId, total_weeks: totalWeeks }, 
+          { title, description, is_template: !athleteId, total_weeks: totalWeeks, folder_id: folderId }, 
           validExercises
         );
 
@@ -208,6 +209,19 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
                 onChange={e => setTitle(e.target.value)}
                 className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] transition-colors"
               />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Cartella di Archiviazione</label>
+              <select
+                value={folderId || ''}
+                onChange={e => setFolderId(e.target.value || null)}
+                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] font-bold text-xs"
+              >
+                <option value="">Nessuna Cartella (Principale)</option>
+                {folders.map(f => (
+                  <option key={f.id} value={f.id}>📁 {f.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Durata (Settimane)</label>

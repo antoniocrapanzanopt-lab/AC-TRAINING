@@ -1,11 +1,17 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-import { WorkoutTemplate, WorkoutExercise, AthleteAssignedWorkout, WorkoutSession, ExerciseLog } from '../types/workout';
+import { WorkoutTemplate, WorkoutExercise, AthleteAssignedWorkout, WorkoutSession, ExerciseLog, WorkoutFolder } from '../types/workout';
 
 interface WorkoutsContextType {
   // Coach specific
   coachTemplates: WorkoutTemplate[];
+  folders: WorkoutFolder[];
+  loadFolders: () => Promise<void>;
+  createFolder: (name: string, parentId?: string | null) => Promise<{ success: boolean; error?: string }>;
+  updateFolder: (folderId: string, name: string) => Promise<{ success: boolean; error?: string }>;
+  deleteFolder: (folderId: string) => Promise<{ success: boolean; error?: string }>;
+  moveWorkoutToFolder: (workoutId: string, folderId: string | null) => Promise<{ success: boolean; error?: string }>;
   createWorkoutTemplate: (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string; workoutId?: string }>;
   updateWorkoutTemplate: (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
   deleteWorkoutTemplate: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
@@ -28,10 +34,98 @@ const WorkoutsContext = createContext<WorkoutsContextType | undefined>(undefined
 export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [coachTemplates, setCoachTemplates] = useState<WorkoutTemplate[]>([]);
+  const [folders, setFolders] = useState<WorkoutFolder[]>([]);
   const [myAssignedWorkouts, setMyAssignedWorkouts] = useState<AthleteAssignedWorkout[]>([]);
   const [loading, setLoading] = useState(false);
 
   // --- COACH LOGIC ---
+
+  const loadFolders = useCallback(async () => {
+    if (!user || user.role !== 'owner') return;
+    const { data, error } = await supabase
+      .from('workout_folders')
+      .select('*')
+      .eq('coach_id', user.id)
+      .order('name', { ascending: true });
+
+    if (!error && data) {
+      setFolders(data);
+    }
+  }, [user]);
+
+  const createFolder = async (name: string, parentId?: string | null) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    try {
+      const { error } = await supabase
+        .from('workout_folders')
+        .insert({
+          coach_id: user.id,
+          name: name.trim(),
+          parent_id: parentId || null,
+        });
+
+      if (error) throw error;
+      await loadFolders();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const updateFolder = async (folderId: string, name: string) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    try {
+      const { error } = await supabase
+        .from('workout_folders')
+        .update({
+          name: name.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', folderId);
+
+      if (error) throw error;
+      await loadFolders();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const deleteFolder = async (folderId: string) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    try {
+      const { error } = await supabase
+        .from('workout_folders')
+        .delete()
+        .eq('id', folderId);
+
+      if (error) throw error;
+      await loadFolders();
+      await loadCoachTemplates();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  const moveWorkoutToFolder = async (workoutId: string, folderId: string | null) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    try {
+      const { error } = await supabase
+        .from('workouts')
+        .update({
+          folder_id: folderId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', workoutId);
+
+      if (error) throw error;
+      await loadCoachTemplates();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
 
   const loadCoachTemplates = useCallback(async () => {
     if (!user || user.role !== 'owner') return;
@@ -48,6 +142,13 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLoading(false);
   }, [user]);
 
+  useEffect(() => {
+    if (user && user.role === 'owner') {
+      loadFolders();
+      loadCoachTemplates();
+    }
+  }, [user, loadFolders, loadCoachTemplates]);
+
   const createWorkoutTemplate = async (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => {
     if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
     
@@ -59,6 +160,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           title: workout.title,
           description: workout.description,
           coach_id: user.id,
+          folder_id: workout.folder_id || null,
           is_template: workout.is_template || false,
           total_weeks: workout.total_weeks || 1,
         })
@@ -111,6 +213,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .update({
           title: workout.title,
           description: workout.description,
+          folder_id: workout.folder_id !== undefined ? workout.folder_id : null,
           total_weeks: workout.total_weeks || 1,
           updated_at: new Date().toISOString(),
         })
@@ -314,21 +417,27 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   return (
     <WorkoutsContext.Provider
-      value={{
-        coachTemplates,
-        createWorkoutTemplate,
-        updateWorkoutTemplate,
-        deleteWorkoutTemplate,
-        assignWorkoutToAthlete,
-        getAssignedWorkoutsForAthlete,
-        getExercisesForWorkout,
-        myAssignedWorkouts,
-        refreshMyWorkouts,
-        startWorkoutSession,
-        endWorkoutSession,
-        saveExerciseLogs,
-        loading
-      }}
+        value={{
+          coachTemplates,
+          folders,
+          loadFolders,
+          createFolder,
+          updateFolder,
+          deleteFolder,
+          moveWorkoutToFolder,
+          createWorkoutTemplate,
+          updateWorkoutTemplate,
+          deleteWorkoutTemplate,
+          assignWorkoutToAthlete,
+          getAssignedWorkoutsForAthlete,
+          getExercisesForWorkout,
+          myAssignedWorkouts,
+          refreshMyWorkouts,
+          startWorkoutSession,
+          endWorkoutSession,
+          saveExerciseLogs,
+          loading,
+        }}
     >
       {children}
     </WorkoutsContext.Provider>
