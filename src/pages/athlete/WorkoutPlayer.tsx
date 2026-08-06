@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, Clock, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
+import { useWorkouts } from '../../context/WorkoutsContext';
+import { useToast } from '../../context/ToastContext';
 
 interface WorkoutPlayerProps {
   workout: WorkoutTemplate;
@@ -9,12 +11,17 @@ interface WorkoutPlayerProps {
 }
 
 export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises, onClose }) => {
+  const { startWorkoutSession, endWorkoutSession, saveExerciseLogs } = useWorkouts();
+  const { showSuccess, showError } = useToast();
+  
   const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(true);
   const [restTimer, setRestTimer] = useState<number | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // MOCK LOGS: Salviamo i dati immessi per ogni set
+  // LOGS: Salviamo i dati immessi per ogni set
   const [logs, setLogs] = useState<Record<string, { reps: string, weight: string, rpe: string }[]>>({});
 
   // Inizializza i logs vuoti
@@ -25,6 +32,20 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
     });
     setLogs(initialLogs);
   }, [exercises]);
+
+  // Avvia la sessione nel DB quando si apre il player
+  useEffect(() => {
+    const initSession = async () => {
+      const { session, error } = await startWorkoutSession(workout.id);
+      if (error) {
+        showError('Errore avvio sessione: ' + error);
+      } else if (session) {
+        setSessionId(session.id);
+      }
+    };
+    initSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Cronometro Allenamento Globale
   useEffect(() => {
@@ -68,10 +89,53 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
     if (navigator.vibrate) navigator.vibrate(100);
   };
 
-  const finishWorkout = () => {
+  const finishWorkout = async () => {
+    if (!sessionId) {
+      showError('Nessuna sessione attiva trovata');
+      onClose();
+      return;
+    }
+
     setIsTimerRunning(false);
-    alert('Allenamento Completato! Ottimo Lavoro! Dati salvati in Supabase (Mock).');
-    onClose();
+    setIsSaving(true);
+
+    try {
+      // 1. Prepara i log
+      const logsToSave: any[] = [];
+      exercises.forEach(ex => {
+        const exLogs = logs[ex.id] || [];
+        exLogs.forEach((setLog, idx) => {
+          // Salva solo le serie in cui è stato inserito almeno un dato
+          if (setLog.reps || setLog.weight) {
+            logsToSave.push({
+              session_id: sessionId,
+              exercise_id: ex.id,
+              set_number: idx + 1,
+              reps_completed: setLog.reps ? parseInt(setLog.reps) : null,
+              weight_kg: setLog.weight ? parseFloat(setLog.weight) : null,
+              notes: setLog.rpe ? `RPE: ${setLog.rpe}` : null,
+            });
+          }
+        });
+      });
+
+      // 2. Salva i log su supabase
+      if (logsToSave.length > 0) {
+        const { error: logsError } = await saveExerciseLogs(logsToSave);
+        if (logsError) throw new Error(logsError);
+      }
+
+      // 3. Chiudi la sessione
+      const { error: sessionError } = await endWorkoutSession(sessionId);
+      if (sessionError) throw new Error(sessionError);
+
+      showSuccess('Allenamento completato e salvato!');
+      onClose();
+    } catch (err: any) {
+      console.error(err);
+      showError('Errore durante il salvataggio: ' + err.message);
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -93,9 +157,15 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
         </div>
         <button 
           onClick={finishWorkout}
-          className="bg-[var(--color-primary)] text-black px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md active:scale-95 transition-transform"
+          disabled={isSaving}
+          className="bg-[var(--color-primary)] text-black px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md active:scale-95 transition-transform disabled:opacity-50"
         >
-          <Check className="w-4 h-4" /> Fine
+          {isSaving ? (
+             <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+          ) : (
+             <Check className="w-4 h-4" />
+          )}
+          {isSaving ? 'Salvataggio...' : 'Fine'}
         </button>
       </div>
 
