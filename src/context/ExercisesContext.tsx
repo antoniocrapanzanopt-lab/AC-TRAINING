@@ -30,7 +30,15 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (error) {
         console.error('Error loading exercises:', error);
       } else if (data) {
-        setExercises(data as ExerciseItem[]);
+        // Deduplica per nome (preferendo quelli del coach rispetto a quelli di sistema)
+        const uniqueMap = new Map<string, ExerciseItem>();
+        (data as ExerciseItem[]).forEach(ex => {
+          const key = ex.name.trim().toLowerCase();
+          if (!uniqueMap.has(key) || ex.coach_id) {
+            uniqueMap.set(key, ex);
+          }
+        });
+        setExercises(Array.from(uniqueMap.values()));
       }
     } catch (err) {
       console.error('Error in loadExercises:', err);
