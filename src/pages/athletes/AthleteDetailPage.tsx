@@ -22,7 +22,7 @@ import {
   MessageSquare,
   Pencil
 } from 'lucide-react';
-import { AthleteModal } from '../../components/athletes/AthleteModal';
+import { AthleteModal, ModalSection } from '../../components/athletes/AthleteModal';
 import { AthleteFormData } from '../../types';
 import { AthleteNote, NoteCategory, NoteVisibility, TimelineEvent } from '../../types';
 import { useAthletes } from '../../context/AthletesContext';
@@ -355,6 +355,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<DetailTab>('panoramica');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editModalSection, setEditModalSection] = useState<ModalSection>('all');
 
   const athlete = getAthleteById(athleteId);
   const athleteNotes = notes?.[athleteId] ?? [];
@@ -381,7 +382,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
         return (
           <div className="space-y-4">
             {/* Dati Anagrafici */}
-            <CollapsibleSection title="Dati Anagrafici" icon={<User className="w-4 h-4" />} onEdit={() => setIsEditModalOpen(true)}>
+            <CollapsibleSection title="Dati Anagrafici" icon={<User className="w-4 h-4" />} onEdit={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}>
               <InfoRow label="Nome completo" value={safeFullName} />
               <InfoRow label="Data di nascita" value={formatDate(athlete.dateOfBirth)} />
               <InfoRow label="Codice Fiscale" value={athlete.fiscalCode} missing="Non fornito" />
@@ -390,7 +391,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             </CollapsibleSection>
 
             {/* Contatti */}
-            <CollapsibleSection title="Contatti" icon={<Phone className="w-4 h-4" />} onEdit={() => setIsEditModalOpen(true)}>
+            <CollapsibleSection title="Contatti" icon={<Phone className="w-4 h-4" />} onEdit={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}>
               <InfoRow label="Telefono"
                 value={athlete.phone ? (
                   <a href={`tel:${athlete.phone}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1">
@@ -411,14 +412,14 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             </CollapsibleSection>
 
             {/* Contatto di Emergenza */}
-            <CollapsibleSection title="Contatto di Emergenza" icon={<Shield className="w-4 h-4" />} defaultOpen={true} onEdit={() => setIsEditModalOpen(true)}>
+            <CollapsibleSection title="Contatto di Emergenza" icon={<Shield className="w-4 h-4" />} defaultOpen={true} onEdit={() => { setEditModalSection('emergenza'); setIsEditModalOpen(true); }}>
               <InfoRow label="Nome" value={(athlete.emergencyContact as any)?.name} missing="Non specificato" />
               <InfoRow label="Telefono" value={(athlete.emergencyContact as any)?.phone} missing="Non specificato" />
               <InfoRow label="Relazione" value={(athlete.emergencyContact as any)?.relationship} missing="Non specificato" />
             </CollapsibleSection>
 
             {/* Stato e Pagamenti */}
-            <CollapsibleSection title="Stato e Situazione" icon={<Activity className="w-4 h-4" />} onEdit={() => setIsEditModalOpen(true)}>
+            <CollapsibleSection title="Stato e Situazione" icon={<Activity className="w-4 h-4" />} onEdit={() => { setEditModalSection('stato'); setIsEditModalOpen(true); }}>
               <div className="flex flex-col gap-3 pt-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stato Atleta</span>
@@ -437,7 +438,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             </CollapsibleSection>
 
             {/* Obiettivi e Disciplina */}
-            <CollapsibleSection title="Obiettivi e Disciplina" icon={<Target className="w-4 h-4" />} defaultOpen={true} onEdit={() => setIsEditModalOpen(true)}>
+            <CollapsibleSection title="Obiettivi e Disciplina" icon={<Target className="w-4 h-4" />} defaultOpen={true} onEdit={() => { setEditModalSection('obiettivi'); setIsEditModalOpen(true); }}>
               {safeTags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {safeTags.map(tag => (
@@ -452,7 +453,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             </CollapsibleSection>
 
             {/* Certificato Medico */}
-            <CollapsibleSection title="Certificato Medico" icon={<FileText className="w-4 h-4" />} defaultOpen={true} onEdit={() => setIsEditModalOpen(true)}>
+            <CollapsibleSection title="Certificato Medico" icon={<FileText className="w-4 h-4" />} defaultOpen={true} onEdit={() => { setEditModalSection('certificato'); setIsEditModalOpen(true); }}>
               <div className="py-2">
                 <p className="text-xs text-slate-400 leading-relaxed mb-3">
                   Gestione delle scadenze e note del certificato medico sportivo dell'atleta.
@@ -463,7 +464,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             </CollapsibleSection>
 
             {/* Consensi */}
-            <CollapsibleSection title="Consensi" icon={<Shield className="w-4 h-4" />} defaultOpen={false} onEdit={() => setIsEditModalOpen(true)}>
+            <CollapsibleSection title="Consensi" icon={<Shield className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('certificato'); setIsEditModalOpen(true); }}>
               <InfoRow label="Privacy"
                 value={athlete.privacyConsent ? (
                   <span className="text-emerald-400 font-semibold">✓ Acquisito{athlete.privacyConsentDate && formatDate(athlete.privacyConsentDate) !== '—' ? ` il ${formatDate(athlete.privacyConsentDate)}` : ''}</span>
@@ -579,7 +580,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
         {/* Pulsanti Azione Header */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsEditModalOpen(true)}
+            onClick={() => { setEditModalSection('all'); setIsEditModalOpen(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold transition-all shadow-lg"
           >
             <Pencil className="w-4 h-4 text-[var(--color-primary)]" />
@@ -613,11 +614,12 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
       {/* Contenuto Tab */}
       <div>{renderTab()}</div>
 
-      {/* Modal Modifica Atleta */}
+      {/* Modal Modifica Atleta con Sezione Specifica */}
       {isEditModalOpen && (
         <AthleteModal
           isOpen={isEditModalOpen}
           editingAthlete={athlete}
+          initialSection={editModalSection}
           onClose={() => setIsEditModalOpen(false)}
           onSave={async (formData: AthleteFormData) => {
             const ok = await updateAthlete(athlete.id, formData);
