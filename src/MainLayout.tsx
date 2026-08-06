@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { ToastContainer } from './components/common/ToastContainer';
-import { DemoBanner } from './components/common/DemoBanner';
 import { PageContainer } from './pages/PageContainer';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { AthletesPage } from './pages/athletes/AthletesPage';
@@ -83,7 +82,6 @@ export const MainLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] flex flex-col font-sans">
-      <DemoBanner />
       <Header
         activeTab={activeTab}
         onTabChange={setActiveTab}
