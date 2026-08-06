@@ -4,6 +4,7 @@ export interface WorkoutTemplate {
   description?: string;
   coach_id: string;
   is_template: boolean;
+  total_weeks?: number;
   created_at: string;
   updated_at: string;
 }
@@ -17,6 +18,14 @@ export interface WorkoutExercise {
   rest_seconds: number;
   order_index: number;
   notes?: string;
+  day_name?: string;
+  week_number?: number;
+  target_weight?: string;
+  rir_target?: string;
+  tut?: string;
+  is_time_based?: boolean;
+  duration_seconds?: number;
+  alternative_exercise?: string;
 }
 
 export interface AthleteAssignedWorkout {

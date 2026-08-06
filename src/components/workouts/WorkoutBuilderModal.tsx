@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Plus, Save, Trash2, GripVertical, Dumbbell } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Plus, Save, Trash2, GripVertical, Dumbbell, Calendar, Clock, Copy, Sliders, Repeat } from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useExercises } from '../../context/ExercisesContext';
@@ -15,21 +15,35 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout } = useWorkouts();
   const { exercises: libraryExercises } = useExercises();
   const { showSuccess, showError } = useToast();
-  
+
   const [title, setTitle] = useState(initialWorkout?.title || '');
   const [description, setDescription] = useState(initialWorkout?.description || '');
-  const [exercises, setExercises] = useState<Partial<WorkoutExercise[]> | any[]>([
-    { name: '', sets: 3, reps_target: '10', rest_seconds: 60 }
+  const [totalWeeks, setTotalWeeks] = useState<number>(initialWorkout?.total_weeks || 1);
+  const [activeWeek, setActiveWeek] = useState<number>(1);
+  const [activeDay, setActiveDay] = useState<string>('Giorno A');
+  const [daysList, setDaysList] = useState<string[]>(['Giorno A', 'Giorno B']);
+
+  const [exercises, setExercises] = useState<Partial<WorkoutExercise>[]>([
+    { name: '', sets: 3, reps_target: '10', rest_seconds: 60, week_number: 1, day_name: 'Giorno A' }
   ]);
+  const [expandedExerciseIndex, setExpandedExerciseIndex] = useState<number | null>(0);
   const [isLoadingExercises, setIsLoadingExercises] = useState(!!initialWorkout);
   const [isSaving, setIsSaving] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (initialWorkout) {
       setIsLoadingExercises(true);
       getExercisesForWorkout(initialWorkout.id).then((fetchedExercises) => {
         if (fetchedExercises && fetchedExercises.length > 0) {
           setExercises(fetchedExercises);
+          
+          // Estrai giorni unici
+          const uniqueDays = Array.from(new Set(fetchedExercises.map(e => e.day_name || 'Giorno A')));
+          if (uniqueDays.length > 0) setDaysList(uniqueDays);
+          
+          // Estrai max settimane
+          const maxW = Math.max(...fetchedExercises.map(e => e.week_number || 1), initialWorkout.total_weeks || 1);
+          setTotalWeeks(maxW);
         }
         setIsLoadingExercises(false);
       }).catch((err) => {
@@ -39,20 +53,70 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     }
   }, [initialWorkout]);
 
+  // Esercizi filtrati per la settimana ed il giorno correntemente selezionati
+  const currentWeekDayExercises = exercises.filter(
+    ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A') === activeDay
+  );
+
   const addExercise = () => {
-    setExercises([...exercises, { name: '', sets: 3, reps_target: '10', rest_seconds: 60 }]);
+    const newEx: Partial<WorkoutExercise> = {
+      name: '',
+      sets: 3,
+      reps_target: '10',
+      rest_seconds: 60,
+      week_number: activeWeek,
+      day_name: activeDay,
+      is_time_based: false,
+    };
+    setExercises([...exercises, newEx]);
+    setExpandedExerciseIndex(exercises.length);
   };
 
-  const updateExercise = (index: number, field: keyof WorkoutExercise, value: any) => {
+  const updateExercise = (globalIndex: number, field: keyof WorkoutExercise, value: any) => {
     const newEx = [...exercises];
-    newEx[index] = { ...newEx[index], [field]: value };
+    newEx[globalIndex] = { ...newEx[globalIndex], [field]: value };
     setExercises(newEx);
   };
 
-  const removeExercise = (index: number) => {
-    if (exercises.length === 1) return;
-    const newEx = exercises.filter((_, i) => i !== index);
+  const removeExercise = (globalIndex: number) => {
+    const newEx = exercises.filter((_, i) => i !== globalIndex);
     setExercises(newEx);
+  };
+
+  const addDay = () => {
+    const nextChar = String.fromCharCode(65 + daysList.length); // A, B, C, D...
+    const newDayName = `Giorno ${nextChar}`;
+    if (!daysList.includes(newDayName)) {
+      setDaysList([...daysList, newDayName]);
+      setActiveDay(newDayName);
+    }
+  };
+
+  const addWeek = () => {
+    const newWeekNum = totalWeeks + 1;
+    setTotalWeeks(newWeekNum);
+    setActiveWeek(newWeekNum);
+  };
+
+  const cloneWeek = (sourceWeekNum: number, targetWeekNum: number) => {
+    const sourceExercises = exercises.filter(ex => (ex.week_number || 1) === sourceWeekNum);
+    if (sourceExercises.length === 0) {
+      showError(`Nessun esercizio presente nella Settimana ${sourceWeekNum} da clonare.`);
+      return;
+    }
+
+    // Rimuovi eventuali esercizi esistenti nella settimana target
+    const otherExercises = exercises.filter(ex => (ex.week_number || 1) !== targetWeekNum);
+
+    // Clona gli esercizi cambiando il week_number
+    const cloned = sourceExercises.map(ex => ({
+      ...ex,
+      id: undefined, // nuovo ID generato dal backend
+      week_number: targetWeekNum,
+    }));
+
+    setExercises([...otherExercises, ...cloned]);
+    showSuccess(`Settimana ${sourceWeekNum} clonata con successo in Settimana ${targetWeekNum}! Ora puoi regolare le progressioni.`);
   };
 
   const handleSave = async () => {
@@ -61,7 +125,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       return;
     }
     
-    // Verifica che gli esercizi abbiano almeno un nome
+    // Filtra esercizi validi con nome
     const validExercises = exercises.filter(ex => ex.name?.trim() !== '');
     if (validExercises.length === 0) {
       showError('Inserisci almeno un esercizio valido');
@@ -75,7 +139,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
         // Aggiorna la scheda esistente
         const { success, error } = await updateWorkoutTemplate(
           initialWorkout.id,
-          { title, description },
+          { title, description, total_weeks: totalWeeks },
           validExercises
         );
         if (!success) throw new Error(error);
@@ -83,13 +147,12 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       } else {
         // Creazione nuova scheda
         const { success, error, workoutId } = await createWorkoutTemplate(
-          { title, description, is_template: !athleteId }, 
+          { title, description, is_template: !athleteId, total_weeks: totalWeeks }, 
           validExercises
         );
 
         if (!success) throw new Error(error);
 
-        // Se specifichiamo l'atleta, l'assegniamo
         if (workoutId && athleteId) {
           await assignWorkoutToAthlete(athleteId, workoutId);
           showSuccess('Scheda creata e assegnata con successo!');
@@ -101,7 +164,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       onClose();
     } catch (err: any) {
       console.error(err);
-      showError('Errore durante il salvataggio della scheda: ' + (err.message || ''));
+      showError('Errore durante il salvataggio: ' + (err.message || ''));
     } finally {
       setIsSaving(false);
     }
@@ -109,7 +172,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-4xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl shadow-2xl flex flex-col h-[90vh]">
+      <div className="w-full max-w-5xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl shadow-2xl flex flex-col h-[92vh]">
         
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[var(--color-panel-border)]">
@@ -119,10 +182,10 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">
-                {initialWorkout ? 'Modifica Scheda' : 'Costruttore Scheda'}
+                {initialWorkout ? 'Modifica Programma' : 'Costruttore Programma Avanzato'}
               </h2>
               <p className="text-sm text-slate-400">
-                {initialWorkout ? 'Modifica i dettagli e gli esercizi del programma' : athleteId ? 'Assegna un nuovo allenamento all\'atleta' : 'Crea un nuovo programma per il tuo catalogo'}
+                Gestisci giorni, settimane, carichi target e progressioni parametrizzate
               </p>
             </div>
           </div>
@@ -133,122 +196,340 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Info Generali */}
-          <div className="space-y-4 bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Titolo della Scheda</label>
+          
+          {/* Info Generali Scheda */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Titolo del Programma</label>
               <input
                 type="text"
-                placeholder="es. Forza Massimale - Giorno A"
+                placeholder="es. Ipertrofia & Forza - Mesociclo 1"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] transition-colors"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Descrizione (Opzionale)</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Durata (Settimane)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="12"
+                  value={totalWeeks}
+                  onChange={e => setTotalWeeks(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-center font-bold focus:outline-none focus:border-[var(--color-primary)]"
+                />
+                <span className="text-xs text-slate-400 font-semibold">sett.</span>
+              </div>
+            </div>
+            <div className="sm:col-span-3">
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Descrizione & Obiettivi</label>
               <textarea
-                placeholder="Note generali per l'atleta su questa scheda..."
+                placeholder="Note generali sul mesociclo, focus e indicazioni generali per l'atleta..."
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 rows={2}
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] transition-colors resize-none"
+                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] transition-colors resize-none"
               />
             </div>
           </div>
 
-          {/* Griglia Esercizi */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">Esercizi</h3>
+          {/* BARRA TAB: SETTIMANE */}
+          <div className="border-b border-slate-800 pb-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-[var(--color-primary)]" />
+                Seleziona Settimana
+              </span>
+
+              {activeWeek > 1 && (
+                <button
+                  onClick={() => cloneWeek(1, activeWeek)}
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs font-bold bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Clona Settimana 1 in Settimana {activeWeek}
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pt-1">
+              {Array.from({ length: totalWeeks }).map((_, wIdx) => {
+                const wNum = wIdx + 1;
+                const isCurrent = activeWeek === wNum;
+                const countEx = exercises.filter(e => (e.week_number || 1) === wNum).length;
+
+                return (
+                  <button
+                    key={wNum}
+                    onClick={() => setActiveWeek(wNum)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${isCurrent ? 'bg-[var(--color-primary)] text-black shadow-md' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                  >
+                    <span>Settimana {wNum}</span>
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${isCurrent ? 'bg-black/20 text-black' : 'bg-slate-900 text-slate-400'}`}>
+                      {countEx} es.
+                    </span>
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={addWeek}
+                className="px-3 py-2 bg-slate-800/60 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors border border-dashed border-slate-700"
+              >
+                <Plus className="w-3.5 h-3.5" /> Settimana
+              </button>
+            </div>
+          </div>
+
+          {/* BARRA SUB-TAB: GIORNI DI ALLENAMENTO */}
+          <div className="flex items-center justify-between bg-slate-900/60 p-2 rounded-xl border border-slate-800">
+            <div className="flex items-center gap-2 overflow-x-auto">
+              {daysList.map(dName => {
+                const isCurrentDay = activeDay === dName;
+                const exCountDay = exercises.filter(e => (e.week_number || 1) === activeWeek && (e.day_name || 'Giorno A') === dName).length;
+
+                return (
+                  <button
+                    key={dName}
+                    onClick={() => setActiveDay(dName)}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${isCurrentDay ? 'bg-slate-700 text-white border border-slate-600' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                  >
+                    <span>{dName}</span>
+                    <span className="text-[10px] opacity-60">({exCountDay})</span>
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={addDay}
+                className="px-2.5 py-1.5 text-xs font-bold text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 rounded-lg transition-colors flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" /> Giorno
+              </button>
+            </div>
+          </div>
+
+          {/* LISTA ESERCIZI DEL GIORNO SELEZIONATO */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>Esercizi per {activeDay} (Settimana {activeWeek})</span>
+              </h3>
               <button 
                 onClick={addExercise}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] rounded-lg transition-colors shadow-md"
               >
                 <Plus className="w-4 h-4" />
-                Aggiungi
+                Aggiungi Esercizio
               </button>
             </div>
 
-            <div className="space-y-3">
-              {exercises.map((ex, index) => (
-                <div key={index} className="flex flex-col sm:flex-row gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50 items-start sm:items-center">
-                  <div className="cursor-move p-2 text-slate-500 hover:text-white hidden sm:block">
-                    <GripVertical className="w-4 h-4" />
-                  </div>
-                  
-                  <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-12 gap-3">
-                    <div className="sm:col-span-5">
-                      <input
-                        type="text"
-                        placeholder="Nome esercizio (es. Panca Piana)"
-                        value={ex.name}
-                        onChange={e => {
-                          const val = e.target.value;
-                          updateExercise(index, 'name', val);
-                          // Auto autofill notes or video if matches library item
-                          const matched = libraryExercises.find(libEx => libEx.name.toLowerCase() === val.toLowerCase());
-                          if (matched) {
-                            if (matched.instructions && !ex.notes) {
-                              updateExercise(index, 'notes', matched.instructions);
-                            }
-                          }
-                        }}
-                        list="exercises-library-list"
-                        className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-[var(--color-primary)]"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-900">
-                        <span className="px-2 text-xs text-slate-500 font-semibold border-r border-slate-700 bg-slate-800/50">Set</span>
-                        <input
-                          type="number"
-                          value={ex.sets}
-                          onChange={e => updateExercise(index, 'sets', parseInt(e.target.value) || 1)}
-                          className="w-full px-2 py-2 bg-transparent text-sm text-white focus:outline-none text-center"
-                          min="1"
-                        />
-                      </div>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-900">
-                        <span className="px-2 text-xs text-slate-500 font-semibold border-r border-slate-700 bg-slate-800/50">Rep</span>
-                        <input
-                          type="text"
-                          placeholder="8-10"
-                          value={ex.reps_target}
-                          onChange={e => updateExercise(index, 'reps_target', e.target.value)}
-                          className="w-full px-2 py-2 bg-transparent text-sm text-white focus:outline-none text-center"
-                        />
-                      </div>
-                    </div>
-                    <div className="sm:col-span-3">
-                      <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-900">
-                        <span className="px-2 text-xs text-slate-500 font-semibold border-r border-slate-700 bg-slate-800/50">Rec.</span>
-                        <input
-                          type="number"
-                          placeholder="Sec"
-                          value={ex.rest_seconds}
-                          onChange={e => updateExercise(index, 'rest_seconds', parseInt(e.target.value) || 0)}
-                          className="w-full px-2 py-2 bg-transparent text-sm text-white focus:outline-none text-center"
-                          min="0"
-                        />
-                        <span className="px-2 text-xs text-slate-500 font-semibold border-l border-slate-700 bg-slate-800/50">s</span>
-                      </div>
-                    </div>
-                  </div>
+            {currentWeekDayExercises.length === 0 ? (
+              <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-xl p-8 text-center">
+                <p className="text-sm text-slate-400 mb-3">Nessun esercizio inserito per {activeDay} nella Settimana {activeWeek}.</p>
+                <button
+                  onClick={addExercise}
+                  className="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700 transition-colors"
+                >
+                  + Inserisci Primo Esercizio
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {exercises.map((ex, globalIdx) => {
+                  if ((ex.week_number || 1) !== activeWeek || (ex.day_name || 'Giorno A') !== activeDay) {
+                    return null;
+                  }
 
-                  <button 
-                    onClick={() => removeExercise(index)}
-                    disabled={exercises.length === 1}
-                    className="p-2 text-slate-500 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-lg"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </div>
-              ))}
-            </div>
+                  const isExpanded = expandedExerciseIndex === globalIdx;
+
+                  return (
+                    <div 
+                      key={globalIdx} 
+                      className={`bg-slate-900 border rounded-2xl transition-all overflow-hidden ${isExpanded ? 'border-[var(--color-primary)]/60 shadow-lg shadow-[var(--color-primary)]/5' : 'border-slate-800 hover:border-slate-700'}`}
+                    >
+                      {/* Standard Header Row */}
+                      <div className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-800/40">
+                        <div className="flex items-center gap-3 flex-1 w-full">
+                          <div className="cursor-move text-slate-600 hidden sm:block">
+                            <GripVertical className="w-4 h-4" />
+                          </div>
+                          
+                          <div className="flex-1">
+                            <input
+                              type="text"
+                              placeholder="Nome esercizio (es. Panca Piana)"
+                              value={ex.name || ''}
+                              onChange={e => {
+                                const val = e.target.value;
+                                updateExercise(globalIdx, 'name', val);
+                                const matched = libraryExercises.find(libEx => libEx.name.toLowerCase() === val.toLowerCase());
+                                if (matched && matched.instructions && !ex.notes) {
+                                  updateExercise(globalIdx, 'notes', matched.instructions);
+                                }
+                              }}
+                              list="exercises-library-list"
+                              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm font-bold text-white focus:outline-none focus:border-[var(--color-primary)]"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Parametri di base in riga */}
+                        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                          {/* Toggle Tipo Lavoro: Reps vs Tempo */}
+                          <button
+                            type="button"
+                            onClick={() => updateExercise(globalIdx, 'is_time_based', !ex.is_time_based)}
+                            className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1 border transition-colors ${ex.is_time_based ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
+                            title="Alterna lavoro a ripetizioni o a tempo"
+                          >
+                            {ex.is_time_based ? <Clock className="w-3.5 h-3.5" /> : <Repeat className="w-3.5 h-3.5" />}
+                            <span>{ex.is_time_based ? 'Tempo' : 'Reps'}</span>
+                          </button>
+
+                          {/* Sets */}
+                          <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
+                            <span className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2">Set</span>
+                            <input
+                              type="number"
+                              value={ex.sets || 3}
+                              onChange={e => updateExercise(globalIdx, 'sets', parseInt(e.target.value) || 1)}
+                              className="w-12 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
+                              min="1"
+                            />
+                          </div>
+
+                          {/* Reps Target oppure Durata in Secondi */}
+                          {ex.is_time_based ? (
+                            <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
+                              <span className="px-2 text-[10px] text-amber-400 font-bold uppercase bg-slate-800 py-2">Sec</span>
+                              <input
+                                type="number"
+                                placeholder="45"
+                                value={ex.duration_seconds || ''}
+                                onChange={e => updateExercise(globalIdx, 'duration_seconds', parseInt(e.target.value) || 0)}
+                                className="w-14 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
+                              <span className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2">Rep</span>
+                              <input
+                                type="text"
+                                placeholder="8-10"
+                                value={ex.reps_target || ''}
+                                onChange={e => updateExercise(globalIdx, 'reps_target', e.target.value)}
+                                className="w-16 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
+                              />
+                            </div>
+                          )}
+
+                          {/* Rest Seconds */}
+                          <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
+                            <span className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2">Rec</span>
+                            <input
+                              type="number"
+                              placeholder="60"
+                              value={ex.rest_seconds || 60}
+                              onChange={e => updateExercise(globalIdx, 'rest_seconds', parseInt(e.target.value) || 0)}
+                              className="w-12 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
+                            />
+                          </div>
+
+                          {/* Toggle Espansione Parametri Avanzati */}
+                          <button
+                            onClick={() => setExpandedExerciseIndex(isExpanded ? null : globalIdx)}
+                            className={`p-2 rounded-lg text-xs font-bold transition-colors ${isExpanded ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                            title="Mostra parametri avanzati (RIR, TUT, Carico)"
+                          >
+                            <Sliders className="w-4 h-4" />
+                          </button>
+
+                          {/* Elimina Esercizio */}
+                          <button
+                            onClick={() => removeExercise(globalIdx)}
+                            className="p-2 text-slate-500 hover:text-red-400 transition-colors rounded-lg"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Advanced Fields Section (Expanded) */}
+                      {isExpanded && (
+                        <div className="p-4 bg-slate-950/80 border-t border-slate-800 space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                            {/* Carico Target */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Carico Target / Peso</label>
+                              <input
+                                type="text"
+                                placeholder="es. 80 kg o 75% 1RM"
+                                value={ex.target_weight || ''}
+                                onChange={e => updateExercise(globalIdx, 'target_weight', e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-[var(--color-primary)] font-bold focus:outline-none"
+                              />
+                            </div>
+
+                            {/* RIR / RPE */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">RIR / RPE Target</label>
+                              <input
+                                type="text"
+                                placeholder="es. RIR 2 o RPE 8"
+                                value={ex.rir_target || ''}
+                                onChange={e => updateExercise(globalIdx, 'rir_target', e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-bold focus:outline-none"
+                              />
+                            </div>
+
+                            {/* TUT (Time Under Tension) */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">TUT (Tempo Esecuzione)</label>
+                              <input
+                                type="text"
+                                placeholder="es. 3-0-1-0"
+                                value={ex.tut || ''}
+                                onChange={e => updateExercise(globalIdx, 'tut', e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-mono focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Esercizio Alternativo */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Esercizio Alternativo</label>
+                              <input
+                                type="text"
+                                placeholder="es. Leg Press se occupato"
+                                value={ex.alternative_exercise || ''}
+                                onChange={e => updateExercise(globalIdx, 'alternative_exercise', e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-300 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Note Tecniche */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Note Tecniche per l'Atleta</label>
+                            <input
+                              type="text"
+                              placeholder="es. Fermo al petto di 1 secondo, discesa controllata"
+                              value={ex.notes || ''}
+                              onChange={e => updateExercise(globalIdx, 'notes', e.target.value)}
+                              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-300 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
+
         </div>
 
         {/* Footer */}
@@ -269,7 +550,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
             ) : (
               <Save className="w-4 h-4" />
             )}
-            {isSaving ? 'Salvataggio...' : initialWorkout ? 'Salva Modifiche' : athleteId ? 'Salva e Assegna' : 'Salva Scheda'}
+            {isSaving ? 'Salvataggio...' : initialWorkout ? 'Salva Modifiche' : athleteId ? 'Salva e Assegna' : 'Salva Programma'}
           </button>
         </div>
 

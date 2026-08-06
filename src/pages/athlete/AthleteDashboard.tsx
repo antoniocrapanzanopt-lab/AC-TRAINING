@@ -12,17 +12,28 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   const { myAssignedWorkouts, getExercisesForWorkout, loading } = useWorkouts();
   const { showError } = useToast();
   const [startingWorkoutId, setStartingWorkoutId] = React.useState<string | null>(null);
+  const [selectedWeek, setSelectedWeek] = React.useState<number>(1);
+  const [selectedDay, setSelectedDay] = React.useState<string>('Giorno A');
 
   const handleStartWorkout = async (assigned: any) => {
     try {
       setStartingWorkoutId(assigned.workout_id);
-      const exercises = await getExercisesForWorkout(assigned.workout_id);
-      if (exercises.length === 0) {
+      const allExercises = await getExercisesForWorkout(assigned.workout_id);
+      if (allExercises.length === 0) {
         showError('Questa scheda non contiene esercizi!');
         setStartingWorkoutId(null);
         return;
       }
-      onStartWorkout(assigned.workout, exercises);
+
+      // Filtra gli esercizi per la settimana e giorno selezionati, se presenti
+      const filtered = allExercises.filter(ex => {
+        const matchWeek = !ex.week_number || ex.week_number === selectedWeek;
+        const matchDay = !ex.day_name || ex.day_name === selectedDay;
+        return matchWeek && matchDay;
+      });
+
+      const finalExercises = filtered.length > 0 ? filtered : allExercises;
+      onStartWorkout(assigned.workout, finalExercises);
     } catch (err) {
       showError('Impossibile caricare gli esercizi della scheda');
     } finally {
@@ -76,15 +87,50 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
                   {assigned.workout.description || 'Nessuna descrizione'}
                 </p>
                 
-                <div className="mt-4 flex items-center gap-4 text-xs text-slate-300 font-medium">
+                <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-slate-300 font-medium">
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-slate-500" />
                     <span>Assegnata il {new Date(assigned.assigned_date).toLocaleDateString()}</span>
                   </div>
+                  {assigned.workout.total_weeks && assigned.workout.total_weeks > 1 && (
+                    <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 font-bold rounded text-[10px]">
+                      Programma di {assigned.workout.total_weeks} Settimane
+                    </span>
+                  )}
                 </div>
               </div>
-              
-              <div className="p-4 bg-slate-900/50">
+
+              {/* Selettore Settimana e Giorno per l'Atleta */}
+              <div className="p-4 bg-slate-900/80 border-t border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-300">
+                    <span>Settimana:</span>
+                    <select
+                      value={selectedWeek}
+                      onChange={e => setSelectedWeek(parseInt(e.target.value) || 1)}
+                      className="bg-slate-800 border border-slate-700 text-white rounded-lg px-2 py-1 font-bold focus:outline-none"
+                    >
+                      {Array.from({ length: assigned.workout.total_weeks || 1 }).map((_, wIdx) => (
+                        <option key={wIdx + 1} value={wIdx + 1}>Settimana {wIdx + 1}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 font-bold text-slate-300">
+                    <span>Giorno:</span>
+                    <select
+                      value={selectedDay}
+                      onChange={e => setSelectedDay(e.target.value)}
+                      className="bg-slate-800 border border-slate-700 text-white rounded-lg px-2 py-1 font-bold focus:outline-none"
+                    >
+                      <option value="Giorno A">Giorno A</option>
+                      <option value="Giorno B">Giorno B</option>
+                      <option value="Giorno C">Giorno C</option>
+                      <option value="Giorno D">Giorno D</option>
+                    </select>
+                  </div>
+                </div>
+
                 <button 
                   onClick={() => handleStartWorkout(assigned)}
                   disabled={startingWorkoutId === assigned.workout_id}
@@ -95,7 +141,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
                   ) : (
                      <Play className="w-4 h-4 fill-black" />
                   )}
-                  {startingWorkoutId === assigned.workout_id ? 'CARICAMENTO...' : 'INIZIA ALLENAMENTO'}
+                  {startingWorkoutId === assigned.workout_id ? 'CARICAMENTO...' : `INIZIA ${selectedDay} (Sett. ${selectedWeek})`}
                 </button>
               </div>
             </div>

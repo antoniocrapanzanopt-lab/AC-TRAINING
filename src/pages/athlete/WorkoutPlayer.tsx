@@ -216,11 +216,26 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
                     </h3>
                     <div className="flex flex-wrap gap-2 mt-1.5">
                       <span className="px-2 py-0.5 bg-slate-800 rounded text-[10px] text-slate-300 font-mono">
-                        {ex.sets}x{ex.reps_target}
+                        {ex.is_time_based ? `${ex.sets}x${ex.duration_seconds || 30}s` : `${ex.sets}x${ex.reps_target}`}
                       </span>
                       <span className="px-2 py-0.5 bg-slate-800 rounded text-[10px] text-slate-300 font-mono">
                         Rec: {ex.rest_seconds}s
                       </span>
+                      {ex.target_weight && (
+                        <span className="px-2 py-0.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold rounded text-[10px]">
+                          Target: {ex.target_weight}
+                        </span>
+                      )}
+                      {ex.rir_target && (
+                        <span className="px-2 py-0.5 bg-purple-500/10 text-purple-400 font-bold rounded text-[10px]">
+                          {ex.rir_target}
+                        </span>
+                      )}
+                      {ex.tut && (
+                        <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 font-bold rounded text-[10px] font-mono">
+                          TUT: {ex.tut}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -235,6 +250,13 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
                     <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex gap-2 text-xs text-blue-200">
                       <Info className="w-4 h-4 shrink-0 text-blue-400" />
                       <p className="leading-relaxed">{ex.notes}</p>
+                    </div>
+                  )}
+
+                  {ex.alternative_exercise && (
+                    <div className="mb-4 p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-slate-300 flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase text-slate-400">Alternativa consigliata:</span>
+                      <span className="font-semibold text-white">{ex.alternative_exercise}</span>
                     </div>
                   )}
 

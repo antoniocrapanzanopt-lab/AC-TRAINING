@@ -60,6 +60,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           description: workout.description,
           coach_id: user.id,
           is_template: workout.is_template || false,
+          total_weeks: workout.total_weeks || 1,
         })
         .select()
         .single();
@@ -76,6 +77,14 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           rest_seconds: ex.rest_seconds || 60,
           order_index: index,
           notes: ex.notes || null,
+          day_name: ex.day_name || 'Giorno A',
+          week_number: ex.week_number || 1,
+          target_weight: ex.target_weight || null,
+          rir_target: ex.rir_target || null,
+          tut: ex.tut || null,
+          is_time_based: ex.is_time_based || false,
+          duration_seconds: ex.duration_seconds || null,
+          alternative_exercise: ex.alternative_exercise || null,
         }));
 
         const { error: exercisesError } = await supabase
@@ -102,6 +111,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .update({
           title: workout.title,
           description: workout.description,
+          total_weeks: workout.total_weeks || 1,
           updated_at: new Date().toISOString(),
         })
         .eq('id', workoutId);
@@ -124,6 +134,14 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           rest_seconds: ex.rest_seconds || 60,
           order_index: index,
           notes: ex.notes || null,
+          day_name: ex.day_name || 'Giorno A',
+          week_number: ex.week_number || 1,
+          target_weight: ex.target_weight || null,
+          rir_target: ex.rir_target || null,
+          tut: ex.tut || null,
+          is_time_based: ex.is_time_based || false,
+          duration_seconds: ex.duration_seconds || null,
+          alternative_exercise: ex.alternative_exercise || null,
         }));
 
         const { error: exercisesError } = await supabase
