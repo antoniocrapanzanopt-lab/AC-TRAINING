@@ -15,6 +15,8 @@ import {
   acquisitionSourceLabel,
 } from './AthleteBadges';
 import { LOCAL_OWNER_ID, getLocalOwnerProfile } from '../../lib/ownerProfile';
+import { compressImageFile } from '../../utils/fileCompressor';
+import { uploadMedicalCertificateToStorage } from '../../lib/storage';
 
 export type ModalSection = 'all' | 'anagrafica' | 'stato' | 'emergenza' | 'obiettivi' | 'certificato';
 
@@ -68,6 +70,10 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
   const [errors, setErrors] = useState<Partial<Record<keyof AthleteFormData, string>>>({});
   const [tagInput, setTagInput] = useState('');
   const [activeTab, setActiveTab] = useState<ModalSection>(initialSection);
+  
+  // State per la compressione
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionStats, setCompressionStats] = useState<{ originalKB: number; compressedKB: number; reduction: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -125,7 +131,7 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
     setErrors(prev => ({ ...prev, [key]: undefined }));
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -134,12 +140,30 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64Url = event.target?.result as string;
-      set('medicalCertificateUrl', base64Url);
-    };
-    reader.readAsDataURL(file);
+    setIsCompressing(true);
+    setCompressionStats(null);
+
+    try {
+      // 1. Compressione lato client (Image/PDF)
+      const compressed = await compressImageFile(file, 1600, 1600, 0.75);
+
+      setCompressionStats({
+        originalKB: compressed.originalSizeKB,
+        compressedKB: compressed.compressedSizeKB,
+        reduction: compressed.reductionPercentage,
+      });
+
+      // 2. Upload su Storage Supabase (Bucket Privato 'medical-certificates')
+      const targetAthleteId = editingAthlete?.id || 'temp';
+      const uploadRes = await uploadMedicalCertificateToStorage(targetAthleteId, compressed.file, compressed.dataUrl);
+
+      set('medicalCertificateUrl', uploadRes.url);
+    } catch (err: any) {
+      console.error('Errore durante la compressione o upload:', err);
+      alert('Errore durante l\'elaborazione del file: ' + err.message);
+    } finally {
+      setIsCompressing(false);
+    }
   };
 
   const validate = (): boolean => {
@@ -511,30 +535,44 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                   Documento Certificato Medico (PDF o Immagine)
                 </label>
 
-                {form.medicalCertificateUrl ? (
-                  <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-emerald-500/30">
-                    <div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400">
-                      <FileText className="w-4 h-4" />
-                      <span>Certificato Medico Allegato</span>
+                {isCompressing ? (
+                  <div className="flex items-center gap-2 p-3 bg-slate-950 rounded-xl border border-amber-500/30 text-amber-400 text-xs font-bold">
+                    <div className="w-4 h-4 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+                    <span>Comprimendo e ottimizzando file lato client...</span>
+                  </div>
+                ) : form.medicalCertificateUrl ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-emerald-500/30">
+                      <div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400">
+                        <FileText className="w-4 h-4" />
+                        <span>Certificato Medico Allegato</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={form.medicalCertificateUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-white rounded-lg font-bold transition-colors"
+                        >
+                          Visualizza
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => { set('medicalCertificateUrl', ''); setCompressionStats(null); }}
+                          className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs rounded-lg font-bold transition-colors"
+                          title="Rimuovi allegato"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={form.medicalCertificateUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-white rounded-lg font-bold transition-colors"
-                      >
-                        Visualizza
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => set('medicalCertificateUrl', '')}
-                        className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs rounded-lg font-bold transition-colors"
-                        title="Rimuovi allegato"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+
+                    {compressionStats && compressionStats.reduction > 0 && (
+                      <div className="text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center justify-between">
+                        <span>⚡ Compressione riuscita: {compressionStats.originalKB} KB ➔ {compressionStats.compressedKB} KB</span>
+                        <span className="bg-emerald-500 text-black text-[10px] px-1.5 py-0.5 rounded font-black">-{compressionStats.reduction}%</span>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-1">
@@ -552,7 +590,7 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                       <Upload className="w-4 h-4 text-[var(--color-primary)]" />
                       <span>Carica Certificato (PDF / Foto)</span>
                     </label>
-                    <span className="text-[11px] text-slate-500">Max 10MB (Formati accettati: PDF, PNG, JPG)</span>
+                    <span className="text-[11px] text-slate-500">Compressione automatica &lt; 500 KB (PDF, PNG, JPG)</span>
                   </div>
                 )}
               </div>

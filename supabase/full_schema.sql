@@ -304,4 +304,32 @@ VALUES
     ('Plank Addominale', 'Addominali', 'Corpo Libero', 'Mantieni la linea dritta senza spanciare.')
 ON CONFLICT DO NOTHING;
 
+-- 7. SUPABASE STORAGE BUCKETS & RLS POLICIES FOR PRIVATE ATTACHMENTS
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('medical-certificates', 'medical-certificates', false)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('exercise-videos', 'exercise-videos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage RLS Policies
+DROP POLICY IF EXISTS "authenticated_upload_medical_certs" ON storage.objects;
+CREATE POLICY "authenticated_upload_medical_certs" 
+ON storage.objects FOR INSERT TO authenticated 
+WITH CHECK (bucket_id = 'medical-certificates');
+
+DROP POLICY IF EXISTS "authenticated_view_medical_certs" ON storage.objects;
+CREATE POLICY "authenticated_view_medical_certs" 
+ON storage.objects FOR SELECT TO authenticated 
+USING (bucket_id = 'medical-certificates');
+
+DROP POLICY IF EXISTS "authenticated_manage_exercise_videos" ON storage.objects;
+CREATE POLICY "authenticated_manage_exercise_videos" 
+ON storage.objects FOR ALL TO authenticated 
+USING (bucket_id = 'exercise-videos') WITH CHECK (bucket_id = 'exercise-videos');
+
+-- Reload Schema Notification
+NOTIFY pgrst, 'reload schema';
+
 NOTIFY pgrst, 'reload schema';
