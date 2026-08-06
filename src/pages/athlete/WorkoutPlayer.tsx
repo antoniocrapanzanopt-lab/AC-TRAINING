@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Clock, Info, Play, Pause, ChevronDown, ChevronUp, Save } from 'lucide-react';
+import { X, Check, Clock, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 
 interface WorkoutPlayerProps {

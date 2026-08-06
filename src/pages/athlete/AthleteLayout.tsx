@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Home, Dumbbell, User } from 'lucide-react';
+import { LogOut, Home, User } from 'lucide-react';
 import { AthleteDashboard } from './AthleteDashboard';
 import { WorkoutPlayer } from './WorkoutPlayer';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';

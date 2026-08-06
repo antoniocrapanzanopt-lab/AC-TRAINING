@@ -74,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Check if the user is an athlete
       const { data: athleteData } = await supabase
         .from('athletes')
-        .select('id, first_name, last_name')
+        .select('id, first_name, last_name, auth_user_id')
         .eq('email', email)
         .maybeSingle();
 

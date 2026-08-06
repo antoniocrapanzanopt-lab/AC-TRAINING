@@ -26,7 +26,7 @@ import { useAthletes } from '../../context/AthletesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { AthleteStatusBadge, PaymentStatusBadge, contactChannelLabel, acquisitionSourceLabel } from '../../components/athletes/AthleteBadges';
-import { Copy, Link as LinkIcon } from 'lucide-react';
+import { Link as LinkIcon } from 'lucide-react';
 
 // ─── Tipi Tab ─────────────────────────────────────────────────────────────────
 
@@ -337,6 +337,7 @@ interface AthleteDetailPageProps {
 
 export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId, onBack }) => {
   const { getAthleteById, notes = {}, timeline = {} } = useAthletes();
+  const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<DetailTab>('panoramica');
 
   const athlete = getAthleteById(athleteId);
