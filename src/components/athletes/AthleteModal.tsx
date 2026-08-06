@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Shield, Activity, Target, FileText, Check } from 'lucide-react';
+import { X, User, Shield, Activity, Target, FileText, Check, Upload, Trash2 } from 'lucide-react';
 import {
   AthleteFormData,
   Athlete,
@@ -123,6 +123,23 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
   const set = <K extends keyof AthleteFormData>(key: K, value: AthleteFormData[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
     setErrors(prev => ({ ...prev, [key]: undefined }));
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Il file è troppo grande (max 10MB)');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64Url = event.target?.result as string;
+      set('medicalCertificateUrl', base64Url);
+    };
+    reader.readAsDataURL(file);
   };
 
   const validate = (): boolean => {
@@ -486,6 +503,58 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                     placeholder="es. Visita agonistica idonea..."
                   />
                 </div>
+              </div>
+
+              {/* Upload File Certificato */}
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2">
+                <label className="block text-xs font-semibold text-slate-300">
+                  Documento Certificato Medico (PDF o Immagine)
+                </label>
+
+                {form.medicalCertificateUrl ? (
+                  <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-emerald-500/30">
+                    <div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400">
+                      <FileText className="w-4 h-4" />
+                      <span>Certificato Medico Allegato</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={form.medicalCertificateUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-white rounded-lg font-bold transition-colors"
+                      >
+                        Visualizza
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => set('medicalCertificateUrl', '')}
+                        className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs rounded-lg font-bold transition-colors"
+                        title="Rimuovi allegato"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-1">
+                    <input
+                      type="file"
+                      id="cert-file-upload"
+                      accept="image/*,application/pdf"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="cert-file-upload"
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors"
+                    >
+                      <Upload className="w-4 h-4 text-[var(--color-primary)]" />
+                      <span>Carica Certificato (PDF / Foto)</span>
+                    </label>
+                    <span className="text-[11px] text-slate-500">Max 10MB (Formati accettati: PDF, PNG, JPG)</span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2 pt-2 border-t border-slate-800">

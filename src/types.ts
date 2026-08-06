@@ -188,6 +188,7 @@ export interface Athlete {
   goals?: string;
   medicalNotes?: string;
   medicalCertificateExpiryDate?: string;
+  medicalCertificateUrl?: string;
   privacyConsent: boolean;
   privacyConsentDate?: string;
   newsletterConsent: boolean;
@@ -219,6 +220,7 @@ export interface AthleteFormData {
   goals?: string;
   medicalNotes?: string;
   medicalCertificateExpiryDate?: string;
+  medicalCertificateUrl?: string;
   privacyConsent: boolean;
   newsletterConsent: boolean;
 }

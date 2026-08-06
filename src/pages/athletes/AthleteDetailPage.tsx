@@ -20,7 +20,8 @@ import {
   FileText,
   Activity,
   MessageSquare,
-  Pencil
+  Pencil,
+  Eye
 } from 'lucide-react';
 import { AthleteModal, ModalSection } from '../../components/athletes/AthleteModal';
 import { AthleteFormData } from '../../types';
@@ -454,12 +455,35 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
 
             {/* Certificato Medico */}
             <CollapsibleSection title="Certificato Medico" icon={<FileText className="w-4 h-4" />} defaultOpen={true} onEdit={() => { setEditModalSection('certificato'); setIsEditModalOpen(true); }}>
-              <div className="py-2">
-                <p className="text-xs text-slate-400 leading-relaxed mb-3">
-                  Gestione delle scadenze e note del certificato medico sportivo dell'atleta.
+              <div className="py-2 space-y-3">
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Gestione delle scadenze, note ed allegato del certificato medico sportivo.
                 </p>
                 <InfoRow label="Scadenza certificato" value={formatDate(athlete.medicalCertificateExpiryDate)} missing="Nessuna data impostata" />
                 <InfoRow label="Note medico" value={athlete.medicalNotes} missing="Nessuna nota" />
+
+                {/* Allegato File Certificato */}
+                {athlete.medicalCertificateUrl ? (
+                  <div className="mt-3 flex items-center justify-between bg-slate-900 border border-slate-800 p-3 rounded-xl">
+                    <div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400">
+                      <FileText className="w-4 h-4" />
+                      <span>Certificato Medico Allegato</span>
+                    </div>
+                    <a
+                      href={athlete.medicalCertificateUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] text-xs font-bold rounded-lg transition-colors shadow-md"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Visualizza / Apri Certificato</span>
+                    </a>
+                  </div>
+                ) : (
+                  <div className="pt-1 text-xs text-slate-500 italic flex items-center gap-1">
+                    <span>Nessun file PDF o foto allegata al certificato.</span>
+                  </div>
+                )}
               </div>
             </CollapsibleSection>
 

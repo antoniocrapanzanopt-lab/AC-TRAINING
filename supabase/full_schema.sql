@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS public.athletes (
     emergency_contact_relationship TEXT,
     medical_cert_expiry DATE,
     medical_cert_notes TEXT,
+    medical_cert_url TEXT,
     contact_channel TEXT,
     acquisition_source TEXT,
     assigned_coach_id TEXT,
@@ -123,6 +124,9 @@ CREATE TABLE IF NOT EXISTS public.workout_exercises (
 );
 
 -- ALTER TABLE PER AGGIORNARE TABELLE GIA ESISTENTI IN POSTGRES
+ALTER TABLE public.athletes 
+ADD COLUMN IF NOT EXISTS medical_cert_url TEXT;
+
 ALTER TABLE public.workouts 
 ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES public.workout_folders(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS total_weeks INTEGER DEFAULT 1,
