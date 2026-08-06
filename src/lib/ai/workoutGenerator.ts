@@ -3,6 +3,7 @@ import { ExerciseItem } from '../../types/exercise';
 import { getStorageItem, setStorageItem } from '../storage';
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
 
 export interface GenerateWorkoutParams {
   athlete?: Athlete;
@@ -12,6 +13,7 @@ export interface GenerateWorkoutParams {
   availableEquipment: string[];
   limitations?: string;
   coachExercises: ExerciseItem[];
+  provider: 'openai' | 'gemini';
 }
 
 // Interfaccia usata internamente per la risposta AI (senza id generati)
@@ -36,13 +38,21 @@ export function setOpenAIKey(key: string): void {
   setStorageItem('openai_api_key', key.trim());
 }
 
+export function getGeminiKey(): string {
+  return getStorageItem('gemini_api_key', '');
+}
+
+export function setGeminiKey(key: string): void {
+  setStorageItem('gemini_api_key', key.trim());
+}
+
 export async function generateWorkoutWithAI(
   params: GenerateWorkoutParams,
   onProgress?: (msg: string) => void
 ): Promise<AIWorkoutExercise[]> {
-  const apiKey = getOpenAIKey();
+  const apiKey = params.provider === 'openai' ? getOpenAIKey() : getGeminiKey();
   if (!apiKey) {
-    throw new Error('API Key OpenAI mancante. Inseriscila nelle impostazioni.');
+    throw new Error(`API Key ${params.provider === 'openai' ? 'OpenAI' : 'Gemini'} mancante. Inseriscila nelle impostazioni.`);
   }
 
   if (onProgress) onProgress('Preparazione del contesto e della libreria esercizi...');
@@ -99,10 +109,11 @@ Eventuali limitazioni o note per questa scheda: ${params.limitations || 'Nessuna
 Restituisci solo l'array JSON valido.
 `;
 
-  if (onProgress) onProgress('Generazione del programma in corso (potrebbe richiedere 10-30 secondi)...');
+  if (onProgress) onProgress(`Generazione del programma in corso con ${params.provider === 'openai' ? 'OpenAI (GPT-4o)' : 'Gemini (1.5 Pro)'}...`);
 
   try {
-    const response = await fetch(OPENAI_API_URL, {
+    if (params.provider === 'openai') {
+      const response = await fetch(OPENAI_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -152,18 +163,79 @@ Restituisci solo l'array JSON valido.
       })
     });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Errore HTTP ${response.status} da OpenAI`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Errore HTTP ${response.status} da OpenAI`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      
+      if (!content) throw new Error("Risposta vuota dall'IA");
+
+      const parsed = JSON.parse(content);
+      return parsed.exercises as AIWorkoutExercise[];
+
+    } else {
+      // GEMINI IMPLEMENTATION
+      const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          system_instruction: {
+            parts: [{ text: systemPrompt }]
+          },
+          contents: [{
+            role: "user",
+            parts: [{ text: userPrompt }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "object",
+              properties: {
+                exercises: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      week_number: { type: "number", description: "Numero della settimana (es. 1)" },
+                      day_name: { type: "string", description: "Nome del giorno (es. Giorno A)" },
+                      name: { type: "string", description: "Nome dell'esercizio" },
+                      sets: { type: "number" },
+                      reps_target: { type: "string" },
+                      rest_seconds: { type: "number" },
+                      target_weight: { type: "string", description: "Opzionale. Carico target." },
+                      rir_target: { type: "string", description: "Opzionale. RIR o RPE." },
+                      tut: { type: "string", description: "Opzionale. Time under tension (es. 3-0-1-0)." },
+                      notes: { type: "string", description: "Opzionale. Note tecniche." }
+                    },
+                    required: ["week_number", "day_name", "name", "sets", "reps_target", "rest_seconds"]
+                  }
+                }
+              },
+              required: ["exercises"]
+            }
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error?.message || `Errore HTTP ${response.status} da Gemini`);
+      }
+
+      const data = await response.json();
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!content) throw new Error("Risposta vuota dall'IA Gemini");
+
+      const parsed = JSON.parse(content);
+      return parsed.exercises as AIWorkoutExercise[];
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    
-    if (!content) throw new Error("Risposta vuota dall'IA");
-
-    const parsed = JSON.parse(content);
-    return parsed.exercises as AIWorkoutExercise[];
 
   } catch (error: any) {
     console.error("Errore AI Workout Generator:", error);

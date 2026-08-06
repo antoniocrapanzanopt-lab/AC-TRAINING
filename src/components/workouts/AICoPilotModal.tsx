@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Sparkles, Key, AlertTriangle, Loader2 } from 'lucide-react';
 import { useExercises } from '../../context/ExercisesContext';
 import { useAthletes } from '../../context/AthletesContext';
-import { generateWorkoutWithAI, AIWorkoutExercise, getOpenAIKey, setOpenAIKey } from '../../lib/ai/workoutGenerator';
+import { generateWorkoutWithAI, AIWorkoutExercise, getOpenAIKey, setOpenAIKey, getGeminiKey, setGeminiKey } from '../../lib/ai/workoutGenerator';
 import { useToast } from '../../context/ToastContext';
 
 interface AICoPilotModalProps {
@@ -15,8 +15,15 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
   const { athletes } = useAthletes();
   const { showError, showSuccess } = useToast();
 
+  const [provider, setProvider] = useState<'openai' | 'gemini'>('openai');
   const [hasKey, setHasKey] = useState(!!getOpenAIKey());
   const [apiKeyInput, setApiKeyInput] = useState('');
+
+  // Update hasKey when provider changes
+  React.useEffect(() => {
+    if (provider === 'openai') setHasKey(!!getOpenAIKey());
+    else setHasKey(!!getGeminiKey());
+  }, [provider]);
 
   // Form State
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
@@ -31,18 +38,28 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
   const [progressMsg, setProgressMsg] = useState('');
 
   const handleSaveKey = () => {
-    if (!apiKeyInput.trim().startsWith('sk-')) {
-      showError('Chiave API non valida. Deve iniziare con "sk-".');
-      return;
+    if (provider === 'openai') {
+      if (!apiKeyInput.trim().startsWith('sk-')) {
+        showError('Chiave OpenAI non valida. Deve iniziare con "sk-".');
+        return;
+      }
+      setOpenAIKey(apiKeyInput);
+    } else {
+      if (!apiKeyInput.trim()) {
+        showError('Inserisci una chiave Gemini valida.');
+        return;
+      }
+      setGeminiKey(apiKeyInput);
     }
-    setOpenAIKey(apiKeyInput);
+    
     setHasKey(true);
+    setApiKeyInput('');
     showSuccess('Chiave API salvata con successo.');
   };
 
   const handleGenerate = async () => {
     if (!hasKey) {
-      showError('Devi configurare la chiave API OpenAI per utilizzare il Co-Pilot.');
+      showError(`Devi configurare la chiave API ${provider === 'openai' ? 'OpenAI' : 'Gemini'} per utilizzare il Co-Pilot.`);
       return;
     }
 
@@ -64,6 +81,7 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
           limitations,
           availableEquipment,
           coachExercises,
+          provider,
         },
         setProgressMsg
       );
@@ -93,27 +111,43 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
               <Key className="w-6 h-6 text-amber-500" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">Configura OpenAI</h2>
+              <h2 className="text-xl font-bold text-white">Configura {provider === 'openai' ? 'OpenAI' : 'Google Gemini'}</h2>
               <p className="text-sm text-slate-400">Inserisci la tua API Key per usare l'IA.</p>
             </div>
+          </div>
+
+          {/* Provider Selection */}
+          <div className="flex bg-slate-950 p-1 rounded-xl mb-6 border border-slate-800">
+            <button
+              onClick={() => { setProvider('openai'); setApiKeyInput(''); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${provider === 'openai' ? 'bg-[var(--color-primary)] text-black' : 'text-slate-400 hover:text-white'}`}
+            >
+              OpenAI (GPT-4o)
+            </button>
+            <button
+              onClick={() => { setProvider('gemini'); setApiKeyInput(''); }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-colors ${provider === 'gemini' ? 'bg-[var(--color-primary)] text-black' : 'text-slate-400 hover:text-white'}`}
+            >
+              Google Gemini
+            </button>
           </div>
 
           <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl flex gap-3 mb-6">
             <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-200/80 leading-relaxed">
               La chiave API verrà salvata solo sul tuo dispositivo locale (localStorage). 
-              Non verrà mai inviata a nessun server al di fuori di OpenAI.
+              Non verrà mai inviata a nessun server al di fuori di {provider === 'openai' ? 'OpenAI' : 'Google'}.
             </p>
           </div>
 
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                OpenAI API Key
+                {provider === 'openai' ? 'OpenAI API Key' : 'Gemini API Key'}
               </label>
               <input
                 type="password"
-                placeholder="sk-proj-..."
+                placeholder={provider === 'openai' ? "sk-proj-..." : "AIzaSy..."}
                 value={apiKeyInput}
                 onChange={e => setApiKeyInput(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)]"
@@ -147,9 +181,19 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
               <p className="text-sm text-slate-400">Genera una bozza di programma intelligente.</p>
             </div>
           </div>
-          <button onClick={onClose} disabled={isGenerating} className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-800 disabled:opacity-50">
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-3">
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as 'openai' | 'gemini')}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-semibold focus:outline-none focus:border-indigo-500"
+            >
+              <option value="openai">OpenAI (GPT-4o)</option>
+              <option value="gemini">Google Gemini</option>
+            </select>
+            <button onClick={onClose} disabled={isGenerating} className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-800 disabled:opacity-50">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
