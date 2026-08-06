@@ -14,7 +14,8 @@ export type NavigationTab =
   | 'collaboratori'
   | 'impostazioni'
   | 'atleta_portale'
-  | 'schede';
+  | 'schede'
+  | 'esercizi';
 
 export type UserRole = 'owner' | 'admin' | 'coach' | 'receptionist' | 'athlete' | 'collaborator';
 

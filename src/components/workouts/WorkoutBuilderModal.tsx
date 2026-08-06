@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Plus, Save, Trash2, GripVertical, Dumbbell } from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
+import { useExercises } from '../../context/ExercisesContext';
 import { useToast } from '../../context/ToastContext';
 
 interface WorkoutBuilderModalProps {
@@ -12,6 +13,7 @@ interface WorkoutBuilderModalProps {
 
 export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId, initialWorkout, onClose }) => {
   const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout } = useWorkouts();
+  const { exercises: libraryExercises } = useExercises();
   const { showSuccess, showError } = useToast();
   
   const [title, setTitle] = useState(initialWorkout?.title || '');
@@ -181,7 +183,18 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
                         type="text"
                         placeholder="Nome esercizio (es. Panca Piana)"
                         value={ex.name}
-                        onChange={e => updateExercise(index, 'name', e.target.value)}
+                        onChange={e => {
+                          const val = e.target.value;
+                          updateExercise(index, 'name', val);
+                          // Auto autofill notes or video if matches library item
+                          const matched = libraryExercises.find(libEx => libEx.name.toLowerCase() === val.toLowerCase());
+                          if (matched) {
+                            if (matched.instructions && !ex.notes) {
+                              updateExercise(index, 'notes', matched.instructions);
+                            }
+                          }
+                        }}
+                        list="exercises-library-list"
                         className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
@@ -261,6 +274,14 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
         </div>
 
       </div>
+
+      <datalist id="exercises-library-list">
+        {libraryExercises.map(libEx => (
+          <option key={libEx.id} value={libEx.name}>
+            {libEx.category} - {libEx.equipment}
+          </option>
+        ))}
+      </datalist>
     </div>
   );
 };

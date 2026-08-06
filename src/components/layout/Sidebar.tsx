@@ -17,6 +17,7 @@ import {
   User,
   X,
   Dumbbell,
+  BookOpen,
 } from 'lucide-react';
 import { NavigationTab } from '../../types';
 
@@ -31,6 +32,7 @@ const menuItems: { id: NavigationTab; label: string; icon: React.FC<{ className?
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'atleti', label: 'Atleti', icon: Users },
   { id: 'schede', label: 'Schede Allenamento', icon: Dumbbell },
+  { id: 'esercizi', label: 'Libreria Esercizi', icon: BookOpen },
   { id: 'pacchetti', label: 'Pacchetti', icon: Package },
   { id: 'abbonamenti', label: 'Abbonamenti', icon: CreditCard },
   { id: 'pagamenti', label: 'Pagamenti', icon: Euro },
