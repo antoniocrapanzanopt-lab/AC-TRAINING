@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { Plus, Search, Dumbbell, FileText } from 'lucide-react';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { WorkoutBuilderModal } from '../../components/workouts/WorkoutBuilderModal';
+import { AssignWorkoutModal } from '../../components/workouts/AssignWorkoutModal';
+import { WorkoutTemplate } from '../../types/workout';
 
 export const WorkoutsPage: React.FC = () => {
   const { coachTemplates } = useWorkouts();
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [assigningWorkout, setAssigningWorkout] = useState<WorkoutTemplate | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredTemplates = coachTemplates.filter(template => 
@@ -61,8 +64,14 @@ export const WorkoutsPage: React.FC = () => {
                   {template.description || 'Nessuna descrizione'}
                 </p>
                 <div className="mt-4 pt-4 border-t border-slate-700/50 flex justify-between items-center">
-                   <button className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1">
+                   <button className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1">
                      <FileText className="w-3.5 h-3.5" /> Vedi Dettagli
+                   </button>
+                   <button 
+                     onClick={() => setAssigningWorkout(template)}
+                     className="px-3 py-1.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
+                   >
+                     Assegna
                    </button>
                 </div>
               </div>
@@ -85,6 +94,13 @@ export const WorkoutsPage: React.FC = () => {
         <WorkoutBuilderModal
           athleteId="" // Stringa vuota indica che stiamo creando un template generico, non per un atleta specifico
           onClose={() => setIsBuilderOpen(false)}
+        />
+      )}
+
+      {assigningWorkout && (
+        <AssignWorkoutModal
+          workout={assigningWorkout}
+          onClose={() => setAssigningWorkout(null)}
         />
       )}
     </div>
