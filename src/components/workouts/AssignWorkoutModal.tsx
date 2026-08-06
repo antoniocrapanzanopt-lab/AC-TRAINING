@@ -18,8 +18,8 @@ export const AssignWorkoutModal: React.FC<AssignWorkoutModalProps> = ({ workout,
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
   const [isAssigning, setIsAssigning] = useState(false);
 
-  // Filtra solo gli atleti attivi
-  const activeAthletes = athletes.filter(a => a.status === 'active');
+  // Filtra solo gli atleti attivi e in prova
+  const activeAthletes = athletes.filter(a => a.status === 'active' || a.status === 'trial');
 
   const handleAssign = async () => {
     if (!selectedAthleteId) {
@@ -87,7 +87,7 @@ export const AssignWorkoutModal: React.FC<AssignWorkoutModalProps> = ({ workout,
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             </div>
             {activeAthletes.length === 0 && (
-              <p className="text-xs text-red-400 mt-2">Non hai nessun atleta attivo al momento.</p>
+              <p className="text-xs text-red-400 mt-2">Non hai nessun atleta attivo o in prova al momento.</p>
             )}
           </div>
         </div>
