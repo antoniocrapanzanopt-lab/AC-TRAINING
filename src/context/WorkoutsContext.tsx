@@ -6,7 +6,7 @@ import { WorkoutTemplate, WorkoutExercise, AthleteAssignedWorkout, WorkoutSessio
 interface WorkoutsContextType {
   // Coach specific
   coachTemplates: WorkoutTemplate[];
-  createWorkoutTemplate: (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
+  createWorkoutTemplate: (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string; workoutId?: string }>;
   assignWorkoutToAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
   getAssignedWorkoutsForAthlete: (athleteId: string) => Promise<AthleteAssignedWorkout[]>;
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
@@ -84,7 +84,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       await loadCoachTemplates();
-      return { success: true };
+      return { success: true, workoutId: newWorkout.id };
     } catch (error: any) {
       console.error("Error creating workout:", error);
       return { success: false, error: error.message };
