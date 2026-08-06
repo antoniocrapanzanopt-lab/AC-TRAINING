@@ -13,7 +13,7 @@ import { CalendarProvider } from './context/CalendarContext';
 import { DocumentsProvider } from './context/DocumentsContext';
 import { CommunicationsProvider } from './context/CommunicationsContext';
 import { SettingsProvider } from './context/SettingsContext';
-import { FirstRunSetupPage } from './pages/setup/FirstRunSetupPage';
+
 import { AuthPage } from './pages/auth/AuthPage';
 import { InvitePage } from './pages/auth/InvitePage';
 import { MainLayout } from './MainLayout';
@@ -21,7 +21,7 @@ import { AthleteLayout } from './pages/athlete/AthleteLayout';
 import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { isLoading, isSetupComplete, setOwnerProfile } = useApp();
+  const { isLoading } = useApp();
   const { isAuthenticated, user } = useAuth();
 
   // 1. Schermata di caricamento iniziale senza lampi
@@ -31,7 +31,7 @@ const AppContent: React.FC = () => {
         <div className="flex flex-col items-center gap-3 text-[var(--color-primary)]">
           <Loader2 className="w-8 h-8 animate-spin" />
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Caricamento configurazione locale...
+            Caricamento...
           </span>
         </div>
       </div>
@@ -45,12 +45,7 @@ const AppContent: React.FC = () => {
     return <InvitePage email={inviteEmail} />;
   }
 
-  // 3. Se il profilo proprietario non è stato ancora configurato (e non è un invito)
-  if (!isSetupComplete) {
-    return <FirstRunSetupPage onComplete={(profile) => setOwnerProfile(profile)} />;
-  }
-
-  // 4. Se l'utente non ha effettuato il login
+  // 3. Se l'utente non ha effettuato il login
   if (!isAuthenticated) {
     return <AuthPage />;
   }
