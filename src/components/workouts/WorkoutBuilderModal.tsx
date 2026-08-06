@@ -4,6 +4,7 @@ import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useExercises } from '../../context/ExercisesContext';
 import { useToast } from '../../context/ToastContext';
+import { calculateEstimatedWorkoutTime } from '../../utils/workoutUtils';
 
 interface WorkoutBuilderModalProps {
   athleteId?: string;
@@ -58,6 +59,8 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const currentWeekDayExercises = exercises.filter(
     ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A') === activeDay
   );
+
+  const estimatedTime = calculateEstimatedWorkoutTime(currentWeekDayExercises);
 
   const addExercise = () => {
     const newEx: Partial<WorkoutExercise> = {
@@ -150,7 +153,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
         // Aggiorna la scheda esistente
         const { success, error } = await updateWorkoutTemplate(
           initialWorkout.id,
-          { title, description, total_weeks: totalWeeks, folder_id: folderId },
+          { title, description, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display },
           validExercises
         );
         if (!success) throw new Error(error);
@@ -158,7 +161,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       } else {
         // Creazione nuova scheda
         const { success, error, workoutId } = await createWorkoutTemplate(
-          { title, description, is_template: !athleteId, total_weeks: totalWeeks, folder_id: folderId }, 
+          { title, description, is_template: !athleteId, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display }, 
           validExercises
         );
 
@@ -337,10 +340,21 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
           {/* LISTA ESERCIZI DEL GIORNO SELEZIONATO */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <span>Esercizi per {activeDay} (Settimana {activeWeek})</span>
-              </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>{activeDay}</span>
+                  <span className="text-xs font-normal text-slate-400">(Settimana {activeWeek})</span>
+                </h3>
+
+                {/* Badge Durata Stimata */}
+                {currentWeekDayExercises.length > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-full text-xs font-bold shadow-sm">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{estimatedTime.display}</span>
+                  </div>
+                )}
+              </div>
               <button 
                 onClick={addExercise}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] rounded-lg transition-colors shadow-md"

@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS public.workouts (
     folder_id UUID REFERENCES public.workout_folders(id) ON DELETE SET NULL,
     is_template BOOLEAN DEFAULT false,
     total_weeks INTEGER DEFAULT 1,
+    estimated_duration_minutes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -124,7 +125,8 @@ CREATE TABLE IF NOT EXISTS public.workout_exercises (
 -- ALTER TABLE PER AGGIORNARE TABELLE GIA ESISTENTI IN POSTGRES
 ALTER TABLE public.workouts 
 ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES public.workout_folders(id) ON DELETE SET NULL,
-ADD COLUMN IF NOT EXISTS total_weeks INTEGER DEFAULT 1;
+ADD COLUMN IF NOT EXISTS total_weeks INTEGER DEFAULT 1,
+ADD COLUMN IF NOT EXISTS estimated_duration_minutes TEXT;
 
 ALTER TABLE public.workout_exercises 
 ADD COLUMN IF NOT EXISTS day_name TEXT DEFAULT 'Giorno A',

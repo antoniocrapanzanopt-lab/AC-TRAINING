@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle, Folder, FolderPlus, ChevronRight, FolderOpen, MoveRight, X, Save } from 'lucide-react';
+import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle, Folder, FolderPlus, ChevronRight, FolderOpen, MoveRight, X, Save, Clock } from 'lucide-react';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useToast } from '../../context/ToastContext';
 import { WorkoutBuilderModal } from '../../components/workouts/WorkoutBuilderModal';
@@ -287,6 +287,11 @@ export const WorkoutsPage: React.FC = () => {
                           {parentFolder && (
                             <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/10 text-amber-400 rounded-md flex items-center gap-1">
                               <Folder className="w-3 h-3" /> {parentFolder.name}
+                            </span>
+                          )}
+                          {template.estimated_duration_minutes && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-md flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> {template.estimated_duration_minutes}
                             </span>
                           )}
                           <span className="text-xs font-semibold px-2 py-0.5 bg-slate-800 rounded-md text-slate-300">

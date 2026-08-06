@@ -16,6 +16,7 @@ export interface WorkoutTemplate {
   folder_id?: string | null;
   is_template: boolean;
   total_weeks?: number;
+  estimated_duration_minutes?: string | number;
   created_at: string;
   updated_at: string;
 }

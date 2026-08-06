@@ -163,6 +163,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           folder_id: workout.folder_id || null,
           is_template: workout.is_template || false,
           total_weeks: workout.total_weeks || 1,
+          estimated_duration_minutes: workout.estimated_duration_minutes ? String(workout.estimated_duration_minutes) : null,
         })
         .select()
         .single();
@@ -215,6 +216,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           description: workout.description,
           folder_id: workout.folder_id !== undefined ? workout.folder_id : null,
           total_weeks: workout.total_weeks || 1,
+          estimated_duration_minutes: workout.estimated_duration_minutes ? String(workout.estimated_duration_minutes) : null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', workoutId);
