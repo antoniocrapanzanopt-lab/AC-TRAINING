@@ -74,9 +74,19 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   };
 
   const updateExercise = (globalIndex: number, field: keyof WorkoutExercise, value: any) => {
-    const newEx = [...exercises];
-    newEx[globalIndex] = { ...newEx[globalIndex], [field]: value };
-    setExercises(newEx);
+    setExercises(prev => {
+      const copy = [...prev];
+      copy[globalIndex] = { ...copy[globalIndex], [field]: value };
+      return copy;
+    });
+  };
+
+  const updateExerciseFields = (globalIndex: number, fields: Partial<WorkoutExercise>) => {
+    setExercises(prev => {
+      const copy = [...prev];
+      copy[globalIndex] = { ...copy[globalIndex], ...fields };
+      return copy;
+    });
   };
 
   const removeExercise = (globalIndex: number) => {
@@ -378,10 +388,11 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
                               value={ex.name || ''}
                               onChange={e => {
                                 const val = e.target.value;
-                                updateExercise(globalIdx, 'name', val);
-                                const matched = libraryExercises.find(libEx => libEx.name.toLowerCase() === val.toLowerCase());
-                                if (matched && matched.instructions && !ex.notes) {
-                                  updateExercise(globalIdx, 'notes', matched.instructions);
+                                const matched = libraryExercises.find(libEx => libEx.name.trim().toLowerCase() === val.trim().toLowerCase());
+                                if (matched && matched.instructions) {
+                                  updateExerciseFields(globalIdx, { name: val, notes: matched.instructions });
+                                } else {
+                                  updateExerciseFields(globalIdx, { name: val });
                                 }
                               }}
                               list="exercises-library-list"
