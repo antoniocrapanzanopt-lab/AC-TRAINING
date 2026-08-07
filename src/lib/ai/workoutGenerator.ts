@@ -176,33 +176,29 @@ Restituisci solo l'array JSON valido.
       return parsed.exercises as AIWorkoutExercise[];
 
     } else {
-      // GEMINI IMPLEMENTATION (Con fallback automatico sui modelli v1beta disponibili)
+      // GEMINI IMPLEMENTATION (Supporto Modelli Gemini 2.5/2.0/1.5 con Fallback Strutturato e Plain JSON)
       const geminiModels = [
-        'gemini-1.5-flash',
+        'gemini-2.5-flash',
         'gemini-2.0-flash',
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-pro',
         'gemini-1.5-pro-latest',
-        'gemini-pro'
       ];
 
       let lastError: Error | null = null;
       let data: any = null;
 
+      // Tentativo 1: Chiamata con Structured Output (responseSchema)
       for (const modelName of geminiModels) {
         try {
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
           const response = await fetch(url, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              system_instruction: {
-                parts: [{ text: systemPrompt }]
-              },
-              contents: [{
-                role: "user",
-                parts: [{ text: userPrompt }]
-              }],
+              system_instruction: { parts: [{ text: systemPrompt }] },
+              contents: [{ role: "user", parts: [{ text: userPrompt }] }],
               generationConfig: {
                 temperature: 0.7,
                 responseMimeType: "application/json",
@@ -214,16 +210,16 @@ Restituisci solo l'array JSON valido.
                       items: {
                         type: "object",
                         properties: {
-                          week_number: { type: "number", description: "Numero della settimana (es. 1)" },
-                          day_name: { type: "string", description: "Nome del giorno (es. Giorno A)" },
-                          name: { type: "string", description: "Nome dell'esercizio" },
+                          week_number: { type: "number" },
+                          day_name: { type: "string" },
+                          name: { type: "string" },
                           sets: { type: "number" },
                           reps_target: { type: "string" },
                           rest_seconds: { type: "number" },
-                          target_weight: { type: "string", description: "Opzionale. Carico target." },
-                          rir_target: { type: "string", description: "Opzionale. RIR o RPE." },
-                          tut: { type: "string", description: "Opzionale. Time under tension (es. 3-0-1-0)." },
-                          notes: { type: "string", description: "Opzionale. Note tecniche." }
+                          target_weight: { type: "string" },
+                          rir_target: { type: "string" },
+                          tut: { type: "string" },
+                          notes: { type: "string" }
                         },
                         required: ["week_number", "day_name", "name", "sets", "reps_target", "rest_seconds"]
                       }
@@ -237,28 +233,63 @@ Restituisci solo l'array JSON valido.
 
           if (response.ok) {
             data = await response.json();
-            break; // Successo! Usciamo dal loop
+            break;
           } else {
             const err = await response.json().catch(() => ({}));
-            lastError = new Error(err.error?.message || `Errore HTTP ${response.status} da Gemini (${modelName})`);
+            lastError = new Error(err.error?.message || `Errore HTTP ${response.status} per ${modelName}`);
           }
         } catch (err: any) {
           lastError = err;
         }
       }
 
+      // Tentativo 2: Fallback Plain JSON Prompt (Se i responseSchema vengono rifiutati dalla chiave)
       if (!data) {
-        throw lastError || new Error("Nessun modello Gemini è stato in grado di completare la richiesta.");
+        for (const modelName of geminiModels) {
+          try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{
+                  role: "user",
+                  parts: [{ text: `${systemPrompt}\n\n${userPrompt}\n\nRISPONDI ESCLUSIVAMENTE IN FORMATO JSON VALIDO SENZA MARKDOWN:\n{"exercises": [...]}` }]
+                }],
+                generationConfig: {
+                  temperature: 0.7,
+                  responseMimeType: "application/json"
+                }
+              })
+            });
+
+            if (response.ok) {
+              data = await response.json();
+              break;
+            }
+          } catch (e) {
+            // Continua al prossimo modello
+          }
+        }
       }
 
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!content) throw new Error("Risposta vuota dall'IA Gemini");
+      if (!data) {
+        throw new Error(lastError?.message || "Chiave API Gemini non valida o limite quota superato. Verifica la tua chiave su Google AI Studio.");
+      }
 
-      const parsed = JSON.parse(content);
+      let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) throw new Error("Risposta vuota dall'IA Gemini");
+
+      // Clean Markdown code blocks if present
+      rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(rawText);
+
+      if (!parsed.exercises || !Array.isArray(parsed.exercises)) {
+        throw new Error("Il formato della risposta Gemini non contiene la lista esercizi valida.");
+      }
+
       return parsed.exercises as AIWorkoutExercise[];
     }
-
   } catch (error: any) {
     console.error("Errore AI Workout Generator:", error);
     throw new Error(error.message || "Errore sconosciuto durante la generazione della scheda.");
