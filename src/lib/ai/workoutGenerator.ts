@@ -258,6 +258,73 @@ export async function fetchGeminiWithMultiKeyPool(
   throw new Error(`Quota temporanea Gemini superata (20 req/min). Attendi 30 secondi o attiva il piano Pay-As-You-Go su Google AI Studio.`);
 }
 
+/**
+ * Espande e periodizza il mesociclo a tutte le settimane richieste (es. 8 o 12 settimane),
+ * garantendo che ciascuna settimana e ciascun giorno abbiano 4-7 esercizi completi.
+ */
+export function expandMesocycleWeeks(
+  generatedExercises: AIWorkoutExercise[],
+  requestedWeeks: number
+): AIWorkoutExercise[] {
+  if (!generatedExercises || generatedExercises.length === 0) return [];
+
+  // Normalizza week_number e day_name
+  let normalized = generatedExercises.map(ex => {
+    let cleanDay = (ex.day_name || 'Giorno A').trim();
+    const match = cleanDay.match(/(Giorno\s+[A-Z0-9]+)/i);
+    if (match) {
+      const dayLetter = match[1].split(/\s+/)[1].toUpperCase();
+      cleanDay = `Giorno ${dayLetter}`;
+    }
+    return {
+      ...ex,
+      week_number: Number(ex.week_number) || 1,
+      day_name: cleanDay,
+    };
+  });
+
+  const maxGenWeek = Math.max(...normalized.map(e => e.week_number), 1);
+
+  // Se sono state generate meno settimane di quelle richieste (es. 4 settimane anziché 12 per limiti di token)
+  if (requestedWeeks > maxGenWeek) {
+    const result: AIWorkoutExercise[] = [...normalized];
+
+    for (let w = maxGenWeek + 1; w <= requestedWeeks; w++) {
+      const baseWeek = ((w - 1) % Math.min(maxGenWeek, 4)) + 1;
+      const baseWeekExercises = normalized.filter(e => e.week_number === baseWeek);
+      const blockIndex = Math.floor((w - 1) / 4);
+
+      const expandedForWeek = baseWeekExercises.map(ex => {
+        let newRir = ex.rir_target;
+        let newWeight = ex.target_weight;
+
+        if (blockIndex === 1) {
+          if (newWeight && !newWeight.includes('+')) {
+            newWeight = `${newWeight} (+2.5% progressione)`;
+          }
+        } else if (blockIndex === 2) {
+          if (newWeight && !newWeight.includes('+')) {
+            newWeight = `${newWeight} (+5% picco)`;
+          }
+        }
+
+        return {
+          ...ex,
+          week_number: w,
+          rir_target: newRir,
+          target_weight: newWeight,
+        };
+      });
+
+      result.push(...expandedForWeek);
+    }
+
+    return result;
+  }
+
+  return normalized;
+}
+
 export async function generateWorkoutWithAI(
   params: GenerateWorkoutParams,
   onProgress?: (msg: string) => void
@@ -273,6 +340,10 @@ export async function generateWorkoutWithAI(
 
   const exerciseNames = params.coachExercises.map(e => e.name).join(', ');
 
+  // Se le settimane sono > 4 (es. 8 o 12), chiediamo all'IA le 4 settimane chiave che poi espandiamo
+  const weeksToPrompt = Math.min(params.weeks, 4);
+  const daysToPrompt = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].slice(0, Math.min(params.daysPerWeek, 7));
+
   const systemPrompt = `
 Sei un Master Strength & Conditioning Coach ed esperto di metodologia dell'allenamento di livello mondiale.
 Il tuo compito è generare un programma di allenamento ESTREMAMENTE PERSONALIZZATO, scientifico e pronto all'uso, diviso per settimane e per giorni, restituendo ESCLUSIVAMENTE un array JSON strutturato.
@@ -280,9 +351,9 @@ Il tuo compito è generare un programma di allenamento ESTREMAMENTE PERSONALIZZA
 PRINCIPI DI PROGRAMMAZIONE D'ÉLITE DA APPLICARE:
 
 1. **PERIODO E PROGRESSIONE (WAVE / MICROCICLI)**:
-   - Durata totale: ${params.weeks} settimane, con ${params.daysPerWeek} giorni di allenamento a settimana.
+   - Genera gli esercizi per le settimane da 1 a ${weeksToPrompt}, coprendo TUTTI i ${params.daysPerWeek} giorni per ciascuna settimana (${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}).
    - Modellazione della progressione: ${params.progressionStyle || 'RIR/RPE Progressivo (Overload + Scarico)'}.
-   - In caso di 4 settimane: Settimana 1 = RIR 3 (accumulo); Settimana 2 = RIR 2 (carico progressivo); Settimana 3 = RIR 1 (picco di intensità); Settimana 4 = RIR 4-5 (scarico attivo / deload con volume ridotto del 30-40%).
+   - Settimana 1 = RIR 3 (accumulo); Settimana 2 = RIR 2 (carico progressivo); Settimana 3 = RIR 1 (picco di intensità); Settimana 4 = RIR 4-5 (scarico attivo / deload con volume ridotto del 30-40%).
 
 2. **VOLUME & ESPERIENZA DELL'ATLETA**:
    - Livello Atleta: ${params.experienceLevel || 'Intermedio'}.
@@ -292,7 +363,7 @@ PRINCIPI DI PROGRAMMAZIONE D'ÉLITE DA APPLICARE:
 
 3. **TEMPO PER SEDUTA & TIMING**:
    - Durata massima consigliata per sessione: ${params.sessionDurationMinutes || 60} minuti.
-   - Struttura l'allenamento con un numero calibrato di esercizi (es. 4-5 esercizi per 45-60 min; 6-7 per 75-90 min) in modo che i tempi di esecuzione e recupero rientrino perfettamente nei minuti a disposizione del cliente!
+   - Struttura ciascuna seduta con da 4 a 7 esercizi ben distribuiti in base ai ${params.sessionDurationMinutes || 60} minuti a disposizione!
 
 4. **GERARCHIA DEGLI ESERCIZI NELLE SEDUTE**:
    - Per ciascun giorno, ordina gli esercizi secondo la fisiologia dell'allenamento:
@@ -312,12 +383,12 @@ LIBRERIA ESERCIZI PREFERITA COACH:
 Scegli gli esercizi PRINCIPALMENTE da questa libreria. Se necessario per l'adattamento biomeccanico, proponi esercizi adatti.
 
 REGOLE TASSATIVE DI QUANTITÀ E NOMI GIORNO:
-1. **QUANTITÀ ESERCIZI PER GIORNO**: Ogni giorno di allenamento (es. Giorno A) in OGNI settimana DEVE contenere da 4 a 7 esercizi completi. È severamente vietato generare solo 1 o 2 esercizi per seduta!
-2. **FORMATO NOMI GIORNO**: Il campo 'day_name' deve essere ESATTAMENTE e solo "Giorno A", "Giorno B", "Giorno C", "Giorno D" (senza suffissi come '- Push' o note extra).
+1. **COPERTURA GIORNI E QUANTITÀ**: DEVI generare esercizi per TUTTI i ${params.daysPerWeek} giorni per OGNI settimana (da week_number 1 a ${weeksToPrompt}). Ogni singolo giorno (${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}) DEVE contenere da 4 a 7 esercizi completi. È severamente vietato generare solo 1 o 2 esercizi o saltare dei giorni!
+2. **FORMATO NOMI GIORNO**: Il campo 'day_name' deve essere ESATTAMENTE uno tra: ${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}.
 
 Struttura JSON richiesta per ogni esercizio (array di oggetti):
-- week_number (numero da 1 a ${params.weeks})
-- day_name (stringa pulita: ESATTAMENTE "Giorno A", "Giorno B", "Giorno C"...)
+- week_number (numero da 1 a ${weeksToPrompt})
+- day_name (ESATTAMENTE uno tra ${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')})
 - name (stringa)
 - sets (numero)
 - reps_target (stringa, es. "8-10" o "6")
@@ -431,7 +502,8 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       
       if (!content) throw new Error("Risposta vuota dall'IA");
 
-      return safeParseWorkoutJSON(content);
+      const parsed = safeParseWorkoutJSON(content);
+      return expandMesocycleWeeks(parsed, params.weeks);
 
     } else {
       if (onProgress) onProgress(`Generazione in corso con Gemini 3.6 Flash...`);
@@ -488,7 +560,8 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) throw new Error("Risposta vuota dall'IA Gemini");
 
-      return safeParseWorkoutJSON(rawText);
+      const parsed = safeParseWorkoutJSON(rawText);
+      return expandMesocycleWeeks(parsed, params.weeks);
     }
   } catch (error: any) {
     console.error("Errore AI Workout Generator:", error);
