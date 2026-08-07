@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, User, Clock, ArrowLeft } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 interface AthleteChatProps {
   onBack?: () => void;
@@ -21,11 +22,27 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   // Per semplicità, filtriamo i messaggi dove l'atleta è coinvolto.
   
   const athleteMessages = messages.filter(m => m.sender_id === user?.id || m.receiver_id === user?.id);
-  
-  // Troviamo il coach ID dal primo messaggio
-  const coachId = athleteMessages.length > 0 
-    ? (athleteMessages[0].sender_id === user?.id ? athleteMessages[0].receiver_id : athleteMessages[0].sender_id)
-    : 'demo-local'; // fallback
+  const [coachId, setCoachId] = useState<string>('demo-local');
+
+  useEffect(() => {
+    if (athleteMessages.length > 0) {
+      const firstMsg = athleteMessages[0];
+      const foundCoachId = firstMsg.sender_id === user?.id ? firstMsg.receiver_id : firstMsg.sender_id;
+      setCoachId(foundCoachId);
+    } else if (user?.id) {
+      // Tenta di recuperare il coach assegnato
+      supabase
+        .from('athletes')
+        .select('assigned_coach_id')
+        .eq('auth_user_id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data?.assigned_coach_id) {
+            setCoachId(data.assigned_coach_id);
+          }
+        });
+    }
+  }, [messages, user]);
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -35,7 +52,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
 
   useEffect(() => {
     // Segna come letti i messaggi ricevuti dal coach
-    if (coachId) {
+    if (coachId && coachId !== 'demo-local') {
       markAsRead(coachId);
     }
   }, [messages, coachId, markAsRead]);

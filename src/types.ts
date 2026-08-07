@@ -22,6 +22,7 @@ export type UserRole = 'owner' | 'admin' | 'coach' | 'receptionist' | 'athlete' 
 
 export interface UserProfile {
   id: string;
+  athleteId?: string;
   name: string;
   email: string;
   role: UserRole;

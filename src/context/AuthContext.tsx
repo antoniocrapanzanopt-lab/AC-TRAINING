@@ -90,7 +90,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         setUser({
-          id: athleteData.id,
+          id: sessionUser.id,
+          athleteId: athleteData.id,
           name: `${athleteData.first_name} ${athleteData.last_name}`,
           email: email,
           role: 'athlete',

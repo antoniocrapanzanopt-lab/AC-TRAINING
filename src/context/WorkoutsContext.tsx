@@ -347,7 +347,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         *,
         workout:workouts(*)
       `)
-      .eq('athlete_id', user.id)
+      .eq('athlete_id', user.athleteId || user.id)
       .eq('is_active', true)
       .order('assigned_date', { ascending: false });
 
@@ -363,7 +363,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const { data, error } = await supabase
         .from('workout_sessions')
         .insert({
-          athlete_id: user.id,
+          athlete_id: user.athleteId || user.id,
           workout_id: workoutId,
         })
         .select()
