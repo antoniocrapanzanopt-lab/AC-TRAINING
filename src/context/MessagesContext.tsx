@@ -104,18 +104,25 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const convMap = new Map<string, Conversation>();
 
     messages.forEach((msg) => {
-      // Find the other user
+      // Find the ID of the OTHER person
+      const rawOtherId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
+      
+      // Se l'utente corrente è un Coach, cerchiamo di uniformare l'otherId all'ID anagrafico 
+      // per non avere conversazioni duplicate per lo stesso atleta (una per auth_user_id e una per id)
+      let canonicalId = rawOtherId;
+      if (user.role === 'coach') {
+        const ath = athletes.find(a => a.auth_user_id === rawOtherId || a.id === rawOtherId);
+        if (ath) canonicalId = ath.id;
+      }
+      
       const isSender = msg.sender_id === user.id;
-      const otherUserId = isSender ? msg.receiver_id : msg.sender_id;
-
-      const athleteInfo = athletes.find(a => a.auth_user_id === otherUserId || a.id === otherUserId);
-      const canonicalId = athleteInfo ? (athleteInfo.auth_user_id || athleteInfo.id) : otherUserId;
+      const athleteInfo = athletes.find(a => a.auth_user_id === canonicalId || a.id === canonicalId);
       
       let athleteName = athleteInfo ? `${athleteInfo.firstName} ${athleteInfo.lastName}` : 'Utente Sconosciuto';
       let tags = athleteInfo?.tags || [];
       
       // Fallback per test in locale senza auth_user_id corretto
-      if (otherUserId === 'demo-local') {
+      if (canonicalId === 'demo-local') {
           athleteName = 'Coach / Atleta Demo';
       }
 
@@ -215,23 +222,52 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         
         if ((!finalReceiverId || finalReceiverId === 'demo-local' || !uuidRegex.test(finalReceiverId)) && user.role === 'athlete') {
-          const { data: dbAth } = await supabase
-            .from('athletes')
-            .select('assigned_coach_id')
-            .eq('auth_user_id', realSenderId)
-            .maybeSingle();
-            
-          if (dbAth?.assigned_coach_id && uuidRegex.test(dbAth.assigned_coach_id)) {
-            finalReceiverId = dbAth.assigned_coach_id;
-          } else {
-            const { data: anyMsg } = await supabase
-              .from('messages')
-              .select('sender_id')
-              .neq('sender_id', realSenderId)
+          // 1. Tenta tramite l'ID anagrafico (più sicuro se l'auth non è ancora linkato)
+          if (user.athleteId) {
+            const { data: dbAth } = await supabase
+              .from('athletes')
+              .select('assigned_coach_id')
+              .eq('id', user.athleteId)
+              .maybeSingle();
+            if (dbAth?.assigned_coach_id && uuidRegex.test(dbAth.assigned_coach_id)) {
+              finalReceiverId = dbAth.assigned_coach_id;
+            }
+          }
+          
+          // 2. Tenta tramite auth_user_id
+          if (!finalReceiverId || finalReceiverId === 'demo-local') {
+            const { data: dbAth } = await supabase
+              .from('athletes')
+              .select('assigned_coach_id')
+              .eq('auth_user_id', realSenderId)
+              .maybeSingle();
+            if (dbAth?.assigned_coach_id && uuidRegex.test(dbAth.assigned_coach_id)) {
+              finalReceiverId = dbAth.assigned_coach_id;
+            }
+          }
+          
+          // 3. Fallback Assoluto: Cerca qualsiasi Coach esistente nel sistema (Essendo un'app demo single-coach)
+          if (!finalReceiverId || finalReceiverId === 'demo-local') {
+            const { data: anyCoach } = await supabase
+              .from('athletes')
+              .select('assigned_coach_id')
+              .not('assigned_coach_id', 'is', null)
+              .neq('assigned_coach_id', 'local-owner')
               .limit(1)
               .maybeSingle();
-            if (anyMsg?.sender_id && uuidRegex.test(anyMsg.sender_id)) {
-              finalReceiverId = anyMsg.sender_id;
+            if (anyCoach?.assigned_coach_id && uuidRegex.test(anyCoach.assigned_coach_id)) {
+              finalReceiverId = anyCoach.assigned_coach_id;
+            } else {
+              // 4. Fallback Estremo: Cerca qualsiasi utente che abbia mandato un messaggio che non sia io
+              const { data: anyMsg } = await supabase
+                .from('messages')
+                .select('sender_id')
+                .neq('sender_id', realSenderId)
+                .limit(1)
+                .maybeSingle();
+              if (anyMsg?.sender_id && uuidRegex.test(anyMsg.sender_id)) {
+                finalReceiverId = anyMsg.sender_id;
+              }
             }
           }
         }
