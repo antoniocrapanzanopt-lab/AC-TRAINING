@@ -54,6 +54,93 @@ export function setGeminiKey(key: string): void {
   setStorageItem('gemini_api_key', key.trim());
 }
 
+/**
+ * Parser JSON ultra-resiliente per risposte IA.
+ * Gestisce troncamenti, a capo non protetti e formatta anche schede parziali se necessario.
+ */
+export function safeParseWorkoutJSON(rawText: string): AIWorkoutExercise[] {
+  let cleaned = rawText.trim();
+
+  // 1. Rimuovi blocchi Markdown ```json ... ```
+  cleaned = cleaned.replace(/^```json/gi, '').replace(/^```/gi, '').replace(/```$/gi, '').trim();
+
+  // 2. Estrai il blocco JSON principale se c'è testo prima o dopo
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    cleaned = jsonMatch[0];
+  }
+
+  // 3. Prova prima il JSON.parse diretto
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed.exercises && Array.isArray(parsed.exercises)) {
+      return parsed.exercises;
+    }
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch (err) {
+    console.warn("JSON.parse diretto fallito, tentativo di ripristino stringa...", err);
+  }
+
+  // 4. Ripristino di stringhe e a capo non protetti (es. newlines dentro note o stringhe aperte)
+  try {
+    let sanitized = cleaned;
+
+    // Sostituisci a capo letterali dentro i valori tra virgolette
+    sanitized = sanitized.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
+      return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+    });
+
+    // Se la stringa si è troncata a fine risposta (manca la chiusura } o ])
+    if (!sanitized.endsWith('}')) {
+      const lastObjIndex = sanitized.lastIndexOf('}');
+      if (lastObjIndex !== -1) {
+        sanitized = sanitized.substring(0, lastObjIndex + 1) + ']}';
+      }
+    }
+
+    const parsed = JSON.parse(sanitized);
+    if (parsed.exercises && Array.isArray(parsed.exercises)) {
+      return parsed.exercises;
+    }
+  } catch (err) {
+    console.warn("Ripristino parziale fallito, passaggio all'estrazione regex singoli oggetti...", err);
+  }
+
+  // 5. Fallback Regex Ultra-Resiliente: Estrai ogni singolo oggetto esercizio valido dal testo grezzo
+  const exerciseMatches = cleaned.match(/\{[^{}]*"name"[^{}]*\}/g) || cleaned.match(/\{[^{}]*"week_number"[^{}]*\}/g);
+  if (exerciseMatches && exerciseMatches.length > 0) {
+    const recoveredExercises: AIWorkoutExercise[] = [];
+    for (const objStr of exerciseMatches) {
+      try {
+        const obj = JSON.parse(objStr);
+        if (obj.name && (obj.week_number !== undefined || obj.day_name)) {
+          recoveredExercises.push({
+            week_number: Number(obj.week_number) || 1,
+            day_name: String(obj.day_name || 'Giorno A'),
+            name: String(obj.name),
+            sets: Number(obj.sets) || 3,
+            reps_target: String(obj.reps_target || '10'),
+            rest_seconds: Number(obj.rest_seconds) || 60,
+            target_weight: obj.target_weight ? String(obj.target_weight) : undefined,
+            rir_target: obj.rir_target ? String(obj.rir_target) : undefined,
+            tut: obj.tut ? String(obj.tut) : undefined,
+            notes: obj.notes ? String(obj.notes) : undefined,
+          });
+        }
+      } catch (e) {
+        // Ignora singolo oggetto malformato
+      }
+    }
+    if (recoveredExercises.length > 0) {
+      return recoveredExercises;
+    }
+  }
+
+  throw new Error("Impossibile interpretare il formato del programma generato dall'IA. Riprova la generazione.");
+}
+
 export async function generateWorkoutWithAI(
   params: GenerateWorkoutParams,
   onProgress?: (msg: string) => void
@@ -99,7 +186,7 @@ PRINCIPI DI PROGRAMMAZIONE D'ÉLITE DA APPLICARE:
    - Sostituisci IMMEDIATAMENTE qualsiasi esercizio rischioso per la condizione dell'atleta con varianti biomeccanicamente perfette (es. sbarra o manubri al posto del bilanciere in caso di impingement spalla; belt squat/leg press al posto di squat con bilanciere in caso di lombalgia).
 
 6. **NOTE TECNICHE E CUE PER L'ATLETA**:
-   - Nel campo 'notes' di ciascun esercizio, fornisci un **Cue percettivo o biomeccanico specifico** e pratico (es. "Spingi il suolo, mantieni le scapole depresse e gomiti a 45°", "Pausa di 1 secondo in massimo accorciamento").
+   - Nel campo 'notes' di ciascun esercizio, fornisci un **Cue percettivo o biomeccanico specifico** e pratico (senza virgolette doppie o caratteri di a capo).
 
 LIBRERIA ESERCIZI PREFERITA COACH:
 [${exerciseNames}]
@@ -198,10 +285,10 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
                       sets: { type: "number" },
                       reps_target: { type: "string" },
                       rest_seconds: { type: "number" },
-                      target_weight: { type: "string", description: "Opzionale. Carico target." },
-                      rir_target: { type: "string", description: "Opzionale. RIR o RPE." },
-                      tut: { type: "string", description: "Opzionale. Time under tension (es. 3-0-1-0)." },
-                      notes: { type: "string", description: "Opzionale. Note tecniche." }
+                      target_weight: { type: "string" },
+                      rir_target: { type: "string" },
+                      tut: { type: "string" },
+                      notes: { type: "string" }
                     },
                     required: ["week_number", "day_name", "name", "sets", "reps_target", "rest_seconds"],
                     additionalProperties: false
@@ -226,8 +313,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       
       if (!content) throw new Error("Risposta vuota dall'IA");
 
-      const parsed = JSON.parse(content);
-      return parsed.exercises as AIWorkoutExercise[];
+      return safeParseWorkoutJSON(content);
 
     } else {
       const geminiModels = [
@@ -240,7 +326,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       for (const modelName of geminiModels) {
         if (onProgress) onProgress(`Generazione in corso con Gemini 3.6 Flash...`);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 secondi per permettere la generazione di tutta la scheda JSON
+        const timeoutId = setTimeout(() => controller.abort(), 90000);
 
         try {
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
@@ -293,7 +379,6 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
             const msg = errData.error?.message || `Errore HTTP ${response.status}`;
             lastError = new Error(msg);
             
-            // Se la chiave API è invalida (400 / 403), blocca. Se è un 429 quota per quel singolo modello, prova il modello successivo
             if (response.status === 403 || (response.status === 400 && msg.toLowerCase().includes('key'))) {
               throw new Error(`Chiave API Gemini non valida: ${msg}`);
             }
@@ -301,7 +386,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
         } catch (err: any) {
           clearTimeout(timeoutId);
           if (err.name === 'AbortError') {
-            lastError = new Error("La generazione dell'IA ha impiegato troppo tempo. Riprova con un numero inferiore di settimane o giorni.");
+            lastError = new Error("La generazione dell'IA ha impiegato troppo tempo.");
           } else if (err.message?.includes('Chiave API Gemini non valida')) {
             throw err;
           } else {
@@ -310,7 +395,6 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
         }
       }
 
-      // Fallback Plain JSON Prompt (Se i responseSchema falliscono)
       if (!data) {
         for (const modelName of geminiModels.slice(0, 2)) {
           const controller = new AbortController();
@@ -328,6 +412,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
                 }],
                 generationConfig: {
                   temperature: 0.7,
+                  maxOutputTokens: 8192,
                   responseMimeType: "application/json"
                 }
               })
@@ -351,15 +436,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) throw new Error("Risposta vuota dall'IA Gemini");
 
-      // Clean Markdown code blocks if present
-      rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(rawText);
-
-      if (!parsed.exercises || !Array.isArray(parsed.exercises)) {
-        throw new Error("Il formato della risposta Gemini non contiene la lista esercizi valida.");
-      }
-
-      return parsed.exercises as AIWorkoutExercise[];
+      return safeParseWorkoutJSON(rawText);
     }
   } catch (error: any) {
     console.error("Errore AI Workout Generator:", error);
