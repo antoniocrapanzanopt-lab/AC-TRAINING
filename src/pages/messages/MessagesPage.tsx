@@ -7,9 +7,11 @@ import {
   User,
   Clock,
   MoreVertical,
+  X,
 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
+import { useAthletes } from '../../context/AthletesContext';
 
 export const MessagesPage: React.FC = () => {
   const { user } = useAuth();
@@ -29,6 +31,11 @@ export const MessagesPage: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [newChatSearch, setNewChatSearch] = useState('');
+  
+  const { athletes } = useAthletes();
 
   // Filtri categorie uniche presenti nei tag degli atleti
   const uniqueCategories = useMemo(() => {
@@ -50,6 +57,39 @@ export const MessagesPage: React.FC = () => {
   const totalUnread = useMemo(() => {
     return conversations.reduce((acc, c) => acc + c.unread_count, 0);
   }, [conversations]);
+
+  // Atleti filtrati per nuova chat
+  const newChatAthletes = useMemo(() => {
+    return athletes.filter(a => {
+      const search = newChatSearch.toLowerCase();
+      return a.firstName.toLowerCase().includes(search) || a.lastName.toLowerCase().includes(search);
+    });
+  }, [athletes, newChatSearch]);
+
+  const handleStartNewChat = (athlete: any) => {
+    if (!athlete.auth_user_id) {
+      alert("Attenzione: Questo atleta non ha ancora attivato l'account e non può ricevere messaggi.");
+      return;
+    }
+    
+    // Cerca se esiste già la conversazione
+    const existing = conversations.find(c => c.athlete_id === athlete.auth_user_id);
+    if (existing) {
+      setActiveConversation(existing);
+    } else {
+      // Crea una sintetica
+      setActiveConversation({
+        athlete_id: athlete.auth_user_id,
+        athlete_name: `${athlete.firstName} ${athlete.lastName}`,
+        athlete_initials: `${athlete.firstName} ${athlete.lastName}`.substring(0, 2).toUpperCase(),
+        tags: athlete.tags || [],
+        last_message: null,
+        unread_count: 0
+      });
+    }
+    setShowNewChatModal(false);
+    setNewChatSearch('');
+  };
 
   // Scroll to bottom when new message arrives or conversation changes
   useEffect(() => {
@@ -105,7 +145,7 @@ export const MessagesPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full space-y-4">
+    <div className="flex flex-col h-full space-y-4 relative">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -115,13 +155,22 @@ export const MessagesPage: React.FC = () => {
           </p>
         </div>
         
-        <button
-          onClick={handleMarkAllAsRead}
-          disabled={totalUnread === 0}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-bold text-xs hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <CheckCircle2 className="w-4 h-4" /> Segna tutte come lette
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleMarkAllAsRead}
+            disabled={totalUnread === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-bold text-xs hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <CheckCircle2 className="w-4 h-4" /> Segna lette
+          </button>
+          
+          <button
+            onClick={() => setShowNewChatModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-lg"
+          >
+            Nuova Chat
+          </button>
+        </div>
       </div>
 
       {/* Main Layout (Master-Detail) */}
@@ -346,6 +395,56 @@ export const MessagesPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal Nuova Chat */}
+      {showNewChatModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowNewChatModal(false)} />
+          <div className="relative w-full max-w-md bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">Nuova Conversazione</h3>
+              <button onClick={() => setShowNewChatModal(false)} className="text-slate-400 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 border-b border-slate-800">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Cerca atleta..."
+                  value={newChatSearch}
+                  onChange={e => setNewChatSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+              {newChatAthletes.length === 0 ? (
+                <div className="p-4 text-center text-slate-500 text-sm">Nessun atleta trovato.</div>
+              ) : (
+                <div className="space-y-1">
+                  {newChatAthletes.map(a => (
+                    <button
+                      key={a.id}
+                      onClick={() => handleStartNewChat(a)}
+                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-900/80 transition-colors text-left"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-bold">
+                        {a.firstName.charAt(0)}{a.lastName.charAt(0)}
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-bold text-white">{a.firstName} {a.lastName}</div>
+                        {!a.auth_user_id && <div className="text-[10px] text-amber-500 font-medium">Non attivato</div>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

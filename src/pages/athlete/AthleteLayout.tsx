@@ -3,11 +3,12 @@ import { useAuth } from '../../context/AuthContext';
 import { LogOut, Home, User } from 'lucide-react';
 import { AthleteDashboard } from './AthleteDashboard';
 import { WorkoutPlayer } from './WorkoutPlayer';
+import { AthleteChat } from './AthleteChat';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 
 export const AthleteLayout: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'home' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'profile' | 'messages'>('home');
   const [activeWorkout, setActiveWorkout] = useState<{ workout: WorkoutTemplate, exercises: WorkoutExercise[] } | null>(null);
 
   if (activeWorkout) {
@@ -43,9 +44,13 @@ export const AthleteLayout: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto p-4 pb-24">
-        {activeTab === 'home' ? (
+        {activeTab === 'home' && (
           <AthleteDashboard onStartWorkout={(workout, exercises) => setActiveWorkout({ workout, exercises })} />
-        ) : (
+        )}
+        {activeTab === 'messages' && (
+          <AthleteChat />
+        )}
+        {activeTab === 'profile' && (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 text-sm">
             <User className="w-12 h-12 mb-4 opacity-50" />
             <p>Il tuo profilo sarà disponibile a breve.</p>
@@ -68,6 +73,13 @@ export const AthleteLayout: React.FC = () => {
         >
           <User className="w-5 h-5" />
           <span className="text-[10px] font-medium">Profilo</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('messages')}
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl min-w-[64px] transition-all ${activeTab === 'messages' ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'text-slate-400'}`}
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>
+          <span className="text-[10px] font-medium">Messaggi</span>
         </button>
       </nav>
     </div>
