@@ -211,7 +211,7 @@ async function fetchGeminiWithRetry(
 }
 
 export async function fetchGeminiWithMultiKeyPool(
-  endpointPath: string,
+  endpointAction: string,
   options: RequestInit,
   onProgress?: (msg: string) => void
 ): Promise<Response> {
@@ -220,41 +220,42 @@ export async function fetchGeminiWithMultiKeyPool(
     throw new Error("Chiave API Gemini mancante. Verificare la configurazione del progetto.");
   }
 
+  const fallbackModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
   let lastResponse: Response | null = null;
   let lastErrorMsg = '';
 
-  for (let kIdx = 0; kIdx < keysPool.length; kIdx++) {
-    const key = keysPool[kIdx];
-    const fullUrl = `https://generativelanguage.googleapis.com/v1beta/${endpointPath}?key=${key}`;
+  for (const modelName of fallbackModels) {
+    for (let kIdx = 0; kIdx < keysPool.length; kIdx++) {
+      const key = keysPool[kIdx];
+      const fullUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}${endpointAction}?key=${key}`;
 
-    if (kIdx > 0 && onProgress) {
-      onProgress(`Rotazione Chiave IA (${kIdx + 1}/${keysPool.length}): Passaggio alla chiave di riserva Gemini...`);
-    }
+      try {
+        const response = await fetchGeminiWithRetry(fullUrl, options, onProgress, 1);
+        if (response.ok) {
+          return response;
+        }
 
-    try {
-      const response = await fetchGeminiWithRetry(fullUrl, options, onProgress, 2);
-      if (response.ok) {
-        return response;
+        lastResponse = response;
+        const errData = await response.clone().json().catch(() => ({}));
+        lastErrorMsg = errData.error?.message || `Errore HTTP ${response.status}`;
+
+        if (response.status === 429 || response.status === 403 || lastErrorMsg.toLowerCase().includes('quota')) {
+          console.warn(`Modello ${modelName} su chiave #${kIdx + 1} ha raggiunto la quota. Scalo al modello/chiave successivo...`);
+          if (onProgress) {
+            onProgress(`Sostituzione automatica modello (${modelName} -> Gemini Flash)...`);
+          }
+          continue;
+        } else {
+          return response;
+        }
+      } catch (e: any) {
+        lastErrorMsg = e.message || '';
       }
-
-      lastResponse = response;
-      const errData = await response.clone().json().catch(() => ({}));
-      lastErrorMsg = errData.error?.message || `Errore HTTP ${response.status}`;
-
-      if (response.status === 429 || response.status === 403 || lastErrorMsg.toLowerCase().includes('quota')) {
-        console.warn(`Chiave Gemini #${kIdx + 1} ha raggiunto il limite o è invalida, rotazione alla chiave successiva...`);
-        continue;
-      } else {
-        return response;
-      }
-    } catch (e: any) {
-      lastErrorMsg = e.message || '';
-      console.warn(`Errore sulla chiave Gemini #${kIdx + 1}, tentativo con chiave successiva...`);
     }
   }
 
   if (lastResponse) return lastResponse;
-  throw new Error(`Quota temporanea Gemini superata (20 req/min). Attendi qualche secondo o inserisci una seconda chiave nel file .env.`);
+  throw new Error(`Quota temporanea Gemini superata (20 req/min). Attendi 30 secondi o attiva il piano Pay-As-You-Go su Google AI Studio.`);
 }
 
 export async function generateWorkoutWithAI(
@@ -436,7 +437,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       if (onProgress) onProgress(`Generazione in corso con Gemini 3.6 Flash...`);
 
       const response = await fetchGeminiWithMultiKeyPool(
-        'models/gemini-3.6-flash:generateContent',
+        ':generateContent',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
