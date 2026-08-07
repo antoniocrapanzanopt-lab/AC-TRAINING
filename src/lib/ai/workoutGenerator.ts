@@ -285,17 +285,19 @@ export function expandMesocycleWeeks(
 
   const maxGenWeek = Math.max(...normalized.map(e => e.week_number), 1);
 
-  // Se sono state generate meno settimane di quelle richieste (es. 4 settimane anziché 12 per limiti di token)
+  // Se sono state generate meno settimane di quelle richieste (es. 1 o 4 settimane anziché 12 per limiti di token)
   if (requestedWeeks > maxGenWeek) {
     const result: AIWorkoutExercise[] = [...normalized];
+    const rirProgression = ['RIR 3', 'RIR 2', 'RIR 1', 'RIR 4 (Scarico)'];
 
     for (let w = maxGenWeek + 1; w <= requestedWeeks; w++) {
       const baseWeek = ((w - 1) % Math.min(maxGenWeek, 4)) + 1;
       const baseWeekExercises = normalized.filter(e => e.week_number === baseWeek);
       const blockIndex = Math.floor((w - 1) / 4);
+      const weekInBlock = (w - 1) % 4;
 
       const expandedForWeek = baseWeekExercises.map(ex => {
-        let newRir = ex.rir_target;
+        let newRir = rirProgression[weekInBlock] || ex.rir_target;
         let newWeight = ex.target_weight;
 
         if (blockIndex === 1) {
@@ -340,8 +342,9 @@ export async function generateWorkoutWithAI(
 
   const exerciseNames = params.coachExercises.map(e => e.name).join(', ');
 
-  // Se le settimane sono > 4 (es. 8 o 12), chiediamo all'IA le 4 settimane chiave che poi espandiamo
-  const weeksToPrompt = Math.min(params.weeks, 4);
+  // Se i giorni o il minutaggio sono elevati (es. 7 giorni / 120 min), chiediamo all'IA 1 settimana master completa con 7-10 esercizi per seduta
+  // Questo evita di superare il limite di 8192 token di output di Gemini ed evita risposte troncate
+  const weeksToPrompt = (params.daysPerWeek >= 5 || (params.sessionDurationMinutes || 60) >= 90) ? 1 : Math.min(params.weeks, 4);
   const daysToPrompt = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].slice(0, Math.min(params.daysPerWeek, 7));
 
   const targetMin = params.sessionDurationMinutes || 60;
