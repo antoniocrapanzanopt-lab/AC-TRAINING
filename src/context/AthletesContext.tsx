@@ -136,6 +136,15 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (athRes.data) {
       setAthletes(athRes.data.map(mapAthleteFromDB));
+
+      // Auto-assegna il coach id reale agli atleti in DB che ne sono sprovvisti
+      if ((user.role === 'owner' || user.role === 'coach') && user.id && user.id !== 'demo-local') {
+        athRes.data.forEach(async (row) => {
+          if (!row.assigned_coach_id || row.assigned_coach_id === 'local-owner') {
+            await supabase.from('athletes').update({ assigned_coach_id: user.id }).eq('id', row.id);
+          }
+        });
+      }
     }
 
     if (notesRes.data) {

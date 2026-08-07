@@ -32,21 +32,51 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
     if (athleteMessages.length > 0) {
       const firstMsg = athleteMessages[0];
       const foundCoachId = firstMsg.sender_id === user?.id ? firstMsg.receiver_id : firstMsg.sender_id;
-      setCoachId(foundCoachId);
+      if (foundCoachId) setCoachId(foundCoachId);
     } else if (user?.id) {
-      // Tenta di recuperare il coach assegnato
+      // Risoluzione robusta del Coach ID
       supabase
         .from('athletes')
         .select('assigned_coach_id')
         .eq('auth_user_id', user.id)
         .maybeSingle()
-        .then(({ data }) => {
-          if (data?.assigned_coach_id) {
-            setCoachId(data.assigned_coach_id);
+        .then(async ({ data }) => {
+          let cid = data?.assigned_coach_id;
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          
+          if (!cid || !uuidRegex.test(cid)) {
+            // Cerchiamo qualsiasi assigned_coach_id valido presente nella tabella athletes
+            const { data: anyCoach } = await supabase
+              .from('athletes')
+              .select('assigned_coach_id')
+              .not('assigned_coach_id', 'is', null)
+              .neq('assigned_coach_id', 'local-owner')
+              .neq('assigned_coach_id', '')
+              .limit(1)
+              .maybeSingle();
+              
+            if (anyCoach?.assigned_coach_id && uuidRegex.test(anyCoach.assigned_coach_id)) {
+              cid = anyCoach.assigned_coach_id;
+            } else {
+              // Cerchiamo se ci sono messaggi inviati nel DB da altri utenti
+              const { data: msgData } = await supabase
+                .from('messages')
+                .select('sender_id')
+                .neq('sender_id', user.id)
+                .limit(1)
+                .maybeSingle();
+              if (msgData?.sender_id) {
+                cid = msgData.sender_id;
+              }
+            }
+          }
+          
+          if (cid) {
+            setCoachId(cid);
           }
         });
     }
-  }, [messages, user]);
+  }, [athleteMessages, user]);
 
   useEffect(() => {
     if (chatContainerRef.current) {
