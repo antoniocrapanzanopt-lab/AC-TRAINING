@@ -219,6 +219,30 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
+    // Se il destinatario è ancora fittizio e chi invia è un atleta, cerchiamo il coach reale
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if ((!finalReceiverId || finalReceiverId === 'demo-local' || !uuidRegex.test(finalReceiverId)) && user.role === 'athlete') {
+      const { data: dbAth } = await supabase
+        .from('athletes')
+        .select('assigned_coach_id')
+        .eq('auth_user_id', senderAuthId)
+        .maybeSingle();
+        
+      if (dbAth?.assigned_coach_id && uuidRegex.test(dbAth.assigned_coach_id)) {
+        finalReceiverId = dbAth.assigned_coach_id;
+      } else {
+        const { data: anyMsg } = await supabase
+          .from('messages')
+          .select('sender_id')
+          .neq('sender_id', senderAuthId)
+          .limit(1)
+          .maybeSingle();
+        if (anyMsg?.sender_id && uuidRegex.test(anyMsg.sender_id)) {
+          finalReceiverId = anyMsg.sender_id;
+        }
+      }
+    }
+
     // 3. Update ottimistico locale
     const tempMsg: Message = {
       id: `temp-${Date.now()}`,
