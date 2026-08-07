@@ -196,7 +196,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setActiveConversationId(conv ? conv.athlete_id : null);
   }, []);
 
-  const sendMessage = async (receiverId: string, content: string) => {
+  const sendMessage = useCallback(async (receiverId: string, content: string) => {
     if (!user) return;
     
     // 1. Risolvi subito il mittente e il destinatario dal contesto in memoria (0ms)
@@ -204,7 +204,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const targetAthlete = athletes.find(a => a.id === receiverId || a.auth_user_id === receiverId);
     let finalReceiverId = targetAthlete?.auth_user_id || receiverId;
 
-    // 2. Update ottimistico ISTANTANEO (0ms) - La bolla appare subito a schermo
+    // 2. Update ottimistico ISTANTANEO (0ms)
     const tempMsg: Message = {
       id: `temp-${Date.now()}`,
       sender_id: senderAuthId,
@@ -223,7 +223,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         
         if ((!finalReceiverId || finalReceiverId === 'demo-local' || !uuidRegex.test(finalReceiverId)) && user.role === 'athlete') {
-          // 1. Tenta tramite l'ID anagrafico (più sicuro se l'auth non è ancora linkato)
+          // 1. Tenta tramite l'ID anagrafico
           if (user.athleteId) {
             const { data: dbAth } = await supabase
               .from('athletes')
@@ -247,7 +247,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
           }
           
-          // 3. Fallback Assoluto: Cerca qualsiasi Coach esistente nel sistema (Essendo un'app demo single-coach)
+          // 3. Fallback Assoluto: Cerca qualsiasi Coach esistente nel sistema
           if (!finalReceiverId || finalReceiverId === 'demo-local') {
             const { data: anyCoach } = await supabase
               .from('athletes')
@@ -259,7 +259,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (anyCoach?.assigned_coach_id && uuidRegex.test(anyCoach.assigned_coach_id)) {
               finalReceiverId = anyCoach.assigned_coach_id;
             } else {
-              // 4. Fallback Estremo: Cerca qualsiasi utente che abbia mandato un messaggio che non sia io
+              // 4. Fallback Estremo
               const { data: anyMsg } = await supabase
                 .from('messages')
                 .select('sender_id')
@@ -292,19 +292,23 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         console.error('Async message send error:', err);
       }
     })();
-  };
+  }, [user, athletes]);
 
-  const markAsRead = async (senderId: string) => {
+  const markAsRead = useCallback(async (senderId: string) => {
     if (!user) return;
 
-    // Optimistic update
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.sender_id === senderId && msg.receiver_id === user.id && !msg.is_read
-          ? { ...msg, is_read: true }
-          : msg
-      )
-    );
+    // Optimistic update solo se ci sono messaggi da leggere, previene re-render infiniti
+    setMessages((prev) => {
+      let hasChanges = false;
+      const next = prev.map((msg) => {
+        if (msg.sender_id === senderId && msg.receiver_id === user.id && !msg.is_read) {
+          hasChanges = true;
+          return { ...msg, is_read: true };
+        }
+        return msg;
+      });
+      return hasChanges ? next : prev;
+    });
 
     const { error } = await supabase
       .from('messages')
@@ -315,9 +319,8 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (error) {
       console.error('Error marking as read:', error);
-      // Revert in un caso reale...
     }
-  };
+  }, [user]);
 
   return (
     <MessagesContext.Provider
