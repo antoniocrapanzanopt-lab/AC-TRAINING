@@ -14,6 +14,7 @@ import { useAuth } from './AuthContext';
 
 const mapAthleteFromDB = (row: any): Athlete => ({
   id: row.id,
+  auth_user_id: row.auth_user_id || undefined,
   firstName: row.first_name || '',
   lastName: row.last_name || '',
   fullName: `${row.first_name || ''} ${row.last_name || ''}`.trim(),
@@ -48,6 +49,7 @@ const mapAthleteFromDB = (row: any): Athlete => ({
 
 const mapAthleteToDB = (a: any): any => {
   const data: any = {};
+  if (a.auth_user_id !== undefined) data.auth_user_id = a.auth_user_id;
   if (a.firstName !== undefined) data.first_name = a.firstName;
   if (a.lastName !== undefined) data.last_name = a.lastName;
   if (a.email !== undefined) data.email = a.email;
