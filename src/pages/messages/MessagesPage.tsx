@@ -69,17 +69,15 @@ export const MessagesPage: React.FC = () => {
   // Messaggi della conversazione attiva con id canonico
   const activeConversationMessages = useMemo(() => {
     if (!activeConversation) return [];
-    return messages.filter(m => {
-      const otherId = m.sender_id === user?.id ? m.receiver_id : m.sender_id;
-      const athlete = athletes.find(a => a.auth_user_id === otherId || a.id === otherId);
-      const canonicalId = athlete ? (athlete.auth_user_id || athlete.id) : otherId;
-      return (
-        canonicalId === activeConversation.athlete_id ||
-        m.sender_id === activeConversation.athlete_id ||
-        m.receiver_id === activeConversation.athlete_id
-      );
-    });
-  }, [messages, activeConversation, user, athletes]);
+    const activeAthlete = athletes.find(a => a.auth_user_id === activeConversation.athlete_id || a.id === activeConversation.athlete_id);
+    const validAthleteIds = new Set([
+      activeConversation.athlete_id,
+      activeAthlete?.id,
+      activeAthlete?.auth_user_id,
+    ].filter(Boolean) as string[]);
+
+    return messages.filter(m => validAthleteIds.has(m.sender_id) || validAthleteIds.has(m.receiver_id));
+  }, [messages, activeConversation, athletes]);
 
   const handleStartNewChat = (athlete: any) => {
     const chatUserId = athlete.auth_user_id || athlete.id;

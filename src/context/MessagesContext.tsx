@@ -194,34 +194,57 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const sendMessage = async (receiverId: string, content: string) => {
     if (!user) return;
     
-    // Optistic update (optional, relying on realtime is also fine)
+    // 1. Recupera l'autenticazione reale di chi invia (evita mismatch con auth.uid)
+    const { data: authData } = await supabase.auth.getUser();
+    const senderAuthId = authData?.user?.id || user.id;
+
+    // 2. Risolvi il destinatario reale
+    let finalReceiverId = receiverId;
+    const targetAthlete = athletes.find(a => a.id === receiverId || a.auth_user_id === receiverId);
+    
+    if (targetAthlete) {
+      if (targetAthlete.auth_user_id) {
+        finalReceiverId = targetAthlete.auth_user_id;
+      } else {
+        // Tenta il recupero fresco dal DB per atleti appena registrati
+        const { data: dbAth } = await supabase
+          .from('athletes')
+          .select('auth_user_id')
+          .eq('id', targetAthlete.id)
+          .maybeSingle();
+          
+        if (dbAth?.auth_user_id) {
+          finalReceiverId = dbAth.auth_user_id;
+        }
+      }
+    }
+
+    // 3. Update ottimistico locale
     const tempMsg: Message = {
-        id: `temp-${Date.now()}`,
-        sender_id: user.id,
-        receiver_id: receiverId,
-        content,
-        created_at: new Date().toISOString(),
-        is_read: false
+      id: `temp-${Date.now()}`,
+      sender_id: senderAuthId,
+      receiver_id: finalReceiverId,
+      content,
+      created_at: new Date().toISOString(),
+      is_read: false
     };
     setMessages(prev => [...prev, tempMsg]);
 
+    // 4. Inserimento in Supabase
     const { data, error } = await supabase
       .from('messages')
       .insert({
-        sender_id: user.id,
-        receiver_id: receiverId,
+        sender_id: senderAuthId,
+        receiver_id: finalReceiverId,
         content: content,
       })
       .select()
       .single();
 
     if (error) {
-      console.error('Error sending message (likely demo user):', error);
-      // In un'app reale: setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
-      // Qui lo manteniamo per permettere di testare l'interfaccia UI senza un auth_user_id valido.
-    } else {
-        // Rimpiazza temp con reale
-        setMessages(prev => prev.map(m => m.id === tempMsg.id ? data : m));
+      console.error('Error sending message to Supabase:', error);
+    } else if (data) {
+      setMessages(prev => prev.map(m => m.id === tempMsg.id ? data : m));
     }
   };
 
