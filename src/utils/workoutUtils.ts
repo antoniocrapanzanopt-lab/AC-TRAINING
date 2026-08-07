@@ -12,20 +12,24 @@ export function calculateEstimatedWorkoutTime(exercises: Partial<WorkoutExercise
     const sets = ex.sets || 1;
     const rest = ex.rest_seconds || 60;
     
-    // Durata lavoro per serie: se a tempo usa duration_seconds, altrimenti stimiamo 30s - 45s per serie
-    const workPerSetMin = ex.is_time_based ? (ex.duration_seconds || 30) : 30;
-    const workPerSetMax = ex.is_time_based ? (ex.duration_seconds || 30) : 45;
+    // Tempo di esecuzione per serie: 40s - 55s per reps classiche coi pesi
+    const workPerSetMin = ex.is_time_based ? (ex.duration_seconds || 30) : 40;
+    const workPerSetMax = ex.is_time_based ? (ex.duration_seconds || 30) : 55;
 
+    // Tempo totale lavoro + recupero per le serie
     const setTotalMin = sets * (workPerSetMin + rest);
     const setTotalMax = sets * (workPerSetMax + rest);
 
-    totalMinSeconds += setTotalMin;
-    totalMaxSeconds += setTotalMax;
+    // Cambio postazione/carico bilanciere/manubri: 90s ad esercizio
+    const transitionSeconds = 90;
+
+    totalMinSeconds += setTotalMin + transitionSeconds;
+    totalMaxSeconds += setTotalMax + transitionSeconds;
   });
 
-  // Aggiungiamo 5 minuti di riscaldamento/defaticamento
-  const minMin = Math.max(5, Math.round((totalMinSeconds + 300) / 60));
-  const maxMin = Math.max(10, Math.round((totalMaxSeconds + 300) / 60));
+  // Aggiungiamo 8-10 minuti di riscaldamento generale, mobilità e defaticamento
+  const minMin = Math.max(8, Math.round((totalMinSeconds + 480) / 60));
+  const maxMin = Math.max(12, Math.round((totalMaxSeconds + 600) / 60));
 
   if (minMin === maxMin) {
     return { minMin, maxMin, display: `${minMin} min` };

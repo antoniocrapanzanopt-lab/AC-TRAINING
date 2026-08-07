@@ -344,6 +344,11 @@ export async function generateWorkoutWithAI(
   const weeksToPrompt = Math.min(params.weeks, 4);
   const daysToPrompt = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].slice(0, Math.min(params.daysPerWeek, 7));
 
+  const targetMin = params.sessionDurationMinutes || 60;
+  let recommendedExCount = '5 - 7';
+  if (targetMin <= 45) recommendedExCount = '4 - 5';
+  else if (targetMin >= 90) recommendedExCount = '7 - 10';
+
   const systemPrompt = `
 Sei un Master Strength & Conditioning Coach ed esperto di metodologia dell'allenamento di livello mondiale.
 Il tuo compito è generare un programma di allenamento ESTREMAMENTE PERSONALIZZATO, scientifico e pronto all'uso, diviso per settimane e per giorni, restituendo ESCLUSIVAMENTE un array JSON strutturato.
@@ -361,9 +366,9 @@ PRINCIPI DI PROGRAMMAZIONE D'ÉLITE DA APPLICARE:
    - Se Intermedio: 14-18 serie totali per gruppo muscolare/settimana.
    - Se Avanzato: 18-22 serie totali per gruppo muscolare/settimana, intensificazione mirata.
 
-3. **TEMPO PER SEDUTA & TIMING**:
-   - Durata massima consigliata per sessione: ${params.sessionDurationMinutes || 60} minuti.
-   - Struttura ciascuna seduta con da 4 a 7 esercizi ben distribuiti in base ai ${params.sessionDurationMinutes || 60} minuti a disposizione!
+3. **DURATA SEDUTA & CALIBRAZIONE TEMPO (${targetMin} MINUTI)**:
+   - L'atleta ha selezionato ben **${targetMin} MINUTI DI TEMPO MASSIMO PER SEDUTA**!
+   - TASSATIVO: Calibra la quantità di esercizi e serie affinché la seduta sia ricca e completa per occupare pienamente i ${targetMin} minuti a disposizione! Per una durata di ${targetMin} minuti DEVI inserire esattamente **${recommendedExCount} ESERCIZI per ciascuna giornata** (con 4-5 serie per esercizio e recuperi di 90-180s per i multiarticolari).
 
 4. **GERARCHIA DEGLI ESERCIZI NELLE SEDUTE**:
    - Per ciascun giorno, ordina gli esercizi secondo la fisiologia dell'allenamento:
@@ -383,7 +388,7 @@ LIBRERIA ESERCIZI PREFERITA COACH:
 Scegli gli esercizi PRINCIPALMENTE da questa libreria. Se necessario per l'adattamento biomeccanico, proponi esercizi adatti.
 
 REGOLE TASSATIVE DI QUANTITÀ E NOMI GIORNO:
-1. **COPERTURA GIORNI E QUANTITÀ**: DEVI generare esercizi per TUTTI i ${params.daysPerWeek} giorni per OGNI settimana (da week_number 1 a ${weeksToPrompt}). Ogni singolo giorno (${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}) DEVE contenere da 4 a 7 esercizi completi. È severamente vietato generare solo 1 o 2 esercizi o saltare dei giorni!
+1. **COPERTURA GIORNI E QUANTITÀ**: DEVI generare esercizi per TUTTI i ${params.daysPerWeek} giorni per OGNI settimana (da week_number 1 a ${weeksToPrompt}). Ogni singolo giorno (${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}) DEVE contenere esattamente **${recommendedExCount} esercizi completi**. È severamente vietato generare solo 1, 2 o 4 esercizi quando il tempo a disposizione è di ${targetMin} minuti!
 2. **FORMATO NOMI GIORNO**: Il campo 'day_name' deve essere ESATTAMENTE uno tra: ${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}.
 
 Struttura JSON richiesta per ogni esercizio (array di oggetti):
