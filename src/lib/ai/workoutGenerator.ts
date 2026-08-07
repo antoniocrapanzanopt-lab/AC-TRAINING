@@ -141,6 +141,54 @@ export function safeParseWorkoutJSON(rawText: string): AIWorkoutExercise[] {
   throw new Error("Impossibile interpretare il formato del programma generato dall'IA. Riprova la generazione.");
 }
 
+async function fetchGeminiWithRetry(
+  url: string,
+  options: RequestInit,
+  onProgress?: (msg: string) => void,
+  maxRetries = 3
+): Promise<Response> {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    attempt++;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        return response;
+      }
+
+      if (response.status === 429 && attempt < maxRetries) {
+        const errData = await response.clone().json().catch(() => ({}));
+        const msg = errData.error?.message || '';
+        
+        const retryMatch = msg.match(/retry in ([0-9\.]+)\s*s/i);
+        const delaySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) + 1 : 3.5;
+        const delayMs = Math.max(3000, delaySec * 1000);
+
+        if (onProgress) {
+          onProgress(`Quota temporanea raggiunta (20 req/min). Attesa di ${Math.round(delayMs / 1000)}s per il tentativo ${attempt + 1}/${maxRetries}...`);
+        }
+        await new Promise(res => setTimeout(res, delayMs));
+        continue;
+      }
+
+      return response;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error("La generazione dell'IA ha impiegato troppo tempo.");
+      }
+      if (attempt >= maxRetries) throw err;
+      await new Promise(res => setTimeout(res, 3000));
+    }
+  }
+  throw new Error("Impossibile completare la richiesta dopo diversi tentativi.");
+}
+
 export async function generateWorkoutWithAI(
   params: GenerateWorkoutParams,
   onProgress?: (msg: string) => void
@@ -248,8 +296,6 @@ IMPORTANTE: Assicurati di generare tra 4 e 7 esercizi per CIASCUN giorno di CIAS
 Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
 `;
 
-  if (onProgress) onProgress(`Generazione del programma in corso con Gemini 3.6 Flash...`);
-
   try {
     if (params.provider === 'openai') {
       const response = await fetch(OPENAI_API_URL, {
@@ -325,51 +371,51 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
 
       for (const modelName of geminiModels) {
         if (onProgress) onProgress(`Generazione in corso con Gemini 3.6 Flash...`);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 90000);
 
         try {
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              system_instruction: { parts: [{ text: systemPrompt }] },
-              contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-              generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: 8192,
-                responseMimeType: "application/json",
-                responseSchema: {
-                  type: "object",
-                  properties: {
-                    exercises: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          week_number: { type: "number" },
-                          day_name: { type: "string" },
-                          name: { type: "string" },
-                          sets: { type: "number" },
-                          reps_target: { type: "string" },
-                          rest_seconds: { type: "number" },
-                          target_weight: { type: "string" },
-                          rir_target: { type: "string" },
-                          tut: { type: "string" },
-                          notes: { type: "string" }
-                        },
-                        required: ["week_number", "day_name", "name", "sets", "reps_target", "rest_seconds"]
+          const response = await fetchGeminiWithRetry(
+            url,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: systemPrompt }] },
+                contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+                generationConfig: {
+                  temperature: 0.7,
+                  maxOutputTokens: 8192,
+                  responseMimeType: "application/json",
+                  responseSchema: {
+                    type: "object",
+                    properties: {
+                      exercises: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            week_number: { type: "number" },
+                            day_name: { type: "string" },
+                            name: { type: "string" },
+                            sets: { type: "number" },
+                            reps_target: { type: "string" },
+                            rest_seconds: { type: "number" },
+                            target_weight: { type: "string" },
+                            rir_target: { type: "string" },
+                            tut: { type: "string" },
+                            notes: { type: "string" }
+                          },
+                          required: ["week_number", "day_name", "name", "sets", "reps_target", "rest_seconds"]
+                        }
                       }
-                    }
-                  },
-                  required: ["exercises"]
+                    },
+                    required: ["exercises"]
+                  }
                 }
-              }
-            })
-          });
-          clearTimeout(timeoutId);
+              })
+            },
+            onProgress
+          );
 
           if (response.ok) {
             data = await response.json();
@@ -384,53 +430,15 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
             }
           }
         } catch (err: any) {
-          clearTimeout(timeoutId);
-          if (err.name === 'AbortError') {
-            lastError = new Error("La generazione dell'IA ha impiegato troppo tempo.");
-          } else if (err.message?.includes('Chiave API Gemini non valida')) {
+          if (err.message?.includes('Chiave API Gemini non valida')) {
             throw err;
-          } else {
-            lastError = err;
           }
+          lastError = err;
         }
       }
 
       if (!data) {
-        for (const modelName of geminiModels.slice(0, 2)) {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 90000);
-          try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal,
-              body: JSON.stringify({
-                contents: [{
-                  role: "user",
-                  parts: [{ text: `${systemPrompt}\n\n${userPrompt}\n\nRISPONDI ESCLUSIVAMENTE IN FORMATO JSON VALIDO SENZA MARKDOWN:\n{"exercises": [...]}` }]
-                }],
-                generationConfig: {
-                  temperature: 0.7,
-                  maxOutputTokens: 8192,
-                  responseMimeType: "application/json"
-                }
-              })
-            });
-            clearTimeout(timeoutId);
-
-            if (response.ok) {
-              data = await response.json();
-              break;
-            }
-          } catch (e) {
-            clearTimeout(timeoutId);
-          }
-        }
-      }
-
-      if (!data) {
-        throw new Error(lastError?.message || "Chiave API Gemini non valida o limite quota superato. Verifica la tua chiave su Google AI Studio.");
+        throw new Error(lastError?.message || "Quota temporanea Gemini superata (20 req/min). Attendi qualche secondo e riprova.");
       }
 
       let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
