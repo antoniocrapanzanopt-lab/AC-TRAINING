@@ -17,6 +17,7 @@ import {
   Gift,
   FileText,
   Globe,
+  Settings,
 } from 'lucide-react';
 import { CalendarEvent, CalendarEventType, CalendarEventFormData } from '../../types';
 import { useCalendar } from '../../context/CalendarContext';
@@ -46,8 +47,6 @@ export const CalendarPage: React.FC = () => {
     addCustomEvent,
     updateCustomEvent,
     deleteCustomEvent,
-    isGoogleConnected,
-    googleEmail,
     syncGoogleCalendar,
   } = useCalendar();
   const { showSuccess, showInfo } = useToast();
@@ -71,10 +70,6 @@ export const CalendarPage: React.FC = () => {
   const month = currentDate.getMonth();
 
   const monthName = new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' }).format(currentDate);
-
-  const handleToggleGoogle = () => {
-    setIsGoogleModalOpen(true);
-  };
 
   const handleManualGoogleSync = async () => {
     setIsSyncingGoogle(true);
@@ -200,29 +195,22 @@ export const CalendarPage: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={handleToggleGoogle}
+            onClick={handleManualGoogleSync}
             disabled={isSyncingGoogle}
-            title={isGoogleConnected ? `Connesso a ${googleEmail}` : 'Connetti il tuo Google Calendar'}
-            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all shadow-sm ${
-              isGoogleConnected
-                ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
-                : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
+            title="Sincronizza subito Google Calendar"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors text-xs font-bold shadow-sm"
           >
-            <Globe className="w-4 h-4 text-sky-400" />
-            {isGoogleConnected ? 'Google Connesso' : 'Connetti Google Calendar'}
+            <RefreshCw className={`w-4 h-4 text-sky-400 ${isSyncingGoogle ? 'animate-spin' : ''}`} />
+            <span>Sincronizza Google</span>
           </button>
-          
-          {isGoogleConnected && (
-            <button
-              onClick={handleManualGoogleSync}
-              disabled={isSyncingGoogle}
-              title="Sincronizza subito Google Calendar"
-              className="p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncingGoogle ? 'animate-spin text-sky-400' : ''}`} />
-            </button>
-          )}
+
+          <button
+            onClick={() => setIsGoogleModalOpen(true)}
+            title="Configura Sincronizzazione Google Calendar"
+            className="p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
 
           <button
             onClick={() => { setEditingEvent(null); setIsModalOpen(true); }}

@@ -98,18 +98,42 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setCustomEvents(saved);
     }
 
-    // Inizializza stato Google Calendar
+    // Inizializza stato Google Calendar (attivo di default)
     const gState = getGoogleCalendarState();
-    setIsGoogleConnected(gState.isConnected);
-    setGoogleEmail(gState.email);
+    const activeEmail = gState.email || 'antonio.crapanzanopt@gmail.com';
+    setIsGoogleConnected(true);
+    setGoogleEmail(activeEmail);
 
-    if (gState.isConnected && gState.email) {
-      fetchGoogleEvents(gState.email).then(events => {
-        setGoogleEvents(events);
-      });
+    if (!gState.isConnected) {
+      setGoogleCalendarState(true, activeEmail);
     }
 
+    // Sincronizzazione iniziale
+    fetchGoogleEvents(activeEmail).then(events => {
+      setGoogleEvents(events);
+    });
+
+    // Sincronizzazione automatica periodica costante (ogni 60 secondi)
+    const syncInterval = setInterval(() => {
+      fetchGoogleEvents(activeEmail).then(events => {
+        setGoogleEvents(events);
+      });
+    }, 60000);
+
+    // Sincronizzazione automatica quando la finestra torna in focus
+    const handleFocus = () => {
+      fetchGoogleEvents(activeEmail).then(events => {
+        setGoogleEvents(events);
+      });
+    };
+    window.addEventListener('focus', handleFocus);
+
     setIsLoading(false);
+
+    return () => {
+      clearInterval(syncInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const syncGoogleCalendar = useCallback(async () => {
