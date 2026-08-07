@@ -22,6 +22,7 @@ import { CalendarEvent, CalendarEventType, CalendarEventFormData } from '../../t
 import { useCalendar } from '../../context/CalendarContext';
 import { useToast } from '../../context/ToastContext';
 import { CalendarModal } from '../../components/calendar/CalendarModal';
+import { GoogleConnectModal } from '../../components/calendar/GoogleConnectModal';
 
 const typeConfig: Record<CalendarEventType, { label: string; color: string; icon: React.FC<{ className?: string }> }> = {
   payment: { label: 'Pagamento', color: 'text-amber-400 bg-amber-400/10 border-amber-400/20', icon: Euro },
@@ -47,8 +48,6 @@ export const CalendarPage: React.FC = () => {
     deleteCustomEvent,
     isGoogleConnected,
     googleEmail,
-    connectGoogleCalendar,
-    disconnectGoogleCalendar,
     syncGoogleCalendar,
   } = useCalendar();
   const { showSuccess, showInfo } = useToast();
@@ -59,6 +58,7 @@ export const CalendarPage: React.FC = () => {
   const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
 
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; eventId: string | null }>({
@@ -72,16 +72,8 @@ export const CalendarPage: React.FC = () => {
 
   const monthName = new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' }).format(currentDate);
 
-  const handleToggleGoogle = async () => {
-    if (isGoogleConnected) {
-      disconnectGoogleCalendar();
-      showInfo('Disconnesso', 'Google Calendar scollegato con successo.');
-    } else {
-      setIsSyncingGoogle(true);
-      await connectGoogleCalendar('antonio.crapanzanopt@gmail.com');
-      setIsSyncingGoogle(false);
-      showSuccess('Google Calendar Connesso', 'Sincronizzazione completata per antonio.crapanzanopt@gmail.com');
-    }
+  const handleToggleGoogle = () => {
+    setIsGoogleModalOpen(true);
   };
 
   const handleManualGoogleSync = async () => {
@@ -443,6 +435,11 @@ export const CalendarPage: React.FC = () => {
         onSave={handleSaveEvent}
         editingEvent={editingEvent}
         initialDate={selectedDateStr}
+      />
+
+      <GoogleConnectModal
+        isOpen={isGoogleModalOpen}
+        onClose={() => setIsGoogleModalOpen(false)}
       />
 
       {/* Modal Conferma Eliminazione */}

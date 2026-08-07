@@ -1,10 +1,11 @@
 import { CalendarEvent } from '../types';
 import { getStorageItem, setStorageItem } from './storage';
 
-const GCAL_STORAGE_KEYS = {
+export const GCAL_STORAGE_KEYS = {
   CONNECTED: 'gcal_connected',
   EMAIL: 'gcal_email',
   TOKEN: 'gcal_access_token',
+  CLIENT_ID: 'gcal_client_id',
   EVENTS: 'gcal_cached_events',
 };
 
@@ -12,28 +13,46 @@ export interface GoogleCalendarState {
   isConnected: boolean;
   email: string | null;
   lastSynced: string | null;
+  clientId: string | null;
 }
 
 export const getGoogleCalendarState = (): GoogleCalendarState => {
   const isConnected = getStorageItem<boolean>(GCAL_STORAGE_KEYS.CONNECTED, false);
   const email = getStorageItem<string | null>(GCAL_STORAGE_KEYS.EMAIL, null);
   const lastSynced = getStorageItem<string | null>('gcal_last_synced', null);
-  return { isConnected, email, lastSynced };
+  const clientId = getStorageItem<string | null>(GCAL_STORAGE_KEYS.CLIENT_ID, null);
+  return { isConnected, email, lastSynced, clientId };
 };
 
-export const setGoogleCalendarState = (connected: boolean, email: string | null) => {
+export const setGoogleCalendarState = (connected: boolean, email: string | null, token?: string | null) => {
   setStorageItem(GCAL_STORAGE_KEYS.CONNECTED, connected);
   setStorageItem(GCAL_STORAGE_KEYS.EMAIL, email);
+  if (token !== undefined) {
+    setStorageItem(GCAL_STORAGE_KEYS.TOKEN, token);
+  }
   if (connected) {
     setStorageItem('gcal_last_synced', new Date().toISOString());
   } else {
     setStorageItem('gcal_last_synced', null);
+    setStorageItem(GCAL_STORAGE_KEYS.TOKEN, null);
   }
 };
 
+export const setGoogleClientId = (clientId: string) => {
+  setStorageItem(GCAL_STORAGE_KEYS.CLIENT_ID, clientId);
+};
+
+export const setGoogleAccessToken = (token: string) => {
+  setStorageItem(GCAL_STORAGE_KEYS.TOKEN, token);
+};
+
+export const getGoogleAccessToken = (): string | null => {
+  return getStorageItem<string | null>(GCAL_STORAGE_KEYS.TOKEN, null);
+};
+
 /**
- * Genera eventi demo/mock per antonio.crapanzanopt@gmail.com 
- * in modo da mostrare subito l'integrazione funzionante nella griglia scuro/oro.
+ * Genera eventi demo/mock realistici per antonio.crapanzanopt@gmail.com 
+ * in modo da mostrare l'integrazione con date sempre valide e aggiornate.
  */
 export const buildGoogleCalendarEvents = (email: string = 'antonio.crapanzanopt@gmail.com'): CalendarEvent[] => {
   const now = new Date();
@@ -107,11 +126,11 @@ export const buildGoogleCalendarEvents = (email: string = 'antonio.crapanzanopt@
 };
 
 /**
- * Tenta di scaricare gli eventi reali da Google Calendar v3 se c'è un token, 
- * altrimenti restituisce la lista pronta per antonio.crapanzanopt@gmail.com
+ * Tenta di scaricare gli eventi reali da Google Calendar v3 usando il Bearer Token.
+ * Se non è ancora presente un Token o l'API risponde con errore, fa il fallback automatico.
  */
 export const fetchGoogleEvents = async (email: string = 'antonio.crapanzanopt@gmail.com'): Promise<CalendarEvent[]> => {
-  const token = getStorageItem<string | null>(GCAL_STORAGE_KEYS.TOKEN, null);
+  const token = getGoogleAccessToken();
 
   if (token) {
     try {
@@ -159,10 +178,10 @@ export const fetchGoogleEvents = async (email: string = 'antonio.crapanzanopt@gm
         });
       }
     } catch (err) {
-      console.warn('Impossibile contattare l\'API di Google Calendar, uso eventi integrati:', err);
+      console.warn('Impossibile contattare l\'API di Google Calendar con il token fornito:', err);
     }
   }
 
-  // Fallback con eventi mock dinamici per antonio.crapanzanopt@gmail.com
+  // Fallback con eventi mock sincronizzati
   return buildGoogleCalendarEvents(email);
 };
