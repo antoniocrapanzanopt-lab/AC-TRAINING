@@ -297,11 +297,15 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const markAsRead = useCallback(async (senderId: string) => {
     if (!user) return;
 
+    // Resolves both PK and auth_user_id for the given sender
+    const targetAthlete = athletes.find(a => a.id === senderId || a.auth_user_id === senderId);
+    const validSenderIds = [senderId, targetAthlete?.id, targetAthlete?.auth_user_id].filter(Boolean) as string[];
+
     // Optimistic update solo se ci sono messaggi da leggere, previene re-render infiniti
     setMessages((prev) => {
       let hasChanges = false;
       const next = prev.map((msg) => {
-        if (msg.sender_id === senderId && msg.receiver_id === user.id && !msg.is_read) {
+        if (validSenderIds.includes(msg.sender_id) && msg.receiver_id === user.id && !msg.is_read) {
           hasChanges = true;
           return { ...msg, is_read: true };
         }
@@ -313,14 +317,14 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const { error } = await supabase
       .from('messages')
       .update({ is_read: true })
-      .eq('sender_id', senderId)
+      .in('sender_id', validSenderIds)
       .eq('receiver_id', user.id)
       .eq('is_read', false);
 
     if (error) {
       console.error('Error marking as read:', error);
     }
-  }, [user]);
+  }, [user, athletes]);
 
   return (
     <MessagesContext.Provider

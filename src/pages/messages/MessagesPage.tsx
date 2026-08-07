@@ -34,6 +34,7 @@ export const MessagesPage: React.FC = () => {
 
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [newChatSearch, setNewChatSearch] = useState('');
+  const [showChatMenu, setShowChatMenu] = useState(false);
   
   const { athletes } = useAthletes();
 
@@ -296,7 +297,7 @@ export const MessagesPage: React.FC = () => {
 
         {/* Right Side: Chat Window */}
         {activeConversation ? (
-          <div className="flex-1 flex flex-col bg-slate-950/20">
+          <div className="flex-1 flex flex-col bg-slate-950/20" onClick={() => setShowChatMenu(false)}>
             {/* Chat Header */}
             <div className="h-16 px-6 border-b border-[var(--color-panel-border)] flex items-center justify-between bg-slate-900/30">
               <div className="flex items-center gap-3">
@@ -310,9 +311,24 @@ export const MessagesPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <button className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
-                <MoreVertical className="w-5 h-5" />
-              </button>
+              <div className="relative">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setShowChatMenu(!showChatMenu); }}
+                  className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+                {showChatMenu && (
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden z-50">
+                    <button 
+                      onClick={() => setActiveConversation(null)}
+                      className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-slate-700 flex items-center gap-2"
+                    >
+                      <X className="w-4 h-4" /> Chiudi chat
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Chat Messages */}
