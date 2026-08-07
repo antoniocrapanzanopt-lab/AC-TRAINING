@@ -259,6 +259,77 @@ export async function fetchGeminiWithMultiKeyPool(
 }
 
 /**
+ * Garantisce che tutti i giorni della settimana (es. Giorno A, B, C, D, E, F, G) abbiano da 6 a 8 esercizi completi.
+ * Se l'IA ha interrotto la generazione per un giorno o ha saltato dei giorni a causa del limite di token,
+ * questa funzione completa ed integra in modo trasparente tutti i giorni mancanti.
+ */
+export function fillMissingDaysAndExercises(
+  exercises: AIWorkoutExercise[],
+  requestedDaysPerWeek: number,
+  coachExercises: ExerciseItem[]
+): AIWorkoutExercise[] {
+  if (!exercises || exercises.length === 0) return [];
+
+  const dayLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+  const targetDays = dayLetters.slice(0, Math.min(requestedDaysPerWeek, 7)).map(l => `Giorno ${l}`);
+
+  // Pool di esercizi complementari bilanciati
+  const fallbackExercisePool = coachExercises.length > 0 ? coachExercises : [
+    { name: 'Panca Piana con Manubri', category: 'Petto', equipment: 'Manubri' },
+    { name: 'Lat Machine Avanti Presa V', category: 'Dorso', equipment: 'Cavi' },
+    { name: 'Leg Press 45°', category: 'Gambe', equipment: 'Macchina' },
+    { name: 'Slow Press con Manubri', category: 'Spalle', equipment: 'Manubri' },
+    { name: 'Curl Bilanciere Sagomato EZ', category: 'Bicipiti', equipment: 'Bilanciere' },
+    { name: 'Pushdown Cavi con Corda', category: 'Tricipiti', equipment: 'Cavi' },
+    { name: 'Plank Addominali', category: 'Addominali', equipment: 'Corpo Libero' },
+    { name: 'Affondi Camminati con Manubri', category: 'Gambe', equipment: 'Manubri' },
+    { name: 'Pulley Basso Presa Stretta', category: 'Dorso', equipment: 'Cavi' },
+    { name: 'Alzate Laterali ai Cavi', category: 'Spalle', equipment: 'Cavi' },
+    { name: 'Leg Curl Seduto', category: 'Gambe', equipment: 'Macchina' },
+    { name: 'Chest Press Isotonica', category: 'Petto', equipment: 'Macchina' }
+  ];
+
+  let poolIdx = 0;
+  const getNextFallbackExercise = () => {
+    const ex = fallbackExercisePool[poolIdx % fallbackExercisePool.length];
+    poolIdx++;
+    return ex;
+  };
+
+  const result: AIWorkoutExercise[] = [...exercises];
+  const weeks = Array.from(new Set(exercises.map(e => Number(e.week_number) || 1))).sort((a, b) => a - b);
+  if (weeks.length === 0) weeks.push(1);
+
+  for (const weekNum of weeks) {
+    for (const dayName of targetDays) {
+      const existingExs = result.filter(e => (e.week_number || 1) === weekNum && (e.day_name || '').trim().toLowerCase() === dayName.toLowerCase());
+
+      // Se il giorno ha meno di 5 esercizi (o se è incompleto/troncato dall'IA)
+      if (existingExs.length < 6) {
+        const missingCount = 6 - existingExs.length;
+        for (let i = 0; i < missingCount; i++) {
+          const fallback = getNextFallbackExercise();
+          result.push({
+            week_number: weekNum,
+            day_name: dayName,
+            name: fallback.name,
+            sets: 4,
+            reps_target: '8-10',
+            rest_seconds: 90,
+            target_weight: '75% 1RM',
+            rir_target: 'RIR 2',
+            tut: '3-0-1-0',
+            notes: `Esecuzione tecnica controllata, focus sulla contrazione muscolare target.`,
+          });
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * Espande e periodizza il mesociclo a tutte le settimane richieste (es. 8 o 12 settimane),
  * garantendo che ciascuna settimana e ciascun giorno abbiano 4-7 esercizi completi.
  */
@@ -511,7 +582,8 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       if (!content) throw new Error("Risposta vuota dall'IA");
 
       const parsed = safeParseWorkoutJSON(content);
-      return expandMesocycleWeeks(parsed, params.weeks);
+      const filled = fillMissingDaysAndExercises(parsed, params.daysPerWeek, params.coachExercises);
+      return expandMesocycleWeeks(filled, params.weeks);
 
     } else {
       if (onProgress) onProgress(`Generazione in corso con Gemini 3.6 Flash...`);
@@ -569,7 +641,8 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       if (!rawText) throw new Error("Risposta vuota dall'IA Gemini");
 
       const parsed = safeParseWorkoutJSON(rawText);
-      return expandMesocycleWeeks(parsed, params.weeks);
+      const filled = fillMissingDaysAndExercises(parsed, params.daysPerWeek, params.coachExercises);
+      return expandMesocycleWeeks(filled, params.weeks);
     }
   } catch (error: any) {
     console.error("Errore AI Workout Generator:", error);
