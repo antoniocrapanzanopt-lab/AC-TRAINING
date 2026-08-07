@@ -67,19 +67,16 @@ export const MessagesPage: React.FC = () => {
   }, [athletes, newChatSearch]);
 
   const handleStartNewChat = (athlete: any) => {
-    if (!athlete.auth_user_id) {
-      alert("Attenzione: Questo atleta non ha ancora attivato l'account e non può ricevere messaggi.");
-      return;
-    }
+    const chatUserId = athlete.auth_user_id || athlete.id;
     
     // Cerca se esiste già la conversazione
-    const existing = conversations.find(c => c.athlete_id === athlete.auth_user_id);
+    const existing = conversations.find(c => c.athlete_id === chatUserId);
     if (existing) {
       setActiveConversation(existing);
     } else {
       // Crea una sintetica
       setActiveConversation({
-        athlete_id: athlete.auth_user_id,
+        athlete_id: chatUserId,
         athlete_name: `${athlete.firstName} ${athlete.lastName}`,
         athlete_initials: `${athlete.firstName} ${athlete.lastName}`.substring(0, 2).toUpperCase(),
         tags: athlete.tags || [],

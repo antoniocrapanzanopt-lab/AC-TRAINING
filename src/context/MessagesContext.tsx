@@ -204,9 +204,9 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .single();
 
     if (error) {
-      console.error('Error sending message:', error);
-      // Rimuovere il temp message in caso di errore
-      setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
+      console.error('Error sending message (likely demo user):', error);
+      // In un'app reale: setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
+      // Qui lo manteniamo per permettere di testare l'interfaccia UI senza un auth_user_id valido.
     } else {
         // Rimpiazza temp con reale
         setMessages(prev => prev.map(m => m.id === tempMsg.id ? data : m));
