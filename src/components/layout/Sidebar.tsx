@@ -14,7 +14,6 @@ import {
   BarChart3,
   UserCheck,
   Settings,
-  User,
   X,
   Dumbbell,
   BookOpen,
@@ -47,7 +46,6 @@ const menuItems: { id: NavigationTab; label: string; icon: React.FC<{ className?
   { id: 'report', label: 'Report', icon: BarChart3 },
   { id: 'collaboratori', label: 'Collaboratori', icon: UserCheck },
   { id: 'impostazioni', label: 'Impostazioni', icon: Settings },
-  { id: 'atleta_portale', label: 'Portale Atleta', icon: User },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({
