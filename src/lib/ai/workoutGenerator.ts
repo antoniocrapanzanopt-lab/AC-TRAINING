@@ -52,14 +52,16 @@ export function getGeminiKeysPool(): string[] {
     pool.push(stored.trim());
   }
 
-  const envKey1 = (import.meta.env.VITE_GEMINI_API_KEY as string) || '';
-  if (envKey1 && !pool.includes(envKey1)) pool.push(envKey1);
+  // Controlla VITE_GEMINI_API_KEY e fino a VITE_GEMINI_API_KEY_10
+  const primaryEnv = (import.meta.env.VITE_GEMINI_API_KEY as string) || '';
+  if (primaryEnv && !pool.includes(primaryEnv)) pool.push(primaryEnv);
 
-  const envKey2 = (import.meta.env.VITE_GEMINI_API_KEY_2 as string) || '';
-  if (envKey2 && !pool.includes(envKey2)) pool.push(envKey2);
-
-  const envKey3 = (import.meta.env.VITE_GEMINI_API_KEY_3 as string) || '';
-  if (envKey3 && !pool.includes(envKey3)) pool.push(envKey3);
+  for (let i = 2; i <= 10; i++) {
+    const key = (import.meta.env[`VITE_GEMINI_API_KEY_${i}`] as string) || '';
+    if (key && typeof key === 'string' && key.trim() && !pool.includes(key.trim())) {
+      pool.push(key.trim());
+    }
+  }
 
   return pool;
 }
