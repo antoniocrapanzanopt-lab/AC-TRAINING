@@ -163,12 +163,28 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
     }
 
+    // Assicuriamoci che se c'è una activeConversationId, essa sia presente nella lista
+    // anche se non ci sono messaggi. Questo permette la creazione dinamica di nuove chat.
+    if (activeConversationId && !convMap.has(activeConversationId)) {
+        const athlete = athletes.find(a => a.auth_user_id === activeConversationId || a.id === activeConversationId);
+        if (athlete) {
+            convMap.set(activeConversationId, {
+                athlete_id: activeConversationId,
+                athlete_name: `${athlete.firstName} ${athlete.lastName}`,
+                athlete_initials: `${athlete.firstName} ${athlete.lastName}`.substring(0, 2).toUpperCase(),
+                tags: athlete.tags || [],
+                last_message: null,
+                unread_count: 0
+            });
+        }
+    }
+
     return Array.from(convMap.values()).sort((a, b) => {
       const dateA = a.last_message ? new Date(a.last_message.created_at).getTime() : 0;
       const dateB = b.last_message ? new Date(b.last_message.created_at).getTime() : 0;
       return dateB - dateA; // Descending
     });
-  }, [messages, athletes, user]);
+  }, [messages, athletes, user, activeConversationId]);
 
   const activeConversation = useMemo(() => {
     if (!activeConversationId) return null;
