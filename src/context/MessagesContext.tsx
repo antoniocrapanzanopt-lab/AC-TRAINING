@@ -33,8 +33,8 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
 
-    const fetchMessages = async (showLoading = true) => {
-      if (showLoading) setLoading(true);
+    const fetchMessages = async () => {
+      setLoading(true);
       const { data, error } = await supabase
         .from('messages')
         .select('*')
@@ -45,24 +45,18 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         console.error('Error fetching messages:', error);
       } else if (data) {
         setMessages((prev) => {
-          // Mantieni messaggi ottimistici non ancora salvati nel DB
           const tempMsgs = prev.filter(m => m.id.startsWith('temp-'));
           const dbIds = new Set(data.map(m => m.id));
           const filteredTemp = tempMsgs.filter(t => !dbIds.has(t.id));
           return [...data, ...filteredTemp];
         });
       }
-      if (showLoading) setLoading(false);
+      setLoading(false);
     };
 
-    fetchMessages(true);
+    fetchMessages();
 
-    // Polling di sicurezza ogni 5 secondi per garantire la massima velocità
-    const pollInterval = setInterval(() => {
-      fetchMessages(false);
-    }, 5000);
-
-    // Subscribe a realtime con canale unico dedicato all'utente
+    // Channel dedicato in tempo reale (WebSockets a 0ms)
     const channelName = `messages_channel_${userId}`;
     const subscription = supabase
       .channel(channelName)
@@ -95,7 +89,6 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .subscribe();
 
     return () => {
-      clearInterval(pollInterval);
       supabase.removeChannel(subscription);
     };
   }, [userId]);
@@ -194,56 +187,12 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const sendMessage = async (receiverId: string, content: string) => {
     if (!user) return;
     
-    // 1. Recupera l'autenticazione reale di chi invia (evita mismatch con auth.uid)
-    const { data: authData } = await supabase.auth.getUser();
-    const senderAuthId = authData?.user?.id || user.id;
-
-    // 2. Risolvi il destinatario reale
-    let finalReceiverId = receiverId;
+    // 1. Risolvi subito il mittente e il destinatario dal contesto in memoria (0ms)
+    const senderAuthId = user.id;
     const targetAthlete = athletes.find(a => a.id === receiverId || a.auth_user_id === receiverId);
-    
-    if (targetAthlete) {
-      if (targetAthlete.auth_user_id) {
-        finalReceiverId = targetAthlete.auth_user_id;
-      } else {
-        // Tenta il recupero fresco dal DB per atleti appena registrati
-        const { data: dbAth } = await supabase
-          .from('athletes')
-          .select('auth_user_id')
-          .eq('id', targetAthlete.id)
-          .maybeSingle();
-          
-        if (dbAth?.auth_user_id) {
-          finalReceiverId = dbAth.auth_user_id;
-        }
-      }
-    }
+    let finalReceiverId = targetAthlete?.auth_user_id || receiverId;
 
-    // Se il destinatario è ancora fittizio e chi invia è un atleta, cerchiamo il coach reale
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if ((!finalReceiverId || finalReceiverId === 'demo-local' || !uuidRegex.test(finalReceiverId)) && user.role === 'athlete') {
-      const { data: dbAth } = await supabase
-        .from('athletes')
-        .select('assigned_coach_id')
-        .eq('auth_user_id', senderAuthId)
-        .maybeSingle();
-        
-      if (dbAth?.assigned_coach_id && uuidRegex.test(dbAth.assigned_coach_id)) {
-        finalReceiverId = dbAth.assigned_coach_id;
-      } else {
-        const { data: anyMsg } = await supabase
-          .from('messages')
-          .select('sender_id')
-          .neq('sender_id', senderAuthId)
-          .limit(1)
-          .maybeSingle();
-        if (anyMsg?.sender_id && uuidRegex.test(anyMsg.sender_id)) {
-          finalReceiverId = anyMsg.sender_id;
-        }
-      }
-    }
-
-    // 3. Update ottimistico locale
+    // 2. Update ottimistico ISTANTANEO (0ms) - La bolla appare subito a schermo
     const tempMsg: Message = {
       id: `temp-${Date.now()}`,
       sender_id: senderAuthId,
@@ -254,22 +203,54 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setMessages(prev => [...prev, tempMsg]);
 
-    // 4. Inserimento in Supabase
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({
-        sender_id: senderAuthId,
-        receiver_id: finalReceiverId,
-        content: content,
-      })
-      .select()
-      .single();
+    // 3. Esecuzione asincrona in background su Supabase senza bloccare l'interfaccia
+    (async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const realSenderId = authData?.user?.id || senderAuthId;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        
+        if ((!finalReceiverId || finalReceiverId === 'demo-local' || !uuidRegex.test(finalReceiverId)) && user.role === 'athlete') {
+          const { data: dbAth } = await supabase
+            .from('athletes')
+            .select('assigned_coach_id')
+            .eq('auth_user_id', realSenderId)
+            .maybeSingle();
+            
+          if (dbAth?.assigned_coach_id && uuidRegex.test(dbAth.assigned_coach_id)) {
+            finalReceiverId = dbAth.assigned_coach_id;
+          } else {
+            const { data: anyMsg } = await supabase
+              .from('messages')
+              .select('sender_id')
+              .neq('sender_id', realSenderId)
+              .limit(1)
+              .maybeSingle();
+            if (anyMsg?.sender_id && uuidRegex.test(anyMsg.sender_id)) {
+              finalReceiverId = anyMsg.sender_id;
+            }
+          }
+        }
 
-    if (error) {
-      console.error('Error sending message to Supabase:', error);
-    } else if (data) {
-      setMessages(prev => prev.map(m => m.id === tempMsg.id ? data : m));
-    }
+        const { data, error } = await supabase
+          .from('messages')
+          .insert({
+            sender_id: realSenderId,
+            receiver_id: finalReceiverId,
+            content: content,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error sending message to Supabase:', error);
+        } else if (data) {
+          setMessages(prev => prev.map(m => m.id === tempMsg.id ? data : m));
+        }
+      } catch (err) {
+        console.error('Async message send error:', err);
+      }
+    })();
   };
 
   const markAsRead = async (senderId: string) => {
