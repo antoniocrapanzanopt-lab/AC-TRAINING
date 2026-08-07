@@ -103,68 +103,69 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const convMap = new Map<string, Conversation>();
 
+    // 1. Inizializziamo le conversazioni per TUTTI gli atleti a priori (così garantiamo il matching al PK)
+    if (user.role === 'owner' || user.role === 'coach') {
+      athletes.forEach(athlete => {
+        convMap.set(athlete.id, {
+          athlete_id: athlete.id, // Chiave UNIVOCA Canonica (Primary Key)
+          athlete_name: `${athlete.firstName} ${athlete.lastName}`,
+          athlete_initials: `${athlete.firstName} ${athlete.lastName}`.substring(0, 2).toUpperCase(),
+          tags: athlete.tags || [],
+          last_message: null,
+          unread_count: 0,
+        });
+      });
+    }
+
+    // 2. Assegniamo i messaggi ai rispettivi atleti
     messages.forEach((msg) => {
-      // Find the ID of the OTHER person
-      const rawOtherId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
-      
-      // Se l'utente corrente è un Coach, cerchiamo di uniformare l'otherId all'ID anagrafico 
-      // per non avere conversazioni duplicate per lo stesso atleta (una per auth_user_id e una per id)
-      let canonicalId = rawOtherId;
-      if (user.role === 'coach') {
-        const ath = athletes.find(a => a.auth_user_id === rawOtherId || a.id === rawOtherId);
-        if (ath) canonicalId = ath.id;
-      }
-      
       const isSender = msg.sender_id === user.id;
-      const athleteInfo = athletes.find(a => a.auth_user_id === canonicalId || a.id === canonicalId);
+      const otherId = isSender ? msg.receiver_id : msg.sender_id;
       
-      let athleteName = athleteInfo ? `${athleteInfo.firstName} ${athleteInfo.lastName}` : 'Utente Sconosciuto';
-      let tags = athleteInfo?.tags || [];
+      let canonicalAthleteId = otherId;
       
-      // Fallback per test in locale senza auth_user_id corretto
-      if (canonicalId === 'demo-local') {
-          athleteName = 'Coach / Atleta Demo';
+      if (user.role === 'coach' || user.role === 'owner') {
+        // Riconduce l'ID di autenticazione all'ID anagrafico PK (che ha creato il convMap)
+        const ath = athletes.find(a => a.auth_user_id === otherId || a.id === otherId);
+        if (ath) {
+          canonicalAthleteId = ath.id;
+        }
       }
 
-      if (!convMap.has(canonicalId)) {
-        convMap.set(canonicalId, {
-          athlete_id: canonicalId,
-          athlete_name: athleteName,
-          athlete_initials: athleteName.substring(0, 2).toUpperCase(),
-          tags: tags,
-          last_message: msg,
-          unread_count: (!isSender && !msg.is_read) ? 1 : 0,
-        });
-      } else {
-        const existing = convMap.get(canonicalId)!;
-        // Update last message if this one is newer
-        if (new Date(msg.created_at) > new Date(existing.last_message!.created_at)) {
-          existing.last_message = msg;
+      if (user.role === 'coach' || user.role === 'owner') {
+        const existing = convMap.get(canonicalAthleteId);
+        if (existing) {
+          if (!existing.last_message || new Date(msg.created_at) > new Date(existing.last_message.created_at)) {
+            existing.last_message = msg;
+          }
+          if (!isSender && !msg.is_read) {
+            existing.unread_count += 1;
+          }
         }
-        if (!isSender && !msg.is_read) {
-          existing.unread_count += 1;
+      } else {
+        // Modalità Atleta (Vista Singola)
+        if (!convMap.has(canonicalAthleteId)) {
+          convMap.set(canonicalAthleteId, {
+            athlete_id: canonicalAthleteId,
+            athlete_name: 'Coach',
+            athlete_initials: 'C',
+            tags: [],
+            last_message: msg,
+            unread_count: (!isSender && !msg.is_read) ? 1 : 0,
+          });
+        } else {
+          const existing = convMap.get(canonicalAthleteId)!;
+          if (new Date(msg.created_at) > new Date(existing.last_message!.created_at)) {
+            existing.last_message = msg;
+          }
+          if (!isSender && !msg.is_read) {
+            existing.unread_count += 1;
+          }
         }
       }
     });
 
-    // Ensure we also show athletes with no messages yet if we are a coach
-    if (user.role === 'owner' || user.role === 'coach') {
-        athletes.forEach(athlete => {
-            if (athlete.auth_user_id && !convMap.has(athlete.auth_user_id)) {
-                convMap.set(athlete.auth_user_id, {
-                    athlete_id: athlete.auth_user_id,
-                    athlete_name: `${athlete.firstName} ${athlete.lastName}`,
-                    athlete_initials: `${athlete.firstName} ${athlete.lastName}`.substring(0, 2).toUpperCase(),
-                    tags: athlete.tags || [],
-                    last_message: null,
-                    unread_count: 0
-                });
-            }
-        });
-    }
-
     // Assicuriamoci che se c'è una activeConversationId, essa sia presente nella lista
-    // anche se non ci sono messaggi. Questo permette la creazione dinamica di nuove chat.
     if (activeConversationId && !convMap.has(activeConversationId)) {
         const athlete = athletes.find(a => a.auth_user_id === activeConversationId || a.id === activeConversationId);
         if (athlete) {

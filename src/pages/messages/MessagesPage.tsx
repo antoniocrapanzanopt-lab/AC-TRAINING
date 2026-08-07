@@ -66,36 +66,27 @@ export const MessagesPage: React.FC = () => {
     });
   }, [athletes, newChatSearch]);
 
-  // Messaggi della conversazione attiva con id canonico
+  // Messaggi della conversazione attiva filtrati usando l'ID Anagrafico e Auth
   const activeConversationMessages = useMemo(() => {
     if (!activeConversation) return [];
-    const activeAthlete = athletes.find(a => a.auth_user_id === activeConversation.athlete_id || a.id === activeConversation.athlete_id);
+    
+    const activeAthlete = athletes.find(a => a.id === activeConversation.athlete_id);
     const validAthleteIds = new Set([
-      activeConversation.athlete_id,
-      activeAthlete?.id,
-      activeAthlete?.auth_user_id,
+      activeConversation.athlete_id, // L'ID anagrafico PK (ora sempre usato come chiave principale)
+      activeAthlete?.auth_user_id,   // L'ID di autenticazione per prendere i messaggi inviati dall'atleta
     ].filter(Boolean) as string[]);
 
     return messages.filter(m => validAthleteIds.has(m.sender_id) || validAthleteIds.has(m.receiver_id));
   }, [messages, activeConversation, athletes]);
 
   const handleStartNewChat = (athlete: any) => {
-    const chatUserId = athlete.auth_user_id || athlete.id;
+    // Usiamo ESCLUSIVAMENTE l'ID anagrafico (Primary Key) per aprire la chat
+    const chatUserId = athlete.id;
     
-    // Cerca se esiste già la conversazione
+    // La conversazione esiste sempre nel convMap grazie all'inizializzazione statica in MessagesContext
     const existing = conversations.find(c => c.athlete_id === chatUserId);
     if (existing) {
       setActiveConversation(existing);
-    } else {
-      // Crea una sintetica
-      setActiveConversation({
-        athlete_id: chatUserId,
-        athlete_name: `${athlete.firstName} ${athlete.lastName}`,
-        athlete_initials: `${athlete.firstName} ${athlete.lastName}`.substring(0, 2).toUpperCase(),
-        tags: athlete.tags || [],
-        last_message: null,
-        unread_count: 0
-      });
     }
     setShowNewChatModal(false);
     setNewChatSearch('');
