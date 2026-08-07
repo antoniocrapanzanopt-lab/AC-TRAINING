@@ -493,6 +493,7 @@ export type CalendarEventType =
   | 'document'
   | 'competition'
   | 'birthday'
+  | 'google_calendar'
   | 'custom';
 
 export type CalendarEventStatus = 'scheduled' | 'completed' | 'cancelled';
@@ -513,6 +514,9 @@ export interface CalendarEvent {
   sourceId?: string;
   location?: string;
   notes?: string;
+  googleEventId?: string;
+  htmlLink?: string;
+  googleCalendarEmail?: string;
   createdAt: string;
   updatedAt: string;
 }

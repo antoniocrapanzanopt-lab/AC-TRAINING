@@ -7,11 +7,21 @@ import { useSubscriptions } from './SubscriptionsContext';
 import { useRenewals } from './RenewalsContext';
 import { useAthletes } from './AthletesContext';
 import { useTasks } from './TasksContext';
+import {
+  getGoogleCalendarState,
+  setGoogleCalendarState,
+  fetchGoogleEvents,
+} from '../lib/googleCalendar';
 
 interface CalendarContextType {
   customEvents: CalendarEvent[];
   allEvents: CalendarEvent[];
   isLoading: boolean;
+  isGoogleConnected: boolean;
+  googleEmail: string | null;
+  connectGoogleCalendar: (email?: string) => Promise<void>;
+  disconnectGoogleCalendar: () => void;
+  syncGoogleCalendar: () => Promise<void>;
   addCustomEvent: (data: CalendarEventFormData) => CalendarEvent;
   updateCustomEvent: (id: string, updates: Partial<CalendarEvent>) => boolean;
   deleteCustomEvent: (id: string) => boolean;
@@ -64,7 +74,12 @@ const buildDemoCustomEvents = (): CalendarEvent[] => {
 
 export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [customEvents, setCustomEvents] = useState<CalendarEvent[]>([]);
+  const [googleEvents, setGoogleEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Stato Google Calendar
+  const [isGoogleConnected, setIsGoogleConnected] = useState<boolean>(false);
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
 
   const { payments } = usePayments();
   const { subscriptions } = useSubscriptions();
@@ -82,7 +97,41 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } else {
       setCustomEvents(saved);
     }
+
+    // Inizializza stato Google Calendar
+    const gState = getGoogleCalendarState();
+    setIsGoogleConnected(gState.isConnected);
+    setGoogleEmail(gState.email);
+
+    if (gState.isConnected && gState.email) {
+      fetchGoogleEvents(gState.email).then(events => {
+        setGoogleEvents(events);
+      });
+    }
+
     setIsLoading(false);
+  }, []);
+
+  const syncGoogleCalendar = useCallback(async () => {
+    if (googleEmail) {
+      const events = await fetchGoogleEvents(googleEmail);
+      setGoogleEvents(events);
+    }
+  }, [googleEmail]);
+
+  const connectGoogleCalendar = useCallback(async (emailToConnect: string = 'antonio.crapanzanopt@gmail.com') => {
+    setGoogleCalendarState(true, emailToConnect);
+    setIsGoogleConnected(true);
+    setGoogleEmail(emailToConnect);
+    const events = await fetchGoogleEvents(emailToConnect);
+    setGoogleEvents(events);
+  }, []);
+
+  const disconnectGoogleCalendar = useCallback(() => {
+    setGoogleCalendarState(false, null);
+    setIsGoogleConnected(false);
+    setGoogleEmail(null);
+    setGoogleEvents([]);
   }, []);
 
   const persist = useCallback((data: CalendarEvent[]) => {
@@ -220,8 +269,9 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     });
 
-    return [...systemEvents, ...customEvents];
-  }, [payments, subscriptions, renewals, athletes, tasks, customEvents]);
+    const gEvents = isGoogleConnected ? googleEvents : [];
+    return [...systemEvents, ...customEvents, ...gEvents];
+  }, [payments, subscriptions, renewals, athletes, tasks, customEvents, isGoogleConnected, googleEvents]);
 
   const addCustomEvent = useCallback((data: CalendarEventFormData): CalendarEvent => {
     const nowIso = new Date().toISOString();
@@ -274,6 +324,11 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         customEvents,
         allEvents,
         isLoading,
+        isGoogleConnected,
+        googleEmail,
+        connectGoogleCalendar,
+        disconnectGoogleCalendar,
+        syncGoogleCalendar,
         addCustomEvent,
         updateCustomEvent,
         deleteCustomEvent,

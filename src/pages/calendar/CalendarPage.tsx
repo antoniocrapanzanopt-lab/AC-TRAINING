@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Gift,
   FileText,
+  Globe,
 } from 'lucide-react';
 import { CalendarEvent, CalendarEventType, CalendarEventFormData } from '../../types';
 import { useCalendar } from '../../context/CalendarContext';
@@ -34,16 +35,28 @@ const typeConfig: Record<CalendarEventType, { label: string; color: string; icon
   document: { label: 'Documento', color: 'text-slate-400 bg-slate-400/10 border-slate-400/20', icon: FileText },
   competition: { label: 'Gara', color: 'text-orange-400 bg-orange-400/10 border-orange-400/20', icon: Trophy },
   birthday: { label: 'Compleanno', color: 'text-pink-400 bg-pink-400/10 border-pink-400/20', icon: Gift },
+  google_calendar: { label: 'Google Calendar', color: 'text-sky-400 bg-sky-400/10 border-sky-400/20', icon: Globe },
   custom: { label: 'Personalizzato', color: 'text-indigo-400 bg-indigo-400/10 border-indigo-400/20', icon: Tag },
 };
 
 export const CalendarPage: React.FC = () => {
-  const { allEvents, addCustomEvent, updateCustomEvent, deleteCustomEvent } = useCalendar();
+  const {
+    allEvents,
+    addCustomEvent,
+    updateCustomEvent,
+    deleteCustomEvent,
+    isGoogleConnected,
+    googleEmail,
+    connectGoogleCalendar,
+    disconnectGoogleCalendar,
+    syncGoogleCalendar,
+  } = useCalendar();
   const { showSuccess, showInfo } = useToast();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateStr, setSelectedDateStr] = useState(new Date().toISOString().slice(0, 10));
   const [filterType, setFilterType] = useState<CalendarEventType | 'all'>('all');
+  const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
@@ -58,6 +71,25 @@ export const CalendarPage: React.FC = () => {
   const month = currentDate.getMonth();
 
   const monthName = new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' }).format(currentDate);
+
+  const handleToggleGoogle = async () => {
+    if (isGoogleConnected) {
+      disconnectGoogleCalendar();
+      showInfo('Disconnesso', 'Google Calendar scollegato con successo.');
+    } else {
+      setIsSyncingGoogle(true);
+      await connectGoogleCalendar('antonio.crapanzanopt@gmail.com');
+      setIsSyncingGoogle(false);
+      showSuccess('Google Calendar Connesso', 'Sincronizzazione completata per antonio.crapanzanopt@gmail.com');
+    }
+  };
+
+  const handleManualGoogleSync = async () => {
+    setIsSyncingGoogle(true);
+    await syncGoogleCalendar();
+    setIsSyncingGoogle(false);
+    showSuccess('Sincronizzato', 'Eventi di Google Calendar aggiornati.');
+  };
 
   // Calcolo della griglia mensile (giorni)
   const calendarGrid = useMemo(() => {
@@ -171,15 +203,42 @@ export const CalendarPage: React.FC = () => {
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Calendario Appuntamenti ed Eventi</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Visualizza scadenze di sistema ed appuntamenti personalizzati.
+            Visualizza scadenze di sistema, appuntamenti ed eventi di Google Calendar.
           </p>
         </div>
-        <button
-          onClick={() => { setEditingEvent(null); setIsModalOpen(true); }}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-[0_0_20px_rgba(234,179,8,0.2)]"
-        >
-          <Plus className="w-4 h-4" /> Nuovo Evento
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleToggleGoogle}
+            disabled={isSyncingGoogle}
+            title={isGoogleConnected ? `Connesso a ${googleEmail}` : 'Connetti il tuo Google Calendar'}
+            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all shadow-sm ${
+              isGoogleConnected
+                ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
+                : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Globe className="w-4 h-4 text-sky-400" />
+            {isGoogleConnected ? 'Google Connesso' : 'Connetti Google Calendar'}
+          </button>
+          
+          {isGoogleConnected && (
+            <button
+              onClick={handleManualGoogleSync}
+              disabled={isSyncingGoogle}
+              title="Sincronizza subito Google Calendar"
+              className="p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncingGoogle ? 'animate-spin text-sky-400' : ''}`} />
+            </button>
+          )}
+
+          <button
+            onClick={() => { setEditingEvent(null); setIsModalOpen(true); }}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-[0_0_20px_rgba(234,179,8,0.2)]"
+          >
+            <Plus className="w-4 h-4" /> Nuovo Evento
+          </button>
+        </div>
       </div>
 
       {/* Bar Navigazione Mese e Filtro */}
@@ -208,6 +267,7 @@ export const CalendarPage: React.FC = () => {
             className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-[var(--color-primary)] transition-colors"
           >
             <option value="all">Tutti gli eventi</option>
+            <option value="google_calendar">📅 Google Calendar</option>
             <option value="payment">Pagamenti</option>
             <option value="renewal">Rinnovi</option>
             <option value="subscription_start">Inizio Abbonamento</option>

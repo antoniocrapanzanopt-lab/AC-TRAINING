@@ -153,12 +153,12 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                   onChange={e => setType(e.target.value as CalendarEventType)}
                   className={`${inputCls} pl-9`}
                 >
-                  <option value="appointment">Appuntamento</option>
-                  <option value="checkin">Check-in / Pesata</option>
-                  <option value="program_delivery">Consegna Programma</option>
-                  <option value="competition">Gara / Competizione</option>
-                  <option value="document">Documenti</option>
-                  <option value="custom">Personalizzato / Altro</option>
+                  <option value="appointment">📆 Appuntamento / Sessione</option>
+                  <option value="google_calendar">📅 Google Calendar Sync</option>
+                  <option value="checkin">⚖️ Check-in / Pesata</option>
+                  <option value="program_delivery">📋 Consegna Programma</option>
+                  <option value="competition">🏆 Gara / Competizione</option>
+                  <option value="custom">📌 Altro (Personalizzato)</option>
                 </select>
               </div>
             </div>
