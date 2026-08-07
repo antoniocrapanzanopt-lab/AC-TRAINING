@@ -15,7 +15,8 @@ export type NavigationTab =
   | 'impostazioni'
   | 'atleta_portale'
   | 'schede'
-  | 'esercizi';
+  | 'esercizi'
+  | 'messaggi';
 
 export type UserRole = 'owner' | 'admin' | 'coach' | 'receptionist' | 'athlete' | 'collaborator';
 
@@ -165,6 +166,7 @@ export interface TimelineEvent {
 
 export interface Athlete {
   id: string;
+  auth_user_id?: string;
   firstName: string;
   lastName: string;
   fullName: string;

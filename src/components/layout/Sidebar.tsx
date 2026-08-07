@@ -18,6 +18,7 @@ import {
   X,
   Dumbbell,
   BookOpen,
+  MessageCircle,
 } from 'lucide-react';
 import { NavigationTab } from '../../types';
 
@@ -42,6 +43,7 @@ const menuItems: { id: NavigationTab; label: string; icon: React.FC<{ className?
   { id: 'calendario', label: 'Calendario', icon: Calendar },
   { id: 'documenti', label: 'Documenti', icon: FileText },
   { id: 'comunicazioni', label: 'Comunicazioni', icon: MessageSquare },
+  { id: 'messaggi', label: 'Messaggi', icon: MessageCircle },
   { id: 'report', label: 'Report', icon: BarChart3 },
   { id: 'collaboratori', label: 'Collaboratori', icon: UserCheck },
   { id: 'impostazioni', label: 'Impostazioni', icon: Settings },

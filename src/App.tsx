@@ -14,6 +14,7 @@ import { DocumentsProvider } from './context/DocumentsContext';
 import { CommunicationsProvider } from './context/CommunicationsContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { WorkoutsProvider } from './context/WorkoutsContext';
+import { MessagesProvider } from './context/MessagesContext';
 import { ExercisesProvider } from './context/ExercisesContext';
 
 import { AuthPage } from './pages/auth/AuthPage';
@@ -78,7 +79,9 @@ export const App: React.FC = () => {
                               <CommunicationsProvider>
                                 <WorkoutsProvider>
                                   <ExercisesProvider>
-                                    <AppContent />
+                                    <MessagesProvider>
+                                      <AppContent />
+                                    </MessagesProvider>
                                   </ExercisesProvider>
                                 </WorkoutsProvider>
                               </CommunicationsProvider>

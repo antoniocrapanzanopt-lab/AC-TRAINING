@@ -20,6 +20,7 @@ import { CollaboratorsPage } from './pages/collaborators/CollaboratorsPage';
 import { AtletaPortalePage } from './pages/athlete-portal/AtletaPortalePage';
 import { WorkoutsPage } from './pages/workouts/WorkoutsPage';
 import { ExercisesPage } from './pages/exercises/ExercisesPage';
+import { MessagesPage } from './pages/messages/MessagesPage';
 import { useApp } from './context/AppContext';
 import { NavigationTab } from './types';
 
@@ -41,6 +42,7 @@ const tabTitles: Record<NavigationTab, string> = {
   atleta_portale: 'Portale riservato Atleta',
   schede: 'Schede di Allenamento',
   esercizi: 'Libreria Esercizi',
+  messaggi: 'Chat / Messaggi',
 };
 
 const renderPage = (tab: NavigationTab): React.ReactNode => {
@@ -79,6 +81,8 @@ const renderPage = (tab: NavigationTab): React.ReactNode => {
       return <ExercisesPage />;
     case 'atleta_portale':
       return <AtletaPortalePage />;
+    case 'messaggi':
+      return <MessagesPage />;
     default:
       return <PageContainer tab={tab} title={tabTitles[tab]} />;
   }
