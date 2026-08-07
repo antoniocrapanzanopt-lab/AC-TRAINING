@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { ToastContainer } from './components/common/ToastContainer';
+import { GlobalCoachAIAssistantWidget } from './components/common/GlobalCoachAIAssistantWidget';
 import { PageContainer } from './pages/PageContainer';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { AthletesPage } from './pages/athletes/AthletesPage';
@@ -111,6 +112,7 @@ export const MainLayout: React.FC = () => {
           {renderPage(activeTab)}
         </main>
       </div>
+      <GlobalCoachAIAssistantWidget />
       <ToastContainer />
     </div>
   );

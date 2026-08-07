@@ -8,6 +8,7 @@ interface ExercisesContextType {
   loading: boolean;
   loadExercises: () => Promise<void>;
   createExercise: (exercise: Partial<ExerciseItem>) => Promise<{ success: boolean; error?: string }>;
+  createExercisesBatch: (exercisesList: Partial<ExerciseItem>[]) => Promise<{ success: boolean; count?: number; error?: string }>;
   updateExercise: (id: string, exercise: Partial<ExerciseItem>) => Promise<{ success: boolean; error?: string }>;
   deleteExercise: (id: string) => Promise<{ success: boolean; error?: string }>;
 }
@@ -77,6 +78,33 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
+  const createExercisesBatch = async (exercisesList: Partial<ExerciseItem>[]) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Non autorizzato' };
+    if (!exercisesList || exercisesList.length === 0) return { success: true, count: 0 };
+
+    try {
+      const recordsToInsert = exercisesList.map(ex => ({
+        name: ex.name,
+        category: ex.category || 'Altro',
+        equipment: ex.equipment || 'Corpo Libero',
+        video_url: ex.video_url || null,
+        instructions: ex.instructions || null,
+        coach_id: user.id,
+      }));
+
+      const { error } = await supabase
+        .from('exercises')
+        .insert(recordsToInsert);
+
+      if (error) throw error;
+      await loadExercises();
+      return { success: true, count: recordsToInsert.length };
+    } catch (error: any) {
+      console.error('Error creating batch exercises:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
   const updateExercise = async (id: string, exercise: Partial<ExerciseItem>) => {
     if (!user || user.role !== 'owner') return { success: false, error: 'Non autorizzato' };
 
@@ -127,6 +155,7 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         loading,
         loadExercises,
         createExercise,
+        createExercisesBatch,
         updateExercise,
         deleteExercise,
       }}

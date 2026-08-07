@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Plus, Search, Dumbbell, Pencil, Trash2, Video, AlertTriangle, ExternalLink, Info } from 'lucide-react';
+import { Plus, Search, Dumbbell, Pencil, Trash2, Video, AlertTriangle, ExternalLink, Info, Sparkles } from 'lucide-react';
 import { useExercises } from '../../context/ExercisesContext';
 import { useToast } from '../../context/ToastContext';
 import { ExerciseItem, ExerciseCategory } from '../../types/exercise';
 import { ExerciseModal } from '../../components/exercises/ExerciseModal';
+import { AIExerciseGeneratorModal } from '../../components/exercises/AIExerciseGeneratorModal';
 
 const CATEGORIES: ('Tutti' | ExerciseCategory)[] = [
   'Tutti',
@@ -26,6 +27,7 @@ export const ExercisesPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'Tutti' | ExerciseCategory>('Tutti');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
   const [editingExercise, setEditingExercise] = useState<ExerciseItem | null>(null);
   const [deletingExercise, setDeletingExercise] = useState<ExerciseItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -61,20 +63,35 @@ export const ExercisesPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Libreria Esercizi</h1>
-          <p className="text-sm text-slate-400">Gestisci e personalizza la tua banca dati esercizi</p>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+            Libreria Esercizi
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold">
+              {exercises.length} Esercizi Registrati
+            </span>
+          </h1>
+          <p className="text-sm text-slate-400">Gestisci la tua banca dati o popola la libreria automaticamente con Gemini 3.6 Flash</p>
         </div>
 
-        <button
-          onClick={() => {
-            setEditingExercise(null);
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-black text-sm font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-all shadow-lg"
-        >
-          <Plus className="w-4 h-4" />
-          Nuovo Esercizio
-        </button>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <button
+            onClick={() => setIsAIGeneratorOpen(true)}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black text-sm font-extrabold rounded-xl transition-all shadow-lg shadow-amber-500/20"
+          >
+            <Sparkles className="w-4 h-4 text-black" />
+            Genera con IA
+          </button>
+
+          <button
+            onClick={() => {
+              setEditingExercise(null);
+              setIsModalOpen(true);
+            }}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl border border-slate-700 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            Nuovo Esercizio
+          </button>
+        </div>
       </div>
 
       {/* Main Panel */}
@@ -241,6 +258,13 @@ export const ExercisesPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Generatore Esercizi IA */}
+      {isAIGeneratorOpen && (
+        <AIExerciseGeneratorModal
+          onClose={() => setIsAIGeneratorOpen(false)}
+        />
       )}
     </div>
   );

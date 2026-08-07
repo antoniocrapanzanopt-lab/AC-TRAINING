@@ -13,6 +13,13 @@ export interface GenerateWorkoutParams {
   limitations?: string;
   coachExercises: ExerciseItem[];
   provider: 'openai' | 'gemini';
+  splitStyle?: string;
+  targetFocus?: string[];
+  extraNotes?: string;
+  customAthleteContext?: string;
+  experienceLevel?: string;
+  sessionDurationMinutes?: number;
+  progressionStyle?: string;
 }
 
 // Interfaccia usata internamente per la risposta AI (senza id generati)
@@ -38,7 +45,9 @@ export function setOpenAIKey(key: string): void {
 }
 
 export function getGeminiKey(): string {
-  return getStorageItem('gemini_api_key', '');
+  const stored = getStorageItem<string>('gemini_api_key', '');
+  if (stored && typeof stored === 'string' && stored.trim()) return stored.trim();
+  return (import.meta.env.VITE_GEMINI_API_KEY as string) || '';
 }
 
 export function setGeminiKey(key: string): void {
@@ -54,61 +63,105 @@ export async function generateWorkoutWithAI(
     throw new Error(`API Key ${params.provider === 'openai' ? 'OpenAI' : 'Gemini'} mancante. Inseriscila nelle impostazioni.`);
   }
 
-  if (onProgress) onProgress('Preparazione del contesto e della libreria esercizi...');
+  if (onProgress) onProgress('Preparazione del contesto e della periodizzazione scientifica...');
 
   const exerciseNames = params.coachExercises.map(e => e.name).join(', ');
 
   const systemPrompt = `
-Sei un Personal Trainer d'élite ed esperto programmatore dell'allenamento.
-Il tuo compito è generare un programma di allenamento altamente professionale, diviso per settimane e per giorni, restituendo ESCLUSIVAMENTE un array JSON strutturato.
+Sei un Master Strength & Conditioning Coach ed esperto di metodologia dell'allenamento di livello mondiale.
+Il tuo compito è generare un programma di allenamento ESTREMAMENTE PERSONALIZZATO, scientifico e pronto all'uso, diviso per settimane e per giorni, restituendo ESCLUSIVAMENTE un array JSON strutturato.
 
-Regole Fondamentali:
-1. Devi generare una scheda di allenamento della durata di ${params.weeks} settimane, con ${params.daysPerWeek} giorni di allenamento a settimana.
-2. Usa nomi standard per i giorni: "Giorno A", "Giorno B", "Giorno C", ecc.
-3. Le settimane devono andare da 1 a ${params.weeks}.
-4. Scegli gli esercizi PRINCIPALMENTE (ma non esclusivamente) da questa libreria preferita del coach: [${exerciseNames}]. Se serve un esercizio non in lista, puoi proporlo.
-5. Progressione: implementa una progressione sensata (es. aumento volume, o aumento intensità/RPE) nel corso delle settimane.
+PRINCIPI DI PROGRAMMAZIONE D'ÉLITE DA APPLICARE:
+
+1. **PERIODO E PROGRESSIONE (WAVE / MICROCICLI)**:
+   - Durata totale: ${params.weeks} settimane, con ${params.daysPerWeek} giorni di allenamento a settimana.
+   - Modellazione della progressione: ${params.progressionStyle || 'RIR/RPE Progressivo (Overload + Scarico)'}.
+   - In caso di 4 settimane: Settimana 1 = RIR 3 (accumulo); Settimana 2 = RIR 2 (carico progressivo); Settimana 3 = RIR 1 (picco di intensità); Settimana 4 = RIR 4-5 (scarico attivo / deload con volume ridotto del 30-40%).
+
+2. **VOLUME & ESPERIENZA DELL'ATLETA**:
+   - Livello Atleta: ${params.experienceLevel || 'Intermedio'}.
+   - Se Principiante: 10-12 serie totali per gruppo muscolare/settimana, focus su schemi motori puliti.
+   - Se Intermedio: 14-18 serie totali per gruppo muscolare/settimana.
+   - Se Avanzato: 18-22 serie totali per gruppo muscolare/settimana, intensificazione mirata.
+
+3. **TEMPO PER SEDUTA & TIMING**:
+   - Durata massima consigliata per sessione: ${params.sessionDurationMinutes || 60} minuti.
+   - Struttura l'allenamento con un numero calibrato di esercizi (es. 4-5 esercizi per 45-60 min; 6-7 per 75-90 min) in modo che i tempi di esecuzione e recupero rientrino perfettamente nei minuti a disposizione del cliente!
+
+4. **GERARCHIA DEGLI ESERCIZI NELLE SEDUTE**:
+   - Per ciascun giorno, ordina gli esercizi secondo la fisiologia dell'allenamento:
+     a. **Fondamentale Multiarticolare**: primo esercizio neurale pesante (3-5 serie, recupero 120-180s, TUT tipo '3-1-1-0').
+     b. **Complementare Multiarticolare**: secondo esercizio a medio-alto carico (3-4 serie, recupero 90s).
+     c. **Isolamento / Monolaterale**: esercizi di rifinitura ipertrofica (3-4 serie, recupero 60s, RIR stretto).
+     d. **Core / Accessorio Finale**: chiusura seduta.
+
+5. **ADATTAMENTO BIOMECCANICO ED INFORTUNI**:
+   - Sostituisci IMMEDIATAMENTE qualsiasi esercizio rischioso per la condizione dell'atleta con varianti biomeccanicamente perfette (es. sbarra o manubri al posto del bilanciere in caso di impingement spalla; belt squat/leg press al posto di squat con bilanciere in caso di lombalgia).
+
+6. **NOTE TECNICHE E CUE PER L'ATLETA**:
+   - Nel campo 'notes' di ciascun esercizio, fornisci un **Cue percettivo o biomeccanico specifico** e pratico (es. "Spingi il suolo, mantieni le scapole depresse e gomiti a 45°", "Pausa di 1 secondo in massimo accorciamento").
+
+LIBRERIA ESERCIZI PREFERITA COACH:
+[${exerciseNames}]
+Scegli gli esercizi PRINCIPALMENTE da questa libreria. Se necessario per l'adattamento biomeccanico, proponi esercizi adatti.
+
+REGOLE TASSATIVE DI QUANTITÀ E NOMI GIORNO:
+1. **QUANTITÀ ESERCIZI PER GIORNO**: Ogni giorno di allenamento (es. Giorno A) in OGNI settimana DEVE contenere da 4 a 7 esercizi completi. È severamente vietato generare solo 1 o 2 esercizi per seduta!
+2. **FORMATO NOMI GIORNO**: Il campo 'day_name' deve essere ESATTAMENTE e solo "Giorno A", "Giorno B", "Giorno C", "Giorno D" (senza suffissi come '- Push' o note extra).
 
 Struttura JSON richiesta per ogni esercizio (array di oggetti):
-- week_number (numero)
-- day_name (stringa, es. "Giorno A")
+- week_number (numero da 1 a ${params.weeks})
+- day_name (stringa pulita: ESATTAMENTE "Giorno A", "Giorno B", "Giorno C"...)
 - name (stringa)
 - sets (numero)
-- reps_target (stringa, es. "8-10" o "12")
-- rest_seconds (numero, es. 90, 120)
-- target_weight (stringa opzionale, es. "%RM" o carico specifico se stimato)
-- rir_target (stringa opzionale, es. "1-2" o "RPE 8")
-- tut (stringa opzionale, es. "3-1-1-1")
-- notes (stringa opzionale per l'atleta, es. focus tecnico)
+- reps_target (stringa, es. "8-10" o "6")
+- rest_seconds (numero, es. 60, 90, 120, 180)
+- target_weight (stringa opzionale, es. "%RM", "Carico sfidante" o stimato)
+- rir_target (stringa opzionale, es. "RIR 2" o "RIR 4 (Deload)")
+- tut (stringa opzionale, es. "3-1-1-0")
+- notes (stringa opzionale per l'atleta con cue biomeccanico pratico)
 `;
 
   let athleteContext = '';
   if (params.athlete) {
     athleteContext = `
-Dati Atleta:
+Dati Atleta Selezionato:
 - Nome: ${params.athlete.firstName} ${params.athlete.lastName}
 - Età: ${params.athlete.dateOfBirth ? new Date().getFullYear() - new Date(params.athlete.dateOfBirth).getFullYear() : 'N/D'}
 - Livello stimato: ${params.athlete.tags?.join(', ') || 'N/D'}
-- Obiettivo dell'atleta: ${params.athlete.goals || 'Non specificato'}
-- Note Mediche/Infortuni: ${params.athlete.medicalNotes || 'Nessuna'}
-- Note interne del coach: ${params.athlete.notes || 'Nessuna'}
+- Obiettivi Atleta: ${params.athlete.goals || 'Non specificato'}
+- Note Mediche: ${params.athlete.medicalNotes || 'Nessuna'}
+- Note Interne Coach: ${params.athlete.notes || 'Nessuna'}
 `;
+  }
+
+  if (params.customAthleteContext?.trim()) {
+    athleteContext += `\nContesto / Stile di Vita Aggiuntivo:\n${params.customAthleteContext.trim()}\n`;
   }
 
   const userPrompt = `
 Genera il programma di allenamento basato su queste specifiche:
 ${athleteContext}
 
-Obiettivo specifico di questa scheda: ${params.goal}
-Settimane totali: ${params.weeks}
-Giorni per settimana: ${params.daysPerWeek}
-Attrezzatura a disposizione: ${params.availableEquipment.join(', ')}
-Eventuali limitazioni o note per questa scheda: ${params.limitations || 'Nessuna'}
+PARAMETRI CHIAVE DEL PROGRAMMA:
+- Obiettivo specifico: ${params.goal}
+- Livello Esperienza Atleta: ${params.experienceLevel || 'Intermedio'}
+- Durata Target Sessione: ${params.sessionDurationMinutes || 60} minuti
+- Stile di Progressione: ${params.progressionStyle || 'RIR/RPE Progressivo'}
+${params.targetFocus && params.targetFocus.length > 0 ? `- Focus Muscolare Specifico: ${params.targetFocus.join(', ')}` : ''}
+${params.splitStyle ? `- Stile della Split: ${params.splitStyle}` : ''}
+- Settimane totali: ${params.weeks}
+- Giorni per settimana: ${params.daysPerWeek}
+- Attrezzatura a disposizione: ${params.availableEquipment.length > 0 ? params.availableEquipment.join(', ') : 'Palestra Completa'}
+${params.limitations ? `- INFORTUNI / LIMITAZIONI DA EVITARE: ${params.limitations}` : '- Nessuna limitazione segnalata'}
+${params.extraNotes ? `- Note aggiuntive / Istruzioni del Coach: ${params.extraNotes}` : ''}
 
-Restituisci solo l'array JSON valido.
+IMPORTANTE: Assicurati di generare tra 4 e 7 esercizi per CIASCUN giorno di CIASCUNA settimana. Usa solo "Giorno A", "Giorno B", "Giorno C" come day_name.
+
+Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
 `;
 
-  if (onProgress) onProgress(`Generazione del programma in corso con ${params.provider === 'openai' ? 'OpenAI (GPT-4o)' : 'Gemini (1.5 Pro)'}...`);
+  if (onProgress) onProgress(`Generazione del programma in corso con Gemini 3.6 Flash...`);
 
   try {
     if (params.provider === 'openai') {
@@ -119,12 +172,13 @@ Restituisci solo l'array JSON valido.
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o', // Modello top di gamma per ragionamento complesso
+        model: 'gpt-4o', 
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.7,
+        max_tokens: 8192,
         response_format: {
           type: "json_schema",
           json_schema: {
@@ -176,31 +230,30 @@ Restituisci solo l'array JSON valido.
       return parsed.exercises as AIWorkoutExercise[];
 
     } else {
-      // GEMINI IMPLEMENTATION (Supporto Modelli Gemini 2.5/2.0/1.5 con Fallback Strutturato e Plain JSON)
       const geminiModels = [
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-flash',
-        'gemini-1.5-flash-latest',
-        'gemini-1.5-pro',
-        'gemini-1.5-pro-latest',
+        'gemini-3.6-flash',
       ];
 
       let lastError: Error | null = null;
       let data: any = null;
 
-      // Tentativo 1: Chiamata con Structured Output (responseSchema)
       for (const modelName of geminiModels) {
+        if (onProgress) onProgress(`Generazione in corso con Gemini 3.6 Flash...`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 secondi per permettere la generazione di tutta la scheda JSON
+
         try {
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
           const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
               system_instruction: { parts: [{ text: systemPrompt }] },
               contents: [{ role: "user", parts: [{ text: userPrompt }] }],
               generationConfig: {
                 temperature: 0.7,
+                maxOutputTokens: 8192,
                 responseMimeType: "application/json",
                 responseSchema: {
                   type: "object",
@@ -230,27 +283,44 @@ Restituisci solo l'array JSON valido.
               }
             })
           });
+          clearTimeout(timeoutId);
 
           if (response.ok) {
             data = await response.json();
             break;
           } else {
-            const err = await response.json().catch(() => ({}));
-            lastError = new Error(err.error?.message || `Errore HTTP ${response.status} per ${modelName}`);
+            const errData = await response.json().catch(() => ({}));
+            const msg = errData.error?.message || `Errore HTTP ${response.status}`;
+            lastError = new Error(msg);
+            
+            // Se la chiave API è invalida (400 / 403), blocca. Se è un 429 quota per quel singolo modello, prova il modello successivo
+            if (response.status === 403 || (response.status === 400 && msg.toLowerCase().includes('key'))) {
+              throw new Error(`Chiave API Gemini non valida: ${msg}`);
+            }
           }
         } catch (err: any) {
-          lastError = err;
+          clearTimeout(timeoutId);
+          if (err.name === 'AbortError') {
+            lastError = new Error("La generazione dell'IA ha impiegato troppo tempo. Riprova con un numero inferiore di settimane o giorni.");
+          } else if (err.message?.includes('Chiave API Gemini non valida')) {
+            throw err;
+          } else {
+            lastError = err;
+          }
         }
       }
 
-      // Tentativo 2: Fallback Plain JSON Prompt (Se i responseSchema vengono rifiutati dalla chiave)
+      // Fallback Plain JSON Prompt (Se i responseSchema falliscono)
       if (!data) {
-        for (const modelName of geminiModels) {
+        for (const modelName of geminiModels.slice(0, 2)) {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 90000);
           try {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
             const response = await fetch(url, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal,
               body: JSON.stringify({
                 contents: [{
                   role: "user",
@@ -262,13 +332,14 @@ Restituisci solo l'array JSON valido.
                 }
               })
             });
+            clearTimeout(timeoutId);
 
             if (response.ok) {
               data = await response.json();
               break;
             }
           } catch (e) {
-            // Continua al prossimo modello
+            clearTimeout(timeoutId);
           }
         }
       }

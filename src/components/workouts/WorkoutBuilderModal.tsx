@@ -60,17 +60,29 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
   // Esercizi filtrati per la settimana ed il giorno correntemente selezionati
   const currentWeekDayExercises = exercises.filter(
-    ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A') === activeDay
+    ex => (ex.week_number || 1) === activeWeek && 
+          (ex.day_name || 'Giorno A').trim().toLowerCase() === activeDay.trim().toLowerCase()
   );
 
   const estimatedTime = calculateEstimatedWorkoutTime(currentWeekDayExercises);
 
   const handleAIGenerated = (aiExercises: AIWorkoutExercise[]) => {
-    // Trasforma AIWorkoutExercise in Partial<WorkoutExercise>
-    const mapped = aiExercises.map(ex => ({
-      ...ex,
-      is_time_based: false, // Defaulting to false, IA setta in genere sets/reps classici
-    }));
+    // Normalizzazione pulita dei nomi del giorno (es. da "Giorno A - Push" a "Giorno A")
+    const mapped = aiExercises.map(ex => {
+      let cleanDay = (ex.day_name || 'Giorno A').trim();
+      const match = cleanDay.match(/(Giorno\s+[A-Z0-9]+)/i);
+      if (match) {
+        // Formatta come "Giorno A", "Giorno B"
+        const dayLetter = match[1].split(/\s+/)[1].toUpperCase();
+        cleanDay = `Giorno ${dayLetter}`;
+      }
+
+      return {
+        ...ex,
+        day_name: cleanDay,
+        is_time_based: false,
+      };
+    });
 
     setExercises(mapped);
 
