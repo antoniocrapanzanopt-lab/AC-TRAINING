@@ -66,6 +66,21 @@ export const MessagesPage: React.FC = () => {
     });
   }, [athletes, newChatSearch]);
 
+  // Messaggi della conversazione attiva con id canonico
+  const activeConversationMessages = useMemo(() => {
+    if (!activeConversation) return [];
+    return messages.filter(m => {
+      const otherId = m.sender_id === user?.id ? m.receiver_id : m.sender_id;
+      const athlete = athletes.find(a => a.auth_user_id === otherId || a.id === otherId);
+      const canonicalId = athlete ? (athlete.auth_user_id || athlete.id) : otherId;
+      return (
+        canonicalId === activeConversation.athlete_id ||
+        m.sender_id === activeConversation.athlete_id ||
+        m.receiver_id === activeConversation.athlete_id
+      );
+    });
+  }, [messages, activeConversation, user, athletes]);
+
   const handleStartNewChat = (athlete: any) => {
     const chatUserId = athlete.auth_user_id || athlete.id;
     
@@ -318,7 +333,7 @@ export const MessagesPage: React.FC = () => {
             >
               {loading ? (
                  <div className="flex justify-center py-10 text-slate-500">Caricamento...</div>
-              ) : messages.filter(m => m.sender_id === activeConversation.athlete_id || m.receiver_id === activeConversation.athlete_id).length === 0 ? (
+              ) : activeConversationMessages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center text-slate-500">
                   <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center mb-4">
                     <User className="w-8 h-8 text-slate-600" />
@@ -326,8 +341,7 @@ export const MessagesPage: React.FC = () => {
                   <p>Invia il tuo primo messaggio a {activeConversation.athlete_name}</p>
                 </div>
               ) : (
-                messages
-                  .filter(m => m.sender_id === activeConversation.athlete_id || m.receiver_id === activeConversation.athlete_id)
+                activeConversationMessages
                   .map((msg, idx, arr) => {
                     const isMine = msg.sender_id === user?.id;
                     const showDate = idx === 0 || new Date(msg.created_at).toDateString() !== new Date(arr[idx-1].created_at).toDateString();

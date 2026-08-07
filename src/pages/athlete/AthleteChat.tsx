@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Send, User, Clock, ArrowLeft } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
@@ -21,7 +21,11 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   // il coach ID è in genere quello assegnato all'atleta (es. 'demo-local' o un uuid).
   // Per semplicità, filtriamo i messaggi dove l'atleta è coinvolto.
   
-  const athleteMessages = messages.filter(m => m.sender_id === user?.id || m.receiver_id === user?.id);
+  const athleteMessages = useMemo(() => {
+    if (!user) return [];
+    const myIds = [user.id, user.athleteId].filter(Boolean);
+    return messages.filter(m => myIds.includes(m.sender_id) || myIds.includes(m.receiver_id));
+  }, [messages, user]);
   const [coachId, setCoachId] = useState<string>('demo-local');
 
   useEffect(() => {

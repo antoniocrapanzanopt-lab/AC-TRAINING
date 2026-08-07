@@ -58,41 +58,23 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           event: '*',
           schema: 'public',
           table: 'messages',
-          filter: `receiver_id=eq.${user.id}`,
         },
         (payload) => {
+          const newMsg = payload.new as Message;
+          const oldMsg = payload.old as Message;
           if (payload.eventType === 'INSERT') {
-            setMessages((prev) => [...prev, payload.new as Message]);
+            if (newMsg && (newMsg.sender_id === user.id || newMsg.receiver_id === user.id)) {
+              setMessages((prev) => {
+                if (prev.some(m => m.id === newMsg.id)) return prev;
+                return [...prev, newMsg];
+              });
+            }
           } else if (payload.eventType === 'UPDATE') {
             setMessages((prev) =>
-              prev.map((msg) => (msg.id === payload.new.id ? (payload.new as Message) : msg))
+              prev.map((msg) => (msg.id === newMsg.id ? newMsg : msg))
             );
           } else if (payload.eventType === 'DELETE') {
-            setMessages((prev) => prev.filter((msg) => msg.id !== payload.old.id));
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-          filter: `sender_id=eq.${user.id}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            // Se lo abbiamo appena inviato noi, potrebbe essere già nello stato (gestito in modo ottimistico), ma per semplicità aggiungiamo se non c'è.
-            setMessages((prev) => {
-               if (prev.find(m => m.id === payload.new.id)) return prev;
-               return [...prev, payload.new as Message];
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            setMessages((prev) =>
-              prev.map((msg) => (msg.id === payload.new.id ? (payload.new as Message) : msg))
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setMessages((prev) => prev.filter((msg) => msg.id !== payload.old.id));
+            setMessages((prev) => prev.filter((msg) => msg.id !== oldMsg.id));
           }
         }
       )
@@ -114,10 +96,9 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const isSender = msg.sender_id === user.id;
       const otherUserId = isSender ? msg.receiver_id : msg.sender_id;
 
-      let athleteInfo = athletes.find(a => a.auth_user_id === otherUserId || a.id === otherUserId);
+      const athleteInfo = athletes.find(a => a.auth_user_id === otherUserId || a.id === otherUserId);
+      const canonicalId = athleteInfo ? (athleteInfo.auth_user_id || athleteInfo.id) : otherUserId;
       
-      // If no athlete found with auth_user_id, maybe the other is the coach?
-      // In a real app we would have a users table to join, but here we can try to guess from the context
       let athleteName = athleteInfo ? `${athleteInfo.firstName} ${athleteInfo.lastName}` : 'Utente Sconosciuto';
       let tags = athleteInfo?.tags || [];
       
@@ -126,9 +107,9 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           athleteName = 'Coach / Atleta Demo';
       }
 
-      if (!convMap.has(otherUserId)) {
-        convMap.set(otherUserId, {
-          athlete_id: otherUserId,
+      if (!convMap.has(canonicalId)) {
+        convMap.set(canonicalId, {
+          athlete_id: canonicalId,
           athlete_name: athleteName,
           athlete_initials: athleteName.substring(0, 2).toUpperCase(),
           tags: tags,
@@ -136,7 +117,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           unread_count: (!isSender && !msg.is_read) ? 1 : 0,
         });
       } else {
-        const existing = convMap.get(otherUserId)!;
+        const existing = convMap.get(canonicalId)!;
         // Update last message if this one is newer
         if (new Date(msg.created_at) > new Date(existing.last_message!.created_at)) {
           existing.last_message = msg;
