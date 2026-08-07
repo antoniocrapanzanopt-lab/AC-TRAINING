@@ -23,35 +23,49 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [loading, setLoading] = useState(true);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
-  // Load initial messages
+  const userId = user?.id;
+
+  // Load initial messages & setup Realtime
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setMessages([]);
       setLoading(false);
       return;
     }
 
-    const fetchMessages = async () => {
-      setLoading(true);
+    const fetchMessages = async (showLoading = true) => {
+      if (showLoading) setLoading(true);
       const { data, error } = await supabase
         .from('messages')
         .select('*')
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
         .order('created_at', { ascending: true });
 
       if (error) {
         console.error('Error fetching messages:', error);
-      } else {
-        setMessages(data || []);
+      } else if (data) {
+        setMessages((prev) => {
+          // Mantieni messaggi ottimistici non ancora salvati nel DB
+          const tempMsgs = prev.filter(m => m.id.startsWith('temp-'));
+          const dbIds = new Set(data.map(m => m.id));
+          const filteredTemp = tempMsgs.filter(t => !dbIds.has(t.id));
+          return [...data, ...filteredTemp];
+        });
       }
-      setLoading(false);
+      if (showLoading) setLoading(false);
     };
 
-    fetchMessages();
+    fetchMessages(true);
 
-    // Subscribe to realtime changes
+    // Polling di sicurezza ogni 5 secondi per garantire la massima velocità
+    const pollInterval = setInterval(() => {
+      fetchMessages(false);
+    }, 5000);
+
+    // Subscribe a realtime con canale unico dedicato all'utente
+    const channelName = `messages_channel_${userId}`;
     const subscription = supabase
-      .channel('messages_channel')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -63,7 +77,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const newMsg = payload.new as Message;
           const oldMsg = payload.old as Message;
           if (payload.eventType === 'INSERT') {
-            if (newMsg && (newMsg.sender_id === user.id || newMsg.receiver_id === user.id)) {
+            if (newMsg && (newMsg.sender_id === userId || newMsg.receiver_id === userId)) {
               setMessages((prev) => {
                 if (prev.some(m => m.id === newMsg.id)) return prev;
                 return [...prev, newMsg];
@@ -81,9 +95,10 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(subscription);
     };
-  }, [user]);
+  }, [userId]);
 
   // Aggregate messages into conversations
   const conversations = useMemo(() => {
