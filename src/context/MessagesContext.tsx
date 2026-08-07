@@ -114,7 +114,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const isSender = msg.sender_id === user.id;
       const otherUserId = isSender ? msg.receiver_id : msg.sender_id;
 
-      let athleteInfo = athletes.find(a => a.auth_user_id === otherUserId);
+      let athleteInfo = athletes.find(a => a.auth_user_id === otherUserId || a.id === otherUserId);
       
       // If no athlete found with auth_user_id, maybe the other is the coach?
       // In a real app we would have a users table to join, but here we can try to guess from the context
