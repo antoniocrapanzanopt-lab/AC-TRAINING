@@ -24,6 +24,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   const userId = user?.id;
+  const athleteId = user?.athleteId;
 
   // Load initial messages & setup Realtime
   useEffect(() => {
@@ -33,12 +34,15 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
 
+    const validIds = [userId, athleteId].filter(Boolean) as string[];
+    const orConditions = validIds.map(id => `sender_id.eq.${id},receiver_id.eq.${id}`).join(',');
+
     const fetchMessages = async () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('messages')
         .select('*')
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+        .or(orConditions)
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -71,7 +75,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const newMsg = payload.new as Message;
           const oldMsg = payload.old as Message;
           if (payload.eventType === 'INSERT') {
-            if (newMsg && (newMsg.sender_id === userId || newMsg.receiver_id === userId)) {
+            if (newMsg && (validIds.includes(newMsg.sender_id) || validIds.includes(newMsg.receiver_id))) {
               setMessages((prev) => {
                 if (prev.some(m => m.id === newMsg.id)) return prev;
                 return [...prev, newMsg];
@@ -91,7 +95,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [userId]);
+  }, [userId, athleteId]);
 
   // Aggregate messages into conversations
   const conversations = useMemo(() => {
