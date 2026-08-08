@@ -192,6 +192,8 @@ export interface Athlete {
   medicalNotes?: string;
   medicalCertificateExpiryDate?: string;
   medicalCertificateUrl?: string;
+  medicalCertificateType?: 'agonistico' | 'non_agonistico';
+  telegramUsername?: string;
   privacyConsent: boolean;
   privacyConsentDate?: string;
   newsletterConsent: boolean;
@@ -224,6 +226,8 @@ export interface AthleteFormData {
   medicalNotes?: string;
   medicalCertificateExpiryDate?: string;
   medicalCertificateUrl?: string;
+  medicalCertificateType?: 'agonistico' | 'non_agonistico';
+  telegramUsername?: string;
   privacyConsent: boolean;
   newsletterConsent: boolean;
 }

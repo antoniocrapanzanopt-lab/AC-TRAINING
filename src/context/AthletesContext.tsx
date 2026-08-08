@@ -36,6 +36,8 @@ const mapAthleteFromDB = (row: any): Athlete => ({
   medicalCertificateExpiryDate: row.medical_cert_expiry || '',
   medicalNotes: row.medical_cert_notes || '',
   medicalCertificateUrl: row.medical_cert_url || '',
+  medicalCertificateType: row.medical_cert_type || 'agonistico',
+  telegramUsername: row.telegram_username || '',
   contactChannel: row.contact_channel || '',
   acquisitionSource: row.acquisition_source || '',
   assignedCoachId: row.assigned_coach_id || '',
@@ -70,6 +72,8 @@ const mapAthleteToDB = (a: any): any => {
   if (a.medicalCertificateExpiryDate !== undefined) data.medical_cert_expiry = a.medicalCertificateExpiryDate || null;
   if (a.medicalNotes !== undefined) data.medical_cert_notes = a.medicalNotes;
   if (a.medicalCertificateUrl !== undefined) data.medical_cert_url = a.medicalCertificateUrl || null;
+  if (a.medicalCertificateType !== undefined) data.medical_cert_type = a.medicalCertificateType;
+  if (a.telegramUsername !== undefined) data.telegram_username = a.telegramUsername;
   if (a.contactChannel !== undefined) data.contact_channel = a.contactChannel;
   if (a.acquisitionSource !== undefined) data.acquisition_source = a.acquisitionSource;
   if (a.assignedCoachId !== undefined) data.assigned_coach_id = a.assignedCoachId;

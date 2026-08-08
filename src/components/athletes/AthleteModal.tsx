@@ -54,6 +54,8 @@ const emptyForm = (ownerProfile: ReturnType<typeof getLocalOwnerProfile>): Athle
   tags: [],
   medicalNotes: '',
   medicalCertificateExpiryDate: '',
+  medicalCertificateType: 'agonistico',
+  telegramUsername: '',
   privacyConsent: true,
   newsletterConsent: false,
 });
@@ -107,6 +109,8 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
         goals: editingAthlete.goals || '',
         medicalNotes: editingAthlete.medicalNotes || '',
         medicalCertificateExpiryDate: editingAthlete.medicalCertificateExpiryDate || '',
+        medicalCertificateType: editingAthlete.medicalCertificateType || 'agonistico',
+        telegramUsername: editingAthlete.telegramUsername || '',
         privacyConsent: editingAthlete.privacyConsent !== undefined ? editingAthlete.privacyConsent : true,
         newsletterConsent: editingAthlete.newsletterConsent || false,
       });
@@ -325,6 +329,16 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                   {errors.phone && <p className="text-[11px] text-red-400 mt-1">{errors.phone}</p>}
                 </div>
                 <div>
+                  <label htmlFor="athlete-telegram" className="block text-xs font-semibold text-slate-300 mb-1">Contatto Telegram</label>
+                  <input
+                    id="athlete-telegram"
+                    value={form.telegramUsername ?? ''}
+                    onChange={e => set('telegramUsername', e.target.value)}
+                    className={inputClass()}
+                    placeholder="es. @username o +393330000000"
+                  />
+                </div>
+                <div>
                   <label htmlFor="athlete-dateOfBirth" className="block text-xs font-semibold text-slate-300 mb-1">Data di Nascita</label>
                   <input
                     id="athlete-dateOfBirth"
@@ -508,7 +522,18 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
               <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1.5">
                 <FileText className="w-4 h-4" /> Certificato Medico & Consensi
               </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Tipologia Certificato</label>
+                  <select
+                    value={form.medicalCertificateType ?? 'agonistico'}
+                    onChange={e => set('medicalCertificateType', e.target.value as 'agonistico' | 'non_agonistico')}
+                    className={selectClass()}
+                  >
+                    <option value="agonistico">Agonistico</option>
+                    <option value="non_agonistico">Non Agonistico</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Scadenza Certificato Medico</label>
                   <input

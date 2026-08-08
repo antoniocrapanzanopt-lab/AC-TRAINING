@@ -125,7 +125,9 @@ CREATE TABLE IF NOT EXISTS public.workout_exercises (
 
 -- ALTER TABLE PER AGGIORNARE TABELLE GIA ESISTENTI IN POSTGRES
 ALTER TABLE public.athletes 
-ADD COLUMN IF NOT EXISTS medical_cert_url TEXT;
+ADD COLUMN IF NOT EXISTS medical_cert_url TEXT,
+ADD COLUMN IF NOT EXISTS medical_cert_type TEXT DEFAULT 'agonistico',
+ADD COLUMN IF NOT EXISTS telegram_username TEXT;
 
 ALTER TABLE public.workouts 
 ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES public.workout_folders(id) ON DELETE SET NULL,
