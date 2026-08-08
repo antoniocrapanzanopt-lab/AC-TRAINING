@@ -485,6 +485,28 @@ export const AthletesPage: React.FC = () => {
                             title="Archivia">
                             <Archive className="w-4 h-4" />
                           </button>
+                          <button
+                            onClick={() => {
+                              setConfirmModal({
+                                open: true,
+                                title: `Eliminare ${athlete.fullName || 'questo atleta'}?`,
+                                message: `Sei sicuro di voler eliminare definitivamente il profilo di ${athlete.fullName || 'questo atleta'}? L'operazione rimuoverà tutti i dati e le schede dal database.`,
+                                danger: true,
+                                onConfirm: async () => {
+                                  const ok = await deleteAthlete(athlete.id);
+                                  setConfirmModal(prev => ({ ...prev, open: false }));
+                                  if (ok) {
+                                    showSuccess('Atleta eliminato', `Il profilo di ${athlete.fullName || 'Atleta'} è stato rimosso.`);
+                                  } else {
+                                    showError('Errore', 'Impossibile eliminare l\'atleta.');
+                                  }
+                                },
+                              });
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                            title="Elimina atleta definitivamente">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -529,6 +551,28 @@ export const AthletesPage: React.FC = () => {
                       <button onClick={() => handleEdit(athlete)}
                         className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-[var(--color-primary)] border border-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/10 transition-colors">
                         Modifica
+                      </button>
+                      <button
+                        onClick={() => {
+                          setConfirmModal({
+                            open: true,
+                            title: `Eliminare ${athlete.fullName || 'questo atleta'}?`,
+                            message: `Sei sicuro di voler eliminare definitivamente il profilo di ${athlete.fullName || 'questo atleta'}?`,
+                            danger: true,
+                            onConfirm: async () => {
+                              const ok = await deleteAthlete(athlete.id);
+                              setConfirmModal(prev => ({ ...prev, open: false }));
+                              if (ok) {
+                                showSuccess('Atleta eliminato', `Il profilo di ${athlete.fullName || 'Atleta'} è stato rimosso.`);
+                              } else {
+                                showError('Errore', 'Impossibile eliminare l\'atleta.');
+                              }
+                            },
+                          });
+                        }}
+                        className="p-1 rounded-lg text-slate-400 hover:text-red-400 transition-colors"
+                        title="Elimina Atleta">
+                        <Trash2 className="w-4 h-4 text-red-400" />
                       </button>
                     </div>
                   </div>

@@ -16,6 +16,8 @@ import { SettingsProvider } from './context/SettingsContext';
 import { WorkoutsProvider } from './context/WorkoutsContext';
 import { MessagesProvider } from './context/MessagesContext';
 import { ExercisesProvider } from './context/ExercisesContext';
+import { MetricsProvider } from './context/MetricsContext';
+
 
 import { AuthPage } from './pages/auth/AuthPage';
 import { InvitePage } from './pages/auth/InvitePage';
@@ -61,10 +63,13 @@ const AppContent: React.FC = () => {
   return <MainLayout />;
 };
 
+import { ThemeProvider } from './context/ThemeContext';
+
 export const App: React.FC = () => {
   return (
     <ErrorBoundary>
-      <AppProvider>
+      <ThemeProvider>
+        <AppProvider>
         <AuthProvider>
           <ToastProvider>
             <SettingsProvider>
@@ -80,7 +85,9 @@ export const App: React.FC = () => {
                                 <WorkoutsProvider>
                                   <ExercisesProvider>
                                     <MessagesProvider>
-                                      <AppContent />
+                                      <MetricsProvider>
+                                        <AppContent />
+                                      </MetricsProvider>
                                     </MessagesProvider>
                                   </ExercisesProvider>
                                 </WorkoutsProvider>
@@ -97,6 +104,7 @@ export const App: React.FC = () => {
           </ToastProvider>
         </AuthProvider>
       </AppProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 };

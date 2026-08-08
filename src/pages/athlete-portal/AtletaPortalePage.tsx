@@ -12,6 +12,7 @@ import {
   Download,
   Info,
   ShieldAlert,
+  Scale
 } from 'lucide-react';
 import { useAthletes } from '../../context/AthletesContext';
 import { useSubscriptions } from '../../context/SubscriptionsContext';
@@ -22,6 +23,7 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getMedicalCertificateStatus, getDaysRemaining } from '../../lib/statusEngine';
 import { Athlete, CalendarEvent } from '../../types';
+import { AthleteProgressView } from '../athlete/AthleteProgressView';
 
 export const AtletaPortalePage: React.FC = () => {
   const { athletes } = useAthletes();
@@ -32,10 +34,13 @@ export const AtletaPortalePage: React.FC = () => {
   const { ownerProfile } = useApp();
   const { currentOrganization } = useAuth();
 
+  const [portalTab, setPortalTab] = useState<'panoramica' | 'progressi'>('panoramica');
+
   // Atleta Selezionato per l'anteprima del portale
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>(
     athletes.length > 0 ? athletes[0].id : ''
   );
+
 
   const selectedAthlete = useMemo<Athlete | undefined>(() => {
     return athletes.find((a) => a.id === selectedAthleteId) || athletes[0];
@@ -193,8 +198,40 @@ export const AtletaPortalePage: React.FC = () => {
         )}
       </div>
 
-      {/* RIEPILOGO ABBONAMENTO E RATA RESIDUA */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      {/* SELETTORE TAB PORTALE */}
+      <div className="flex gap-2 bg-slate-900 border border-slate-800 p-1.5 rounded-2xl w-fit">
+        <button
+          onClick={() => setPortalTab('panoramica')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            portalTab === 'panoramica'
+              ? 'bg-[var(--color-primary)] text-black shadow-md font-black'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <User className="w-4 h-4" />
+          <span>Panoramica, Scadenze & Documenti</span>
+        </button>
+        <button
+          onClick={() => setPortalTab('progressi')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            portalTab === 'progressi'
+              ? 'bg-[var(--color-primary)] text-black shadow-md font-black'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Scale className="w-4 h-4" />
+          <span>Progressi, Misure & Massimali</span>
+        </button>
+      </div>
+
+      {portalTab === 'progressi' ? (
+        <AthleteProgressView targetAthleteId={selectedAthlete.id} />
+      ) : (
+        <>
+          {/* RIEPILOGO ABBONAMENTO E RATA RESIDUA */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
         {/* SCHEDA 1: ABBONAMENTO ATTIVO */}
         <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -372,6 +409,9 @@ export const AtletaPortalePage: React.FC = () => {
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 };
+

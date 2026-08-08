@@ -42,11 +42,14 @@ import { DocumentsTab } from '../../components/athletes/DocumentsTab';
 import { ActivityTab } from '../../components/athletes/ActivityTab';
 import { CommunicationsTab } from '../../components/athletes/CommunicationsTab';
 import { TimelineTab } from '../../components/athletes/TimelineTab';
+import { MetricsTab } from '../../components/athletes/MetricsTab';
+import { Scale } from 'lucide-react';
 
 // ─── Tipi Tab ─────────────────────────────────────────────────────────────────
 
 type DetailTab =
   | 'panoramica'
+  | 'metriche'
   | 'note'
   | 'abbonamenti'
   | 'pagamenti'
@@ -54,6 +57,7 @@ type DetailTab =
   | 'attivita'
   | 'comunicazioni'
   | 'timeline';
+
 
 // ─── Etichette ────────────────────────────────────────────────────────────────
 
@@ -272,7 +276,7 @@ interface AthleteDetailPageProps {
 }
 
 export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId, onBack }) => {
-  const { getAthleteById, updateAthlete, notes = {}, timeline = {} } = useAthletes();
+  const { getAthleteById, updateAthlete, deleteAthlete, notes = {}, timeline = {} } = useAthletes();
   const { subscriptions = [] } = useSubscriptions();
   const { documents = [] } = useDocuments();
   const { communications = [] } = useCommunications();
@@ -333,6 +337,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   // Badge Conteggio Tabs
   const tabList: { id: DetailTab; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'panoramica', label: 'Panoramica', icon: <User className="w-4 h-4" /> },
+    { id: 'metriche', label: 'Metriche & Massimali', icon: <Scale className="w-4 h-4" /> },
     { id: 'note', label: 'Note', icon: <StickyNote className="w-4 h-4" />, count: athleteNotes.length },
     { id: 'abbonamenti', label: 'Abbonamenti', icon: <BookOpen className="w-4 h-4" /> },
     { id: 'pagamenti', label: 'Pagamenti', icon: <CreditCard className="w-4 h-4" /> },
@@ -344,7 +349,10 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
 
   const renderTab = (): React.ReactNode => {
     switch (activeTab) {
+      case 'metriche':
+        return <MetricsTab athleteId={athlete.id} athleteName={safeFullName} />;
       case 'panoramica':
+
         return (
           <div className="space-y-4">
             {/* Dati Anagrafici */}
@@ -512,6 +520,18 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
     showSuccess('Link copiato!', 'Ora puoi inviare questo link all\'atleta (es. su WhatsApp) per fargli creare la password.');
   };
 
+  const handleDeleteAthlete = async () => {
+    if (confirm(`Sei sicuro di voler eliminare definitivamente il profilo di ${safeFullName}? L'operazione rimuoverà la scheda e tutti i dati associati dal database.`)) {
+      const ok = await deleteAthlete(athleteId);
+      if (ok) {
+        showSuccess('Atleta eliminato', `Il profilo di ${safeFullName} è stato rimosso.`);
+        onBack();
+      } else {
+        showError('Errore', 'Impossibile eliminare l\'atleta dal database.');
+      }
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* HERO HEADER CARD (ULTRA PREMIUM UI) */}
@@ -598,6 +618,15 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             >
               <LinkIcon className="w-4 h-4" />
               <span>Genera Invito</span>
+            </button>
+
+            <button
+              onClick={handleDeleteAthlete}
+              className="flex items-center gap-2 px-4 py-2.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 rounded-xl text-xs font-bold transition-all shadow-md"
+              title="Elimina definitivamente questo atleta"
+            >
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>Elimina Profilo</span>
             </button>
           </div>
         </div>

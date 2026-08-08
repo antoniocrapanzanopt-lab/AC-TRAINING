@@ -1,21 +1,24 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Home, User } from 'lucide-react';
+import { LogOut, Home, User, Scale } from 'lucide-react';
 import { AthleteDashboard } from './AthleteDashboard';
 import { WorkoutPlayer } from './WorkoutPlayer';
 import { AthleteChat } from './AthleteChat';
+import { AthleteProgressView } from './AthleteProgressView';
+import { AthleteProfileView } from './AthleteProfileView';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 
 export const AthleteLayout: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'home' | 'profile' | 'messages'>('home');
-  const [activeWorkout, setActiveWorkout] = useState<{ workout: WorkoutTemplate, exercises: WorkoutExercise[] } | null>(null);
+  const [activeTab, setActiveTab] = useState<'home' | 'progress' | 'messages' | 'profile'>('home');
+  const [activeWorkout, setActiveWorkout] = useState<{ workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string } | null>(null);
 
   if (activeWorkout) {
     return (
       <WorkoutPlayer 
         workout={activeWorkout.workout} 
         exercises={activeWorkout.exercises} 
+        targetAthleteId={activeWorkout.targetAthleteId}
         onClose={() => setActiveWorkout(null)} 
       />
     );
@@ -45,16 +48,16 @@ export const AthleteLayout: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto p-4 pb-24">
         {activeTab === 'home' && (
-          <AthleteDashboard onStartWorkout={(workout, exercises) => setActiveWorkout({ workout, exercises })} />
+          <AthleteDashboard onStartWorkout={(workout, exercises, targetAthleteId) => setActiveWorkout({ workout, exercises, targetAthleteId })} />
+        )}
+        {activeTab === 'progress' && (
+          <AthleteProgressView />
         )}
         {activeTab === 'messages' && (
           <AthleteChat />
         )}
         {activeTab === 'profile' && (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 text-sm">
-            <User className="w-12 h-12 mb-4 opacity-50" />
-            <p>Il tuo profilo sarà disponibile a breve.</p>
-          </div>
+          <AthleteProfileView />
         )}
       </main>
 
@@ -68,11 +71,11 @@ export const AthleteLayout: React.FC = () => {
           <span className="text-[10px] font-medium">Oggi</span>
         </button>
         <button 
-          onClick={() => setActiveTab('profile')}
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl min-w-[64px] transition-all ${activeTab === 'profile' ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'text-slate-400'}`}
+          onClick={() => setActiveTab('progress')}
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl min-w-[64px] transition-all ${activeTab === 'progress' ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'text-slate-400'}`}
         >
-          <User className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Profilo</span>
+          <Scale className="w-5 h-5" />
+          <span className="text-[10px] font-medium">Progressi</span>
         </button>
         <button 
           onClick={() => setActiveTab('messages')}
@@ -81,7 +84,15 @@ export const AthleteLayout: React.FC = () => {
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>
           <span className="text-[10px] font-medium">Messaggi</span>
         </button>
+        <button 
+          onClick={() => setActiveTab('profile')}
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl min-w-[64px] transition-all ${activeTab === 'profile' ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'text-slate-400'}`}
+        >
+          <User className="w-5 h-5" />
+          <span className="text-[10px] font-medium">Profilo</span>
+        </button>
       </nav>
     </div>
   );
 };
+

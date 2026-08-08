@@ -372,5 +372,71 @@ BEGIN
     END IF;
 END $$;
 
+-- 9. ATHLETE METRICS & MEASUREMENTS
+CREATE TABLE IF NOT EXISTS public.athlete_metrics (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    athlete_id UUID NOT NULL REFERENCES public.athletes(id) ON DELETE CASCADE,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    weight_kg NUMERIC(5,2),
+    height_cm NUMERIC(5,2),
+    body_fat_percentage NUMERIC(4,2),
+    neck_cm NUMERIC(5,2),
+    shoulders_cm NUMERIC(5,2),
+    chest_cm NUMERIC(5,2),
+    waist_cm NUMERIC(5,2),
+    hips_cm NUMERIC(5,2),
+    bicep_right_cm NUMERIC(5,2),
+    bicep_left_cm NUMERIC(5,2),
+    thigh_right_cm NUMERIC(5,2),
+    thigh_left_cm NUMERIC(5,2),
+    calf_right_cm NUMERIC(5,2),
+    calf_left_cm NUMERIC(5,2),
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS athlete_metrics_athlete_id_idx ON public.athlete_metrics(athlete_id);
+CREATE INDEX IF NOT EXISTS athlete_metrics_date_idx ON public.athlete_metrics(date);
+
+ALTER TABLE public.athlete_metrics ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "coach_manage_metrics" ON public.athlete_metrics;
+CREATE POLICY "coach_manage_metrics" ON public.athlete_metrics FOR ALL TO authenticated USING (is_coach()) WITH CHECK (is_coach());
+
+DROP POLICY IF EXISTS "athlete_own_metrics" ON public.athlete_metrics;
+CREATE POLICY "athlete_own_metrics" ON public.athlete_metrics FOR ALL TO authenticated USING (
+    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id::uuid = athlete_metrics.athlete_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text)))
+);
+
+-- 10. ATHLETE MAX LIFTS & 1RM
+CREATE TABLE IF NOT EXISTS public.athlete_max_lifts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    athlete_id UUID NOT NULL REFERENCES public.athletes(id) ON DELETE CASCADE,
+    exercise_id UUID REFERENCES public.exercises(id) ON DELETE SET NULL,
+    exercise_name TEXT NOT NULL,
+    weight_kg NUMERIC(6,2) NOT NULL,
+    reps INTEGER NOT NULL DEFAULT 1,
+    calculated_1rm NUMERIC(6,2) NOT NULL,
+    is_real_1rm BOOLEAN DEFAULT false,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS athlete_max_lifts_athlete_id_idx ON public.athlete_max_lifts(athlete_id);
+CREATE INDEX IF NOT EXISTS athlete_max_lifts_date_idx ON public.athlete_max_lifts(date);
+
+ALTER TABLE public.athlete_max_lifts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "coach_manage_max_lifts" ON public.athlete_max_lifts;
+CREATE POLICY "coach_manage_max_lifts" ON public.athlete_max_lifts FOR ALL TO authenticated USING (is_coach()) WITH CHECK (is_coach());
+
+DROP POLICY IF EXISTS "athlete_own_max_lifts" ON public.athlete_max_lifts;
+CREATE POLICY "athlete_own_max_lifts" ON public.athlete_max_lifts FOR ALL TO authenticated USING (
+    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id::uuid = athlete_max_lifts.athlete_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text)))
+);
+
 NOTIFY pgrst, 'reload schema';
+
 

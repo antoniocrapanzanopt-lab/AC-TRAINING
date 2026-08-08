@@ -40,6 +40,7 @@ import {
 import { getLocalOwnerProfile, saveOwnerProfile } from '../../lib/ownerProfile';
 import { OwnerProfileTab } from './components/OwnerProfileTab';
 import { BackupSettingsTab } from './components/BackupSettingsTab';
+import { ThemeCustomizer } from '../../components/settings/ThemeCustomizer';
 
 type SettingsTab =
   | 'owner'
@@ -233,14 +234,6 @@ export const SettingsPage: React.FC = () => {
     e.preventDefault();
     updateOrgSettings(orgForm);
     showSuccess('Salvato', 'Dati organizzazione aggiornati con successo.');
-  };
-
-  // Salvataggio Aspetto e Colori CSS
-  const handleSaveAppearance = (color: string) => {
-    const updated = { ...appearanceForm, primaryColor: color };
-    setAppearanceForm(updated);
-    updateAppearanceSettings(updated);
-    showSuccess('Colore Applicato', `Nuovo colore primario applicato in tempo reale (${color})`);
   };
 
 
@@ -541,42 +534,7 @@ export const SettingsPage: React.FC = () => {
 
       {/* 2. COLORI E TEMA LIVE */}
       {activeSubTab === 'appearance' && (
-        <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Palette className="w-5 h-5 text-[var(--color-primary)]" /> Personalizzazione Colori & Variabili CSS Live
-            </h3>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Aggiornamento immediato</span>
-          </div>
-
-          <div className="space-y-3">
-            <label className="text-xs font-bold text-slate-300 block">Preset Cromatici di Accento:</label>
-            <div className="flex flex-wrap items-center gap-4">
-              {[
-                { name: 'Giallo Oro (Default)', hex: '#EAB308' },
-                { name: 'Smeraldo', hex: '#10B981' },
-                { name: 'Blu Sky', hex: '#38BDF8' },
-                { name: 'Viola Royal', hex: '#A855F7' },
-                { name: 'Rosso Scarlatto', hex: '#EF4444' },
-                { name: 'Arancio Caldo', hex: '#F97316' },
-              ].map(item => (
-                <button
-                  key={item.hex}
-                  onClick={() => handleSaveAppearance(item.hex)}
-                  className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-                    appearanceForm.primaryColor === item.hex
-                      ? 'border-white bg-slate-800 text-white shadow-lg'
-                      : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700'
-                  }`}
-                >
-                  <span className="w-4 h-4 rounded-full border border-white/20" style={{ backgroundColor: item.hex }} />
-                  {item.name}
-                  {appearanceForm.primaryColor === item.hex && <Check className="w-4 h-4 text-emerald-400" />}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <ThemeCustomizer />
       )}
 
       {/* 3. LOCALIZZAZIONE */}

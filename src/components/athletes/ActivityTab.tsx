@@ -23,109 +23,109 @@ interface WorkoutSessionDemo {
   exercises: {
     name: string;
     sets: { setNumber: number; reps: number; weightKg: number }[];
+    notes?: string;
   }[];
 }
 
-const buildDemoCompletedSessions = (): WorkoutSessionDemo[] => {
-  const today = new Date();
-  const d1 = new Date(today.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const d2 = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const d3 = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  return [
-    {
-      id: 'sess-1',
-      workoutTitle: 'Ipertrofia Petto & Tricipiti',
-      date: d1,
-      durationMinutes: 65,
-      rpe: 8,
-      notes: 'Ottima sensazione sulla panca piana. Aumentato il carico a 85kg.',
-      exercises: [
-        {
-          name: 'Panca Piana Bilanciere',
-          sets: [
-            { setNumber: 1, reps: 10, weightKg: 80 },
-            { setNumber: 2, reps: 10, weightKg: 80 },
-            { setNumber: 3, reps: 8, weightKg: 85 },
-            { setNumber: 4, reps: 8, weightKg: 85 },
-          ],
-        },
-        {
-          name: 'Spinte Manubri Inclinata',
-          sets: [
-            { setNumber: 1, reps: 12, weightKg: 28 },
-            { setNumber: 2, reps: 10, weightKg: 30 },
-            { setNumber: 3, reps: 10, weightKg: 30 },
-          ],
-        },
-        {
-          name: 'Pushdown Cavo Alto Tricipiti',
-          sets: [
-            { setNumber: 1, reps: 12, weightKg: 35 },
-            { setNumber: 2, reps: 12, weightKg: 40 },
-            { setNumber: 3, reps: 10, weightKg: 40 },
-          ],
-        },
-      ],
-    },
-    {
-      id: 'sess-2',
-      workoutTitle: 'Gambe & Addome Power',
-      date: d2,
-      durationMinutes: 75,
-      rpe: 9,
-      notes: 'Squat impegnativo ma eseguito con buona profondità.',
-      exercises: [
-        {
-          name: 'Back Squat Bilanciere',
-          sets: [
-            { setNumber: 1, reps: 8, weightKg: 100 },
-            { setNumber: 2, reps: 8, weightKg: 110 },
-            { setNumber: 3, reps: 6, weightKg: 115 },
-          ],
-        },
-        {
-          name: 'Leg Press 45°',
-          sets: [
-            { setNumber: 1, reps: 12, weightKg: 180 },
-            { setNumber: 2, reps: 12, weightKg: 200 },
-            { setNumber: 3, reps: 10, weightKg: 220 },
-          ],
-        },
-      ],
-    },
-    {
-      id: 'sess-3',
-      workoutTitle: 'Dorso & Bicipiti Focus',
-      date: d3,
-      durationMinutes: 60,
-      rpe: 7.5,
-      notes: 'Buona connessione mente-muscolo nei rematori.',
-      exercises: [
-        {
-          name: 'Trazioni alla Sbarra',
-          sets: [
-            { setNumber: 1, reps: 10, weightKg: 0 },
-            { setNumber: 2, reps: 8, weightKg: 5 },
-            { setNumber: 3, reps: 8, weightKg: 5 },
-          ],
-        },
-        {
-          name: 'Rematore Bilanciere',
-          sets: [
-            { setNumber: 1, reps: 10, weightKg: 65 },
-            { setNumber: 2, reps: 10, weightKg: 70 },
-            { setNumber: 3, reps: 8, weightKg: 75 },
-          ],
-        },
-      ],
-    },
-  ];
-};
 
-export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteName }) => {
-  const [completedSessions] = useState<WorkoutSessionDemo[]>(buildDemoCompletedSessions());
-  const [expandedSessionId, setExpandedSessionId] = useState<string | null>('sess-1');
+import { supabase } from '../../lib/supabase';
+
+// ... (keep interface WorkoutSessionDemo, but we'll map real data to it)
+
+export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName }) => {
+  const [completedSessions, setCompletedSessions] = useState<WorkoutSessionDemo[]>([]);
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    const fetchSessions = async () => {
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('workout_sessions')
+          .select(`
+            id,
+            start_time,
+            end_time,
+            rpe,
+            notes,
+            workouts ( title ),
+            exercise_logs (
+              set_number,
+              reps_completed,
+              weight_kg,
+              notes,
+              workout_exercises ( name )
+            )
+          `)
+          .eq('athlete_id', athleteId)
+          .not('end_time', 'is', null)
+          .order('end_time', { ascending: false });
+
+        if (error) throw error;
+
+        if (data) {
+          const mapped: WorkoutSessionDemo[] = data.map((session: any) => {
+            // Calcolo durata
+            const start = new Date(session.start_time);
+            const end = new Date(session.end_time);
+            const diffMs = end.getTime() - start.getTime();
+            const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
+
+            // Raggruppiamo i log per nome esercizio
+            const exMap = new Map<string, { sets: any[]; notesSet: Set<string> }>();
+            const logs = session.exercise_logs || [];
+            
+            logs.forEach((log: any) => {
+              const exName = log.workout_exercises?.name || 'Esercizio Sconosciuto';
+              if (!exMap.has(exName)) {
+                exMap.set(exName, { sets: [], notesSet: new Set<string>() });
+              }
+              const entry = exMap.get(exName)!;
+              entry.sets.push({
+                setNumber: log.set_number,
+                reps: log.reps_completed || 0,
+                weightKg: log.weight_kg || 0
+              });
+              if (log.notes) {
+                entry.notesSet.add(log.notes);
+              }
+            });
+
+            const exercises = Array.from(exMap.entries()).map(([name, { sets, notesSet }]) => {
+              sets.sort((a, b) => a.setNumber - b.setNumber);
+              const notes = Array.from(notesSet).join(' | ');
+              return { name, sets, notes };
+            });
+
+            return {
+              id: session.id,
+              workoutTitle: session.workouts?.title || 'Allenamento senza nome',
+              date: session.end_time.slice(0, 10),
+              durationMinutes,
+              rpe: session.rpe || 0,
+              notes: session.notes,
+              exercises
+            };
+          });
+          
+          setCompletedSessions(mapped);
+          if (mapped.length > 0) {
+            setExpandedSessionId(mapped[0].id);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching workout sessions:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (athleteId) {
+      fetchSessions();
+    }
+  }, [athleteId]);
 
   // Calcolo KPI di Rendimento
   const metrics = useMemo(() => {
@@ -140,9 +140,17 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteName }) => {
       totalSessions,
       totalDurationFormatted: `${hours}h ${mins}m`,
       avgRpe,
-      streakWeeks: 4,
+      streakWeeks: totalSessions > 0 ? 1 : 0, // Placeholder logico
     };
   }, [completedSessions]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center p-10 text-[var(--color-primary)]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -272,6 +280,11 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteName }) => {
                               </span>
                             ))}
                           </div>
+                          {ex.notes && (
+                            <div className="mt-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 font-medium leading-relaxed">
+                              💬 <strong>Feedback / Note:</strong> {ex.notes}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

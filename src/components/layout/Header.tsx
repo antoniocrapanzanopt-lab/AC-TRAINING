@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Dumbbell, Menu, X, User, ChevronDown, LogOut, Settings as SettingsIcon } from 'lucide-react';
+import { Dumbbell, Menu, X, User, ChevronDown, LogOut, Settings as SettingsIcon, Camera } from 'lucide-react';
 import { NavigationTab } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { LogoUploadModal } from './LogoUploadModal';
 
 interface HeaderProps {
   activeTab: NavigationTab;
@@ -18,10 +19,21 @@ export const Header: React.FC<HeaderProps> = ({
   isMobileMenuOpen,
 }) => {
   const { ownerProfile } = useApp();
-  const { user, logout, currentOrganization } = useAuth();
+  const { user, logout } = useAuth();
   const { showInfo } = useToast();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const [customLogo, setCustomLogo] = useState<string | null>(() => localStorage.getItem('builder_custom_logo'));
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleLogoUpdate = () => {
+      setCustomLogo(localStorage.getItem('builder_custom_logo'));
+    };
+    window.addEventListener('app_logo_updated', handleLogoUpdate);
+    return () => window.removeEventListener('app_logo_updated', handleLogoUpdate);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -40,36 +52,50 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="bg-[var(--color-panel)] border-b border-[var(--color-panel-border)] px-4 sm:px-6 py-3.5 flex items-center justify-between sticky top-0 z-30">
-      {/* Sinistra: Menu Mobile Toggle + Logo + Organizzazione */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onMobileMenuToggle}
-          className="lg:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-          aria-label="Apri menu principale"
-        >
-          {isMobileMenuOpen ? <X className="w-6 h-6 text-[var(--color-primary)]" /> : <Menu className="w-6 h-6" />}
-        </button>
-
+    <>
+      <header className="bg-[var(--color-panel)] border-b border-[var(--color-panel-border)] px-4 sm:px-6 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-lg">
+        {/* Sinistra: Menu Mobile Toggle + Logo + Organizzazione */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0">
-            <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-black tracking-tight text-white uppercase">
-                Builder <span className="text-[var(--color-primary)]">Athlete</span>
-              </span>
-              <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 uppercase">
-                Manager
-              </span>
+          <button
+            onClick={onMobileMenuToggle}
+            className="lg:hidden p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            aria-label="Apri menu principale"
+          >
+            {isMobileMenuOpen ? <X className="w-6 h-6 text-[var(--color-primary)]" /> : <Menu className="w-6 h-6" />}
+          </button>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsLogoModalOpen(true)}
+              className="relative group w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 hover:border-[var(--color-primary)] flex items-center justify-center shrink-0 overflow-hidden transition-all shadow-md cursor-pointer"
+              title="Clicca per personalizzare il Logo"
+            >
+              {customLogo ? (
+                <img src={customLogo} alt="Logo AC COACHING" className="w-full h-full object-contain p-1" />
+              ) : (
+                <div className="w-full h-full bg-[var(--color-primary)]/10 flex items-center justify-center">
+                  <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-[9px] font-bold text-white text-center p-0.5">
+                <Camera className="w-4 h-4 text-[var(--color-primary)] animate-pulse" />
+              </div>
+            </button>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-black tracking-tight text-white uppercase">
+                  <span className="text-[var(--color-primary)]">AC</span> COACHING
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-semibold tracking-wide flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] inline-block"></span>
+                High performance
+              </p>
             </div>
-            <p className="text-xs text-slate-400 font-medium">
-              {currentOrganization?.name || ownerProfile?.organizationName || 'Organizzazione Demo'}
-            </p>
           </div>
         </div>
-      </div>
 
       {/* Destra: Menu Utente con Logout */}
       <div className="relative" ref={userMenuRef}>
@@ -116,6 +142,14 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
       </div>
+
     </header>
+    <LogoUploadModal
+      isOpen={isLogoModalOpen}
+      onClose={() => setIsLogoModalOpen(false)}
+      currentLogo={customLogo}
+      onLogoUpdated={(newLogo) => setCustomLogo(newLogo)}
+    />
+  </>
   );
 };

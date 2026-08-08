@@ -1,36 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-dotenv.config();
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const env = readFileSync(resolve('.env'), 'utf8');
+const envUrl = env.match(/VITE_SUPABASE_URL=(.*)/)?.[1];
+const envKey = env.match(/VITE_SUPABASE_ANON_KEY=(.*)/)?.[1];
 
-async function testInsert() {
-  const dbData = {
-    first_name: 'Test',
-    last_name: 'Test',
-    email: '',
-    phone: '',
-    birth_date: null,
-    city: '',
-    province: '',
-    status: 'active',
-    payment_status: 'none',
-    tags: [],
-    goals: '',
-    notes: '',
-    medical_cert_expiry: null,
-    medical_cert_notes: '',
-    contact_channel: 'other',
-    acquisition_source: 'other',
-    assigned_coach_id: 'local-owner',
-    assigned_coach_name: 'Coach Demo'
-  };
+const supabase = createClient(envUrl, envKey);
 
-  const { data, error } = await supabase.from('athletes').insert([dbData]).select().single();
-  console.log('Result:', data);
-  console.log('Error:', error);
+async function checkTables() {
+  const { data, error } = await supabase.from('athlete_metrics').select('*').limit(1);
+  if (error) {
+    console.error("Error checking athlete_metrics:", error);
+  } else {
+    console.log("athlete_metrics exists, data:", data);
+  }
 }
-
-testInsert();
+checkTables();
