@@ -21,16 +21,27 @@ import {
   Activity,
   MessageSquare,
   Pencil,
-  Eye
+  Eye,
+  MessageCircle,
+  CheckCircle2,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { AthleteModal, ModalSection } from '../../components/athletes/AthleteModal';
 import { AthleteFormData } from '../../types';
-import { AthleteNote, NoteCategory, NoteVisibility, TimelineEvent } from '../../types';
+import { AthleteNote, NoteCategory, NoteVisibility } from '../../types';
 import { useAthletes } from '../../context/AthletesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useSubscriptions } from '../../context/SubscriptionsContext';
+import { useDocuments } from '../../context/DocumentsContext';
+import { useCommunications } from '../../context/CommunicationsContext';
 import { AthleteStatusBadge, PaymentStatusBadge, contactChannelLabel, acquisitionSourceLabel } from '../../components/athletes/AthleteBadges';
-import { Link as LinkIcon } from 'lucide-react';
+import { SubscriptionsTab } from '../../components/athletes/SubscriptionsTab';
+import { PaymentsTab } from '../../components/athletes/PaymentsTab';
+import { DocumentsTab } from '../../components/athletes/DocumentsTab';
+import { ActivityTab } from '../../components/athletes/ActivityTab';
+import { CommunicationsTab } from '../../components/athletes/CommunicationsTab';
+import { TimelineTab } from '../../components/athletes/TimelineTab';
 
 // ─── Tipi Tab ─────────────────────────────────────────────────────────────────
 
@@ -43,17 +54,6 @@ type DetailTab =
   | 'attivita'
   | 'comunicazioni'
   | 'timeline';
-
-const tabs: { id: DetailTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'panoramica', label: 'Panoramica', icon: <User className="w-4 h-4" /> },
-  { id: 'note', label: 'Note', icon: <StickyNote className="w-4 h-4" /> },
-  { id: 'abbonamenti', label: 'Abbonamenti', icon: <BookOpen className="w-4 h-4" /> },
-  { id: 'pagamenti', label: 'Pagamenti', icon: <CreditCard className="w-4 h-4" /> },
-  { id: 'documenti', label: 'Documenti', icon: <FileText className="w-4 h-4" /> },
-  { id: 'attivita', label: 'Attività', icon: <Activity className="w-4 h-4" /> },
-  { id: 'comunicazioni', label: 'Comunicazioni', icon: <MessageSquare className="w-4 h-4" /> },
-  { id: 'timeline', label: 'Timeline', icon: <Clock className="w-4 h-4" /> },
-];
 
 // ─── Etichette ────────────────────────────────────────────────────────────────
 
@@ -81,24 +81,6 @@ const noteCategoryColor: Record<NoteCategory, string> = {
   goal: 'text-[var(--color-primary)] bg-[var(--color-primary)]/10 border-[var(--color-primary)]/30',
   behaviour: 'text-purple-300 bg-purple-900/20 border-purple-600/30',
   other: 'text-slate-400 bg-slate-800/40 border-slate-700/30',
-};
-
-const timelineTypeIcon: Record<TimelineEvent['type'], string> = {
-  joined: '🏁',
-  subscription_created: '📋',
-  subscription_renewed: '🔄',
-  subscription_expired: '⚠️',
-  payment_received: '💰',
-  payment_overdue: '🔴',
-  note_added: '📝',
-  status_changed: '🔀',
-  coach_assigned: '👤',
-  document_uploaded: '📄',
-  message_sent: '💬',
-  communication: '💬',
-  goal_set: '🎯',
-  goal_achieved: '🏆',
-  other: '⚙️',
 };
 
 // ─── Utility Data Sicure ───────────────────────────────────────────────────────
@@ -139,12 +121,12 @@ const CollapsibleSection: React.FC<{
 }> = ({ title, icon, children, defaultOpen = true, onEdit }) => {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 bg-slate-900/40 border-b border-slate-800/60">
+    <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl overflow-hidden shadow-xl">
+      <div className="flex items-center justify-between px-4 py-3 bg-slate-900/50 border-b border-slate-800/80">
         <button onClick={() => setOpen(v => !v)}
           className="flex items-center gap-2 text-left hover:text-white transition-colors flex-1">
           {icon && <span className="text-[var(--color-primary)]">{icon}</span>}
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-300">{title}</span>
+          <span className="text-xs font-black uppercase tracking-wider text-slate-300">{title}</span>
           {open ? <ChevronUp className="w-4 h-4 text-slate-500 ml-1" /> : <ChevronDown className="w-4 h-4 text-slate-500 ml-1" />}
         </button>
 
@@ -207,28 +189,32 @@ const NotesTab: React.FC<{
   return (
     <div className="space-y-4">
       {/* Form Nuova Nota */}
-      <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-xl p-4 space-y-3">
-        <p className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wide">Nuova Nota</p>
+      <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl p-5 space-y-3 shadow-xl">
+        <p className="text-xs font-black text-[var(--color-primary)] uppercase tracking-wider flex items-center gap-1.5">
+          <StickyNote className="w-4 h-4" /> Nuova Nota Atleta
+        </p>
         <textarea
           value={content}
           onChange={e => setContent(e.target.value)}
           rows={3}
-          placeholder="Scrivi la nota..."
-          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-[var(--color-panel-border)] text-white text-sm resize-none focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+          placeholder="Scrivi una nota interna o di allenamento per l'atleta..."
+          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm resize-none focus:outline-none focus:border-[var(--color-primary)] transition-colors"
         />
-        <div className="flex items-center gap-2 flex-wrap">
-          <select value={category} onChange={e => setCategory(e.target.value as NoteCategory)} className={selectCls}>
-            {(Object.keys(noteCategoryLabel) as NoteCategory[]).map(c => (
-              <option key={c} value={c}>{noteCategoryLabel[c]}</option>
-            ))}
-          </select>
-          <select value={visibility} onChange={e => setVisibility(e.target.value as NoteVisibility)} className={selectCls}>
-            {(Object.keys(noteVisibilityLabel) as NoteVisibility[]).map(v => (
-              <option key={v} value={v}>Visibile: {noteVisibilityLabel[v]}</option>
-            ))}
-          </select>
+        <div className="flex items-center gap-2 flex-wrap justify-between pt-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={category} onChange={e => setCategory(e.target.value as NoteCategory)} className={selectCls}>
+              {(Object.keys(noteCategoryLabel) as NoteCategory[]).map(c => (
+                <option key={c} value={c}>{noteCategoryLabel[c]}</option>
+              ))}
+            </select>
+            <select value={visibility} onChange={e => setVisibility(e.target.value as NoteVisibility)} className={selectCls}>
+              {(Object.keys(noteVisibilityLabel) as NoteVisibility[]).map(v => (
+                <option key={v} value={v}>Visibile: {noteVisibilityLabel[v]}</option>
+              ))}
+            </select>
+          </div>
           <button onClick={handleAdd}
-            className="ml-auto flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[var(--color-primary)] text-black text-xs font-extrabold hover:bg-[var(--color-primary-hover)] transition-colors">
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black text-xs font-black hover:bg-[var(--color-primary-hover)] transition-all shadow-md">
             <Send className="w-3.5 h-3.5" />Salva Nota
           </button>
         </div>
@@ -238,9 +224,9 @@ const NotesTab: React.FC<{
       {sorted.length === 0 ? (
         <p className="text-sm text-slate-500 text-center py-8">Nessuna nota presente. Aggiungine una usando il form qui sopra.</p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {sorted.map(note => (
-            <div key={note.id} className={`bg-[var(--color-panel)] border rounded-xl p-4 space-y-2 transition-colors ${note.isPinned ? 'border-[var(--color-primary)]/40' : 'border-[var(--color-panel-border)]'}`}>
+            <div key={note.id} className={`bg-[var(--color-panel)] border rounded-2xl p-4 space-y-2 transition-colors ${note.isPinned ? 'border-[var(--color-primary)]/50 bg-[var(--color-primary)]/5 shadow-md' : 'border-[var(--color-panel-border)]'}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border ${noteCategoryColor[note.category]}`}>
@@ -253,14 +239,14 @@ const NotesTab: React.FC<{
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button onClick={() => togglePinNote(athleteId, note.id)}
-                    className="p-1 rounded text-slate-500 hover:text-[var(--color-primary)] transition-colors"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-[var(--color-primary)] hover:bg-slate-800 transition-colors"
                     title={note.isPinned ? 'Rimuovi pin' : 'Fissa'}>
-                    {note.isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                    {note.isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
                   </button>
                   <button onClick={() => handleDelete(note.id)}
-                    className="p-1 rounded text-slate-500 hover:text-red-400 transition-colors"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors"
                     title="Elimina nota">
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -278,72 +264,6 @@ const NotesTab: React.FC<{
   );
 };
 
-// ─── Scheda Timeline ──────────────────────────────────────────────────────────
-
-const TimelineTab: React.FC<{ events: TimelineEvent[] }> = ({ events = [] }) => {
-  if (!events || events.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <Clock className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-        <p className="text-sm text-slate-500">Nessun evento nella timeline.</p>
-        <p className="text-xs text-slate-600 mt-1">Le operazioni importanti (iscrizioni, pagamenti, modifiche di stato) appariranno qui automaticamente.</p>
-      </div>
-    );
-  }
-
-  const sorted = [...(events || [])].filter(Boolean).sort((a, b) => {
-    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
-  });
-
-  return (
-    <div className="relative pl-6 space-y-0">
-      {/* Linea verticale */}
-      <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-700" />
-
-      {sorted.map((event, idx) => (
-        <div key={event.id} className={`relative flex gap-4 ${idx < sorted.length - 1 ? 'pb-5' : ''}`}>
-          {/* Pallino */}
-          <div className="absolute -left-6 mt-1 w-3.5 h-3.5 rounded-full border-2 border-[var(--color-primary)] bg-[var(--color-bg)] flex items-center justify-center shrink-0 z-10 text-[10px]">
-            {timelineTypeIcon[event.type] || '⚙️'}
-          </div>
-
-          <div className="flex-1 bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-xl p-3 hover:border-slate-600 transition-colors">
-            <p className="text-sm font-semibold text-white">{event.title}</p>
-            {event.description && (
-              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{event.description}</p>
-            )}
-            <div className="flex items-center gap-2 mt-2 text-[11px] text-slate-500">
-              <User className="w-3 h-3" />{event.authorName || 'Sistema'}
-              <span>·</span>
-              <Calendar className="w-3 h-3" />
-              {formatDateTime(event.createdAt)}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// ─── Scheda Segnaposto ────────────────────────────────────────────────────────
-
-const PlaceholderTab: React.FC<{ title: string; description: string; icon: React.ReactNode }> = ({
-  title, description, icon,
-}) => (
-  <div className="flex flex-col items-center justify-center py-16 text-center">
-    <div className="w-14 h-14 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 flex items-center justify-center mb-4 text-[var(--color-primary)]">
-      {icon}
-    </div>
-    <h3 className="text-base font-bold text-white mb-1">{title}</h3>
-    <p className="text-sm text-slate-400 max-w-xs">{description}</p>
-    <span className="mt-3 inline-flex items-center px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-400 font-medium">
-      Modulo in preparazione
-    </span>
-  </div>
-);
-
 // ─── Pagina Principale ────────────────────────────────────────────────────────
 
 interface AthleteDetailPageProps {
@@ -353,7 +273,11 @@ interface AthleteDetailPageProps {
 
 export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId, onBack }) => {
   const { getAthleteById, updateAthlete, notes = {}, timeline = {} } = useAthletes();
+  const { subscriptions = [] } = useSubscriptions();
+  const { documents = [] } = useDocuments();
+  const { communications = [] } = useCommunications();
   const { showSuccess, showError } = useToast();
+
   const [activeTab, setActiveTab] = useState<DetailTab>('panoramica');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editModalSection, setEditModalSection] = useState<ModalSection>('all');
@@ -361,6 +285,28 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   const athlete = getAthleteById(athleteId);
   const athleteNotes = notes?.[athleteId] ?? [];
   const athleteTimeline = timeline?.[athleteId] ?? [];
+  const athleteDocs = documents.filter(d => d.athleteId === athleteId);
+  const athleteComms = communications.filter(c => c.athleteId === athleteId);
+
+  // Abbonamento Attivo dell'atleta
+  const activeSub = useMemo(() => {
+    const list = subscriptions.filter(s => s.athleteId === athleteId && s.status === 'active');
+    return list.length > 0 ? list[0] : null;
+  }, [subscriptions, athleteId]);
+
+  // Certificato Medico Status
+  const medicalStatus = useMemo(() => {
+    if (!athlete?.medicalCertificateExpiryDate) return { status: 'missing', label: 'Certificato Mancante', color: 'text-slate-400' };
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const thirtyDaysStr = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    if (athlete.medicalCertificateExpiryDate < todayStr) {
+      return { status: 'expired', label: 'Certificato Scaduto', color: 'text-red-400' };
+    } else if (athlete.medicalCertificateExpiryDate <= thirtyDaysStr) {
+      return { status: 'expiring', label: 'Certificato in Scadenza', color: 'text-amber-400' };
+    }
+    return { status: 'valid', label: 'Certificato Valido', color: 'text-emerald-400' };
+  }, [athlete]);
 
   if (!athlete) {
     return (
@@ -375,7 +321,26 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   }
 
   const safeTags = Array.isArray(athlete.tags) ? athlete.tags : [];
-  const safeFullName = athlete.fullName || [athlete.firstName, athlete.lastName].filter(Boolean).join(' ') || '—';
+  const safeFullName = athlete.fullName || [athlete.firstName, athlete.lastName].filter(Boolean).join(' ') || 'Atleta';
+  const initials = safeFullName
+    .split(' ')
+    .map(n => n[0])
+    .filter(Boolean)
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'AT';
+
+  // Badge Conteggio Tabs
+  const tabList: { id: DetailTab; label: string; icon: React.ReactNode; count?: number }[] = [
+    { id: 'panoramica', label: 'Panoramica', icon: <User className="w-4 h-4" /> },
+    { id: 'note', label: 'Note', icon: <StickyNote className="w-4 h-4" />, count: athleteNotes.length },
+    { id: 'abbonamenti', label: 'Abbonamenti', icon: <BookOpen className="w-4 h-4" /> },
+    { id: 'pagamenti', label: 'Pagamenti', icon: <CreditCard className="w-4 h-4" /> },
+    { id: 'documenti', label: 'Documenti', icon: <FileText className="w-4 h-4" />, count: athleteDocs.length },
+    { id: 'attivita', label: 'Attività', icon: <Activity className="w-4 h-4" /> },
+    { id: 'comunicazioni', label: 'Comunicazioni', icon: <MessageSquare className="w-4 h-4" />, count: athleteComms.length },
+    { id: 'timeline', label: 'Timeline', icon: <Clock className="w-4 h-4" />, count: athleteTimeline.length },
+  ];
 
   const renderTab = (): React.ReactNode => {
     switch (activeTab) {
@@ -395,14 +360,14 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             <CollapsibleSection title="Contatti" icon={<Phone className="w-4 h-4" />} onEdit={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}>
               <InfoRow label="Telefono"
                 value={athlete.phone ? (
-                  <a href={`tel:${athlete.phone}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1">
+                  <a href={`tel:${athlete.phone}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1 font-semibold">
                     <Phone className="w-3.5 h-3.5" />{athlete.phone}
                   </a>
                 ) : undefined}
               />
               <InfoRow label="Email"
                 value={athlete.email ? (
-                  <a href={`mailto:${athlete.email}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1">
+                  <a href={`mailto:${athlete.email}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1 font-semibold">
                     <Mail className="w-3.5 h-3.5" />{athlete.email}
                   </a>
                 ) : undefined}
@@ -432,7 +397,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Coach assegnato</span>
-                  <span className="text-sm text-slate-200">{athlete.assignedCoachName || '—'}</span>
+                  <span className="text-sm text-slate-200 font-bold">{athlete.assignedCoachName || '—'}</span>
                 </div>
                 <InfoRow label="Iscrizione" value={formatDate(athlete.createdAt)} />
               </div>
@@ -511,50 +476,27 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
         return <NotesTab athleteId={athleteId} notes={athleteNotes} />;
 
       case 'timeline':
-        return <TimelineTab events={athleteTimeline} />;
+        return <TimelineTab athleteId={athlete.id} athleteName={athlete.fullName} events={athleteTimeline} />;
 
       case 'abbonamenti':
-        return (
-          <PlaceholderTab
-            title="Abbonamenti"
-            description="Qui verranno visualizzati il pacchetto attivo, la data di inizio, la scadenza e la cronologia degli abbonamenti precedenti."
-            icon={<BookOpen className="w-7 h-7" />}
-          />
-        );
+        return <SubscriptionsTab athleteId={athlete.id} athleteName={athlete.fullName} />;
 
       case 'pagamenti':
-        return (
-          <PlaceholderTab
-            title="Pagamenti"
-            description="Qui saranno visibili tutti i pagamenti ricevuti, le quote arretrate e lo storico delle transazioni demo."
-            icon={<CreditCard className="w-7 h-7" />}
-          />
-        );
+        return <PaymentsTab athleteId={athlete.id} athleteName={athlete.fullName} />;
 
       case 'documenti':
-        return (
-          <PlaceholderTab
-            title="Documenti"
-            description="Qui potrai allegare documenti demo (moduli, liberatorie, contratti). Nessun file viene inviato a server reali."
-            icon={<FileText className="w-7 h-7" />}
-          />
-        );
+        return <DocumentsTab athleteId={athlete.id} athleteName={athlete.fullName} />;
 
       case 'attivita':
-        return (
-          <PlaceholderTab
-            title="Registro Attività"
-            description="Sessioni di allenamento, presenze e progressi dell'atleta saranno registrati in questa sezione."
-            icon={<Activity className="w-7 h-7" />}
-          />
-        );
+        return <ActivityTab athleteId={athlete.id} athleteName={athlete.fullName} />;
 
       case 'comunicazioni':
         return (
-          <PlaceholderTab
-            title="Comunicazioni"
-            description="Messaggi e comunicazioni demo inviate all'atleta. Nessuna email reale viene mai inviata in questa modalità demo."
-            icon={<MessageSquare className="w-7 h-7" />}
+          <CommunicationsTab
+            athleteId={athlete.id}
+            athleteName={athlete.fullName}
+            athletePhone={athlete.phone}
+            athleteEmail={athlete.email}
           />
         );
     }
@@ -571,68 +513,168 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   };
 
   return (
-    <div className="space-y-5">
-      {/* Intestazione */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <button onClick={onBack}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white transition-colors shrink-0 mt-1">
-          <ArrowLeft className="w-4 h-4" />
-          <span className="hidden sm:inline">Tutti gli atleti</span>
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0">
-              <User className="w-5 h-5 text-[var(--color-primary)]" />
+    <div className="space-y-6">
+      {/* HERO HEADER CARD (ULTRA PREMIUM UI) */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-[var(--color-panel)] to-[var(--color-panel)] border border-[var(--color-panel-border)] p-6 shadow-2xl space-y-6">
+        {/* Glow accento dorato di sfondo */}
+        <div className="absolute -top-24 -right-24 w-72 h-72 bg-[var(--color-primary)]/10 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Intestazione + Actions Bar */}
+        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <button
+              onClick={onBack}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-bold text-slate-300 bg-slate-900/80 border border-slate-800 hover:bg-slate-800 hover:text-white transition-all shrink-0 shadow-lg"
+            >
+              <ArrowLeft className="w-4 h-4 text-[var(--color-primary)]" />
+              <span className="hidden sm:inline">Tutti gli atleti</span>
+            </button>
+
+            {/* Avatar Atleta con Anello di Stato Dinamico */}
+            <div className="flex items-center gap-4">
+              <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border-2 flex items-center justify-center font-black text-lg text-white shadow-xl shrink-0 ${
+                athlete.status === 'active'
+                  ? 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
+                  : athlete.status === 'suspended'
+                  ? 'border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
+                  : 'border-red-500'
+              }`}>
+                {initials}
+                <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900 ${
+                  athlete.status === 'active' ? 'bg-emerald-500' : athlete.status === 'suspended' ? 'bg-amber-500' : 'bg-red-500'
+                }`} />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h2 className="text-2xl font-black text-white tracking-tight">{safeFullName}</h2>
+                  <AthleteStatusBadge status={athlete.status} />
+                  <PaymentStatusBadge status={athlete.paymentStatus} />
+                </div>
+
+                <div className="flex items-center gap-4 text-xs text-slate-400 mt-1 flex-wrap font-medium">
+                  {athlete.email && (
+                    <a href={`mailto:${athlete.email}`} className="hover:text-white transition-colors flex items-center gap-1">
+                      <Mail className="w-3.5 h-3.5 text-sky-400" /> {athlete.email}
+                    </a>
+                  )}
+                  {athlete.phone && (
+                    <a href={`tel:${athlete.phone}`} className="hover:text-white transition-colors flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 text-emerald-400" /> {athlete.phone}
+                    </a>
+                  )}
+                  <span>• Coach: <strong className="text-slate-200">{athlete.assignedCoachName || 'Nessuno'}</strong></span>
+                </div>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="text-xl font-black text-white tracking-tight truncate">{safeFullName !== '—' ? safeFullName : 'Atleta'}</h2>
-              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                <AthleteStatusBadge status={athlete.status} />
-                <PaymentStatusBadge status={athlete.paymentStatus} />
-                {athlete.email && (
-                  <span className="text-xs text-slate-400 flex items-center gap-1">
-                    <Mail className="w-3 h-3" />{athlete.email}
-                  </span>
-                )}
+          </div>
+
+          {/* Quick Action Buttons */}
+          <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+            {athlete.phone && (
+              <button
+                onClick={() => {
+                  const msg = `Ciao ${athlete.firstName || safeFullName}, ti contatto dal centro sportivo.`;
+                  window.open(`https://wa.me/${athlete.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 text-xs font-bold transition-all shadow-md"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>WhatsApp</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => { setEditModalSection('all'); setIsEditModalOpen(true); }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white hover:bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold transition-all shadow-lg"
+            >
+              <Pencil className="w-4 h-4 text-[var(--color-primary)]" />
+              <span>Modifica Atleta</span>
+            </button>
+
+            <button
+              onClick={handleCopyInviteLink}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-primary)] text-black font-black hover:bg-[var(--color-primary-hover)] rounded-xl text-xs transition-all shadow-[0_0_15px_rgba(234,179,8,0.2)]"
+            >
+              <LinkIcon className="w-4 h-4" />
+              <span>Genera Invito</span>
+            </button>
+          </div>
+        </div>
+
+        {/* QUICK STATS STRIP (SINTESI VISIVA 4 CARD) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-800/80">
+          {/* Abbonamento Attivo */}
+          <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800/80 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Abbonamento Attivo</span>
+            {activeSub ? (
+              <div>
+                <span className="text-xs font-black text-amber-400 block truncate">{activeSub.packageName || 'Abbonamento Attivo'}</span>
+                <span className="text-[10px] text-slate-400 block">Scadenza: {formatDate(activeSub.endDate)}</span>
+              </div>
+            ) : (
+              <span className="text-xs font-bold text-slate-400 block">Nessun abbonamento attivo</span>
+            )}
+          </div>
+
+          {/* Pagamenti & Saldo */}
+          <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800/80 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Stato Pagamenti</span>
+            <div className="flex items-center justify-between">
+              <PaymentStatusBadge status={athlete.paymentStatus} />
+              <span className="text-[10px] text-slate-400 font-semibold">Saldo in regola</span>
+            </div>
+          </div>
+
+          {/* Certificato Medico */}
+          <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800/80 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Certificato Medico</span>
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-bold ${medicalStatus.color}`}>{medicalStatus.label}</span>
+              {athlete.medicalCertificateExpiryDate && (
+                <span className="text-[10px] text-slate-400">{formatDate(athlete.medicalCertificateExpiryDate)}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Contatti Rapidi */}
+          <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800/80 space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Check-in & Presenze</span>
+            <div className="flex items-center justify-between text-xs font-bold text-emerald-400">
+              <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Atleta Attivo</span>
+              <span className="text-[10px] text-slate-500">Iscritto {formatDate(athlete.createdAt)}</span>
             </div>
           </div>
         </div>
-        </div>
-        </div>
-        
-        {/* Pulsanti Azione Header */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { setEditModalSection('all'); setIsEditModalOpen(true); }}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold transition-all shadow-lg"
-          >
-            <Pencil className="w-4 h-4 text-[var(--color-primary)]" />
-            <span>Modifica Atleta</span>
-          </button>
-          
-          <button
-            onClick={handleCopyInviteLink}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-black border border-[var(--color-primary)]/30 rounded-xl text-xs font-bold transition-all shadow-lg"
-          >
-            <LinkIcon className="w-4 h-4" />
-            <span>Genera Invito</span>
-          </button>
-        </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex overflow-x-auto gap-1 bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-xl p-1.5 no-scrollbar">
-        {tabs.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors shrink-0 ${activeTab === tab.id
-                ? 'bg-[var(--color-primary)] text-black'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}>
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
+      {/* FLOATING PILL TAB BAR */}
+      <div className="flex overflow-x-auto gap-1.5 bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl p-2 no-scrollbar shadow-xl">
+        {tabList.map(tab => {
+          const isActive = activeTab === tab.id;
+
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all shrink-0 ${
+                isActive
+                  ? 'bg-[var(--color-primary)] text-black font-black shadow-[0_0_15px_rgba(234,179,8,0.25)] scale-[1.02]'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+              {tab.count !== undefined && tab.count > 0 && (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                  isActive ? 'bg-black/20 text-black' : 'bg-slate-800 text-slate-300 border border-slate-700'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Contenuto Tab */}

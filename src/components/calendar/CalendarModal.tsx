@@ -9,6 +9,8 @@ interface CalendarModalProps {
   onSave: (data: CalendarEventFormData) => void;
   editingEvent: CalendarEvent | null;
   initialDate?: string;
+  initialStartTime?: string;
+  initialEndTime?: string;
 }
 
 export const CalendarModal: React.FC<CalendarModalProps> = ({
@@ -17,6 +19,8 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   onSave,
   editingEvent,
   initialDate,
+  initialStartTime,
+  initialEndTime,
 }) => {
   const { athletes } = useAthletes();
 
@@ -49,14 +53,14 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
       setDescription('');
       setType('appointment');
       setDate(initialDate || new Date().toISOString().slice(0, 10));
-      setStartTime('10:00');
-      setEndTime('11:00');
+      setStartTime(initialStartTime || '10:00');
+      setEndTime(initialEndTime || '11:00');
       setAthleteId('');
       setLocation('');
       setNotes('');
     }
     setErrors([]);
-  }, [isOpen, editingEvent, initialDate]);
+  }, [isOpen, editingEvent, initialDate, initialStartTime, initialEndTime]);
 
   if (!isOpen) return null;
 

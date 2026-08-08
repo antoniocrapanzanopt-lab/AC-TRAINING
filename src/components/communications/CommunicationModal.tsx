@@ -13,6 +13,7 @@ interface CommunicationModalProps {
   onClose: () => void;
   onSave: (data: CommunicationLogFormData) => void;
   editingLog: CommunicationLog | null;
+  preselectedAthleteId?: string;
 }
 
 export const CommunicationModal: React.FC<CommunicationModalProps> = ({
@@ -20,6 +21,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
   onClose,
   onSave,
   editingLog,
+  preselectedAthleteId,
 }) => {
   const { athletes } = useAthletes();
   const { subscriptions } = useSubscriptions();
@@ -53,7 +55,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       setMessageText(editingLog.messageText || '');
       setSelectedTemplateId('');
     } else {
-      setAthleteId(athletes.length > 0 ? athletes[0].id : '');
+      setAthleteId(preselectedAthleteId || (athletes.length > 0 ? athletes[0].id : ''));
       setChannel('whatsapp');
       setSubject('');
       setSummary('');

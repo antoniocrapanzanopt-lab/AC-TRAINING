@@ -13,6 +13,7 @@ interface DocumentModalProps {
   onClose: () => void;
   onSave: (data: AthleteDocumentFormData) => void;
   editingDocument: AthleteDocument | null;
+  preselectedAthleteId?: string;
 }
 
 export const DocumentModal: React.FC<DocumentModalProps> = ({
@@ -20,6 +21,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
   onClose,
   onSave,
   editingDocument,
+  preselectedAthleteId,
 }) => {
   const { athletes } = useAthletes();
   const owner = getLocalOwnerProfile();
@@ -52,7 +54,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
       setTitle('');
       setCategory('medical_certificate');
       setVisibility('shared_with_athlete');
-      setAthleteId(athletes.length > 0 ? athletes[0].id : '');
+      setAthleteId(preselectedAthleteId || (athletes.length > 0 ? athletes[0].id : ''));
       setExpiryDate('');
       setNotes('');
       setFileObject(null);
@@ -60,7 +62,7 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
     }
     setErrors([]);
     setIsReadingFile(false);
-  }, [isOpen, editingDocument, athletes]);
+  }, [isOpen, editingDocument, preselectedAthleteId, athletes]);
 
   if (!isOpen) return null;
 

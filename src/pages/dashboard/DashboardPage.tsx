@@ -12,6 +12,7 @@ import {
   HelpCircle,
   BarChart3,
   CheckSquare,
+  Dumbbell,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAthletes } from '../../context/AthletesContext';
@@ -38,6 +39,7 @@ import {
 } from '../../utils/dashboardCalculations';
 import { NavigationTab } from '../../types';
 import { DashboardMetricCards } from './components/DashboardMetricCards';
+import { AITrainingCopilotWidget } from './components/AITrainingCopilotWidget';
 
 export const DashboardPage: React.FC = () => {
   const { setActiveTab, ownerProfile } = useApp();
@@ -241,15 +243,15 @@ export const DashboardPage: React.FC = () => {
         <div className="space-y-1 z-10">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold text-[10px] uppercase tracking-wider border border-[var(--color-primary)]/20">
-              Panoramica Gestionale
+              Centro di Controllo Gestionale & Performance
             </span>
             <span className="text-xs text-slate-500 font-semibold">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            Bentornato, {ownerProfile?.fullName || 'Proprietario Gym'} 👋
+            Centro Comando, {ownerProfile?.fullName || 'Coach'} 👋
           </h1>
           <p className="text-xs sm:text-sm text-slate-400">
-            Ecco il riepilogo in tempo reale dell'andamento finanziario, atleti ed operatività della tua palestra.
+            Monitoraggio finanziario, controllo diretto delle trattative ed analisi avanzata dell'andamento delle schede atleta.
           </p>
         </div>
 
@@ -259,6 +261,12 @@ export const DashboardPage: React.FC = () => {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold text-xs hover:border-[var(--color-primary)] transition-all shadow"
           >
             <UserPlus className="w-4 h-4 text-[var(--color-primary)]" /> Nuovo Atleta
+          </button>
+          <button
+            onClick={() => setActiveTab('schede')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold text-xs hover:border-[var(--color-primary)] transition-all shadow"
+          >
+            <Dumbbell className="w-4 h-4 text-amber-400" /> Nuova Scheda
           </button>
           <button
             onClick={() => setActiveTab('pagamenti')}
@@ -434,6 +442,9 @@ export const DashboardPage: React.FC = () => {
           })()}
         </div>
       </div>
+
+      {/* WIDGET AI ATHLETE TRAINING COPILOT */}
+      <AITrainingCopilotWidget />
 
       {/* SEZIONI RAPIDE E OPERATIVE */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
