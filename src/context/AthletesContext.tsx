@@ -81,6 +81,8 @@ interface AthletesContextType {
   athletes: Athlete[];
   notes: Record<string, AthleteNote[]>;
   timeline: Record<string, TimelineEvent[]>;
+  selectedAthleteId: string | null;
+  setSelectedAthleteId: (id: string | null) => void;
   isLoading: boolean;
   addAthlete: (data: AthleteFormData) => Promise<Athlete | null>;
   updateAthlete: (id: string, data: Partial<AthleteFormData>) => Promise<boolean>;
@@ -116,6 +118,7 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [notes, setNotes] = useState<Record<string, AthleteNote[]>>({});
   const [timeline, setTimeline] = useState<Record<string, TimelineEvent[]>>({});
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!user) {
@@ -463,6 +466,8 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         athletes,
         notes,
         timeline,
+        selectedAthleteId,
+        setSelectedAthleteId,
         isLoading,
         addAthlete,
         updateAthlete,

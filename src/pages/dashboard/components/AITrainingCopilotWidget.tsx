@@ -8,9 +8,10 @@ import {
   ChevronRight,
   ShieldAlert,
   Flame,
+  Zap,
 } from 'lucide-react';
 import { useAthletes } from '../../../context/AthletesContext';
-import { useApp } from '../../../context/AppContext';
+import { AICopilotActionModal, CopilotAlertContext } from './AICopilotActionModal';
 
 interface CriticalNoteAlert {
   id: string;
@@ -52,9 +53,12 @@ interface PRProgression {
 
 export const AITrainingCopilotWidget: React.FC = () => {
   const { athletes } = useAthletes();
-  const { setActiveTab } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'critical_notes' | 'plateaus' | 'inactivity' | 'progressions'>('critical_notes');
+
+  // Modale Azione Decisionale IA
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState<CopilotAlertContext | null>(null);
 
   // Demo Alerts per l'analisi tecnica delle schede
   const criticalNotes: CriticalNoteAlert[] = useMemo(() => [
@@ -137,8 +141,9 @@ export const AITrainingCopilotWidget: React.FC = () => {
     },
   ], [athletes]);
 
-  const handleOpenAthlete = (_athleteId: string) => {
-    setActiveTab('atleti');
+  const handleOpenActionModal = (context: CopilotAlertContext) => {
+    setSelectedAlert(context);
+    setIsActionModalOpen(true);
   };
 
   return (
@@ -211,7 +216,14 @@ export const AITrainingCopilotWidget: React.FC = () => {
           {criticalNotes.map(item => (
             <div
               key={item.id}
-              onClick={() => handleOpenAthlete(item.athleteId)}
+              onClick={() => handleOpenActionModal({
+                athleteId: item.athleteId,
+                athleteName: item.athleteName,
+                workoutTitle: item.workoutTitle,
+                exerciseName: item.exerciseName,
+                noteText: item.noteText,
+                type: 'critical_note',
+              })}
               className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-rose-500/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer group"
             >
               <div className="flex items-start gap-3">
@@ -234,9 +246,10 @@ export const AITrainingCopilotWidget: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-400 group-hover:text-white shrink-0 self-end sm:self-center">
-                <span>Apri Scheda Atleta</span>
-                <ChevronRight className="w-4 h-4 text-[var(--color-primary)]" />
+              <div className="flex items-center gap-2 text-xs font-bold text-[var(--color-primary)] group-hover:text-white shrink-0 self-end sm:self-center bg-slate-950 px-3 py-2 rounded-xl border border-slate-800">
+                <Zap className="w-4 h-4 text-[var(--color-primary)]" />
+                <span>Prendi Decisione IA</span>
+                <ChevronRight className="w-4 h-4" />
               </div>
             </div>
           ))}
@@ -249,7 +262,13 @@ export const AITrainingCopilotWidget: React.FC = () => {
           {plateaus.map(item => (
             <div
               key={item.id}
-              onClick={() => handleOpenAthlete(item.athleteId)}
+              onClick={() => handleOpenActionModal({
+                athleteId: item.athleteId,
+                athleteName: item.athleteName,
+                exerciseName: item.exerciseName,
+                suggestion: item.suggestion,
+                type: 'plateau',
+              })}
               className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer group"
             >
               <div className="flex items-start gap-3">
@@ -274,9 +293,10 @@ export const AITrainingCopilotWidget: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-400 group-hover:text-white shrink-0 self-end sm:self-center">
-                <span>Varia Scheda</span>
-                <ChevronRight className="w-4 h-4 text-[var(--color-primary)]" />
+              <div className="flex items-center gap-2 text-xs font-bold text-[var(--color-primary)] group-hover:text-white shrink-0 self-end sm:self-center bg-slate-950 px-3 py-2 rounded-xl border border-slate-800">
+                <Zap className="w-4 h-4 text-[var(--color-primary)]" />
+                <span>Varia Programma IA</span>
+                <ChevronRight className="w-4 h-4" />
               </div>
             </div>
           ))}
@@ -289,7 +309,11 @@ export const AITrainingCopilotWidget: React.FC = () => {
           {inactivities.map(item => (
             <div
               key={item.id}
-              onClick={() => handleOpenAthlete(item.athleteId)}
+              onClick={() => handleOpenActionModal({
+                athleteId: item.athleteId,
+                athleteName: item.athleteName,
+                type: 'inactivity',
+              })}
               className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-orange-500/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer group"
             >
               <div className="flex items-center gap-3">
@@ -306,9 +330,10 @@ export const AITrainingCopilotWidget: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-400 group-hover:text-white shrink-0">
-                <span>Vedi Profilo</span>
-                <ChevronRight className="w-4 h-4 text-[var(--color-primary)]" />
+              <div className="flex items-center gap-2 text-xs font-bold text-[var(--color-primary)] group-hover:text-white shrink-0 bg-slate-950 px-3 py-2 rounded-xl border border-slate-800">
+                <Zap className="w-4 h-4 text-[var(--color-primary)]" />
+                <span>Gestisci con IA</span>
+                <ChevronRight className="w-4 h-4" />
               </div>
             </div>
           ))}
@@ -321,7 +346,12 @@ export const AITrainingCopilotWidget: React.FC = () => {
           {progressions.map(item => (
             <div
               key={item.id}
-              onClick={() => handleOpenAthlete(item.athleteId)}
+              onClick={() => handleOpenActionModal({
+                athleteId: item.athleteId,
+                athleteName: item.athleteName,
+                exerciseName: item.exerciseName,
+                type: 'progression',
+              })}
               className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-emerald-500/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer group"
             >
               <div className="flex items-center gap-3">
@@ -343,14 +373,25 @@ export const AITrainingCopilotWidget: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-400 group-hover:text-white shrink-0">
-                <span>Vedi Progresso</span>
-                <ChevronRight className="w-4 h-4 text-[var(--color-primary)]" />
+              <div className="flex items-center gap-2 text-xs font-bold text-[var(--color-primary)] group-hover:text-white shrink-0 bg-slate-950 px-3 py-2 rounded-xl border border-slate-800">
+                <Zap className="w-4 h-4 text-[var(--color-primary)]" />
+                <span>Invia Congratulazioni IA</span>
+                <ChevronRight className="w-4 h-4" />
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* MODALE AZIONI DECISIONALI IA */}
+      <AICopilotActionModal
+        isOpen={isActionModalOpen}
+        onClose={() => {
+          setIsActionModalOpen(false);
+          setSelectedAlert(null);
+        }}
+        alertData={selectedAlert}
+      />
     </div>
   );
 };

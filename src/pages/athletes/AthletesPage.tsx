@@ -78,6 +78,8 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({ isOpen, title, message, onC
 export const AthletesPage: React.FC = () => {
   const {
     athletes,
+    selectedAthleteId,
+    setSelectedAthleteId,
     addAthlete,
     updateAthlete,
     deleteAthlete,
@@ -101,9 +103,6 @@ export const AthletesPage: React.FC = () => {
 
   // Selezione multipla
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // Navigazione dettaglio
-  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
 
   // Modali
   const [isAthleteModalOpen, setIsAthleteModalOpen] = useState(false);
