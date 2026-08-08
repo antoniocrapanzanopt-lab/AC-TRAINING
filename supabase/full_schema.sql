@@ -181,14 +181,22 @@ CREATE TABLE IF NOT EXISTS public.exercise_logs (
 
 CREATE OR REPLACE FUNCTION is_athlete() RETURNS BOOLEAN AS $$
 BEGIN
+   IF LOWER(TRIM((auth.jwt()->>'email')::text)) = 'antonio.crapanzanopt@gmail.com' THEN
+      RETURN FALSE;
+   END IF;
    RETURN EXISTS (
-      SELECT 1 FROM public.athletes WHERE LOWER(TRIM(email)) = LOWER(TRIM(auth.jwt()->>'email'))
+      SELECT 1 FROM public.athletes 
+      WHERE LOWER(TRIM(email)) = LOWER(TRIM(auth.jwt()->>'email'))
+        AND (auth_user_id IS NULL OR auth_user_id = auth.uid())
    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION is_coach() RETURNS BOOLEAN AS $$
 BEGIN
+   IF LOWER(TRIM((auth.jwt()->>'email')::text)) = 'antonio.crapanzanopt@gmail.com' THEN
+      RETURN TRUE;
+   END IF;
    RETURN NOT is_athlete();
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
