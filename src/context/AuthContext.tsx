@@ -71,6 +71,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      const ownerProfile = getLocalOwnerProfile();
+      const ownerEmail = ownerProfile?.email?.toLowerCase().trim();
+      const currentEmail = email.toLowerCase().trim();
+
+      // Se l'email è quella del proprietario/coach, assegna SEMPRE il ruolo 'owner' (Dashboard Coach)
+      const isOwnerEmail = currentEmail === 'antonio.crapanzanopt@gmail.com' || (ownerEmail && currentEmail === ownerEmail);
+
+      if (isOwnerEmail) {
+        setUser({
+          id: sessionUser.id,
+          name: ownerProfile?.fullName || sessionUser.user_metadata?.full_name || email.split('@')[0] || 'Coach',
+          email: email,
+          role: 'owner',
+          canViewFinancials: true,
+        });
+        setLoading(false);
+        return;
+      }
+
       // Check if the user is an athlete
       const { data: athleteData, error: athleteError } = await supabase
         .from('athletes')
