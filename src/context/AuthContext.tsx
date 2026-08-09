@@ -24,8 +24,6 @@ interface AuthContextType {
   requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
   signUpAthlete: (email: string, password: string) => Promise<{ error: any }>;
   refreshAuthProfile: () => void;
-  loginAsDemoCoach: () => void;
-  loginAsDemoAthlete: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -91,23 +89,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Check if the user is an athlete
-      const { data: athleteData, error: athleteError } = await supabase
+      // Prima di interrogare, eseguiamo l'auto-link via RPC in modo sicuro
+      // Se è la prima volta che l'atleta si logga, l'RPC collegherà il suo auth.uid al record in DB.
+      await supabase.rpc('link_athlete_account');
+
+      const { data: athleteData } = await supabase
         .from('athletes')
         .select('id, first_name, last_name, auth_user_id')
         .ilike('email', email.trim())
         .maybeSingle();
 
-      console.log('Login Auth Check -> email:', email, 'athleteData:', athleteData, 'error:', athleteError);
-
       if (athleteData) {
-        // Se è un atleta e non ha ancora l'auth_user_id, facciamo l'auto-link
-        if (!athleteData.auth_user_id) {
-          await supabase
-            .from('athletes')
-            .update({ auth_user_id: sessionUser.id })
-            .eq('id', athleteData.id);
-        }
-
         setUser({
           id: sessionUser.id,
           athleteId: athleteData.id,
@@ -117,13 +109,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           canViewFinancials: false,
         });
       } else {
-        setUser({
-          id: sessionUser.id,
-          name: sessionUser.user_metadata?.full_name || email.split('@')[0] || 'User',
-          email: email,
-          role: 'owner',
-          canViewFinancials: true,
-        });
+        // SICUREZZA: Utente autenticato ma NON riconosciuto come atleta e NON come coach.
+        // Forziamo il logout per evitare che account non autorizzati accedano alla dashboard.
+        console.warn('Security: utente non autorizzato, logout forzato.', email);
+        await supabase.auth.signOut();
+        setUser(null);
       }
       setLoading(false);
     };
@@ -183,36 +173,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Deprecated in real cloud version
   };
 
-  const loginAsDemoCoach = () => {
-    setUser({
-      id: 'demo-local',
-      name: 'Coach Demo',
-      email: 'coach@demo.local',
-      role: 'owner',
-      canViewFinancials: true,
-    });
-  };
-
-  const loginAsDemoAthlete = () => {
-    setUser({
-      id: 'demo-local',
-      name: 'Atleta Demo',
-      email: 'atleta@demo.local',
-      role: 'athlete',
-      canViewFinancials: false,
-    });
-  };
 
   const loginWithCredentials = async (email: string, password?: string) => {
-    if (!password) password = "password123"; // Fallback safety
+    if (!password) return { error: new Error('Password obbligatoria') };
     const { error } = await supabase.auth.signInWithPassword({
       email,
-      password
+      password,
     });
     return { error };
   };
 
   const signUpAthlete = async (email: string, password: string) => {
+    // SICUREZZA: Whitelist check via RPC (bypassa le RLS in modo sicuro solo per controllo booleano)
+    // Impedisce registrazioni non autorizzate.
+    const { data: isEmailAllowed, error: rpcError } = await supabase
+      .rpc('check_invite_email', { email_to_check: email.trim() });
+
+    if (rpcError || !isEmailAllowed) {
+      return { error: new Error('Email non autorizzata. Contatta il tuo coach.') };
+    }
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -260,8 +240,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         transferOwnership,
         loginAsOwner,
         loginWithCredentials,
-        loginAsDemoCoach,
-        loginAsDemoAthlete,
         signUpAthlete,
         logout,
         requestPasswordReset,

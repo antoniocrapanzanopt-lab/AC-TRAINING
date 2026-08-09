@@ -64,18 +64,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const loadFolders = useCallback(async () => {
     if (!user || user.role !== 'owner') return;
 
-    // Se l'utente è un Coach reale (non demo-local), colleghiamo anche le cartelle create precedentemente
-    if (user.id && user.id !== 'demo-local') {
-      await supabase
-        .from('workout_folders')
-        .update({ coach_id: user.id })
-        .or('coach_id.eq.demo-local,coach_id.eq.local-owner,coach_id.is.null');
-    }
-
     const { data, error } = await supabase
       .from('workout_folders')
       .select('*')
-      .or(`coach_id.eq.${user.id},coach_id.eq.demo-local,coach_id.eq.local-owner,coach_id.is.null`)
+      .eq('coach_id', user.id)
       .order('name', { ascending: true });
 
     if (!error && data) {
@@ -161,18 +153,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user || user.role !== 'owner') return;
     setLoading(true);
 
-    // Se l'utente è un Coach reale (non demo-local), colleghiamo anche i workout creati precedentemente
-    if (user.id && user.id !== 'demo-local') {
-      await supabase
-        .from('workouts')
-        .update({ coach_id: user.id })
-        .or('coach_id.eq.demo-local,coach_id.eq.local-owner,coach_id.is.null');
-    }
-
     const { data, error } = await supabase
       .from('workouts')
       .select('*')
-      .or(`coach_id.eq.${user.id},coach_id.eq.demo-local,coach_id.eq.local-owner,coach_id.is.null`)
+      .eq('coach_id', user.id)
       .order('created_at', { ascending: false });
 
     if (!error && data) {

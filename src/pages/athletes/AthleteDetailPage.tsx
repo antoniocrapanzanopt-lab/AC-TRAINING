@@ -176,11 +176,12 @@ const NotesTab: React.FC<{
 
   const handleAdd = async () => {
     if (!content.trim()) { showError('Nota vuota', 'Scrivi il contenuto prima di salvare.'); return; }
+    if (!user?.id) { showError('Errore', 'Sessione non valida.'); return; }
     const ok = await addNote(
       athleteId,
       content,
-      user?.id ?? 'local-owner',
-      user?.name ?? 'Coach',
+      user.id,
+      user.name ?? 'Coach',
       category,
       visibility
     );

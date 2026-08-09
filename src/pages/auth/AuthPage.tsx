@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Dumbbell, ShieldAlert, ArrowRight, KeyRound, Info, UserCheck } from 'lucide-react';
+import { Dumbbell, ShieldAlert, ArrowRight, KeyRound, Info } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../../components/common/Modal';
 
 export const AuthPage: React.FC = () => {
-  const { loginWithCredentials, requestPasswordReset, loginAsDemoCoach, loginAsDemoAthlete } = useAuth();
+  const { loginWithCredentials, requestPasswordReset } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -99,26 +99,7 @@ export const AuthPage: React.FC = () => {
               <ArrowRight className="w-4 h-4" />
             </button>
 
-            {/* SEZIONE DEMO LOCALE */}
-            <div className="pt-4 mt-2 border-t border-slate-800 space-y-2">
-              <button
-                type="button"
-                onClick={loginAsDemoCoach}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800/50 border border-slate-700 text-slate-300 font-bold text-xs hover:bg-slate-700 hover:text-white transition-colors"
-              >
-                <UserCheck className="w-4 h-4" />
-                <span>Demo (Lato Coach)</span>
-              </button>
-              
-              <button
-                type="button"
-                onClick={loginAsDemoAthlete}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800/50 border border-slate-700 text-slate-300 font-bold text-xs hover:bg-slate-700 hover:text-white transition-colors"
-              >
-                <Dumbbell className="w-4 h-4" />
-                <span>Demo (Lato Atleta)</span>
-              </button>
-            </div>
+
           </form>
         </div>
       </div>

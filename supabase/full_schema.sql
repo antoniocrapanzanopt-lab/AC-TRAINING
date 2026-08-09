@@ -5,6 +5,34 @@
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- =====================================================================================
+-- 0. AUTH TRIGGER (BLOCCO REGISTRAZIONI ABUSIVE VIA API)
+-- Impedisce fisicamente la creazione di account Supabase se l'email non è stata 
+-- prima inserita dal coach nella tabella athletes. Previene spam e account fantasma.
+-- =====================================================================================
+CREATE OR REPLACE FUNCTION public.check_user_signup()
+RETURNS trigger AS $$
+BEGIN
+  -- Il coach è sempre autorizzato
+  IF NEW.email = 'antonio.crapanzanopt@gmail.com' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Se l'email non è nella tabella athletes, rigetta la creazione dell'account Auth
+  IF NOT EXISTS (SELECT 1 FROM public.athletes WHERE LOWER(TRIM(email)) = LOWER(TRIM(NEW.email))) THEN
+    RAISE EXCEPTION 'Accesso Negato: Email non autorizzata o non presente negli inviti del coach.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger agganciato direttamente alla tabella di sistema auth.users
+DROP TRIGGER IF EXISTS validate_user_signup ON auth.users;
+CREATE TRIGGER validate_user_signup
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.check_user_signup();
+
 -- 1. ATHLETES
 CREATE TABLE IF NOT EXISTS public.athletes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -211,28 +239,54 @@ CREATE TABLE IF NOT EXISTS public.exercise_logs (
 );
 
 -- =====================================================================================
--- HELPER FUNCTIONS & RLS SECURITY
+-- NOTA: Sostituisci '00000000-0000-0000-0000-000000000000' con il tuo auth.uid() reale.
+-- Lo trovi in Supabase → Authentication → Users → antonio.crapanzanopt@gmail.com → User UID.
 -- =====================================================================================
+
+CREATE OR REPLACE FUNCTION get_coach_uid() RETURNS UUID AS $$
+  -- UUID reale Supabase di antonio.crapanzanopt@gmail.com
+  SELECT '9f683185-a2b4-4d6c-a3e4-1a2c1a227f69'::UUID;
+$$ LANGUAGE SQL IMMUTABLE SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION is_coach() RETURNS BOOLEAN AS $$
+BEGIN
+   -- SICUREZZA: verifica solo tramite auth.uid() (UUID Supabase), mai tramite email o fallback.
+   -- Solo il coach registrato con questo UUID può accedere alla dashboard.
+   RETURN auth.uid() = get_coach_uid();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION is_athlete() RETURNS BOOLEAN AS $$
 BEGIN
-   IF LOWER(TRIM((auth.jwt()->>'email')::text)) = 'antonio.crapanzanopt@gmail.com' THEN
+   -- Il coach non è mai un atleta
+   IF auth.uid() = get_coach_uid() THEN
       RETURN FALSE;
    END IF;
+   -- SICUREZZA: Un atleta è ESCLUSIVAMENTE chi ha l'auth_user_id collegato. Niente fallback su JWT email.
    RETURN EXISTS (
       SELECT 1 FROM public.athletes 
-      WHERE LOWER(TRIM(email)) = LOWER(TRIM(auth.jwt()->>'email'))
-        AND (auth_user_id IS NULL OR auth_user_id = auth.uid())
+      WHERE auth_user_id = auth.uid()
    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE FUNCTION is_coach() RETURNS BOOLEAN AS $$
+-- 5b. AUTO-LINK ACCOUNT ATLETA (Messa in Sicurezza)
+-- Esegue con privilegi definer. Permette all'atleta di "reclamare" il proprio profilo
+-- solo se l'email corrisponde al JWT verificato e se il profilo non è già stato reclamato.
+CREATE OR REPLACE FUNCTION link_athlete_account() RETURNS BOOLEAN AS $$
+DECLARE
+    affected_rows INT;
 BEGIN
-   IF LOWER(TRIM((auth.jwt()->>'email')::text)) = 'antonio.crapanzanopt@gmail.com' THEN
-      RETURN TRUE;
-   END IF;
-   RETURN NOT is_athlete();
+    IF auth.uid() IS NULL THEN RETURN FALSE; END IF;
+    IF auth.uid() = get_coach_uid() THEN RETURN FALSE; END IF;
+
+    UPDATE public.athletes 
+    SET auth_user_id = auth.uid()
+    WHERE auth_user_id IS NULL 
+      AND LOWER(TRIM(email)) = LOWER(TRIM(auth.jwt()->>'email'));
+      
+    GET DIAGNOSTICS affected_rows = ROW_COUNT;
+    RETURN affected_rows > 0;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -247,16 +301,52 @@ ALTER TABLE public.athlete_assigned_workouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workout_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exercise_logs ENABLE ROW LEVEL SECURITY;
 
+-- Funzione sicura per permettere il controllo delle email in fase di registrazione
+-- Esegue con i privilegi del definer (bypass RLS) ma restituisce SOLO un booleano, non espone dati.
+CREATE OR REPLACE FUNCTION check_invite_email(email_to_check TEXT) RETURNS BOOLEAN AS $$
+BEGIN
+   RETURN EXISTS (
+      SELECT 1 FROM public.athletes 
+      WHERE LOWER(TRIM(email)) = LOWER(TRIM(email_to_check))
+   );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 6. RLS POLICIES (CORE)
 -- POLICIES ATHLETES
 DROP POLICY IF EXISTS "coach_all_athletes" ON public.athletes;
 CREATE POLICY "coach_all_athletes" ON public.athletes FOR ALL TO authenticated USING (is_coach()) WITH CHECK (is_coach());
 
 DROP POLICY IF EXISTS "athlete_own_profile" ON public.athletes;
-CREATE POLICY "athlete_own_profile" ON public.athletes FOR SELECT TO authenticated USING (LOWER(TRIM(email)) = LOWER(TRIM(auth.jwt()->>'email')));
+CREATE POLICY "athlete_own_profile" ON public.athletes FOR SELECT TO authenticated 
+USING (auth_user_id = auth.uid());
+
+-- POLICIES ATHLETE NOTES (era mancante!)
+DROP POLICY IF EXISTS "coach_manage_athlete_notes" ON public.athlete_notes;
+CREATE POLICY "coach_manage_athlete_notes" ON public.athlete_notes FOR ALL TO authenticated 
+USING (is_coach()) WITH CHECK (is_coach());
+
+DROP POLICY IF EXISTS "athlete_read_own_notes" ON public.athlete_notes;
+CREATE POLICY "athlete_read_own_notes" ON public.athlete_notes FOR SELECT TO authenticated
+USING (
+    visibility = 'athlete' AND
+    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id = athlete_notes.athlete_id AND a.auth_user_id = auth.uid())
+);
+
+-- POLICIES ATHLETE TIMELINE (era mancante!)
+DROP POLICY IF EXISTS "coach_manage_athlete_timeline" ON public.athlete_timeline;
+CREATE POLICY "coach_manage_athlete_timeline" ON public.athlete_timeline FOR ALL TO authenticated 
+USING (is_coach()) WITH CHECK (is_coach());
+
+DROP POLICY IF EXISTS "athlete_read_own_timeline" ON public.athlete_timeline;
+CREATE POLICY "athlete_read_own_timeline" ON public.athlete_timeline FOR SELECT TO authenticated
+USING (
+    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id = athlete_timeline.athlete_id AND a.auth_user_id = auth.uid())
+);
 
 -- POLICIES EXERCISES
 DROP POLICY IF EXISTS "read_exercises_policy" ON public.exercises;
-CREATE POLICY "read_exercises_policy" ON public.exercises FOR SELECT TO authenticated USING (coach_id IS NULL OR coach_id::uuid = auth.uid()::uuid);
+CREATE POLICY "read_exercises_policy" ON public.exercises FOR SELECT TO authenticated USING (true);
 
 DROP POLICY IF EXISTS "coach_manage_own_exercises" ON public.exercises;
 CREATE POLICY "coach_manage_own_exercises" ON public.exercises FOR ALL TO authenticated USING (coach_id::uuid = auth.uid()::uuid) WITH CHECK (coach_id::uuid = auth.uid()::uuid);
@@ -273,8 +363,8 @@ DROP POLICY IF EXISTS "athlete_read_assigned_workouts" ON public.workouts;
 CREATE POLICY "athlete_read_assigned_workouts" ON public.workouts FOR SELECT TO authenticated USING (
     EXISTS (
         SELECT 1 FROM public.athlete_assigned_workouts aaw
-        JOIN public.athletes a ON a.id::uuid = aaw.athlete_id::uuid
-        WHERE aaw.workout_id::uuid = workouts.id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text))
+        JOIN public.athletes a ON a.id = aaw.athlete_id
+        WHERE aaw.workout_id = workouts.id AND a.auth_user_id = auth.uid()
     )
 );
 
@@ -288,8 +378,8 @@ DROP POLICY IF EXISTS "athlete_read_exercises" ON public.workout_exercises;
 CREATE POLICY "athlete_read_exercises" ON public.workout_exercises FOR SELECT TO authenticated USING (
     EXISTS (
         SELECT 1 FROM public.athlete_assigned_workouts aaw
-        JOIN public.athletes a ON a.id::uuid = aaw.athlete_id::uuid
-        WHERE aaw.workout_id::uuid = workout_exercises.workout_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text))
+        JOIN public.athletes a ON a.id = aaw.athlete_id
+        WHERE aaw.workout_id = workout_exercises.workout_id AND a.auth_user_id = auth.uid()
     )
 );
 
@@ -299,21 +389,21 @@ CREATE POLICY "coach_manage_assignments" ON public.athlete_assigned_workouts FOR
 
 DROP POLICY IF EXISTS "athlete_read_assignments" ON public.athlete_assigned_workouts;
 CREATE POLICY "athlete_read_assignments" ON public.athlete_assigned_workouts FOR SELECT TO authenticated USING (
-    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id::uuid = athlete_assigned_workouts.athlete_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text)))
+    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id = athlete_assigned_workouts.athlete_id AND a.auth_user_id = auth.uid())
 );
 
 -- POLICIES SESSIONS & LOGS
 DROP POLICY IF EXISTS "athlete_manage_sessions" ON public.workout_sessions;
 CREATE POLICY "athlete_manage_sessions" ON public.workout_sessions FOR ALL TO authenticated USING (
-    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id::uuid = workout_sessions.athlete_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text)))
+    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id = workout_sessions.athlete_id AND a.auth_user_id = auth.uid())
 );
 
 DROP POLICY IF EXISTS "athlete_manage_logs" ON public.exercise_logs;
 CREATE POLICY "athlete_manage_logs" ON public.exercise_logs FOR ALL TO authenticated USING (
     EXISTS (
         SELECT 1 FROM public.workout_sessions ws
-        JOIN public.athletes a ON a.id::uuid = ws.athlete_id::uuid
-        WHERE ws.id::uuid = exercise_logs.session_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text))
+        JOIN public.athletes a ON a.id = ws.athlete_id
+        WHERE ws.id = exercise_logs.session_id AND a.auth_user_id = auth.uid()
     )
 );
 
@@ -357,20 +447,36 @@ VALUES ('exercise-videos', 'exercise-videos', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Storage RLS Policies
+-- COACH UPLOAD: solo il coach può caricare certificati medici
 DROP POLICY IF EXISTS "authenticated_upload_medical_certs" ON storage.objects;
-CREATE POLICY "authenticated_upload_medical_certs" 
+DROP POLICY IF EXISTS "coach_upload_medical_certs" ON storage.objects;
+CREATE POLICY "coach_upload_medical_certs" 
 ON storage.objects FOR INSERT TO authenticated 
-WITH CHECK (bucket_id = 'medical-certificates');
+WITH CHECK (bucket_id = 'medical-certificates' AND is_coach());
 
+-- COACH VIEW: solo il coach può vedere i certificati medici
 DROP POLICY IF EXISTS "authenticated_view_medical_certs" ON storage.objects;
-CREATE POLICY "authenticated_view_medical_certs" 
+DROP POLICY IF EXISTS "coach_view_medical_certs" ON storage.objects;
+CREATE POLICY "coach_view_medical_certs" 
 ON storage.objects FOR SELECT TO authenticated 
-USING (bucket_id = 'medical-certificates');
+USING (bucket_id = 'medical-certificates' AND is_coach());
 
+-- COACH DELETE: solo il coach può eliminare certificati
+DROP POLICY IF EXISTS "coach_delete_medical_certs" ON storage.objects;
+CREATE POLICY "coach_delete_medical_certs"
+ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'medical-certificates' AND is_coach());
+
+-- VIDEO ESERCIZI: solo il coach gestisce i video
 DROP POLICY IF EXISTS "authenticated_manage_exercise_videos" ON storage.objects;
-CREATE POLICY "authenticated_manage_exercise_videos" 
-ON storage.objects FOR ALL TO authenticated 
-USING (bucket_id = 'exercise-videos') WITH CHECK (bucket_id = 'exercise-videos');
+DROP POLICY IF EXISTS "coach_manage_exercise_videos" ON storage.objects;
+CREATE POLICY "coach_manage_exercise_videos" ON storage.objects FOR ALL TO authenticated 
+USING (bucket_id = 'exercise-videos' AND is_coach()) WITH CHECK (bucket_id = 'exercise-videos' AND is_coach());
+
+-- VIDEO ESERCIZI READ: gli atleti possono solo leggere i video (bucket pubblico)
+DROP POLICY IF EXISTS "athlete_read_exercise_videos" ON storage.objects;
+CREATE POLICY "athlete_read_exercise_videos" ON storage.objects FOR SELECT TO authenticated
+USING (bucket_id = 'exercise-videos');
 
 -- Reload Schema Notification
 NOTIFY pgrst, 'reload schema';
@@ -386,6 +492,26 @@ CREATE TABLE IF NOT EXISTS public.messages (
     is_read BOOLEAN DEFAULT false
 );
 
+CREATE OR REPLACE FUNCTION restrict_message_updates() RETURNS trigger AS $$
+BEGIN
+    -- SICUREZZA: Impedisce a chiunque di modificare il testo, mittente o destinatario di un messaggio dopo l'invio.
+    -- L'unica colonna che può essere aggiornata (es. per segnare come letto) è is_read.
+    IF NEW.content IS DISTINCT FROM OLD.content OR 
+       NEW.sender_id IS DISTINCT FROM OLD.sender_id OR 
+       NEW.receiver_id IS DISTINCT FROM OLD.receiver_id OR 
+       NEW.conversation_id IS DISTINCT FROM OLD.conversation_id THEN
+        RAISE EXCEPTION 'Manomissione rilevata: è consentito aggiornare solo lo stato di lettura del messaggio.';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS restrict_message_updates_trigger ON public.messages;
+CREATE TRIGGER restrict_message_updates_trigger
+BEFORE UPDATE ON public.messages
+FOR EACH ROW
+EXECUTE FUNCTION restrict_message_updates();
+
 CREATE INDEX IF NOT EXISTS messages_sender_id_idx ON public.messages(sender_id);
 CREATE INDEX IF NOT EXISTS messages_receiver_id_idx ON public.messages(receiver_id);
 CREATE INDEX IF NOT EXISTS messages_conversation_id_idx ON public.messages(conversation_id);
@@ -400,7 +526,10 @@ CREATE POLICY "Users can read own messages" ON public.messages
 DROP POLICY IF EXISTS "Users can insert own messages" ON public.messages;
 CREATE POLICY "Users can insert own messages" ON public.messages
     FOR INSERT TO authenticated
-    WITH CHECK (auth.uid() = sender_id);
+    WITH CHECK (
+        auth.uid() = sender_id AND 
+        (is_coach() OR receiver_id = get_coach_uid())
+    );
 
 DROP POLICY IF EXISTS "Users can update received messages" ON public.messages;
 CREATE POLICY "Users can update received messages" ON public.messages
@@ -449,7 +578,7 @@ CREATE POLICY "coach_manage_metrics" ON public.athlete_metrics FOR ALL TO authen
 
 DROP POLICY IF EXISTS "athlete_own_metrics" ON public.athlete_metrics;
 CREATE POLICY "athlete_own_metrics" ON public.athlete_metrics FOR ALL TO authenticated USING (
-    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id::uuid = athlete_metrics.athlete_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text)))
+    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id = athlete_metrics.athlete_id AND a.auth_user_id = auth.uid())
 );
 
 -- 10. ATHLETE MAX LIFTS & 1RM
@@ -477,7 +606,7 @@ CREATE POLICY "coach_manage_max_lifts" ON public.athlete_max_lifts FOR ALL TO au
 
 DROP POLICY IF EXISTS "athlete_own_max_lifts" ON public.athlete_max_lifts;
 CREATE POLICY "athlete_own_max_lifts" ON public.athlete_max_lifts FOR ALL TO authenticated USING (
-    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id::uuid = athlete_max_lifts.athlete_id::uuid AND LOWER(TRIM(a.email::text)) = LOWER(TRIM((auth.jwt()->>'email')::text)))
+    EXISTS (SELECT 1 FROM public.athletes a WHERE a.id = athlete_max_lifts.athlete_id AND a.auth_user_id = auth.uid())
 );
 
 NOTIFY pgrst, 'reload schema';

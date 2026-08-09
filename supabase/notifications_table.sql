@@ -34,6 +34,11 @@ CREATE POLICY "coach_update_own_notifications"
 DROP POLICY IF EXISTS "insert_notifications" ON public.coach_notifications;
 CREATE POLICY "insert_notifications"
     ON public.coach_notifications FOR INSERT TO authenticated
-    WITH CHECK (true);
+    WITH CHECK (
+        coach_id = get_coach_uid() AND (
+            auth.uid() = get_coach_uid() OR
+            EXISTS (SELECT 1 FROM public.athletes WHERE id = athlete_id AND auth_user_id = auth.uid())
+        )
+    );
 
 ALTER TABLE public.coach_notifications REPLICA IDENTITY FULL;

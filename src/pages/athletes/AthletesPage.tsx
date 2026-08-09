@@ -231,8 +231,9 @@ export const AthletesPage: React.FC = () => {
   };
 
   const handleAssignCoachSelected = async () => {
-    const ownerName = user?.name ?? 'Coach Demo';
-    const ownerId = user?.id ?? 'local-owner';
+    if (!user?.id) return;
+    const ownerName = user.name;
+    const ownerId = user.id;
     let count = 0;
     for (const id of Array.from(selectedIds)) { if (await assignCoach(id, ownerId, ownerName)) count++; }
     clearSelection();

@@ -143,15 +143,6 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (athRes.data) {
       setAthletes(athRes.data.map(mapAthleteFromDB));
-
-      // Auto-assegna il coach id reale agli atleti in DB che ne sono sprovvisti
-      if ((user.role === 'owner' || user.role === 'coach') && user.id && user.id !== 'demo-local') {
-        athRes.data.forEach(async (row) => {
-          if (!row.assigned_coach_id || row.assigned_coach_id === 'local-owner' || row.assigned_coach_id === 'demo-local') {
-            await supabase.from('athletes').update({ assigned_coach_id: user.id }).eq('id', row.id);
-          }
-        });
-      }
     }
 
     if (notesRes.data) {
@@ -209,12 +200,6 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       assignedCoachName: user?.name || ''
     });
 
-    if (user?.id === 'demo-local') {
-      const mockAthlete = mapAthleteFromDB({ ...dbData, id: crypto.randomUUID(), created_at: new Date().toISOString() });
-      setAthletes(prev => [mockAthlete, ...prev]);
-      return mockAthlete;
-    }
-
     const { data: inserted, error } = await supabase.from('athletes').insert([dbData]).select().single();
     
     if (error || !inserted) {
@@ -231,11 +216,6 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateAthlete = useCallback(async (id: string, data: Partial<AthleteFormData>): Promise<boolean> => {
     const dbData = mapAthleteToDB(data);
     
-    if (user?.id === 'demo-local') {
-      setAthletes(prev => prev.map(a => a.id === id ? { ...a, ...data } as Athlete : a));
-      return true;
-    }
-
     const { error } = await supabase.from('athletes').update(dbData).eq('id', id);
     if (error) {
       console.error('Error updating athlete:', error);
@@ -255,11 +235,6 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [user]);
 
   const deleteAthlete = useCallback(async (id: string): Promise<boolean> => {
-    if (user?.id === 'demo-local') {
-      setAthletes(prev => prev.filter(a => a.id !== id));
-      return true;
-    }
-
     const { error } = await supabase.from('athletes').delete().eq('id', id);
     if (error) {
       console.error('Error deleting athlete:', error);
@@ -310,23 +285,6 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ): Promise<boolean> => {
     if (!content.trim()) return false;
     
-    if (user?.id === 'demo-local') {
-      const mockNote: AthleteNote = {
-        id: crypto.randomUUID(),
-        athleteId,
-        content,
-        category,
-        visibility,
-        isPinned: false,
-        authorId,
-        authorName,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      setNotes(prev => ({ ...prev, [athleteId]: [mockNote, ...(prev[athleteId] || [])] }));
-      return true;
-    }
-
     const dbNote = {
       athlete_id: athleteId,
       content: content.trim(),
