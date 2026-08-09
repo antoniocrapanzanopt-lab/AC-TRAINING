@@ -66,6 +66,17 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           equipment: exercise.equipment || 'Corpo Libero',
           video_url: exercise.video_url || null,
           instructions: exercise.instructions || null,
+          // ── Informazioni Chiave ────────────────────────────────────────────
+          tipo: exercise.tipo || null,
+          bilateralita: exercise.bilateralita || null,
+          piano_movimento: exercise.piano_movimento || null,
+          catena_cinetica: exercise.catena_cinetica || null,
+          gradi_liberta: exercise.gradi_liberta || null,
+          // ── Blocchi JSONB ──────────────────────────────────────────────────
+          parametri_chiave: exercise.parametri_chiave || null,
+          muscoli_coinvolti: exercise.muscoli_coinvolti || null,
+          esecuzione: exercise.esecuzione || null,
+          sicurezza: exercise.sicurezza || null,
           coach_id: user.id,
         });
 
@@ -89,6 +100,17 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         equipment: ex.equipment || 'Corpo Libero',
         video_url: ex.video_url || null,
         instructions: ex.instructions || null,
+        // ── Informazioni Chiave ────────────────────────────────────────────
+        tipo: ex.tipo || null,
+        bilateralita: ex.bilateralita || null,
+        piano_movimento: ex.piano_movimento || null,
+        catena_cinetica: ex.catena_cinetica || null,
+        gradi_liberta: ex.gradi_liberta || null,
+        // ── Blocchi JSONB ──────────────────────────────────────────────────
+        parametri_chiave: ex.parametri_chiave || null,
+        muscoli_coinvolti: ex.muscoli_coinvolti || null,
+        esecuzione: ex.esecuzione || null,
+        sicurezza: ex.sicurezza || null,
         coach_id: user.id,
       }));
 
@@ -109,16 +131,33 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!user || user.role !== 'owner') return { success: false, error: 'Non autorizzato' };
 
     try {
+      const updatePayload: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+
+      // Campi base — aggiorna solo se esplicitamente forniti
+      if (exercise.name !== undefined) updatePayload.name = exercise.name;
+      if (exercise.category !== undefined) updatePayload.category = exercise.category;
+      if (exercise.equipment !== undefined) updatePayload.equipment = exercise.equipment;
+      if (exercise.video_url !== undefined) updatePayload.video_url = exercise.video_url || null;
+      if (exercise.instructions !== undefined) updatePayload.instructions = exercise.instructions || null;
+
+      // Informazioni Chiave strutturate
+      if (exercise.tipo !== undefined) updatePayload.tipo = exercise.tipo || null;
+      if (exercise.bilateralita !== undefined) updatePayload.bilateralita = exercise.bilateralita || null;
+      if (exercise.piano_movimento !== undefined) updatePayload.piano_movimento = exercise.piano_movimento || null;
+      if (exercise.catena_cinetica !== undefined) updatePayload.catena_cinetica = exercise.catena_cinetica || null;
+      if (exercise.gradi_liberta !== undefined) updatePayload.gradi_liberta = exercise.gradi_liberta || null;
+
+      // Blocchi JSONB
+      if (exercise.parametri_chiave !== undefined) updatePayload.parametri_chiave = exercise.parametri_chiave || null;
+      if (exercise.muscoli_coinvolti !== undefined) updatePayload.muscoli_coinvolti = exercise.muscoli_coinvolti || null;
+      if (exercise.esecuzione !== undefined) updatePayload.esecuzione = exercise.esecuzione || null;
+      if (exercise.sicurezza !== undefined) updatePayload.sicurezza = exercise.sicurezza || null;
+
       const { error } = await supabase
         .from('exercises')
-        .update({
-          name: exercise.name,
-          category: exercise.category,
-          equipment: exercise.equipment,
-          video_url: exercise.video_url || null,
-          instructions: exercise.instructions || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', id);
 
       if (error) throw error;

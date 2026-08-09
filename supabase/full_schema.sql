@@ -71,9 +71,42 @@ CREATE TABLE IF NOT EXISTS public.exercises (
     equipment TEXT DEFAULT 'Corpo Libero',
     video_url TEXT,
     instructions TEXT,
+    -- ── Informazioni Chiave (Strutturate) ──────────────────────────────────
+    tipo TEXT,                       -- 'Forza' | 'Ipertrofia' | 'Resistenza' | 'Potenza' | 'Mobilità'
+    bilateralita TEXT,               -- 'Bilaterale' | 'Unilaterale'
+    piano_movimento TEXT,            -- 'Sagittale' | 'Frontale (scapolare)' | 'Frontale' | 'Trasverso' | 'Multi-piano'
+    catena_cinetica TEXT,            -- 'Aperta' | 'Chiusa' | 'Mista'
+    gradi_liberta INTEGER,           -- 1, 2, 3
+    -- ── Parametri Chiave (JSONB) ───────────────────────────────────────────
+    -- { rom: string, curva_resistenza: string, punto_picco: string,
+    --   tipo_stimolo: string, tut: {min, max}, recupero: {min, max} }
+    parametri_chiave JSONB,
+    -- ── Muscoli Coinvolti (JSONB Array) ───────────────────────────────────
+    -- [{ muscolo: string, ruolo: 'Target'|'Sinergico'|'Stabilizzatore'|'Motore dinamico', percentuale: number }]
+    muscoli_coinvolti JSONB,
+    -- ── Esecuzione (JSONB) ─────────────────────────────────────────────────
+    -- { setup: string[], concentrica: {descrizione, vettore_movimento, traiettoria, cues[]},
+    --   eccentrica: {descrizione, vettore_resistenza, traiettoria, cues[]} }
+    esecuzione JSONB,
+    -- ── Sicurezza e Controindicazioni (JSONB) ─────────────────────────────
+    -- { compensi_da_evitare: string[], criteri_arresto: string[],
+    --   controindicazioni: string[], tolleranze: string }
+    sicurezza JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ALTER TABLE per aggiungere le nuove colonne a tabelle exercises già esistenti in produzione
+ALTER TABLE public.exercises
+    ADD COLUMN IF NOT EXISTS tipo TEXT,
+    ADD COLUMN IF NOT EXISTS bilateralita TEXT,
+    ADD COLUMN IF NOT EXISTS piano_movimento TEXT,
+    ADD COLUMN IF NOT EXISTS catena_cinetica TEXT,
+    ADD COLUMN IF NOT EXISTS gradi_liberta INTEGER,
+    ADD COLUMN IF NOT EXISTS parametri_chiave JSONB,
+    ADD COLUMN IF NOT EXISTS muscoli_coinvolti JSONB,
+    ADD COLUMN IF NOT EXISTS esecuzione JSONB,
+    ADD COLUMN IF NOT EXISTS sicurezza JSONB;
 
 CREATE UNIQUE INDEX IF NOT EXISTS unique_exercise_name_per_coach 
 ON public.exercises (LOWER(TRIM(name)), (COALESCE(coach_id, '00000000-0000-0000-0000-000000000000'::uuid)));

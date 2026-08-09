@@ -2,6 +2,74 @@ import { Athlete } from '../../types';
 import { ExerciseItem } from '../../types/exercise';
 import { getStorageItem, setStorageItem } from '../storage';
 
+/**
+ * Costruisce il contesto di sicurezza per l'IA analizzando le controindicazioni
+ * degli esercizi della libreria in relazione alle note mediche dell'atleta.
+ * Restituisce una stringa formattata da iniettare nel prompt.
+ */
+function buildExerciseSafetyContext(
+  athlete: Athlete | undefined,
+  coachExercises: ExerciseItem[]
+): string {
+  if (!athlete) return '';
+
+  const medicalContext = [
+    athlete.medicalNotes,
+    athlete.notes,
+    athlete.goals,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  if (!medicalContext.trim()) return '';
+
+  // Parole chiave cliniche comuni in italiano
+  const clinicalKeywords = [
+    'spalla', 'cuffia', 'rotatore', 'subacromiale', 'impingement',
+    'lombalgia', 'lombare', 'disco', 'ernia', 'protrusione',
+    'ginocchio', 'menisco', 'legamento', 'crociato', 'patella',
+    'polso', 'gomito', 'epicondilite', 'tendinite', 'tendinopatia',
+    'cervicale', 'collo', 'dolore', 'fastidio', 'infortun', 'limitaz',
+    'operazione', 'intervento', 'chirurgia', 'riabilitaz',
+  ];
+
+  const hasRelevantCondition = clinicalKeywords.some(kw => medicalContext.includes(kw));
+  if (!hasRelevantCondition) return '';
+
+  // Raccogli tutte le controindicazioni degli esercizi con dati strutturati
+  const exerciseWarnings: string[] = [];
+  for (const ex of coachExercises) {
+    if (!ex.sicurezza) continue;
+
+    const controindicazioni = ex.sicurezza.controindicazioni || [];
+    const criteri = ex.sicurezza.criteri_arresto || [];
+    const tolleranze = ex.sicurezza.tolleranze || '';
+
+    if (controindicazioni.length > 0 || criteri.length > 0) {
+      exerciseWarnings.push(
+        `• ${ex.name}:\n` +
+        (controindicazioni.length > 0 ? `  Controindicazioni: ${controindicazioni.join('; ')}\n` : '') +
+        (criteri.length > 0 ? `  Criteri di arresto: ${criteri.join('; ')}\n` : '') +
+        (tolleranze ? `  Tolleranze: ${tolleranze}` : '')
+      );
+    }
+  }
+
+  if (exerciseWarnings.length === 0) return '';
+
+  return `
+⚕️ PROTOCOLLO DI SICUREZZA PERSONALIZZATO (SISTEMA ESPERTO)
+L'atleta presenta le seguenti condizioni cliniche: "${[athlete.medicalNotes, athlete.notes].filter(Boolean).join('; ')}".
+Di seguito le controindicazioni specifiche degli esercizi in libreria:
+
+${exerciseWarnings.join('\n')}
+
+ISTRUZIONI OBBLIGATORIE PER LA SICUREZZA:
+1. Se un esercizio è controindicato per la condizione dell'atleta, SOSTITUISCILO con una variante sicura.
+2. Se l'esercizio è eseguibile con tolleranze, aggiungi nel campo 'notes' dell'esercizio una nota di sicurezza specifica, ad esempio: "⚠️ Eseguire solo nel range indolore. Evitare [compenso specifico].".
+3. NON includere esercizi che soddisfano i criteri di arresto dell'atleta.
+4. Privilegia catene cinetiche chiuse e piani di movimento sicuri per la condizione segnalata.
+`.trim();
+}
+
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
 export interface GenerateWorkoutParams {
@@ -495,6 +563,9 @@ Dati Atleta Selezionato:
     athleteContext += `\nContesto / Stile di Vita Aggiuntivo:\n${params.customAthleteContext.trim()}\n`;
   }
 
+  // ── SISTEMA ESPERTO: Matching cliente-esercizio con controindicazioni ──────────
+  const safetyContext = buildExerciseSafetyContext(params.athlete, params.coachExercises);
+
   const userPrompt = `
 Genera il programma di allenamento basato su queste specifiche:
 ${athleteContext}
@@ -512,6 +583,7 @@ ${params.splitStyle ? `- Stile della Split: ${params.splitStyle}` : ''}
 ${params.limitations ? `- INFORTUNI / LIMITAZIONI DA EVITARE: ${params.limitations}` : '- Nessuna limitazione segnalata'}
 ${params.extraNotes ? `- Note aggiuntive / Istruzioni del Coach: ${params.extraNotes}` : ''}
 
+${safetyContext ? safetyContext + '\n' : ''}
 IMPORTANTE: Assicurati di generare tra 4 e 7 esercizi per CIASCUN giorno di CIASCUNA settimana. Usa solo "Giorno A", "Giorno B", "Giorno C" come day_name.
 
 Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
