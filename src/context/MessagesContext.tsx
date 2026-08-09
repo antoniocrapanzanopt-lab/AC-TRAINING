@@ -287,6 +287,24 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           console.error('Error sending message to Supabase:', error);
         } else if (data) {
           setMessages(prev => prev.map(m => m.id === tempMsg.id ? data : m));
+
+          // Se il mittente è un atleta, invia notifica al coach
+          if (user.role === 'athlete' && finalReceiverId) {
+            try {
+              const athleteName = user.name || 'Atleta';
+              const athleteId = user.athleteId;
+              await supabase.from('coach_notifications').insert({
+                coach_id: finalReceiverId,
+                type: 'message_received',
+                title: `Nuovo messaggio da ${athleteName}`,
+                body: content.length > 80 ? content.slice(0, 80) + '...' : content,
+                athlete_id: athleteId || null,
+                athlete_name: athleteName,
+              });
+            } catch (notifErr) {
+              console.warn('Errore invio notifica message_received:', notifErr);
+            }
+          }
         }
       } catch (err) {
         console.error('Async message send error:', err);

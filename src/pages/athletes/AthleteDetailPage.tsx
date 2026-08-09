@@ -25,6 +25,7 @@ import {
   MessageCircle,
   CheckCircle2,
   Link as LinkIcon,
+  Dumbbell,
 } from 'lucide-react';
 import { AthleteModal, ModalSection } from '../../components/athletes/AthleteModal';
 import { AthleteFormData } from '../../types';
@@ -36,6 +37,8 @@ import { useSubscriptions } from '../../context/SubscriptionsContext';
 import { useDocuments } from '../../context/DocumentsContext';
 import { useCommunications } from '../../context/CommunicationsContext';
 import { useMetrics } from '../../context/MetricsContext';
+import { useWorkouts } from '../../context/WorkoutsContext';
+import { useApp } from '../../context/AppContext';
 import { AthleteStatusBadge, PaymentStatusBadge, contactChannelLabel, acquisitionSourceLabel } from '../../components/athletes/AthleteBadges';
 import { SubscriptionsTab } from '../../components/athletes/SubscriptionsTab';
 import { PaymentsTab } from '../../components/athletes/PaymentsTab';
@@ -282,6 +285,8 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   const { documents = [] } = useDocuments();
   const { communications = [] } = useCommunications();
   const { metrics = [], fetchMetricsForAthlete } = useMetrics();
+  const { allAssignedWorkouts = [], coachTemplates = [], unassignWorkoutFromAthlete } = useWorkouts();
+  const { setActiveTab: setAppActiveTab } = useApp();
   const { showSuccess, showError } = useToast();
 
   const [activeTab, setActiveTab] = useState<DetailTab>('panoramica');
@@ -293,6 +298,10 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   const athleteTimeline = timeline?.[athleteId] ?? [];
   const athleteDocs = documents.filter(d => d.athleteId === athleteId);
   const athleteComms = communications.filter(c => c.athleteId === athleteId);
+
+  const athleteAssignedWorkouts = useMemo(() => {
+    return allAssignedWorkouts.filter(a => a.athlete_id === athleteId && a.is_active);
+  }, [allAssignedWorkouts, athleteId]);
 
   // Caricamento metriche fisiche
   React.useEffect(() => {
@@ -452,6 +461,79 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
       case 'panoramica':
         return (
           <div className="space-y-4">
+            {/* Programma / Scheda di Allenamento In Uso */}
+            <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                  <Dumbbell className="w-4 h-4 text-[var(--color-primary)]" /> Programma / Scheda di Allenamento Attiva
+                </h3>
+                <button
+                  onClick={() => setAppActiveTab('schede')}
+                  className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1"
+                >
+                  Vai a Schede →
+                </button>
+              </div>
+
+              {athleteAssignedWorkouts.length > 0 ? (
+                <div className="space-y-2.5">
+                  {athleteAssignedWorkouts.map(assignment => {
+                    const tmpl = assignment.workout || coachTemplates.find(t => t.id === assignment.workout_id);
+                    return (
+                      <div key={assignment.id} className="p-3.5 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-lg shrink-0">
+                            <Dumbbell className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-white">{tmpl?.title || 'Scheda di Allenamento'}</h4>
+                            <p className="text-xs text-slate-400">
+                              {tmpl?.description || 'Nessuna descrizione'} • Assegnata il {new Date(assignment.assigned_date).toLocaleDateString('it-IT')}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => setAppActiveTab('schede')}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors"
+                          >
+                            Vedi Programma
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (confirm(`Vuoi rimuovere il programma "${tmpl?.title || 'Scheda'}" da questo atleta?`)) {
+                                const res = await unassignWorkoutFromAthlete(athlete.id, assignment.workout_id);
+                                if (res.success) {
+                                  showSuccess('Scheda rimossa', 'La scheda non è più attiva per questo atleta.');
+                                } else {
+                                  showError('Errore durante la rimozione', res.error || '');
+                                }
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
+                            title="Rimuovi scheda"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 bg-slate-900/40 border border-slate-800/80 rounded-xl text-center space-y-2">
+                  <p className="text-xs text-slate-400">Nessuna scheda di allenamento attualmente attiva per questo atleta.</p>
+                  <button
+                    onClick={() => setAppActiveTab('schede')}
+                    className="px-3 py-1.5 bg-[var(--color-primary)] text-black font-bold text-xs rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors inline-flex items-center gap-1.5"
+                  >
+                    <Dumbbell className="w-3.5 h-3.5" /> Assegna una Scheda ora
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* 1. Dati Anagrafici */}
             <CollapsibleSection title="Dati Anagrafici" icon={<User className="w-4 h-4" />} onEdit={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}>
               <InfoRow label="Nome completo" value={safeFullName} />

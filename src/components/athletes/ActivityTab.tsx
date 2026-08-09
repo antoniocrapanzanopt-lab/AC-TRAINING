@@ -16,6 +16,8 @@ interface ActivityTabProps {
 interface WorkoutSessionDemo {
   id: string;
   workoutTitle: string;
+  weekNumber?: number;
+  dayName?: string;
   date: string;
   durationMinutes: number;
   rpe: number;
@@ -27,11 +29,7 @@ interface WorkoutSessionDemo {
   }[];
 }
 
-
-
 import { supabase } from '../../lib/supabase';
-
-// ... (keep interface WorkoutSessionDemo, but we'll map real data to it)
 
 export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName }) => {
   const [completedSessions, setCompletedSessions] = useState<WorkoutSessionDemo[]>([]);
@@ -42,6 +40,15 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
     const fetchSessions = async () => {
       setLoading(true);
       try {
+        // Fetch scheda attiva per l'atleta come fallback se il titolo è placeholder (es: "aaaa")
+        const { data: activeAssignments } = await supabase
+          .from('athlete_assigned_workouts')
+          .select('workout_id, workouts ( title )')
+          .eq('athlete_id', athleteId)
+          .eq('is_active', true);
+
+        const activeWorkoutTitle = (activeAssignments?.[0]?.workouts as unknown as {title: string} | null)?.title;
+
         const { data, error } = await supabase
           .from('workout_sessions')
           .select(`
@@ -50,13 +57,14 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
             end_time,
             rpe,
             notes,
+            workout_id,
             workouts ( title ),
             exercise_logs (
               set_number,
               reps_completed,
               weight_kg,
               notes,
-              workout_exercises ( name )
+              workout_exercises ( name, week_number, day_name )
             )
           `)
           .eq('athlete_id', athleteId)
@@ -73,11 +81,25 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
             const diffMs = end.getTime() - start.getTime();
             const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
 
-            // Raggruppiamo i log per nome esercizio
+            // Titolo Scheda con fallback se placeholder
+            const rawTitle = session.workouts?.title;
+            const isPlaceholder = !rawTitle || rawTitle.trim() === '' || rawTitle.toLowerCase() === 'aaaa' || rawTitle.toLowerCase() === 'allenamento' || rawTitle.toLowerCase() === 'allenamento senza nome';
+            const finalTitle = isPlaceholder ? (activeWorkoutTitle || 'Scheda Personalizzata') : rawTitle;
+
+            // Raggruppiamo i log per nome esercizio e troviamo settimana/giorno
             const exMap = new Map<string, { sets: any[]; notesSet: Set<string> }>();
             const logs = session.exercise_logs || [];
+            let detectedWeek: number | undefined = undefined;
+            let detectedDay: string | undefined = undefined;
             
             logs.forEach((log: any) => {
+              if (log.workout_exercises?.week_number && !detectedWeek) {
+                detectedWeek = log.workout_exercises.week_number;
+              }
+              if (log.workout_exercises?.day_name && !detectedDay) {
+                detectedDay = log.workout_exercises.day_name;
+              }
+
               const exName = log.workout_exercises?.name || 'Esercizio Sconosciuto';
               if (!exMap.has(exName)) {
                 exMap.set(exName, { sets: [], notesSet: new Set<string>() });
@@ -101,7 +123,9 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
 
             return {
               id: session.id,
-              workoutTitle: session.workouts?.title || 'Allenamento senza nome',
+              workoutTitle: finalTitle,
+              weekNumber: detectedWeek || 1,
+              dayName: detectedDay || 'Giorno A',
               date: session.end_time.slice(0, 10),
               durationMinutes,
               rpe: session.rpe || 0,
@@ -240,7 +264,12 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
                       <Dumbbell className="w-5 h-5" />
                     </div>
                     <div>
-                      <h5 className="text-sm font-black text-white">{session.workoutTitle}</h5>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h5 className="text-sm font-black text-white">{session.workoutTitle}</h5>
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30">
+                          Settimana {session.weekNumber || 1}{session.dayName ? ` • ${session.dayName}` : ''}
+                        </span>
+                      </div>
                       <span className="text-xs text-slate-400">
                         Eseguito il {new Date(session.date).toLocaleDateString('it-IT')} • Durata: {session.durationMinutes} min
                       </span>

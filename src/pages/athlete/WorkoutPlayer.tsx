@@ -7,6 +7,7 @@ import { useToast } from '../../context/ToastContext';
 import { useMetrics } from '../../context/MetricsContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
+import { supabase } from '../../lib/supabase';
 
 
 interface WorkoutPlayerProps {
@@ -139,6 +140,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
               athleteId: athleteId || 'ath-local',
               athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : (user?.name || 'Atleta'),
               workoutTitle: workout.title,
+              weekNumber: ex.week_number || 1,
+              dayName: ex.day_name || 'Giorno A',
               exerciseName: ex.name,
               noteText: userFeedback,
               severity: isHighSeverity ? 'high' : 'medium',
@@ -146,6 +149,24 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
             };
             localStorage.setItem('builder_copilot_critical_notes', JSON.stringify([newAlert, ...existingAlerts]));
             window.dispatchEvent(new Event('copilot_notes_updated'));
+
+            // Notifica Supabase al coach (pain_reported)
+            if (isHighSeverity) {
+              try {
+                const athleteRec = currentAthlete;
+                if (athleteRec?.assignedCoachId) {
+                  const athleteName = `${athleteRec.firstName} ${athleteRec.lastName}`.trim();
+                  await supabase.from('coach_notifications').insert({
+                    coach_id: athleteRec.assignedCoachId,
+                    type: 'pain_reported',
+                    title: `⚠️ Fastidio segnalato da ${athleteName}`,
+                    body: `Esercizio: ${ex.name} — "${userFeedback}"`,
+                    athlete_id: athleteRec.id,
+                    athlete_name: athleteName,
+                  });
+                }
+              } catch (_) {}
+            }
           } catch (e) {}
         }
 
@@ -187,11 +208,14 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
           
           const questionnaireSummary = `Questionario Fine Workout — Fatica: ${difficulty}/5 | Dolori Articolari: ${jointPain}/5 | Pump: ${pump}/5${jointPainNotes.trim() ? ` | Dettagli: "${jointPainNotes.trim()}"` : ''}`;
 
+          const firstEx = exercises[0];
           const questionnaireAlert = {
             id: `cn-q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             athleteId: athleteId || 'ath-local',
             athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : (user?.name || 'Atleta'),
             workoutTitle: workout.title,
+            weekNumber: firstEx?.week_number || 1,
+            dayName: firstEx?.day_name || 'Giorno A',
             exerciseName: 'Questionario Fine Workout (Dolori Articolari)',
             noteText: questionnaireSummary,
             severity: isHighSeverity ? 'high' : 'medium',
@@ -199,6 +223,22 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
           };
           localStorage.setItem('builder_copilot_critical_notes', JSON.stringify([questionnaireAlert, ...existingAlerts]));
           window.dispatchEvent(new Event('copilot_notes_updated'));
+
+          // Notifica Supabase al coach (questionnaire_submitted)
+          try {
+            const athleteRec = currentAthlete;
+            if (athleteRec?.assignedCoachId) {
+              const athleteName = `${athleteRec.firstName} ${athleteRec.lastName}`.trim();
+              await supabase.from('coach_notifications').insert({
+                coach_id: athleteRec.assignedCoachId,
+                type: 'questionnaire_submitted',
+                title: `📝 Questionario post-workout da ${athleteName}`,
+                body: `Fatica: ${difficulty}/5 | Dolori: ${jointPain}/5 | Pump: ${pump}/5${jointPainNotes.trim() ? ` | "${jointPainNotes.trim()}"` : ''}`,
+                athlete_id: athleteRec.id,
+                athlete_name: athleteName,
+              });
+            }
+          } catch (_) {}
         } catch (e) {
           console.warn('Errore salvataggio alert questionario copilot:', e);
         }

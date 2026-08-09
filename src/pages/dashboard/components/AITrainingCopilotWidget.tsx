@@ -10,6 +10,8 @@ import {
   Flame,
   Zap,
   CheckCircle2,
+  Dumbbell,
+  Calendar,
 } from 'lucide-react';
 import { useAthletes } from '../../../context/AthletesContext';
 import { AICopilotActionModal, CopilotAlertContext } from './AICopilotActionModal';
@@ -20,6 +22,8 @@ interface CriticalNoteAlert {
   athleteId: string;
   athleteName: string;
   workoutTitle: string;
+  weekNumber?: number | string;
+  dayName?: string;
   exerciseName: string;
   noteText: string;
   severity: 'high' | 'medium';
@@ -80,15 +84,30 @@ export const AITrainingCopilotWidget: React.FC = () => {
 
     const fetchCopilotDbData = async () => {
       try {
-        // 1a. Fetch note degli esercizi dal DB
+        // 0. Mappa delle schede attive per athleteId
+        const { data: activeAssignments } = await supabase
+          .from('athlete_assigned_workouts')
+          .select('athlete_id, workout_id, workouts(title)')
+          .eq('is_active', true);
+
+        const activeWorkoutMap = new Map<string, string>();
+        if (activeAssignments) {
+          activeAssignments.forEach((a: any) => {
+            if (a.athlete_id && a.workouts?.title) {
+              activeWorkoutMap.set(a.athlete_id, a.workouts.title);
+            }
+          });
+        }
+
+        // 1a. Fetch note degli esercizi dal DB con settimana ed esercizio
         const { data: logsData } = await supabase
           .from('exercise_logs')
           .select(`
             id,
             notes,
             created_at,
-            workout_exercises ( name ),
-            workout_sessions ( athlete_id, workouts ( title ), athletes:athlete_id ( first_name, last_name ) )
+            workout_exercises ( name, week_number, day_name ),
+            workout_sessions ( athlete_id, workout_id, workouts ( title ), athletes:athlete_id ( first_name, last_name ) )
           `)
           .not('notes', 'is', null)
           .order('created_at', { ascending: false })
@@ -103,6 +122,7 @@ export const AITrainingCopilotWidget: React.FC = () => {
             rpe,
             start_time,
             athlete_id,
+            workout_id,
             workouts ( title ),
             athletes:athlete_id ( first_name, last_name )
           `)
@@ -119,11 +139,24 @@ export const AITrainingCopilotWidget: React.FC = () => {
               const ath = l.workout_sessions?.athletes;
               const athName = ath ? `${ath.first_name || ''} ${ath.last_name || ''}`.trim() : 'Atleta';
               const isHigh = /dolore|fastidio|male|pizzico|infortunio|strappo/i.test(l.notes);
+              const athId = l.workout_sessions?.athlete_id || 'ath-1';
+              
+              const sessionWorkoutTitle = l.workout_sessions?.workouts?.title;
+              const fallbackWorkoutTitle = activeWorkoutMap.get(athId);
+              const resolvedWorkoutTitle = (sessionWorkoutTitle && sessionWorkoutTitle.trim() !== '' && sessionWorkoutTitle.toLowerCase() !== 'allenamento') 
+                ? sessionWorkoutTitle 
+                : (fallbackWorkoutTitle || sessionWorkoutTitle || 'Scheda Personalizzata');
+
+              const weekNum = l.workout_exercises?.week_number || 1;
+              const dayName = l.workout_exercises?.day_name || undefined;
+
               dbNotes.push({
                 id: `db-cn-${l.id}`,
-                athleteId: l.workout_sessions?.athlete_id || 'ath-1',
+                athleteId: athId,
                 athleteName: athName || 'Atleta Registrato',
-                workoutTitle: l.workout_sessions?.workouts?.title || 'Allenamento',
+                workoutTitle: resolvedWorkoutTitle,
+                weekNumber: weekNum,
+                dayName,
                 exerciseName: l.workout_exercises?.name || 'Esercizio',
                 noteText: l.notes,
                 severity: isHigh ? 'high' : 'medium',
@@ -139,11 +172,20 @@ export const AITrainingCopilotWidget: React.FC = () => {
               const ath = s.athletes;
               const athName = ath ? `${ath.first_name || ''} ${ath.last_name || ''}`.trim() : 'Atleta';
               const isHigh = /dolore|fastidio|male|pizzico|infortunio|strappo|dolore articolare 4|dolore articolare 5/i.test(s.notes);
+              const athId = s.athlete_id || 'ath-1';
+
+              const sessionWorkoutTitle = s.workouts?.title;
+              const fallbackWorkoutTitle = activeWorkoutMap.get(athId);
+              const resolvedWorkoutTitle = (sessionWorkoutTitle && sessionWorkoutTitle.trim() !== '' && sessionWorkoutTitle.toLowerCase() !== 'allenamento completo') 
+                ? sessionWorkoutTitle 
+                : (fallbackWorkoutTitle || sessionWorkoutTitle || 'Scheda Personalizzata');
+
               dbNotes.push({
                 id: `db-sn-${s.id}`,
-                athleteId: s.athlete_id || 'ath-1',
+                athleteId: athId,
                 athleteName: athName || 'Atleta Registrato',
-                workoutTitle: s.workouts?.title || 'Allenamento Completo',
+                workoutTitle: resolvedWorkoutTitle,
+                weekNumber: 1,
                 exerciseName: 'Questionario Post-Workout',
                 noteText: s.notes,
                 severity: isHigh ? 'high' : 'medium',
@@ -344,6 +386,8 @@ export const AITrainingCopilotWidget: React.FC = () => {
                   athleteId: item.athleteId,
                   athleteName: item.athleteName,
                   workoutTitle: item.workoutTitle,
+                  weekNumber: item.weekNumber,
+                  dayName: item.dayName,
                   exerciseName: item.exerciseName,
                   noteText: item.noteText,
                   type: 'critical_note',
@@ -355,12 +399,17 @@ export const AITrainingCopilotWidget: React.FC = () => {
                     <ShieldAlert className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
                       <h4 className="text-sm font-black text-white group-hover:text-rose-400 transition-colors">
                         {item.athleteName}
                       </h4>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                        {item.workoutTitle}
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                        <Dumbbell className="w-3 h-3 text-amber-400 shrink-0" />
+                        Scheda: {item.workoutTitle}
+                      </span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-sky-500/10 text-sky-300 border border-sky-500/30 flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-sky-400 shrink-0" />
+                        Settimana {item.weekNumber || 1}{item.dayName ? ` • ${item.dayName}` : ''}
                       </span>
                       <span className="text-[10px] text-slate-400 font-semibold">• {item.date}</span>
                     </div>

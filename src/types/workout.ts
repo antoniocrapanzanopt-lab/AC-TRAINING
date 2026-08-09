@@ -48,6 +48,13 @@ export interface AthleteAssignedWorkout {
   assigned_date: string;
   is_active: boolean;
   workout?: WorkoutTemplate; // joined data
+  athlete?: {
+    id: string;
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    status?: string;
+  };
 }
 
 export interface WorkoutSession {

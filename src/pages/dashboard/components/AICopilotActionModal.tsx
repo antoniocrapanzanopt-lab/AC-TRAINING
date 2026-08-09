@@ -23,6 +23,8 @@ export interface CopilotAlertContext {
   athleteId: string;
   athleteName: string;
   workoutTitle?: string;
+  weekNumber?: number | string;
+  dayName?: string;
   exerciseName?: string;
   noteText?: string;
   suggestion?: string;
@@ -173,9 +175,19 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                   Gemini 3.6 Flash
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                {alertData.workoutTitle ? `${alertData.workoutTitle} • ` : ''}{alertData.exerciseName || 'Analisi Scheda'}
-              </p>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                  📋 Scheda: {alertData.workoutTitle || 'Scheda Personalizzata'}
+                </span>
+                <span className="text-xs font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/30">
+                  📅 Settimana {alertData.weekNumber || 1}{alertData.dayName ? ` • ${alertData.dayName}` : ''}
+                </span>
+                {alertData.exerciseName && (
+                  <span className="text-xs text-slate-400 font-semibold">
+                    • {alertData.exerciseName}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

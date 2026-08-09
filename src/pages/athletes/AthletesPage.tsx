@@ -13,9 +13,11 @@ import {
   Check,
   AlertTriangle,
   Eye,
+  Dumbbell,
 } from 'lucide-react';
 import { Athlete, AthleteFormData, AthleteStatus, AthletePaymentStatus } from '../../types';
 import { useAthletes } from '../../context/AthletesContext';
+import { useWorkouts } from '../../context/WorkoutsContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { AthleteStatusBadge, PaymentStatusBadge, athleteStatusLabel, paymentStatusLabel } from '../../components/athletes/AthleteBadges';
@@ -87,6 +89,7 @@ export const AthletesPage: React.FC = () => {
     assignCoach,
     exportCsv,
   } = useAthletes();
+  const { allAssignedWorkouts = [], coachTemplates = [] } = useWorkouts();
   const { user } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
 
@@ -399,6 +402,7 @@ export const AthletesPage: React.FC = () => {
                 <th className="px-4 py-3 text-left"><SortHeader field="fullName" label="Atleta" /></th>
                 <th className="px-4 py-3 text-left"><SortHeader field="status" label="Stato" /></th>
                 <th className="px-4 py-3 text-left"><SortHeader field="paymentStatus" label="Pagamenti" /></th>
+                <th className="px-4 py-3 text-left"><span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Scheda Attiva</span></th>
                 <th className="px-4 py-3 text-left"><SortHeader field="assignedCoachName" label="Coach" /></th>
                 <th className="px-4 py-3 text-left"><SortHeader field="createdAt" label="Iscrizione" /></th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wide">Azioni</th>
@@ -407,13 +411,15 @@ export const AthletesPage: React.FC = () => {
             <tbody className="divide-y divide-[var(--color-panel-border)]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400 text-sm">
+                  <td colSpan={8} className="py-12 text-center text-slate-400 text-sm">
                     {hasActiveFilters ? 'Nessun atleta corrisponde ai filtri applicati.' : 'Nessun atleta presente. Aggiungine uno con il pulsante "Nuovo Atleta".'}
                   </td>
                 </tr>
               ) : (
                 filtered.map(athlete => {
                   const isSelected = selectedIds.has(athlete.id);
+                  const activeAssigned = allAssignedWorkouts.filter(a => a.athlete_id === athlete.id && a.is_active);
+
                   return (
                     <tr key={athlete.id}
                       className={`transition-colors ${isSelected ? 'bg-[var(--color-primary)]/5' : 'hover:bg-slate-900/40'}`}>
@@ -450,6 +456,28 @@ export const AthletesPage: React.FC = () => {
                       </td>
                       <td className="px-4 py-3"><AthleteStatusBadge status={athlete.status} /></td>
                       <td className="px-4 py-3"><PaymentStatusBadge status={athlete.paymentStatus} /></td>
+                      <td className="px-4 py-3">
+                        {activeAssigned.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {activeAssigned.map(a => {
+                              const tmpl = a.workout || coachTemplates.find(t => t.id === a.workout_id);
+                              return (
+                                <span
+                                  key={a.id}
+                                  onClick={() => setSelectedAthleteId(athlete.id)}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 cursor-pointer transition-colors"
+                                  title={`Assegnata il ${new Date(a.assigned_date).toLocaleDateString('it-IT')}`}
+                                >
+                                  <Dumbbell className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span className="truncate max-w-[130px]">{tmpl?.title || 'Scheda'}</span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-500 italic">Nessuna</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="text-sm text-slate-300">{athlete.assignedCoachName || '—'}</span>
                       </td>
@@ -526,6 +554,8 @@ export const AthletesPage: React.FC = () => {
           ) : (
             filtered.map(athlete => {
               const isSelected = selectedIds.has(athlete.id);
+              const activeAssigned = allAssignedWorkouts.filter(a => a.athlete_id === athlete.id && a.is_active);
+
               return (
                 <div key={athlete.id} className={`p-4 space-y-2 ${isSelected ? 'bg-[var(--color-primary)]/5' : ''}`}>
                   <div className="flex items-start justify-between gap-2">
@@ -576,9 +606,18 @@ export const AthletesPage: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-2 flex-wrap items-center">
                     <AthleteStatusBadge status={athlete.status} />
                     <PaymentStatusBadge status={athlete.paymentStatus} />
+                    {activeAssigned.length > 0 && activeAssigned.map(a => {
+                      const tmpl = a.workout || coachTemplates.find(t => t.id === a.workout_id);
+                      return (
+                        <span key={a.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                          <Dumbbell className="w-3 h-3 text-amber-400" />
+                          <span>{tmpl?.title || 'Scheda'}</span>
+                        </span>
+                      );
+                    })}
                   </div>
                   <p className="text-xs text-slate-400">Coach: {athlete.assignedCoachName || '—'}</p>
                 </div>

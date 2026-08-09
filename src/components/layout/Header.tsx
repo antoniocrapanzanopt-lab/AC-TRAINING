@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Dumbbell, Menu, X, User, ChevronDown, LogOut, Settings as SettingsIcon, Camera } from 'lucide-react';
+import { Dumbbell, Menu, X, User, ChevronDown, LogOut, Settings as SettingsIcon, Camera, Bell } from 'lucide-react';
 import { NavigationTab } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { LogoUploadModal } from './LogoUploadModal';
+import { useNotifications } from '../../context/NotificationsContext';
+import { NotificationsPanel } from '../notifications/NotificationsPanel';
 
 interface HeaderProps {
   activeTab: NavigationTab;
@@ -21,8 +23,11 @@ export const Header: React.FC<HeaderProps> = ({
   const { ownerProfile } = useApp();
   const { user, logout } = useAuth();
   const { showInfo } = useToast();
+  const { unreadCount } = useNotifications();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const notificationsBellRef = useRef<HTMLDivElement>(null);
 
   const [customLogo, setCustomLogo] = useState<string | null>(() => localStorage.getItem('builder_custom_logo'));
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
@@ -97,7 +102,32 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-      {/* Destra: Menu Utente con Logout */}
+      {/* Destra: Campanella Notifiche + Menu Utente */}
+      <div className="flex items-center gap-2">
+
+        {/* Campanella Notifiche */}
+        {(user?.role === 'owner' || user?.role === 'coach') && (
+          <div className="relative" ref={notificationsBellRef}>
+            <button
+              id="notifications-bell-btn"
+              onClick={() => { setIsNotificationsPanelOpen(p => !p); setIsUserMenuOpen(false); }}
+              className="relative p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
+              title="Notifiche"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center shadow-lg shadow-red-500/50 animate-pulse">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+            <NotificationsPanel
+              isOpen={isNotificationsPanelOpen}
+              onClose={() => setIsNotificationsPanelOpen(false)}
+            />
+          </div>
+        )}
+
       <div className="relative" ref={userMenuRef}>
         <button
           onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -143,6 +173,7 @@ export const Header: React.FC<HeaderProps> = ({
         )}
       </div>
 
+      </div> {/* fine flex destra */}
     </header>
     <LogoUploadModal
       isOpen={isLogoModalOpen}

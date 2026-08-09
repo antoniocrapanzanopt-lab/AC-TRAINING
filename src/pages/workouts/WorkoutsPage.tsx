@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle, Folder, FolderPlus, ChevronRight, FolderOpen, MoveRight, X, Save, Clock } from 'lucide-react';
+import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle, Folder, FolderPlus, ChevronRight, FolderOpen, MoveRight, X, Save, Clock, Users, User, ExternalLink } from 'lucide-react';
 import { useWorkouts } from '../../context/WorkoutsContext';
+import { useAthletes } from '../../context/AthletesContext';
+import { useApp } from '../../context/AppContext';
 import { useToast } from '../../context/ToastContext';
 import { WorkoutBuilderModal } from '../../components/workouts/WorkoutBuilderModal';
 import { AssignWorkoutModal } from '../../components/workouts/AssignWorkoutModal';
@@ -10,12 +12,16 @@ export const WorkoutsPage: React.FC = () => {
   const { 
     coachTemplates, 
     folders, 
+    allAssignedWorkouts,
+    unassignWorkoutFromAthlete,
     createFolder, 
     updateFolder, 
     deleteFolder, 
     moveWorkoutToFolder, 
     deleteWorkoutTemplate 
   } = useWorkouts();
+  const { athletes, setSelectedAthleteId } = useAthletes();
+  const { setActiveTab } = useApp();
   const { showSuccess, showError } = useToast();
 
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -24,6 +30,17 @@ export const WorkoutsPage: React.FC = () => {
   const [deletingWorkout, setDeletingWorkout] = useState<WorkoutTemplate | null>(null);
   const [assigningWorkout, setAssigningWorkout] = useState<WorkoutTemplate | null>(null);
   const [movingWorkout, setMovingWorkout] = useState<WorkoutTemplate | null>(null);
+  const [viewingAssignedWorkout, setViewingAssignedWorkout] = useState<{
+    template: WorkoutTemplate;
+    assignedAthletes: {
+      assignmentId: string;
+      athleteId: string;
+      name: string;
+      status: string;
+      assignedDate: string;
+      email: string;
+    }[];
+  } | null>(null);
   
   // State per Cartelle
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
@@ -275,6 +292,19 @@ export const WorkoutsPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {currentTemplates.map(template => {
                 const parentFolder = folders.find(f => f.id === template.folder_id);
+                const activeAssignments = allAssignedWorkouts.filter(a => a.workout_id === template.id && a.is_active);
+                const assignedAthletes = activeAssignments.map(a => {
+                  const ath = athletes.find(athlete => athlete.id === a.athlete_id);
+                  const name = ath ? `${ath.firstName} ${ath.lastName}`.trim() : (a.athlete?.first_name ? `${a.athlete.first_name} ${a.athlete.last_name || ''}`.trim() : 'Atleta Sconosciuto');
+                  return {
+                    assignmentId: a.id,
+                    athleteId: a.athlete_id,
+                    name,
+                    status: ath?.status || a.athlete?.status || 'active',
+                    assignedDate: a.assigned_date,
+                    email: ath?.email || a.athlete?.email || '',
+                  };
+                });
 
                 return (
                   <div key={template.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-[var(--color-primary)]/50 transition-colors group flex flex-col justify-between">
@@ -301,12 +331,64 @@ export const WorkoutsPage: React.FC = () => {
                       </div>
 
                       <h3 className="text-white font-bold text-lg mb-1">{template.title}</h3>
-                      <p className="text-sm text-slate-400 line-clamp-2 min-h-[40px]">
+                      <p className="text-sm text-slate-400 line-clamp-2 min-h-[36px]">
                         {template.description || 'Nessuna descrizione'}
                       </p>
+
+                      {/* Sezione Atleti Assegnati */}
+                      <div className="mt-3 pt-3 border-t border-slate-800/80">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                            <Users className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                            Atleti in uso ({assignedAthletes.length})
+                          </span>
+                          {assignedAthletes.length > 0 && (
+                            <button
+                              onClick={() => setViewingAssignedWorkout({ template, assignedAthletes })}
+                              className="text-[11px] font-bold text-[var(--color-primary)] hover:underline flex items-center gap-0.5"
+                            >
+                              Gestisci <ChevronRight className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+
+                        {assignedAthletes.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            {assignedAthletes.slice(0, 2).map(ath => (
+                              <span
+                                key={ath.assignmentId}
+                                onClick={() => setViewingAssignedWorkout({ template, assignedAthletes })}
+                                className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-amber-500/20 transition-colors"
+                                title={`Assegnata il ${new Date(ath.assignedDate).toLocaleDateString('it-IT')}`}
+                              >
+                                <User className="w-3 h-3 text-amber-400" />
+                                {ath.name}
+                              </span>
+                            ))}
+                            {assignedAthletes.length > 2 && (
+                              <button
+                                onClick={() => setViewingAssignedWorkout({ template, assignedAthletes })}
+                                className="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors"
+                              >
+                                +{assignedAthletes.length - 2} altri
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-500 italic">Nessun atleta in uso</span>
+                            <button
+                              onClick={() => setAssigningWorkout(template)}
+                              className="text-[11px] font-bold text-slate-400 hover:text-[var(--color-primary)] flex items-center gap-1 transition-colors"
+                            >
+                              <Plus className="w-3 h-3" /> Assegna
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="mt-4 pt-4 border-t border-slate-800 flex justify-between items-center">
+                    <div className="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center">
                        <div className="flex items-center gap-1">
                          <button 
                            onClick={() => setEditingWorkout(template)}
@@ -551,6 +633,107 @@ export const WorkoutsPage: React.FC = () => {
               >
                 {isDeleting && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                 {isDeleting ? 'Eliminazione...' : 'Elimina Definitivamente'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETTAGLIO ATLETI ASSEGNATI */}
+      {viewingAssignedWorkout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-400">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Atleti in uso col programma</h3>
+                  <p className="text-xs text-slate-400">{viewingAssignedWorkout.template.title}</p>
+                </div>
+              </div>
+              <button onClick={() => setViewingAssignedWorkout(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
+              {viewingAssignedWorkout.assignedAthletes.map(ath => (
+                <div key={ath.assignmentId} className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold text-sm shrink-0">
+                      {ath.name.charAt(0)}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        {ath.name}
+                        {ath.status === 'active' && <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold border border-emerald-500/20">Attivo</span>}
+                        {ath.status === 'trial' && <span className="text-[10px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded font-bold border border-sky-500/20">In prova</span>}
+                      </h4>
+                      <p className="text-xs text-slate-400">
+                        Assegnata il {new Date(ath.assignedDate).toLocaleDateString('it-IT')} {ath.email ? `• ${ath.email}` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        setSelectedAthleteId(ath.athleteId);
+                        setActiveTab('atleti');
+                        setViewingAssignedWorkout(null);
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5"
+                      title="Apri scheda dell'atleta"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                      <span>Apri Atleta</span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (confirm(`Vuoi rimuovere il programma "${viewingAssignedWorkout.template.title}" da ${ath.name}?`)) {
+                          const res = await unassignWorkoutFromAthlete(ath.athleteId, viewingAssignedWorkout.template.id);
+                          if (res.success) {
+                            showSuccess(`Scheda rimossa da ${ath.name}`);
+                            const updated = viewingAssignedWorkout.assignedAthletes.filter(a => a.assignmentId !== ath.assignmentId);
+                            if (updated.length === 0) {
+                              setViewingAssignedWorkout(null);
+                            } else {
+                              setViewingAssignedWorkout({ ...viewingAssignedWorkout, assignedAthletes: updated });
+                            }
+                          } else {
+                            showError('Errore durante la rimozione: ' + (res.error || ''));
+                          }
+                        }
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
+                      title="Rimuovi scheda dall'atleta"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+              <button
+                onClick={() => {
+                  const tmpl = viewingAssignedWorkout.template;
+                  setViewingAssignedWorkout(null);
+                  setAssigningWorkout(tmpl);
+                }}
+                className="px-3.5 py-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-bold rounded-xl hover:bg-[var(--color-primary)]/20 transition-colors flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                Assegna a un altro atleta
+              </button>
+              <button
+                onClick={() => setViewingAssignedWorkout(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white"
+              >
+                Chiudi
               </button>
             </div>
           </div>

@@ -352,6 +352,27 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
           date: todayStr,
           notes: reps === 1 ? 'Nuovo 1RM Reale' : `Nuovo PR stimato (${weightKg}kg x ${reps} reps)`
         });
+
+        // Notifica PR al coach
+        try {
+          const { data: athData } = await supabase
+            .from('athletes')
+            .select('first_name, last_name, assigned_coach_id')
+            .eq('id', athleteId)
+            .maybeSingle();
+          if (athData?.assigned_coach_id) {
+            const athleteName = `${athData.first_name} ${athData.last_name}`.trim();
+            await supabase.from('coach_notifications').insert({
+              coach_id: athData.assigned_coach_id,
+              type: 'new_pr',
+              title: `🏆 Nuovo record personale di ${athleteName}!`,
+              body: `${exerciseName}: ${calculated1RM} kg 1RM (${weightKg}kg x ${reps} reps)`,
+              athlete_id: athleteId,
+              athlete_name: athleteName,
+            });
+          }
+        } catch (_) {}
+
         return { isNewPR: true, calculated1RM };
       }
 

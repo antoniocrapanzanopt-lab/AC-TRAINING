@@ -7,7 +7,9 @@ interface WorkoutsContextType {
   // Coach specific
   coachTemplates: WorkoutTemplate[];
   folders: WorkoutFolder[];
+  allAssignedWorkouts: AthleteAssignedWorkout[];
   loadFolders: () => Promise<void>;
+  loadAssignedWorkouts: () => Promise<void>;
   createFolder: (name: string, parentId?: string | null) => Promise<{ success: boolean; error?: string }>;
   updateFolder: (folderId: string, name: string) => Promise<{ success: boolean; error?: string }>;
   deleteFolder: (folderId: string) => Promise<{ success: boolean; error?: string }>;
@@ -16,6 +18,7 @@ interface WorkoutsContextType {
   updateWorkoutTemplate: (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
   deleteWorkoutTemplate: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
   assignWorkoutToAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
+  unassignWorkoutFromAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
   getAssignedWorkoutsForAthlete: (athleteId: string) => Promise<AthleteAssignedWorkout[]>;
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
   
@@ -35,10 +38,28 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { user } = useAuth();
   const [coachTemplates, setCoachTemplates] = useState<WorkoutTemplate[]>([]);
   const [folders, setFolders] = useState<WorkoutFolder[]>([]);
+  const [allAssignedWorkouts, setAllAssignedWorkouts] = useState<AthleteAssignedWorkout[]>([]);
   const [myAssignedWorkouts, setMyAssignedWorkouts] = useState<AthleteAssignedWorkout[]>([]);
   const [loading, setLoading] = useState(false);
 
   // --- COACH LOGIC ---
+
+  const loadAssignedWorkouts = useCallback(async () => {
+    if (!user || user.role !== 'owner') return;
+    const { data, error } = await supabase
+      .from('athlete_assigned_workouts')
+      .select(`
+        *,
+        athlete:athletes(id, first_name, last_name, email, status),
+        workout:workouts(id, title)
+      `)
+      .eq('is_active', true)
+      .order('assigned_date', { ascending: false });
+
+    if (!error && data) {
+      setAllAssignedWorkouts(data as AthleteAssignedWorkout[]);
+    }
+  }, [user]);
 
   const loadFolders = useCallback(async () => {
     if (!user || user.role !== 'owner') return;
@@ -164,8 +185,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (user && user.role === 'owner') {
       loadFolders();
       loadCoachTemplates();
+      loadAssignedWorkouts();
     }
-  }, [user, loadFolders, loadCoachTemplates]);
+  }, [user, loadFolders, loadCoachTemplates, loadAssignedWorkouts]);
 
   const createWorkoutTemplate = async (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => {
     if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
@@ -313,6 +335,24 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
 
       if (error) throw error;
+      await loadAssignedWorkouts();
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  const unassignWorkoutFromAthlete = async (athleteId: string, workoutId: string) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    try {
+      const { error } = await supabase
+        .from('athlete_assigned_workouts')
+        .delete()
+        .eq('athlete_id', athleteId)
+        .eq('workout_id', workoutId);
+
+      if (error) throw error;
+      await loadAssignedWorkouts();
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -426,6 +466,34 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (error) {
         console.warn('endWorkoutSession warning:', error.message);
       }
+
+      // Invia notifica al coach
+      try {
+        const { data: sessionData } = await supabase
+          .from('workout_sessions')
+          .select('athlete_id, workout_id, workouts(title, coach_id), athletes:athlete_id(first_name, last_name)')
+          .eq('id', sessionId)
+          .single();
+
+        if (sessionData) {
+          const workout = sessionData.workouts as unknown as { title: string; coach_id: string } | null;
+          const athlete = sessionData.athletes as unknown as { first_name: string; last_name: string } | null;
+          if (workout?.coach_id && athlete) {
+            const athleteName = `${athlete.first_name} ${athlete.last_name}`.trim();
+            await supabase.from('coach_notifications').insert({
+              coach_id: workout.coach_id,
+              type: 'workout_completed',
+              title: `${athleteName} ha completato un allenamento`,
+              body: `Scheda: ${workout.title}${rpe ? ` • RPE: ${rpe}/10` : ''}${notes ? ` • Note: "${notes}"` : ''}`,
+              athlete_id: sessionData.athlete_id,
+              athlete_name: athleteName,
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.warn('Errore invio notifica workout_completed:', notifErr);
+      }
+
       return { success: true };
     } catch (error: any) {
       console.warn('endWorkoutSession exception:', error.message);
@@ -464,7 +532,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         value={{
           coachTemplates,
           folders,
+          allAssignedWorkouts,
           loadFolders,
+          loadAssignedWorkouts,
           createFolder,
           updateFolder,
           deleteFolder,
@@ -473,6 +543,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           updateWorkoutTemplate,
           deleteWorkoutTemplate,
           assignWorkoutToAthlete,
+          unassignWorkoutFromAthlete,
           getAssignedWorkoutsForAthlete,
           getExercisesForWorkout,
           myAssignedWorkouts,
