@@ -1,23 +1,25 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Sparkles,
   Zap,
-  MessageCircle,
   User,
   CheckCircle2,
   RefreshCw,
   Sliders,
-  Edit2,
   History,
   Activity,
   Shield,
   TrendingUp,
   Clock,
+  MessageSquare,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { useAthletes } from '../../../context/AthletesContext';
 import { useApp } from '../../../context/AppContext';
 import { useToast } from '../../../context/ToastContext';
+import { useMessages } from '../../../context/MessagesContext';
 
 export interface CopilotAlertContext {
   athleteId: string;
@@ -42,112 +44,195 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
   onClose,
   alertData,
 }) => {
-  const { setSelectedAthleteId, addTimelineEvent, athletes, timeline } = useAthletes();
+  const { setSelectedAthleteId, addTimelineEvent, timeline } = useAthletes();
   const { setActiveTab } = useApp();
-  const { showSuccess, showInfo } = useToast();
+  const { showSuccess } = useToast();
+  const { sendMessage } = useMessages();
 
-  const [activeActionTab, setActiveActionTab] = useState<'modify_program' | 'whatsapp_msg' | 'history' | 'view_profile'>('modify_program');
+  const [activeActionTab, setActiveActionTab] = useState<'modify_program' | 'history' | 'view_profile'>('modify_program');
 
-  // Metodologia di Variazione
+  // Metodologia di Variazione & Parametri
   const [variationMethodology, setVariationMethodology] = useState<'biomechanical' | 'tut_rpe' | 'volume_intensity' | 'frequency_order'>('biomechanical');
   const [coachInstruction, setCoachInstruction] = useState('');
   const [targetWeek, setTargetWeek] = useState('Settimana 3');
   const [isProcessingAI, setIsProcessingAI] = useState(false);
-  const [generatedProgramDraft, setGeneratedProgramDraft] = useState('');
 
-  // Stato Messaggio WhatsApp
-  const [whatsappMessageText, setWhatsappMessageText] = useState('');
+  // Stato Messaggio Chat Interna
+  const [chatMessageText, setChatMessageText] = useState('');
+
+  // Box Anteprima Modifiche (Diff View)
+  const [diffPreview, setDiffPreview] = useState<{ before: string; after: string }>({
+    before: '',
+    after: '',
+  });
 
   useEffect(() => {
     if (!isOpen || !alertData) return;
 
+    const athleteFirstName = alertData.athleteName ? alertData.athleteName.trim().split(' ')[0] : 'Atleta';
+    const exName = alertData.exerciseName || 'Esercizio Principale';
+
     if (alertData.type === 'critical_note') {
-      setCoachInstruction(`Sostituisci ${alertData.exerciseName || 'l\'esercizio'} con varianti articolari più tollerate per ${targetWeek}.`);
-      setWhatsappMessageText(
-        `Ciao ${alertData.athleteName.split(' ')[0]}, ho letto la tua nota sul fastidio avvertito durante ${alertData.exerciseName || 'l\'allenamento'}. Per le prossime 2 settimane ho adeguato la tua scheda per permettere un recupero ottimale. Fammi sapere come ti trovi!`
+      setCoachInstruction(`Sostituisci ${exName} con varianti articolari più tollerate per ${targetWeek}.`);
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, ho letto la tua nota sul fastidio avvertito durante ${exName}. Per le prossime 2 settimane ho adeguato la tua scheda per permettere un recupero ottimale. Fammi sapere come ti trovi!`
       );
+      setDiffPreview({
+        before: `${exName} (4x10, RPE 8.0)`,
+        after: `Landmine Press Unilaterale (4x10, RPE 7.0, TUT 3-1-1)`,
+      });
     } else if (alertData.type === 'plateau') {
-      setCoachInstruction(`Inserisci una variazione di tempo esecutivo (TUT 3-1-1) e riduci il volume del 15% per superare il plateau su ${alertData.exerciseName || 'questo esercizio'}.`);
-      setWhatsappMessageText(
-        `Ciao ${alertData.athleteName.split(' ')[0]}, ho analizzato i tuoi carichi su ${alertData.exerciseName || 'questo esercizio'} e ho preparato una leggera variazione nel programma per sbloccare la tua forza. Dai un'occhiata alla scheda aggiornata!`
+      setCoachInstruction(`Inserisci una variazione di tempo esecutivo (TUT 3-1-1) e riduci il volume del 15% per superare il plateau su ${exName}.`);
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, ho analizzato i tuoi carichi su ${exName} e ho preparato una leggera variazione nel programma per sbloccare la tua forza. Dai un'occhiata alla scheda aggiornata!`
       );
+      setDiffPreview({
+        before: `${exName} (4x8, 80kg)`,
+        after: `${exName} (Rest-Pause 1x6 + 2x3, 82.5kg)`,
+      });
     } else if (alertData.type === 'inactivity') {
       setCoachInstruction(`Ripianifica il mesociclo a partire dalla prossima settimana con un giorno di riadattamento graduale.`);
-      setWhatsappMessageText(
-        `Ciao ${alertData.athleteName.split(' ')[0]}, come va? Ho notato che è da qualche giorno che non registri allenamenti. Tutto bene? Fammi sapere se dobbiamo adattare la scheda ai tuoi orari!`
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, come va? Ho notato che è da qualche giorno che non registri allenamenti. Tutto bene? Fammi sapere se dobbiamo adattare la scheda ai tuoi orari!`
       );
+      setDiffPreview({
+        before: `Scheda Inattiva da 7+ giorni`,
+        after: `Ripianificazione Mesociclo (${targetWeek}) con Riadattamento`,
+      });
     } else {
       setCoachInstruction(`Aumenta il target di carico del +5% per il prossimo mesociclo data la grande progressione.`);
-      setWhatsappMessageText(
-        `Complimenti ${alertData.athleteName.split(' ')[0]}! 🔥 Ho visto la tua ottima prestazione ed il nuovo record su ${alertData.exerciseName || 'questo esercizio'}. Continua così!`
+      setChatMessageText(
+        `Complimenti ${athleteFirstName}! 🔥 Ho visto la tua ottima prestazione ed il nuovo record su ${exName}. Continua così!`
       );
+      setDiffPreview({
+        before: `${exName} (4x6, Target Base)`,
+        after: `${exName} (4x6, Target +2.5% Carico)`,
+      });
     }
-
-    setGeneratedProgramDraft('');
   }, [isOpen, alertData, targetWeek]);
 
   if (!isOpen || !alertData) return null;
 
-  const currentAthlete = athletes.find(a => a.id === alertData.athleteId);
-  const athletePhone = currentAthlete?.phone || '';
-  const athleteHistory = timeline[alertData.athleteId] || [];
+  const athleteHistory = (timeline && alertData.athleteId && timeline[alertData.athleteId]) || [];
+  const athleteFirstName = alertData.athleteName ? alertData.athleteName.trim().split(' ')[0] : 'Atleta';
+  const exName = alertData.exerciseName || 'Esercizio Principale';
 
   // Strategie IA 1-Click
   const applyAIStrategy = (strategy: 'joint_friendly' | 'plateau_breaker' | 'deload' | 'overload') => {
     if (strategy === 'joint_friendly') {
       setVariationMethodology('biomechanical');
-      setCoachInstruction(`[STRATEGIA JOINT-FRIENDLY] Sostituisci ${alertData.exerciseName || 'l\'esercizio'} con una variante iso-laterale guidata ad angolo controllato. Riduci l'RPE a max 7/10 per ${targetWeek}.`);
+      setCoachInstruction(`[STRATEGIA JOINT-FRIENDLY] Sostituisci ${exName} con una variante iso-laterale guidata ad angolo controllato per ${targetWeek}.`);
+      setChatMessageText(`Ciao ${athleteFirstName}, ho aggiornato il programma inserendo una variante joint-friendly per proteggere le articolazioni ed evitare dolori.`);
+      setDiffPreview({
+        before: `${exName} (4x10, RPE 8.0)`,
+        after: `Variante Isolaterale Guidata (4x10, RPE 7.0, TUT 3-1-1)`,
+      });
     } else if (strategy === 'plateau_breaker') {
       setVariationMethodology('volume_intensity');
-      setCoachInstruction(`[STRATEGIA SBLOCCO PLATEAU] Inserisci tecnica Rest-Pause (1 serie target + 2 mini-set da 3-4 rep) sul primo esercizio base per sbloccare i carichi su ${targetWeek}.`);
+      setCoachInstruction(`[STRATEGIA SBLOCCO PLATEAU] Inserisci tecnica Rest-Pause sul primo esercizio base per sbloccare i carichi su ${targetWeek}.`);
+      setChatMessageText(`Ciao ${athleteFirstName}, per sbloccare lo stallo carichi su ${exName} ho inserito una serie Rest-Pause ad alta intensità. Provala e fammi sapere!`);
+      setDiffPreview({
+        before: `${exName} (4x8, Stallo Carico)`,
+        after: `${exName} (Rest-Pause 1x6 + 2x3, TUT 2-0-1)`,
+      });
     } else if (strategy === 'deload') {
       setVariationMethodology('volume_intensity');
-      setCoachInstruction(`[STRATEGIA DELOAD ATTIVO] Taglia il volume complessivo del -30% e mantieni 2 RIR (Reps in Reserve) su tutti i fondamentali per ${targetWeek}.`);
+      setCoachInstruction(`[STRATEGIA DELOAD ATTIVO] Taglia il volume complessivo del -30% e mantieni 2 RIR per ${targetWeek}.`);
+      setChatMessageText(`Ciao ${athleteFirstName}, per permettere un recupero ottimale ed evitare il sovrallenamento ho programmato una settimana di scarico attivo (-30% volume).`);
+      setDiffPreview({
+        before: `Volume Standard (5x5, RPE 9.0)`,
+        after: `Deload Attivo (3x5, RPE 6.5, -30% Volume)`,
+      });
     } else {
       setVariationMethodology('tut_rpe');
       setCoachInstruction(`[STRATEGIA OVERLOAD PROGRESSIVO] Aumenta il target di carico del +2.5% ed imposta TUT 2-0-1 per il prossimo mesociclo.`);
+      setChatMessageText(`Complimenti per la costanza ${athleteFirstName}! 🔥 Ho aumentato i target di carico del +2.5% per continuare ad evolvere.`);
+      setDiffPreview({
+        before: `${exName} (Target Carico Base)`,
+        after: `${exName} (Target +2.5% Carico, TUT 2-0-1)`,
+      });
     }
   };
 
-  // Esecuzione elaborazione IA per la variazione del programma
+  // Esecuzione elaborazione IA manuale o al click della metodologia
+  const handleSelectMethodology = (method: 'biomechanical' | 'tut_rpe' | 'volume_intensity' | 'frequency_order') => {
+    setVariationMethodology(method);
+    
+    // Auto-genera output in base alla metodologia scelta
+    if (method === 'biomechanical') {
+      setCoachInstruction(`Sostituisci ${exName} con una variante con profilo di resistenza ottimizzato (es. ai cavi o macchina).`);
+      setChatMessageText(`Ciao ${athleteFirstName}, ho modificato la scheda inserendo una variante più efficiente dal punto di vista biomeccanico per ottimizzare lo stimolo muscolare.`);
+      setDiffPreview({
+        before: `${exName} (Esecuzione Base)`,
+        after: `Variante Biomeccanica Ottimizzata (TUT 3-1-1)`,
+      });
+    } else if (method === 'tut_rpe') {
+      setCoachInstruction(`Modifica le tempistiche di esecuzione su ${exName}: aumenta la fase eccentrica ed imposta un target RPE 8.`);
+      setChatMessageText(`Ciao ${athleteFirstName}, per migliorare il controllo motorio ho inserito un Tempo Under Tension (TUT) specifico per ${exName}.`);
+      setDiffPreview({
+        before: `${exName} (Ritmo Libero)`,
+        after: `${exName} (TUT 4-0-1, RPE 8)`,
+      });
+    } else if (method === 'volume_intensity') {
+      setCoachInstruction(`Rimodula volume e intensità per ${exName} su ${targetWeek}: inserisci un protocollo Drop-Set nell'ultima serie.`);
+      setChatMessageText(`Ciao ${athleteFirstName}, ho alzato l'intensità su ${exName} con un protocollo specifico per portarti al limite in questa settimana.`);
+      setDiffPreview({
+        before: `${exName} (4x8)`,
+        after: `${exName} (3x8 + 1 Drop-Set finale)`,
+      });
+    } else if (method === 'frequency_order') {
+      setCoachInstruction(`Sposta ${exName} come primo esercizio dell'allenamento per priorità muscolare.`);
+      setChatMessageText(`Ciao ${athleteFirstName}, ho spostato l'ordine degli esercizi per dare priorità a ${exName} quando sei più fresco.`);
+      setDiffPreview({
+        before: `Esercizio a metà sessione`,
+        after: `${exName} (Primo esercizio della sessione)`,
+      });
+    }
+  };
+
+  // Elabora Variazione Manuale (Pulsante Refresh)
   const handleProcessAIProgramChange = () => {
     setIsProcessingAI(true);
     setTimeout(() => {
       setIsProcessingAI(false);
       const methodologyNames = {
-        biomechanical: 'Sostituzione Biomeccanica (Piano & Vettore di Forza)',
+        biomechanical: 'Sostituzione Biomeccanica',
         tut_rpe: 'Controllo Tempi TUT & Target RPE',
-        volume_intensity: 'Volume & Tecniche di Intensità (Rest-Pause / Deload)',
-        frequency_order: 'Frequenza & Ordine Esercizi Sessione',
+        volume_intensity: 'Volume & Intensità (Rest-Pause / Deload)',
+        frequency_order: 'Frequenza & Ordine Esercizi',
       };
 
-      const draft = `[PROPOSTA GEMINI 3.6 FLASH - ${targetWeek.toUpperCase()}]\n• Metodologia Selezionata: ${methodologyNames[variationMethodology]}\n• Esercizio Target: ${alertData.exerciseName || 'Esercizio Principale'}\n• Modifica Suggerita dall'IA:\n  - Modifica parametri: 4 serie x 8-10 reps (RPE 7.5/10, TUT 3-1-1)\n  - Nota Tecnico-Preventiva: Esecuzione controllata e focus sulla stabilità scapolotoracica.\n\nIstruzione Coach Applicata: "${coachInstruction}"`;
-      setGeneratedProgramDraft(draft);
-      showSuccess('Elaborato con Gemini 3.6 Flash', 'Variazione programma generata con successo.');
-    }, 800);
+      setDiffPreview({
+        before: `${exName} (Parametri Base)`,
+        after: `Variante IA (${methodologyNames[variationMethodology]}) — 4x8-10 (TUT 3-1-1)`,
+      });
+
+      showSuccess('Variazione Elaborata con Gemini 3.6 Flash', 'Anteprima modifiche e messaggio atleta aggiornati.');
+    }, 600);
   };
 
-  // Applicazione definitiva della modifica programma
-  const handleApplyProgramChange = () => {
+  // Applicazione unificata delle modifiche
+  const handleApplyProgramChange = async (sendChat: boolean) => {
+    // 1. Registra evento nella timeline
     addTimelineEvent(
       alertData.athleteId,
       'other',
       `Variazione Programma (${targetWeek})`,
       `Modifica IA (${variationMethodology}): ${coachInstruction}`
     );
-    showSuccess('Programma Aggiornato!', `Scheda di ${alertData.athleteName} modificata per la ${targetWeek}.`);
-    onClose();
-  };
 
-  // Invio WhatsApp
-  const handleSendWhatsApp = () => {
-    if (!athletePhone) {
-      showInfo('Telefono Mancante', `Nessun numero di telefono registrato per ${alertData.athleteName}.`);
-      return;
+    // 2. Invio messaggio in chat se richiesto
+    if (sendChat && chatMessageText.trim()) {
+      try {
+        await sendMessage(alertData.athleteId, chatMessageText);
+      } catch (e) {
+        console.warn('Errore invio chat interna:', e);
+      }
+      showSuccess('Programma Aggiornato & Messaggio Inviato!', `Scheda aggiornata per ${targetWeek} e nota inviata in chat.`);
+    } else {
+      showSuccess('Programma Aggiornato!', `Scheda di ${alertData.athleteName} modificata per ${targetWeek}.`);
     }
-    const cleanPhone = athletePhone.replace(/[^0-9]/g, '');
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsappMessageText)}`, '_blank');
-    showSuccess('WhatsApp Aperto', 'Messaggio inviato alla chat dell\'atleta.');
+
     onClose();
   };
 
@@ -158,12 +243,13 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[92vh]">
+      <div className="relative w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[92vh]">
+        
         {/* Modal Header */}
-        <div className="p-6 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
+        <div className="p-6 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
               <Sparkles className="w-5 h-5" />
@@ -191,68 +277,56 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
             </div>
           </div>
 
-          <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Tab Switcher Azioni */}
-        <div className="px-6 pt-4 bg-slate-900/30 border-b border-slate-800/80">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-            <button
-              onClick={() => setActiveActionTab('modify_program')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                activeActionTab === 'modify_program'
-                  ? 'bg-[var(--color-primary)] text-black font-black shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
-              }`}
-            >
-              <Zap className="w-4 h-4" /> 1. Modifica Programma IA
-            </button>
-
-            <button
-              onClick={() => setActiveActionTab('whatsapp_msg')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                activeActionTab === 'whatsapp_msg'
-                  ? 'bg-[var(--color-primary)] text-black font-black shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
-              }`}
-            >
-              <MessageCircle className="w-4 h-4" /> 2. Messaggio WhatsApp
-            </button>
-
-            <button
-              onClick={() => setActiveActionTab('history')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                activeActionTab === 'history'
-                  ? 'bg-[var(--color-primary)] text-black font-black shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
-              }`}
-            >
-              <History className="w-4 h-4" /> 3. Storico Variazioni ({athleteHistory.length})
-            </button>
-
-            <button
-              onClick={() => setActiveActionTab('view_profile')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                activeActionTab === 'view_profile'
-                  ? 'bg-[var(--color-primary)] text-black font-black shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
-              }`}
-            >
-              <User className="w-4 h-4" /> 4. Apri Scheda Atleta
+          <div className="flex items-center gap-2">
+            {activeActionTab !== 'modify_program' && (
+              <button
+                onClick={() => setActiveActionTab('modify_program')}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors"
+              >
+                ← Torna alla Modifica
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
+        {/* Navigation Bar Secodaria (Storico & Profilo) */}
+        <div className="px-6 py-2.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between text-xs shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveActionTab('modify_program')}
+              className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                activeActionTab === 'modify_program' ? 'bg-[var(--color-primary)] text-black' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              ⚡ Variazione Programma & Chat
+            </button>
+            <button
+              onClick={() => setActiveActionTab('history')}
+              className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                activeActionTab === 'history' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              📜 Storico Variazioni ({athleteHistory.length})
+            </button>
+          </div>
+          <button
+            onClick={handleGoToAthleteProfile}
+            className="text-slate-400 hover:text-[var(--color-primary)] font-semibold flex items-center gap-1 transition-colors"
+          >
+            <User className="w-3.5 h-3.5" /> Profilo Atleta →
+          </button>
+        </div>
+
         {/* Body Contenuto Tab */}
-        <div className="p-6 overflow-y-auto space-y-5 flex-1">
-          {/* TAB 1: MODIFICA PROGRAMMA IA */}
+        <div className="p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar">
           {activeActionTab === 'modify_program' && (
             <div className="space-y-5">
               {/* Context Alert Banner */}
-              <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Contesto Segnalazione</span>
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contesto Segnalazione</span>
                 <p className="text-xs text-slate-200 font-medium">
                   {alertData.noteText ? `"${alertData.noteText}"` : alertData.suggestion || 'Analisi dello stallo o progresso nei carichi.'}
                 </p>
@@ -306,7 +380,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                 </div>
               </div>
 
-              {/* Selettore Metodologia di Variazione */}
+              {/* Selettore Metodologia & Settimana */}
               <div className="space-y-3 pt-1 border-t border-slate-800/80">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="text-xs font-bold text-white flex items-center gap-1.5">
@@ -327,7 +401,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
-                    onClick={() => setVariationMethodology('biomechanical')}
+                    onClick={() => handleSelectMethodology('biomechanical')}
                     className={`p-2 rounded-xl text-left text-xs font-bold border transition-all ${
                       variationMethodology === 'biomechanical'
                         ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]'
@@ -338,7 +412,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setVariationMethodology('tut_rpe')}
+                    onClick={() => handleSelectMethodology('tut_rpe')}
                     className={`p-2 rounded-xl text-left text-xs font-bold border transition-all ${
                       variationMethodology === 'tut_rpe'
                         ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]'
@@ -349,7 +423,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setVariationMethodology('volume_intensity')}
+                    onClick={() => handleSelectMethodology('volume_intensity')}
                     className={`p-2 rounded-xl text-left text-xs font-bold border transition-all ${
                       variationMethodology === 'volume_intensity'
                         ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]'
@@ -360,7 +434,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setVariationMethodology('frequency_order')}
+                    onClick={() => handleSelectMethodology('frequency_order')}
                     className={`p-2 rounded-xl text-left text-xs font-bold border transition-all ${
                       variationMethodology === 'frequency_order'
                         ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]'
@@ -372,85 +446,64 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                 </div>
 
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={coachInstruction}
                   onChange={e => setCoachInstruction(e.target.value)}
-                  placeholder="Es. Sostituisci Panca Piana con Spinte Manubri 30°, riduci il volume a 3 serie..."
+                  placeholder="Istruzione tecnica per la scheda..."
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-[var(--color-primary)] resize-none"
                 />
 
                 <button
                   onClick={handleProcessAIProgramChange}
                   disabled={isProcessingAI || !coachInstruction.trim()}
-                  className="w-full py-2.5 rounded-xl bg-slate-900 border border-slate-700 hover:border-[var(--color-primary)] text-slate-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2"
+                  className="w-full py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-[var(--color-primary)] text-slate-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2"
                 >
                   <RefreshCw className={`w-4 h-4 text-sky-400 ${isProcessingAI ? 'animate-spin' : ''}`} />
                   <span>Elabora Variazione con Gemini 3.6 Flash</span>
                 </button>
               </div>
 
-              {/* Anteprima Bozza Generata */}
-              {generatedProgramDraft && (
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="w-4 h-4" /> Anteprima Variazione Programma
-                    </span>
-                    <span className="text-[10px] text-slate-500">Puoi modificare il testo prima di applicare</span>
+              {/* BOX ANTEPRIMA MODIFICHE (DIFF VIEW) */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                    <ArrowRightLeft className="w-4 h-4" /> Anteprima Modifiche Scheda (Diff View)
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-semibold">{targetWeek}</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="p-3 rounded-xl bg-red-950/20 border border-red-500/30 space-y-1">
+                    <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider block">🔴 Stato Attuale (Prima)</span>
+                    <p className="text-xs font-bold text-white">{diffPreview.before || 'Esercizio Base'}</p>
                   </div>
-
-                  <textarea
-                    rows={5}
-                    value={generatedProgramDraft}
-                    onChange={e => setGeneratedProgramDraft(e.target.value)}
-                    className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs font-mono resize-none focus:outline-none focus:border-[var(--color-primary)]"
-                  />
-
-                  <button
-                    onClick={handleApplyProgramChange}
-                    className="w-full py-3 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-[0_0_15px_rgba(234,179,8,0.2)]"
-                  >
-                    Applica Variazione al Programma di {alertData.athleteName}
-                  </button>
+                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-1">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">🟢 Proposta IA (Dopo)</span>
+                    <p className="text-xs font-bold text-white">{diffPreview.after || 'Proposta Aggiornata'}</p>
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
 
-          {/* TAB 2: MESSAGGIO WHATSAPP MODIFICABILE */}
-          {activeActionTab === 'whatsapp_msg' && (
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
+              {/* AREA MESSAGGIO CHAT PER L'ATLETA */}
+              <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Edit2 className="w-4 h-4 text-emerald-400" /> Bozza Messaggio Personalizzata da Gemini 3.6 Flash
+                    <MessageSquare className="w-4 h-4 text-[var(--color-primary)]" /> Messaggio per l'Atleta (Modificabile)
                   </label>
-                  <span className="text-[10px] text-slate-400">Modificabile al 100% da te</span>
+                  <span className="text-[10px] text-slate-400">Generato da Gemini 3.6 Flash</span>
                 </div>
-
                 <textarea
-                  rows={6}
-                  value={whatsappMessageText}
-                  onChange={e => setWhatsappMessageText(e.target.value)}
-                  className="w-full p-3.5 rounded-2xl bg-slate-900 border border-slate-700 text-white text-xs leading-relaxed resize-none focus:outline-none focus:border-[var(--color-primary)]"
+                  rows={3}
+                  value={chatMessageText}
+                  onChange={e => setChatMessageText(e.target.value)}
+                  className="w-full p-3 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs leading-relaxed resize-none focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                  placeholder="Bozza messaggio da inviare nella chat interna dell'atleta..."
                 />
               </div>
-
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center justify-between">
-                <span>Destinatario: <strong>{alertData.athleteName}</strong> ({athletePhone || 'Nessun telefono registrato'})</span>
-              </div>
-
-              <button
-                onClick={handleSendWhatsApp}
-                className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>Apri ed Invia via WhatsApp</span>
-              </button>
             </div>
           )}
 
-          {/* TAB 3: STORICO VARIAZIONI ATLETA (AUDIT TRAIL) */}
+          {/* TAB: STORICO VARIAZIONI ATLETA (AUDIT TRAIL) */}
           {activeActionTab === 'history' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -482,30 +535,38 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
               )}
             </div>
           )}
+        </div>
 
-          {/* TAB 4: VAI ALLA SCHEDA ATLETA */}
-          {activeActionTab === 'view_profile' && (
-            <div className="text-center py-8 space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center mx-auto text-[var(--color-primary)]">
-                <User className="w-7 h-7" />
-              </div>
-              <div>
-                <h4 className="text-base font-black text-white">{alertData.athleteName}</h4>
-                <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                  Accedi direttamente al profilo ed a tutti i dettagli di {alertData.athleteName} (Anagrafica, Note, Abbonamenti, Documenti ed Attività).
-                </p>
-              </div>
+        {/* AZIONI DI CONFERMA UNIFICATE IN FONDO ALLA MODALE */}
+        {activeActionTab === 'modify_program' && (
+          <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <button
+              onClick={onClose}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors"
+            >
+              Annulla
+            </button>
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+              <button
+                onClick={() => handleApplyProgramChange(false)}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all border border-slate-700"
+              >
+                <CheckCircle2 className="w-4 h-4 text-slate-400" />
+                <span>Applica solo alla Scheda</span>
+              </button>
 
               <button
-                onClick={handleGoToAthleteProfile}
-                className="px-6 py-3 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-lg"
+                onClick={() => handleApplyProgramChange(true)}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-[0_0_20px_rgba(234,179,8,0.25)]"
               >
-                Vai alla Scheda di {alertData.athleteName} →
+                <Zap className="w-4 h-4 text-black fill-black" />
+                <span>Applica Modifica e Invia in Chat</span>
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -41,6 +41,7 @@ export const WorkoutsPage: React.FC = () => {
       email: string;
     }[];
   } | null>(null);
+  const [editingAthleteWorkout, setEditingAthleteWorkout] = useState<{ athleteId: string, workout: WorkoutTemplate } | null>(null);
   
   // State per Cartelle
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
@@ -455,6 +456,19 @@ export const WorkoutsPage: React.FC = () => {
         />
       )}
 
+      {/* Modal Modifica Scheda (Solo Singolo Atleta / Decoupling) */}
+      {editingAthleteWorkout && (
+        <WorkoutBuilderModal
+          athleteId={editingAthleteWorkout.athleteId}
+          initialWorkout={editingAthleteWorkout.workout}
+          onClose={() => {
+            setEditingAthleteWorkout(null);
+            setViewingAssignedWorkout(null);
+          }}
+          onBack={() => setEditingAthleteWorkout(null)}
+        />
+      )}
+
       {/* Modal Assegna Scheda */}
       {assigningWorkout && (
         <AssignWorkoutModal
@@ -640,9 +654,9 @@ export const WorkoutsPage: React.FC = () => {
       )}
 
       {/* MODAL DETTAGLIO ATLETI ASSEGNATI */}
-      {viewingAssignedWorkout && (
+      {viewingAssignedWorkout && !editingAthleteWorkout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-400">
@@ -658,9 +672,9 @@ export const WorkoutsPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
               {viewingAssignedWorkout.assignedAthletes.map(ath => (
-                <div key={ath.assignmentId} className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3">
+                <div key={ath.assignmentId} className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold text-sm shrink-0">
                       {ath.name.charAt(0)}
@@ -677,7 +691,7 @@ export const WorkoutsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 self-end sm:self-auto">
                     <button
                       onClick={() => {
                         setSelectedAthleteId(ath.athleteId);
@@ -689,6 +703,19 @@ export const WorkoutsPage: React.FC = () => {
                     >
                       <ExternalLink className="w-3.5 h-3.5 text-[var(--color-primary)]" />
                       <span>Apri Atleta</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingAthleteWorkout({ 
+                          athleteId: ath.athleteId, 
+                          workout: viewingAssignedWorkout.template 
+                        });
+                      }}
+                      className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold rounded-lg border border-amber-500/20 transition-colors flex items-center gap-1.5"
+                      title="Personalizza scheda (stacca dal template globale)"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      <span>Modifica</span>
                     </button>
                     <button
                       onClick={async () => {

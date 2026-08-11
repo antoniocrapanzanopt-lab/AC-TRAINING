@@ -3,6 +3,7 @@ import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { ToastContainer } from './components/common/ToastContainer';
 import { GlobalCoachAIAssistantWidget } from './components/common/GlobalCoachAIAssistantWidget';
+import { FloatingChatWidget } from './components/chat/FloatingChatWidget';
 import { PageContainer } from './pages/PageContainer';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { AthletesPage } from './pages/athletes/AthletesPage';
@@ -108,11 +109,12 @@ export const MainLayout: React.FC = () => {
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full min-w-0 overflow-x-hidden">
           {renderPage(activeTab)}
         </main>
       </div>
       <GlobalCoachAIAssistantWidget />
+      <FloatingChatWidget />
       <ToastContainer />
     </div>
   );

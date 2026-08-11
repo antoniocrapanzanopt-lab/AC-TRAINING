@@ -208,49 +208,49 @@ export const calculateARR = (mrr: number): number => {
  * Restituisce formula e disclaimer esplicativo per i tooltip dei KPI.
  */
 export const getKPIFormulaTooltip = (kpiKey: string): { formula: string; description: string; disclaimer: string } => {
-  const disclaimer = 'Valore dimostrativo stimato';
+  const disclaimer = 'Calcolo in tempo reale';
 
   switch (kpiKey) {
     case 'collectionRate':
       return {
-        formula: '(Incassato Netto / Entrate Previste) × 100',
-        description: 'Percentuale delle entrate effettivamente saldate rispetto alle rate previste.',
+        formula: '(Incassato Netto / Atteso) × 100',
+        description: '% rate saldate su totale atteso.',
         disclaimer,
       };
     case 'averageValuePerAthlete':
       return {
-        formula: 'Totale Incassato / Conteggio Atleti Attivi',
-        description: 'Ricavo medio generato da ciascun atleta attivo (ARPU).',
+        formula: 'Incassato / Atleti Attivi',
+        description: 'Ricavo medio per atleta (ARPU).',
         disclaimer,
       };
     case 'renewalRate':
       return {
-        formula: '(Rinnovi Confermati / Trattative Concluse) × 100',
-        description: 'Tasso di fidelizzazione e rinnovo degli abbonamenti giunti a scadenza.',
+        formula: '(Rinnovi / Scadenze) × 100',
+        description: '% contratti rinnovati alla scadenza.',
         disclaimer,
       };
     case 'estimatedChurn':
       return {
-        formula: '(Atleti Inattivi + Non Rinnovati) / Totale Atleti × 100',
-        description: 'Tasso stimato di abbandono o mancato rinnovo nel periodo.',
+        formula: '(Inattivi / Totale) × 100',
+        description: '% abbandoni e mancati rinnovi.',
         disclaimer,
       };
     case 'mrr':
       return {
-        formula: 'Σ (Prezzo Abbonamenti Ricorrenti Attivi / Mesi Durata)',
-        description: 'Ricavo Ricorrente Mensile escludendo carnet, ingressi una tantum e consulenze singole.',
+        formula: 'Σ (Abbonamenti Attivi / Mesi)',
+        description: 'Ricavo mensile ricorrente netto.',
         disclaimer,
       };
     case 'arr':
       return {
         formula: 'MRR × 12',
-        description: 'Proiezione annuale basata sul ricavo ricorrente mensile attuale.',
+        description: 'Proiezione ricavo ricorrente annuale.',
         disclaimer,
       };
     default:
       return {
         formula: 'Calcolo algoritmico interno',
-        description: 'Indicatore prestazionale del sistema.',
+        description: 'Indicatore prestazionale.',
         disclaimer,
       };
   }

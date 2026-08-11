@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useMetrics } from '../../context/MetricsContext';
 import { supabase } from '../../lib/supabase';
+import { ChangeLogTab } from '../../components/athletes/ChangeLogTab';
 
 interface PastSession {
   id: string;
@@ -409,6 +410,13 @@ export const AthleteProfileView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* 5. Change Log / Storico Variazioni Programma */}
+      {athleteId && (
+        <div className="pt-2">
+          <ChangeLogTab athleteId={athleteId} />
+        </div>
+      )}
     </div>
   );
 };

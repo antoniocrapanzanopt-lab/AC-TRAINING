@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Save, Trash2, GripVertical, Dumbbell, Calendar, Clock, Copy, Sliders, Repeat, Sparkles } from 'lucide-react';
+import { X, Plus, Save, Trash2, GripVertical, Dumbbell, Calendar, Clock, Copy, Sliders, Repeat, Sparkles, ArrowLeft } from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useExercises } from '../../context/ExercisesContext';
+import { useAthletes } from '../../context/AthletesContext';
 import { useToast } from '../../context/ToastContext';
 import { calculateEstimatedWorkoutTime } from '../../utils/workoutUtils';
 import { AICoPilotModal } from './AICoPilotModal';
@@ -12,12 +13,16 @@ interface WorkoutBuilderModalProps {
   athleteId?: string;
   initialWorkout?: WorkoutTemplate | null;
   onClose: () => void;
+  onBack?: () => void;
 }
 
-export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId, initialWorkout, onClose }) => {
-  const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout, folders } = useWorkouts();
+export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId, initialWorkout, onClose, onBack }) => {
+  const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout, folders, forkWorkoutForAthlete, forkWorkoutForAllAssigned } = useWorkouts();
   const { exercises: libraryExercises } = useExercises();
+  const { athletes } = useAthletes();
   const { showSuccess, showError } = useToast();
+  
+  const currentAthlete = athleteId ? athletes.find(a => a.id === athleteId) : null;
 
   const [title, setTitle] = useState(initialWorkout?.title || '');
   const [description, setDescription] = useState(initialWorkout?.description || '');
@@ -31,13 +36,12 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     { name: '', sets: 3, reps_target: '10', rest_seconds: 60, week_number: 1, day_name: 'Giorno A' }
   ]);
   const [expandedExerciseIndex, setExpandedExerciseIndex] = useState<number | null>(0);
-  const [isLoadingExercises, setIsLoadingExercises] = useState(!!initialWorkout);
   const [isSaving, setIsSaving] = useState(false);
   const [isCoPilotOpen, setIsCoPilotOpen] = useState(false);
+  const [showTemplateUpdatePrompt, setShowTemplateUpdatePrompt] = useState(false);
 
   useEffect(() => {
     if (initialWorkout) {
-      setIsLoadingExercises(true);
       getExercisesForWorkout(initialWorkout.id).then((fetchedExercises) => {
         if (fetchedExercises && fetchedExercises.length > 0) {
           setExercises(fetchedExercises);
@@ -50,10 +54,8 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
           const maxW = Math.max(...fetchedExercises.map(e => e.week_number || 1), initialWorkout.total_weeks || 1);
           setTotalWeeks(maxW);
         }
-        setIsLoadingExercises(false);
       }).catch((err) => {
         console.error("Error fetching exercises:", err);
-        setIsLoadingExercises(false);
       });
     }
   }, [initialWorkout]);
@@ -171,16 +173,21 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     showSuccess(`Settimana ${sourceWeekNum} clonata con successo in Settimana ${targetWeekNum}! Ora puoi regolare le progressioni.`);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (globalUpdateMode?: 'ALL' | 'NEW_ONLY') => {
     if (!title.trim()) {
       showError('Inserisci un titolo per la scheda');
       return;
     }
     
-    // Filtra esercizi validi con nome
     const validExercises = exercises.filter(ex => ex.name?.trim() !== '');
     if (validExercises.length === 0) {
       showError('Inserisci almeno un esercizio valido');
+      return;
+    }
+
+    // Modalità "Edit Template" dal catalogo
+    if (initialWorkout && initialWorkout.is_template && !athleteId && !globalUpdateMode) {
+      setShowTemplateUpdatePrompt(true);
       return;
     }
 
@@ -188,14 +195,29 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
     try {
       if (initialWorkout) {
-        // Aggiorna la scheda esistente
-        const { success, error } = await updateWorkoutTemplate(
-          initialWorkout.id,
-          { title, description, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display },
-          validExercises
-        );
-        if (!success) throw new Error(error);
-        showSuccess('Scheda aggiornata con successo!');
+        if (athleteId && initialWorkout.is_template) {
+          // Edit di un template dalla pagina di un singolo Atleta -> FORK!
+          const { success, error } = await forkWorkoutForAthlete(
+            initialWorkout.id,
+            athleteId,
+            { title, description, total_weeks: totalWeeks, estimated_duration_minutes: estimatedTime.display },
+            validExercises
+          );
+          if (!success) throw new Error(error);
+          showSuccess('Copia locale creata e assegnata all\'atleta con successo!');
+        } else {
+          // Edit di un template dal catalogo (con globalUpdateMode) o di una scheda già privata
+          if (globalUpdateMode === 'NEW_ONLY') {
+            await forkWorkoutForAllAssigned(initialWorkout.id);
+          }
+          const { success, error } = await updateWorkoutTemplate(
+            initialWorkout.id,
+            { title, description, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display },
+            validExercises
+          );
+          if (!success) throw new Error(error);
+          showSuccess(globalUpdateMode === 'NEW_ONLY' ? 'Template aggiornato (le vecchie assegnazioni sono state congelate).' : 'Scheda aggiornata con successo!');
+        }
       } else {
         // Creazione nuova scheda
         const { success, error, workoutId } = await createWorkoutTemplate(
@@ -219,6 +241,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       showError('Errore durante il salvataggio: ' + (err.message || ''));
     } finally {
       setIsSaving(false);
+      setShowTemplateUpdatePrompt(false);
     }
   };
 
@@ -229,15 +252,42 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[var(--color-panel-border)]">
           <div className="flex items-center gap-3">
+            {onBack && (
+              <button 
+                onClick={onBack}
+                className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-colors"
+                title="Indietro"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
             <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 flex items-center justify-center">
               <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">
-                {initialWorkout ? 'Modifica Programma' : 'Costruttore Programma Avanzato'}
+              <h2 className="text-xl font-bold text-white flex flex-col sm:flex-row sm:items-center gap-2">
+                {athleteId ? (
+                  <>
+                    <span className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wide">
+                      Stai modificando la scheda di:
+                    </span>
+                    <span>{currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : 'Atleta'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm font-bold text-amber-400 uppercase tracking-wide">
+                      Modello Master (Template):
+                    </span>
+                    <span>{initialWorkout ? 'Modifica Programma' : 'Costruttore Programma Avanzato'}</span>
+                  </>
+                )}
               </h2>
               <p className="text-sm text-slate-400">
-                Gestisci giorni, settimane, carichi target e progressioni parametrizzate
+                {athleteId ? (
+                  `Le modifiche apportate influenzeranno solo ed esclusivamente la scheda di questo atleta.`
+                ) : (
+                  `Gestisci giorni, settimane, carichi target e progressioni parametrizzate`
+                )}
               </p>
             </div>
           </div>
@@ -627,9 +677,9 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
             Annulla
           </button>
           <button 
-            onClick={handleSave}
-            disabled={isSaving || isLoadingExercises}
-            className="flex items-center gap-2 px-6 py-2.5 bg-[var(--color-primary)] text-black text-sm font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-all disabled:opacity-50"
+            onClick={() => handleSave()}
+            disabled={isSaving || exercises.length === 0}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-50"
           >
             {isSaving ? (
               <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
@@ -655,6 +705,47 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
           onClose={() => setIsCoPilotOpen(false)}
           onGenerate={handleAIGenerated}
         />
+      )}
+
+      {/* Modale Conferma Modifica Template */}
+      {showTemplateUpdatePrompt && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-2xl space-y-5 relative">
+            <h3 className="text-lg font-black text-white text-center">Aggiornamento Template Globale</h3>
+            <p className="text-sm text-slate-300 text-center">
+              Stai modificando un Template condiviso. Come vuoi applicare questi cambiamenti?
+            </p>
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => handleSave('ALL')}
+                disabled={isSaving}
+                className="w-full p-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition-colors"
+              >
+                <div className="font-bold text-white mb-1">Applica a tutti gli atleti attuali</div>
+                <div className="text-xs text-slate-400">La modifica influenzerà le schede in corso di tutti gli atleti collegati.</div>
+              </button>
+              <button
+                onClick={() => handleSave('NEW_ONLY')}
+                disabled={isSaving}
+                className="w-full p-4 rounded-xl bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 text-left transition-colors"
+              >
+                <div className="font-bold text-[var(--color-primary)] mb-1">Solo alle nuove assegnazioni</div>
+                <div className="text-xs text-[var(--color-primary)]/70">Gli atleti attuali manterranno la versione precedente della scheda.</div>
+              </button>
+            </div>
+
+            <div className="flex justify-center mt-2">
+              <button
+                onClick={() => setShowTemplateUpdatePrompt(false)}
+                disabled={isSaving}
+                className="text-xs text-slate-500 hover:text-white font-bold"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -40,6 +40,7 @@ import {
 import { NavigationTab } from '../../types';
 import { DashboardMetricCards } from './components/DashboardMetricCards';
 import { AITrainingCopilotWidget } from './components/AITrainingCopilotWidget';
+import { DashboardChart } from './components/DashboardChart';
 
 export const DashboardPage: React.FC = () => {
   const { setActiveTab, ownerProfile } = useApp();
@@ -238,8 +239,8 @@ export const DashboardPage: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header Benvenuto */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-[var(--color-primary)]/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl relative overflow-hidden group">
+        <div className="absolute right-0 top-0 w-96 h-96 bg-[var(--color-primary)]/10 rounded-full blur-[100px] pointer-events-none group-hover:bg-[var(--color-primary)]/20 transition-all duration-700" />
         <div className="space-y-1 z-10">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold text-[10px] uppercase tracking-wider border border-[var(--color-primary)]/20">
@@ -285,8 +286,11 @@ export const DashboardPage: React.FC = () => {
       />
 
       {/* SEZIONE SPECIALE: KPI & PERFORMANCE RICORRENTI (MRR / ARR / CHURN / ARPU) */}
-      <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+      <div className="p-6 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative group/kpi">
+        <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+          <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-purple-500/5 rounded-full blur-[80px] group-hover/kpi:bg-purple-500/10 transition-all duration-700" />
+        </div>
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3 relative z-10">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-[var(--color-primary)]" />
             <h3 className="text-base font-bold text-white">KPI & Financial Performance (Ricorrenti)</h3>
@@ -296,24 +300,26 @@ export const DashboardPage: React.FC = () => {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 relative z-10 pt-2">
           {/* MRR */}
           {(() => {
             const info = getKPIFormulaTooltip('mrr');
             return (
-              <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between relative group hover:border-[var(--color-primary)]/50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">MRR</span>
-                  <div className="relative group/tip">
+              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
+                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-[var(--color-primary)]/5 rounded-full blur-xl group-hover:bg-[var(--color-primary)]/20 transition-colors duration-500"></div>
+                </div>
+                <div className="flex items-center justify-between gap-1 relative z-10">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">MRR</span>
+                  <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 top-6 hidden group-hover/tip:block z-30 w-56 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[10px] text-slate-300 shadow-2xl space-y-1">
+                    <div className="absolute left-0 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-2 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
-                      <p className="text-[9px] font-bold text-[var(--color-primary)] uppercase pt-1 border-t border-slate-800">{info.disclaimer}</p>
                     </div>
                   </div>
                 </div>
-                <div className="mt-2">
+                <div className="mt-2 relative z-10">
                   <span className="text-lg font-black text-[var(--color-primary)]">{formatPrice(metrics.mrr)}</span>
                   <span className="text-[9px] text-slate-500 block">Ricavo Mensile Ricorrente</span>
                 </div>
@@ -325,19 +331,21 @@ export const DashboardPage: React.FC = () => {
           {(() => {
             const info = getKPIFormulaTooltip('arr');
             return (
-              <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between relative group hover:border-[var(--color-primary)]/50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ARR</span>
-                  <div className="relative group/tip">
+              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
+                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-white/5 rounded-full blur-xl group-hover:bg-[var(--color-primary)]/20 transition-colors duration-500"></div>
+                </div>
+                <div className="flex items-center justify-between gap-1 relative z-10">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">ARR</span>
+                  <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 top-6 hidden group-hover/tip:block z-30 w-56 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[10px] text-slate-300 shadow-2xl space-y-1">
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
-                      <p className="text-[9px] font-bold text-[var(--color-primary)] uppercase pt-1 border-t border-slate-800">{info.disclaimer}</p>
                     </div>
                   </div>
                 </div>
-                <div className="mt-2">
+                <div className="mt-2 relative z-10">
                   <span className="text-lg font-black text-white">{formatPrice(metrics.arr)}</span>
                   <span className="text-[9px] text-slate-500 block">Proiezione Annuale (MRR×12)</span>
                 </div>
@@ -349,19 +357,21 @@ export const DashboardPage: React.FC = () => {
           {(() => {
             const info = getKPIFormulaTooltip('collectionRate');
             return (
-              <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between relative group hover:border-emerald-500/50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tasso Incasso</span>
-                  <div className="relative group/tip">
+              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)] transition-all duration-300">
+                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/20 transition-colors duration-500"></div>
+                </div>
+                <div className="flex items-center justify-between gap-1 relative z-10">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Incasso</span>
+                  <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 top-6 hidden group-hover/tip:block z-30 w-56 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[10px] text-slate-300 shadow-2xl space-y-1">
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
-                      <p className="text-[9px] font-bold text-[var(--color-primary)] uppercase pt-1 border-t border-slate-800">{info.disclaimer}</p>
                     </div>
                   </div>
                 </div>
-                <div className="mt-2">
+                <div className="mt-2 relative z-10">
                   <span className="text-lg font-black text-emerald-400">{metrics.collectionRate}%</span>
                   <span className="text-[9px] text-slate-500 block">Saldo su Entrate Previste</span>
                 </div>
@@ -373,19 +383,21 @@ export const DashboardPage: React.FC = () => {
           {(() => {
             const info = getKPIFormulaTooltip('averageValuePerAthlete');
             return (
-              <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between relative group hover:border-blue-500/50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valore/Atleta</span>
-                  <div className="relative group/tip">
+              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-blue-500/50 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)] transition-all duration-300">
+                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-blue-500/5 rounded-full blur-xl group-hover:bg-blue-500/20 transition-colors duration-500"></div>
+                </div>
+                <div className="flex items-center justify-between gap-1 relative z-10">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Valore/Atleta (ARPU)">Valore/Atleta</span>
+                  <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 top-6 hidden group-hover/tip:block z-30 w-56 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[10px] text-slate-300 shadow-2xl space-y-1">
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
-                      <p className="text-[9px] font-bold text-[var(--color-primary)] uppercase pt-1 border-t border-slate-800">{info.disclaimer}</p>
                     </div>
                   </div>
                 </div>
-                <div className="mt-2">
+                <div className="mt-2 relative z-10">
                   <span className="text-lg font-black text-blue-400">{formatPrice(metrics.averageValuePerAthlete)}</span>
                   <span className="text-[9px] text-slate-500 block">ARPU Mensile Stimato</span>
                 </div>
@@ -397,19 +409,21 @@ export const DashboardPage: React.FC = () => {
           {(() => {
             const info = getKPIFormulaTooltip('renewalRate');
             return (
-              <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between relative group hover:border-yellow-500/50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tasso Rinnovo</span>
-                  <div className="relative group/tip">
+              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-yellow-500/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
+                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-yellow-500/5 rounded-full blur-xl group-hover:bg-yellow-500/20 transition-colors duration-500"></div>
+                </div>
+                <div className="flex items-center justify-between gap-1 relative z-10">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Rinnovo</span>
+                  <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 top-6 hidden group-hover/tip:block z-30 w-56 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[10px] text-slate-300 shadow-2xl space-y-1">
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
-                      <p className="text-[9px] font-bold text-[var(--color-primary)] uppercase pt-1 border-t border-slate-800">{info.disclaimer}</p>
                     </div>
                   </div>
                 </div>
-                <div className="mt-2">
+                <div className="mt-2 relative z-10">
                   <span className="text-lg font-black text-yellow-400">{metrics.renewalRate}%</span>
                   <span className="text-[9px] text-slate-500 block">Fidelizzazione Contratti</span>
                 </div>
@@ -421,19 +435,21 @@ export const DashboardPage: React.FC = () => {
           {(() => {
             const info = getKPIFormulaTooltip('estimatedChurn');
             return (
-              <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col justify-between relative group hover:border-rose-500/50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Churn Rate</span>
-                  <div className="relative group/tip">
+              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-rose-500/50 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)] transition-all duration-300">
+                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-rose-500/5 rounded-full blur-xl group-hover:bg-rose-500/20 transition-colors duration-500"></div>
+                </div>
+                <div className="flex items-center justify-between gap-1 relative z-10">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Churn Rate</span>
+                  <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 top-6 hidden group-hover/tip:block z-30 w-56 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[10px] text-slate-300 shadow-2xl space-y-1">
+                    <div className="absolute right-0 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:right-2.5 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
-                      <p className="text-[9px] font-bold text-[var(--color-primary)] uppercase pt-1 border-t border-slate-800">{info.disclaimer}</p>
                     </div>
                   </div>
                 </div>
-                <div className="mt-2">
+                <div className="mt-2 relative z-10">
                   <span className="text-lg font-black text-rose-400">{metrics.estimatedChurn}%</span>
                   <span className="text-[9px] text-slate-500 block">Abbandono Stimato</span>
                 </div>
@@ -443,6 +459,9 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      {/* GRAFICO ANDAMENTO */}
+      <DashboardChart />
+
       {/* WIDGET AI ATHLETE TRAINING COPILOT */}
       <AITrainingCopilotWidget />
 
@@ -451,32 +470,43 @@ export const DashboardPage: React.FC = () => {
         {/* COLONNA 1: Scadenze di Oggi e Prossimi 7 Giorni */}
         <div className="space-y-6">
           {/* Scadenze di Oggi */}
-          <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
+            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
+            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Flame className="w-4 h-4 text-amber-400" /> Scadenze di Oggi
               </h3>
               <span className="text-[10px] font-bold text-slate-500 uppercase">{todayDeadlines.length} Totali</span>
             </div>
 
-            <div className="space-y-2 max-h-[220px] overflow-y-auto">
+            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
               {todayDeadlines.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-6">Nessuna scadenza prevista per la giornata di oggi.</p>
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
+                    <CheckSquare className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">Nessuna scadenza prevista per oggi.<br/>Tutto sotto controllo! ✨</p>
+                </div>
               ) : (
                 todayDeadlines.map((item, idx) => (
                   <div
                     key={idx}
                     onClick={() => setActiveTab(item.tab)}
-                    className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-[var(--color-primary)] flex items-center justify-between cursor-pointer transition-colors"
+                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-[var(--color-primary)]/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300 group/item"
                   >
-                    <div>
-                      <span className="text-[9px] font-bold uppercase text-[var(--color-primary)] px-1.5 py-0.5 rounded bg-[var(--color-primary)]/10">
-                        {item.category}
-                      </span>
-                      <h4 className="text-xs font-bold text-white mt-1">{item.title}</h4>
-                      <p className="text-[10px] text-slate-400">{item.subtitle}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-400 group-hover/item:text-white transition-colors">
+                        {item.title.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-bold uppercase text-[var(--color-primary)] px-1.5 py-0.5 rounded bg-[var(--color-primary)]/10">
+                          {item.category}
+                        </span>
+                        <h4 className="text-xs font-bold text-white mt-1 line-clamp-1">{item.title}</h4>
+                        <p className="text-[10px] text-slate-400">{item.subtitle}</p>
+                      </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-500" />
+                    <ChevronRight className="w-4 h-4 text-slate-600 group-hover/item:text-[var(--color-primary)] group-hover/item:translate-x-1 transition-all" />
                   </div>
                 ))
               )}
@@ -484,8 +514,9 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           {/* Prossimi 7 Giorni */}
-          <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
+            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
+            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-sky-400" /> Prossimi 7 Giorni
               </h3>
@@ -496,16 +527,21 @@ export const DashboardPage: React.FC = () => {
 
             <div className="space-y-2">
               {upcoming7Days.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-6">Nessuna scadenza critica nei prossimi 7 giorni.</p>
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
+                    <Calendar className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">Nessuna scadenza critica<br/>nei prossimi 7 giorni.</p>
+                </div>
               ) : (
                 upcoming7Days.map((item, idx) => (
                   <div
                     key={idx}
                     onClick={() => setActiveTab(item.tab)}
-                    className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-sky-500/50 flex items-center justify-between cursor-pointer transition-colors"
+                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-sky-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
                   >
-                    <span className="text-xs font-medium text-slate-200">{item.title}</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                    <span className="text-xs font-medium text-slate-200 line-clamp-1 pr-2">{item.title}</span>
+                    <span className="text-[10px] font-bold px-2 py-1 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 whitespace-nowrap">
                       Tra {item.daysLeft} gg
                     </span>
                   </div>
@@ -518,8 +554,9 @@ export const DashboardPage: React.FC = () => {
         {/* COLONNA 2: Rinnovi da Contattare ed Attività Urgenti */}
         <div className="space-y-6">
           {/* Rinnovi da Contattare */}
-          <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
+            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
+            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 text-yellow-400" /> Rinnovi da Contattare
               </h3>
@@ -530,19 +567,29 @@ export const DashboardPage: React.FC = () => {
 
             <div className="space-y-2">
               {renewalsToContact.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-6">Nessun rinnovo in trattativa al momento.</p>
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
+                    <RefreshCw className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">Nessun rinnovo in trattativa<br/>al momento.</p>
+                </div>
               ) : (
                 renewalsToContact.map(ren => (
                   <div
                     key={ren.id}
                     onClick={() => setActiveTab('rinnovi')}
-                    className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-yellow-500/50 flex items-center justify-between cursor-pointer transition-colors"
+                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-yellow-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
                   >
-                    <div>
-                      <h4 className="text-xs font-bold text-white">{ren.athleteName}</h4>
-                      <p className="text-[10px] text-slate-400">Scadenza: {formatDate(ren.endDate)}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center text-[10px] font-bold text-yellow-500">
+                        {ren.athleteName.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">{ren.athleteName}</h4>
+                        <p className="text-[10px] text-slate-400">Scadenza: {formatDate(ren.endDate)}</p>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 uppercase">
+                    <span className="text-[9px] font-bold px-2 py-1 rounded bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 uppercase">
                       {ren.status.replace('_', ' ')}
                     </span>
                   </div>
@@ -552,8 +599,9 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           {/* Attività Urgenti */}
-          <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
+            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
+            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <CheckSquare className="w-4 h-4 text-purple-400" /> Attività Urgenti
               </h3>
@@ -564,19 +612,29 @@ export const DashboardPage: React.FC = () => {
 
             <div className="space-y-2">
               {urgentTasks.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-6">Nessuna attività urgente in sospeso.</p>
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
+                    <CheckSquare className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">Nessuna attività urgente<br/>in sospeso. Ottimo lavoro!</p>
+                </div>
               ) : (
                 urgentTasks.map(t => (
                   <div
                     key={t.id}
                     onClick={() => setActiveTab('attivita')}
-                    className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-purple-500/50 flex items-center justify-between cursor-pointer transition-colors"
+                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-purple-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
                   >
-                    <div>
-                      <h4 className="text-xs font-bold text-white">{t.title}</h4>
-                      <p className="text-[10px] text-slate-400">{t.athleteName || 'Generale'}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center text-[10px] font-bold text-purple-400">
+                        {t.athleteName ? t.athleteName.substring(0, 2).toUpperCase() : 'TK'}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white line-clamp-1">{t.title}</h4>
+                        <p className="text-[10px] text-slate-400 line-clamp-1">{t.athleteName || 'Generale'}</p>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 uppercase">
+                    <span className="text-[9px] font-bold px-2 py-1 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 uppercase">
                       {t.priority}
                     </span>
                   </div>
@@ -589,8 +647,9 @@ export const DashboardPage: React.FC = () => {
         {/* COLONNA 3: Certificati Medici ed Ultime Comunicazioni */}
         <div className="space-y-6">
           {/* Certificati Medici */}
-          <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
+            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
+            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <FileCheck2 className="w-4 h-4 text-rose-400" /> Certificati Medici
               </h3>
@@ -601,21 +660,33 @@ export const DashboardPage: React.FC = () => {
 
             <div className="space-y-2">
               {medicalAlerts.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-6">Tutti i certificati agonistici sono in regola.</p>
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
+                    <FileCheck2 className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">Tutti i certificati agonistici<br/>sono in regola.</p>
+                </div>
               ) : (
                 medicalAlerts.map(({ athlete, status }) => (
                   <div
                     key={athlete.id}
                     onClick={() => setActiveTab('documenti')}
-                    className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-rose-500/50 flex items-center justify-between cursor-pointer transition-colors"
+                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-rose-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
                   >
-                    <div>
-                      <h4 className="text-xs font-bold text-white">{athlete.fullName}</h4>
-                      <p className="text-[10px] text-slate-400">
-                        {athlete.medicalCertificateExpiryDate ? `Scadenza: ${formatDate(athlete.medicalCertificateExpiryDate)}` : 'Nessuna data registrata'}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                        status === 'missing' ? 'bg-orange-500/10 text-orange-400' : status === 'expired' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'
+                      }`}>
+                        {athlete.fullName.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">{athlete.fullName}</h4>
+                        <p className="text-[10px] text-slate-400">
+                          {athlete.medicalCertificateExpiryDate ? `Scadenza: ${formatDate(athlete.medicalCertificateExpiryDate)}` : 'Nessuna data registrata'}
+                        </p>
+                      </div>
                     </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
+                    <span className={`text-[9px] font-bold px-2 py-1 rounded border uppercase ${
                       status === 'missing'
                         ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
                         : status === 'expired'
@@ -643,19 +714,29 @@ export const DashboardPage: React.FC = () => {
 
             <div className="space-y-2">
               {recentCommunications.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-6">Nessuna comunicazione registrata di recente.</p>
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
+                    <MessageSquare className="w-5 h-5 text-slate-600" />
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium">Nessuna comunicazione registrata<br/>di recente.</p>
+                </div>
               ) : (
                 recentCommunications.map(comm => (
                   <div
                     key={comm.id}
                     onClick={() => setActiveTab('comunicazioni')}
-                    className="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-emerald-500/50 flex items-center justify-between cursor-pointer transition-colors"
+                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-emerald-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
                   >
-                    <div>
-                      <h4 className="text-xs font-bold text-white">{comm.athleteName}</h4>
-                      <p className="text-[10px] text-slate-400 truncate max-w-[160px]">{comm.subject}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-[10px] font-bold text-emerald-400">
+                        {comm.athleteName.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white">{comm.athleteName}</h4>
+                        <p className="text-[10px] text-slate-400 truncate max-w-[140px]">{comm.subject}</p>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
+                    <span className="text-[9px] font-bold px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
                       {comm.channel}
                     </span>
                   </div>

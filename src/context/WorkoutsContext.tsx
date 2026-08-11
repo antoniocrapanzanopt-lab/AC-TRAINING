@@ -21,6 +21,8 @@ interface WorkoutsContextType {
   unassignWorkoutFromAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
   getAssignedWorkoutsForAthlete: (athleteId: string) => Promise<AthleteAssignedWorkout[]>;
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
+  forkWorkoutForAthlete: (workoutId: string, athleteId: string, newWorkoutData: Partial<WorkoutTemplate>, newExercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
+  forkWorkoutForAllAssigned: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
   
   // Athlete specific
   myAssignedWorkouts: AthleteAssignedWorkout[];
@@ -157,6 +159,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .from('workouts')
       .select('*')
       .eq('coach_id', user.id)
+      .eq('is_template', true)
       .order('created_at', { ascending: false });
 
     if (!error && data) {
@@ -375,6 +378,152 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return data as WorkoutExercise[];
   };
 
+  const forkWorkoutForAthlete = async (originalWorkoutId: string, athleteId: string, newWorkoutData: Partial<WorkoutTemplate>, newExercises: Partial<WorkoutExercise>[]) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    try {
+      // 1. Create a private copy of the workout
+      const { data: clonedWorkout, error: workoutError } = await supabase
+        .from('workouts')
+        .insert({
+          title: newWorkoutData.title || 'Scheda Personalizzata',
+          description: newWorkoutData.description,
+          coach_id: user.id,
+          folder_id: null,
+          is_template: false, // It's a local copy, not a global template
+          total_weeks: newWorkoutData.total_weeks || 1,
+          estimated_duration_minutes: newWorkoutData.estimated_duration_minutes ? String(newWorkoutData.estimated_duration_minutes) : null,
+        })
+        .select()
+        .single();
+
+      if (workoutError) throw workoutError;
+
+      // 2. Insert exercises for the clone
+      if (newExercises.length > 0) {
+        const exercisesToInsert = newExercises.map((ex, index) => ({
+          workout_id: clonedWorkout.id,
+          name: ex.name,
+          sets: ex.sets || 1,
+          reps_target: ex.reps_target || '10',
+          rest_seconds: ex.rest_seconds || 60,
+          order_index: index,
+          notes: ex.notes || null,
+          day_name: ex.day_name || 'Giorno A',
+          week_number: ex.week_number || 1,
+          target_weight: ex.target_weight || null,
+          rir_target: ex.rir_target || null,
+          tut: ex.tut || null,
+          is_time_based: ex.is_time_based || false,
+          duration_seconds: ex.duration_seconds || null,
+          alternative_exercise: ex.alternative_exercise || null,
+        }));
+
+        const { error: exercisesError } = await supabase
+          .from('workout_exercises')
+          .insert(exercisesToInsert);
+
+        if (exercisesError) throw exercisesError;
+      }
+
+      // 3. Unassign the old global template
+      await supabase
+        .from('athlete_assigned_workouts')
+        .delete()
+        .eq('athlete_id', athleteId)
+        .eq('workout_id', originalWorkoutId);
+
+      // 4. Assign the new local copy
+      await assignWorkoutToAthlete(athleteId, clonedWorkout.id);
+      
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error forking workout for athlete:", error);
+      return { success: false, error: error.message };
+    }
+  };
+
+  const forkWorkoutForAllAssigned = async (workoutId: string) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    try {
+      // Find all athletes assigned to this template
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('athlete_assigned_workouts')
+        .select('athlete_id')
+        .eq('workout_id', workoutId)
+        .eq('is_active', true);
+
+      if (assignmentsError) throw assignmentsError;
+      if (!assignments || assignments.length === 0) return { success: true };
+
+      // Load original workout
+      const { data: originalWorkout, error: fetchWorkoutError } = await supabase
+        .from('workouts')
+        .select('*')
+        .eq('id', workoutId)
+        .single();
+      if (fetchWorkoutError) throw fetchWorkoutError;
+
+      // Load original exercises
+      const originalExercises = await getExercisesForWorkout(workoutId);
+
+      // Create a single "frozen" legacy copy of the template, or individual copies for each athlete?
+      // Since it's identical for all existing athletes, we can just create ONE "frozen" copy.
+      const { data: frozenWorkout, error: freezeError } = await supabase
+        .from('workouts')
+        .insert({
+          title: originalWorkout.title + ' (Versione Precedente)',
+          description: originalWorkout.description,
+          coach_id: user.id,
+          folder_id: originalWorkout.folder_id,
+          is_template: false, // Prevent it from showing up in the templates catalog as a normal template, or maybe true but hidden
+          total_weeks: originalWorkout.total_weeks,
+          estimated_duration_minutes: originalWorkout.estimated_duration_minutes,
+        })
+        .select()
+        .single();
+
+      if (freezeError) throw freezeError;
+
+      if (originalExercises.length > 0) {
+        const exercisesToInsert = originalExercises.map((ex) => ({
+          ...ex,
+          id: undefined, // let DB generate
+          workout_id: frozenWorkout.id,
+        }));
+        const { error: exercisesError } = await supabase
+          .from('workout_exercises')
+          .insert(exercisesToInsert);
+        if (exercisesError) throw exercisesError;
+      }
+
+      // Reassign all current athletes to the frozen workout
+      const athleteIds = assignments.map(a => a.athlete_id);
+      
+      // Delete old assignments
+      await supabase
+        .from('athlete_assigned_workouts')
+        .delete()
+        .in('athlete_id', athleteIds)
+        .eq('workout_id', workoutId);
+        
+      // Create new assignments
+      const newAssignments = athleteIds.map(aid => ({
+        athlete_id: aid,
+        workout_id: frozenWorkout.id,
+        assigned_by: user.id
+      }));
+      await supabase
+        .from('athlete_assigned_workouts')
+        .insert(newAssignments);
+
+      await loadAssignedWorkouts();
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error freezing workout for assigned athletes:", error);
+      return { success: false, error: error.message };
+    }
+  };
+
   // --- ATHLETE LOGIC ---
 
   const refreshMyWorkouts = useCallback(async () => {
@@ -530,6 +679,8 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           unassignWorkoutFromAthlete,
           getAssignedWorkoutsForAthlete,
           getExercisesForWorkout,
+          forkWorkoutForAthlete,
+          forkWorkoutForAllAssigned,
           myAssignedWorkouts,
           refreshMyWorkouts,
           startWorkoutSession,

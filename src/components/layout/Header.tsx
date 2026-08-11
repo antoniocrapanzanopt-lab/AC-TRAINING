@@ -58,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="bg-[var(--color-panel)] border-b border-[var(--color-panel-border)] px-4 sm:px-6 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-lg">
+      <header className="bg-[var(--color-panel)]/80 backdrop-blur-xl border-b border-[var(--color-panel-border)]/50 px-4 sm:px-6 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-sm">
         {/* Sinistra: Menu Mobile Toggle + Logo + Organizzazione */}
         <div className="flex items-center gap-3">
           <button
@@ -90,12 +90,12 @@ export const Header: React.FC<HeaderProps> = ({
 
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-black tracking-tight text-white uppercase">
+                <span className="text-xl font-black tracking-tight text-white uppercase">
                   <span className="text-[var(--color-primary)]">AC</span> COACHING
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-semibold tracking-wide flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] inline-block"></span>
+              <p className="text-xs text-slate-400 font-bold tracking-wide flex items-center gap-1.5 mt-0.5">
+                <span className="w-2 h-2 rounded-full bg-[var(--color-primary)] inline-block shadow-[0_0_8px_var(--color-primary)]"></span>
                 High performance
               </p>
             </div>

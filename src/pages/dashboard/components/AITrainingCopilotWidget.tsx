@@ -306,9 +306,13 @@ export const AITrainingCopilotWidget: React.FC = () => {
   };
 
   return (
-    <div className="p-6 rounded-3xl bg-gradient-to-b from-slate-900 via-[var(--color-panel)] to-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-2xl space-y-6">
-      {/* Header Widget */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+    <div className="p-6 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-6 relative overflow-hidden group">
+      <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--color-primary)]/5 rounded-full blur-[80px] pointer-events-none group-hover:bg-[var(--color-primary)]/10 transition-all duration-700" />
+      <div className="absolute bottom-0 left-0 w-48 h-48 bg-rose-500/5 rounded-full blur-[60px] pointer-events-none transition-all duration-700" />
+      
+      <div className="relative z-10 space-y-6">
+        {/* Header Widget */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/60 pb-4">
         <div>
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
@@ -580,6 +584,8 @@ export const AITrainingCopilotWidget: React.FC = () => {
           )}
         </div>
       )}
+
+      </div>
 
       {/* MODALE AZIONI DECISIONALI IA */}
       <AICopilotActionModal

@@ -10,6 +10,7 @@ import {
   RefreshCw,
   CreditCard,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import { AthleteSubscription, SubscriptionFormData } from '../../types';
 import { useSubscriptions } from '../../context/SubscriptionsContext';
@@ -27,6 +28,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ athleteId, a
     subscriptions,
     addSubscription,
     updateSubscription,
+    deleteSubscription,
     cancelSubscription,
   } = useSubscriptions();
 
@@ -38,6 +40,11 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ athleteId, a
   const [pausingSub, setPausingSub] = useState<AthleteSubscription | null>(null);
 
   const [cancelConfirmModal, setCancelConfirmModal] = useState<{ open: boolean; subId: string | null }>({
+    open: false,
+    subId: null,
+  });
+
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{ open: boolean; subId: string | null }>({
     open: false,
     subId: null,
   });
@@ -102,6 +109,12 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ athleteId, a
     cancelSubscription(subId);
     showInfo('Annullato', 'L\'abbonamento è stato disdetto.');
     setCancelConfirmModal({ open: false, subId: null });
+  };
+
+  const handleDeleteSub = (subId: string) => {
+    deleteSubscription(subId);
+    showSuccess('Eliminato', 'L\'abbonamento è stato eliminato definitivamente.');
+    setDeleteConfirmModal({ open: false, subId: null });
   };
 
   const handleResumeSub = (subId: string) => {
@@ -265,9 +278,17 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ athleteId, a
 
             <button
               onClick={() => setCancelConfirmModal({ open: true, subId: activeSub.id })}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 text-xs font-bold transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 text-xs font-bold transition-colors"
             >
-              <XCircle className="w-4 h-4" /> Annulla Abbonamento
+              <XCircle className="w-4 h-4" /> Annulla
+            </button>
+
+            <button
+              onClick={() => setDeleteConfirmModal({ open: true, subId: activeSub.id })}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 text-xs font-bold transition-colors"
+              title="Elimina Definitivamente"
+            >
+              <Trash2 className="w-4 h-4" /> Elimina
             </button>
           </div>
         </div>
@@ -324,6 +345,13 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ athleteId, a
                   }`}>
                     {sub.status === 'cancelled' ? 'Disdetto' : 'Completato'}
                   </span>
+                  <button
+                    onClick={() => setDeleteConfirmModal({ open: true, subId: sub.id })}
+                    className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                    title="Elimina dallo storico"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -383,6 +411,37 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ athleteId, a
                 className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition-colors"
               >
                 Conferma Disdetta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal Conferma Eliminazione Definitiva */}
+      {deleteConfirmModal.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setDeleteConfirmModal({ open: false, subId: null })} />
+          <div className="relative w-full max-w-sm bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl shadow-2xl p-6">
+            <div className="flex items-center gap-3 mb-4 text-red-500">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Eliminare Abbonamento?</h3>
+            </div>
+            <p className="text-sm text-slate-400 mb-6">
+              Sei sicuro di voler ELIMINARE DEFINITIVAMENTE questo abbonamento? L'operazione non è reversibile.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirmModal({ open: false, subId: null })}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition-colors"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={() => deleteConfirmModal.subId && handleDeleteSub(deleteConfirmModal.subId)}
+                className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition-colors"
+              >
+                Elimina Definitivamente
               </button>
             </div>
           </div>

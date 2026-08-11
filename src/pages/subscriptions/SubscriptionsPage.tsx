@@ -10,6 +10,7 @@ import {
   User,
   Calendar,
   FileText,
+  Trash2,
 } from 'lucide-react';
 import { AthleteSubscription, SubscriptionStatus } from '../../types';
 import { useSubscriptions } from '../../context/SubscriptionsContext';
@@ -38,6 +39,7 @@ export const SubscriptionsPage: React.FC = () => {
     subscriptions,
     addSubscription,
     updateSubscription,
+    deleteSubscription,
     cancelSubscription,
     renewSubscription,
   } = useSubscriptions();
@@ -73,8 +75,20 @@ export const SubscriptionsPage: React.FC = () => {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [subscriptions, query, filterStatus]);
 
-  const handleAction = (sub: AthleteSubscription, action: 'cancel' | 'suspend' | 'renew') => {
-    if (action === 'cancel') {
+  const handleAction = (sub: AthleteSubscription, action: 'cancel' | 'suspend' | 'renew' | 'delete') => {
+    if (action === 'delete') {
+      setConfirmModal({
+        open: true,
+        title: 'Eliminare abbonamento?',
+        message: `L'abbonamento di ${sub.athleteName} (${sub.packageName}) verrà ELIMINATO DEFINITIVAMENTE dal sistema.`,
+        danger: true,
+        onConfirm: () => {
+          deleteSubscription(sub.id);
+          showSuccess('Eliminato', 'L\'abbonamento è stato eliminato definitivamente.');
+          setConfirmModal(prev => ({ ...prev, open: false }));
+        }
+      });
+    } else if (action === 'cancel') {
       setConfirmModal({
         open: true,
         title: 'Annullare abbonamento?',
@@ -257,12 +271,19 @@ export const SubscriptionsPage: React.FC = () => {
                 {sub.status !== 'cancelled' && (
                   <button
                     onClick={() => handleAction(sub, 'cancel')}
-                    className="px-4 py-3 text-slate-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                    className="px-3 py-3 text-slate-500 hover:text-amber-400 hover:bg-amber-950/30 transition-colors border-r border-[var(--color-panel-border)]"
                     title="Annulla Abbonamento"
                   >
                     <XCircle className="w-4 h-4" />
                   </button>
                 )}
+                <button
+                  onClick={() => handleAction(sub, 'delete')}
+                  className="px-3 py-3 text-slate-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                  title="Elimina Abbonamento Definitivamente"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
           ))}

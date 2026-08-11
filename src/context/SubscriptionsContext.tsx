@@ -57,40 +57,7 @@ export const generateInstallments = (
   return installments;
 };
 
-// ─── Dati Dimostrativi ────────────────────────────────────────────────────────
 
-const buildDemoSubscriptions = (): AthleteSubscription[] => {
-  const now = new Date();
-  const nextMonth = new Date();
-  nextMonth.setMonth(now.getMonth() + 1);
-
-  const sub1Total = 600;
-  return [
-    {
-      id: `sub-${Date.now()}-1`,
-      athleteId: 'demo-athlete-1', // IPOTETICO: l'atleta esiste nel AthletesContext
-      athleteName: 'Mario Rossi',
-      packageId: 'pkg-1',
-      packageName: 'Abbonamento Annuale PRO',
-      startDate: now.toISOString(),
-      endDate: new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()).toISOString(),
-      listPrice: sub1Total,
-      discountType: 'none',
-      discountValue: 0,
-      finalPrice: sub1Total,
-      paymentFrequency: 'monthly',
-      installmentsCount: 12,
-      setupFee: 50,
-      installments: generateInstallments(sub1Total + 50, 12, now.toISOString(), 'monthly'),
-      preferredPaymentMethod: 'card',
-      renewalType: 'automatic',
-      toleranceDays: 5,
-      status: 'active',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    }
-  ];
-};
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -99,6 +66,7 @@ interface SubscriptionsContextType {
   isLoading: boolean;
   addSubscription: (data: SubscriptionFormData) => AthleteSubscription;
   updateSubscription: (id: string, data: Partial<AthleteSubscription>) => boolean;
+  deleteSubscription: (id: string) => boolean;
   cancelSubscription: (id: string) => boolean;
   suspendSubscription: (id: string, endDate?: string) => boolean;
   renewSubscription: (id: string) => boolean;
@@ -116,13 +84,14 @@ export const SubscriptionsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     const saved = getStorageItem<AthleteSubscription[]>(STORAGE_KEYS.SUBSCRIPTIONS, []);
-    if (saved.length === 0) {
-      const demo = buildDemoSubscriptions();
-      setStorageItem(STORAGE_KEYS.SUBSCRIPTIONS, demo);
-      setSubscriptions(demo);
-    } else {
-      setSubscriptions(saved);
-    }
+    const cleanSaved = saved.filter(s => {
+      if (!s.athleteName || s.athleteName === 'Mario Rossi') return false;
+      if (s.athleteId === 'demo-athlete-1') return false;
+      if (s.packageName === 'Abbonamento Annuale PRO' && s.finalPrice === 600) return false;
+      return true;
+    });
+    setStorageItem(STORAGE_KEYS.SUBSCRIPTIONS, cleanSaved);
+    setSubscriptions(cleanSaved);
     setIsLoading(false);
   }, []);
 
@@ -181,6 +150,24 @@ export const SubscriptionsProvider: React.FC<{ children: React.ReactNode }> = ({
     if (found) persist(updated);
     return found;
   }, [subscriptions, persist]);
+
+  const deleteSubscription = useCallback((id: string): boolean => {
+    let athleteId = '';
+    const updated = subscriptions.filter(sub => {
+      if (sub.id === id) {
+        athleteId = sub.athleteId;
+        return false;
+      }
+      return true;
+    });
+
+    if (athleteId) {
+      persist(updated);
+      addTimelineEvent(athleteId, 'other', 'Abbonamento eliminato definitivamente');
+      return true;
+    }
+    return false;
+  }, [subscriptions, persist, addTimelineEvent]);
 
   const cancelSubscription = useCallback((id: string): boolean => {
     let athleteId = '';
@@ -284,6 +271,7 @@ export const SubscriptionsProvider: React.FC<{ children: React.ReactNode }> = ({
         isLoading,
         addSubscription,
         updateSubscription,
+        deleteSubscription,
         cancelSubscription,
         suspendSubscription,
         renewSubscription,

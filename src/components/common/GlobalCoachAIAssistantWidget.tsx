@@ -2,14 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Sparkles, 
-  Send, 
   Bot, 
   User, 
-  ShieldAlert, 
   Loader2, 
   Users, 
   Maximize2,
-  Minimize2
+  Minimize2,
+  Bookmark,
+  Plus,
+  ArrowUp,
 } from 'lucide-react';
 import { useAthletes } from '../../context/AthletesContext';
 import { useWorkouts } from '../../context/WorkoutsContext';
@@ -21,7 +22,7 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
   const { athletes } = useAthletes();
   const { coachTemplates } = useWorkouts();
   const { exercises: coachExercises } = useExercises();
-  const { showError } = useToast();
+  const { showSuccess, showError } = useToast();
 
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -31,10 +32,44 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
   const [inputText, setInputText] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
 
+  // Prompt Preferiti Personalizzati (localStorage)
+  const [customShortcuts, setCustomShortcuts] = useState<string[]>([]);
+  const [isAddingShortcut, setIsAddingShortcut] = useState(false);
+  const [newShortcutInput, setNewShortcutInput] = useState('');
+
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   // Atleti con note mediche o infortuni
   const injuredAthletes = athletes.filter(a => a.medicalNotes && a.medicalNotes.trim().length > 0);
+
+  // Carica i prompt preferiti da localStorage
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('builder_ai_custom_shortcuts') || '[]');
+      if (Array.isArray(saved)) {
+        setCustomShortcuts(saved);
+      }
+    } catch (e) {
+      console.warn('Errore lettura scorciatoie IA:', e);
+    }
+  }, []);
+
+  const saveCustomShortcut = (promptText: string) => {
+    if (!promptText.trim()) return;
+    const updated = [...customShortcuts, promptText.trim()];
+    setCustomShortcuts(updated);
+    localStorage.setItem('builder_ai_custom_shortcuts', JSON.stringify(updated));
+    showSuccess('Prompt Salvato!', 'Nuova scorciatoia aggiunta ai preferiti.');
+    setNewShortcutInput('');
+    setIsAddingShortcut(false);
+  };
+
+  const removeCustomShortcut = (indexToRemove: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = customShortcuts.filter((_, idx) => idx !== indexToRemove);
+    setCustomShortcuts(updated);
+    localStorage.setItem('builder_ai_custom_shortcuts', JSON.stringify(updated));
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -85,22 +120,21 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
 
   return (
     <>
-      {/* FLOATING ACTION BUTTON (In Basso a Destra) */}
+      {/* FLOATING ACTION BUTTON (In Basso a Destra, sopra la chat) */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 group flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-black font-black text-xs uppercase tracking-wider rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all border border-amber-300/40 shadow-amber-500/30"
-          title="Apri Assistente AI del Coach"
+          className="fixed bottom-24 right-6 z-40 group flex items-center justify-center w-14 h-14 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-black rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all border border-amber-300/40 shadow-[0_0_20px_rgba(234,179,8,0.35)]"
+          title="Apri Assistente AI Coach"
         >
           <div className="relative">
-            <Bot className="w-5 h-5 text-black" strokeWidth={2.5} />
+            <Sparkles className="w-6 h-6 text-black fill-black" />
             {injuredAthletes.length > 0 && (
               <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-red-600 border-2 border-slate-900 rounded-full flex items-center justify-center text-[9px] font-bold text-white animate-pulse">
                 !
               </span>
             )}
           </div>
-          <span className="hidden md:inline font-black text-[11px]">Assistente AI</span>
         </button>
       )}
 
@@ -109,52 +143,52 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
         <div className={`fixed z-50 transition-all duration-300 ${
           isExpanded 
             ? 'inset-4 md:inset-10' 
-            : 'bottom-4 right-4 sm:bottom-6 sm:right-6 w-full max-w-lg h-[620px] max-h-[90vh]'
+            : 'bottom-4 right-4 sm:bottom-6 sm:right-6 w-full max-w-xl h-[660px] max-h-[90vh]'
         }`}>
-          <div className="w-full h-full bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+          <div className="w-full h-full bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
             
             {/* Drawer Header */}
             <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 text-black">
-                  <Bot className="w-5 h-5" strokeWidth={2.5} />
+                <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shadow-md">
+                  <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    Assistente AI Coach
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-semibold">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black text-white">Assistente AI Coach</h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-bold">
                       Gemini 3.6 Flash
                     </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400">Co-Pilot intelligente collegato a tutti i {athletes.length} atleti</p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Co-Pilot collegato a {athletes.length} atleti in tempo reale</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setIsExpanded(!isExpanded)}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                  className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
                   title={isExpanded ? 'Riduci' : 'Espandi'}
                 >
                   {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                 </button>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                  className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            {/* Atleta Selection Bar */}
-            <div className="px-4 py-2.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between gap-2 text-xs shrink-0">
+            {/* Selector Atleta Modello */}
+            <div className="px-4 py-2.5 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between gap-3 text-xs shrink-0">
               <div className="flex items-center gap-2 flex-1">
-                <Users className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <Users className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
                 <select
                   value={selectedAthleteId}
                   onChange={e => setSelectedAthleteId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg text-xs text-white px-2.5 py-1.5 focus:outline-none focus:border-amber-500 font-semibold truncate"
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-white px-3 py-1.5 focus:outline-none focus:border-[var(--color-primary)] font-semibold truncate transition-colors"
                 >
                   <option value="">🌐 Tutti gli atleti (Database globale)</option>
                   {athletes.map(a => (
@@ -166,41 +200,114 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick Action Chips */}
-            <div className="px-4 py-2 bg-slate-950/40 border-b border-slate-800/60 flex items-center gap-2 overflow-x-auto shrink-0 scrollbar-none">
-              <button
-                onClick={() => handleSendMessage("Analizza tutti gli atleti che hanno segnalazioni sanitarie o infortuni e indicami le principali precauzioni da adottare.")}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors border border-slate-700/60 flex items-center gap-1 shrink-0"
-              >
-                <ShieldAlert className="w-3 h-3 text-red-400" /> Analizza Infortuni Atleti
-              </button>
+            {/* Operational Quick Chips */}
+            <div className="p-3 bg-slate-950/50 border-b border-slate-800/80 space-y-2 shrink-0">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Prompt Rapidi Operativi</span>
+                <button
+                  onClick={() => setIsAddingShortcut(!isAddingShortcut)}
+                  className="text-[10px] font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" /> Aggiungi Preferito
+                </button>
+              </div>
 
-              <button
-                onClick={() => handleSendMessage("Quali atleti hanno come obiettivo l'ipertrofia e quali la forza?")}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors border border-slate-700/60 shrink-0"
-              >
-                📊 Raggruppa per Obiettivi
-              </button>
+              {/* Input Aggiunta Shortcut Personalizzata */}
+              {isAddingShortcut && (
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={newShortcutInput}
+                    onChange={e => setNewShortcutInput(e.target.value)}
+                    placeholder="Es. Mostrami gli atleti senza scheda attiva..."
+                    className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                  <button
+                    onClick={() => saveCustomShortcut(newShortcutInput)}
+                    disabled={!newShortcutInput.trim()}
+                    className="px-3 py-1.5 bg-[var(--color-primary)] text-black font-bold text-xs rounded-xl hover:bg-[var(--color-primary-hover)] disabled:opacity-50"
+                  >
+                    Salva
+                  </button>
+                </div>
+              )}
 
-              <button
-                onClick={() => handleSendMessage("Mostrami una sintesi dei 5 atleti con le note mediche più rilevanti.")}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors border border-slate-700/60 shrink-0"
-              >
-                🔍 Sintesi Note Mediche
-              </button>
+              {/* Grid Chips Preset */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("Quali atleti hanno un check-in o rinnovo in scadenza nei prossimi 7 giorni?")}
+                  className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
+                >
+                  <span className="p-1 rounded-lg bg-amber-500/10 text-amber-400">🚨</span>
+                  <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">Check in scadenza?</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("Analizza gli atleti che presentano un plateau o stallo nei carichi.")}
+                  className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-purple-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
+                >
+                  <span className="p-1 rounded-lg bg-purple-500/10 text-purple-400">📈</span>
+                  <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">Atleti in stallo?</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("Quali atleti hanno segnalato note sanitarie, dolori o infortuni recenti?")}
+                  className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-rose-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
+                >
+                  <span className="p-1 rounded-lg bg-rose-500/10 text-rose-400">⚠️</span>
+                  <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">Segnalazioni fastidi</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("Mostrami quali atleti hanno le schede di allenamento in scadenza o da rinnovare.")}
+                  className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-sky-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
+                >
+                  <span className="p-1 rounded-lg bg-sky-500/10 text-sky-400">📋</span>
+                  <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">Schede da rinnovare</span>
+                </button>
+              </div>
+
+              {/* User Saved Custom Shortcuts */}
+              {customShortcuts.length > 0 && (
+                <div className="pt-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  <span className="text-[10px] font-bold text-amber-400 uppercase shrink-0 flex items-center gap-1">
+                    <Bookmark className="w-3 h-3" /> Preferiti:
+                  </span>
+                  {customShortcuts.map((prompt, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => handleSendMessage(prompt)}
+                      className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 rounded-xl text-[10px] font-bold flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors group"
+                    >
+                      <span className="truncate max-w-[140px]">{prompt}</span>
+                      <button
+                        onClick={e => removeCustomShortcut(idx, e)}
+                        className="text-amber-400/60 hover:text-red-400 transition-colors"
+                        title="Rimuovi scorciatoia"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Chat Body */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-900/80">
+            <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/60 custom-scrollbar">
               {messages.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
-                    <Sparkles className="w-6 h-6 text-amber-500" />
+                  <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shadow-lg">
+                    <Sparkles className="w-6 h-6" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">Chiedimi qualunque cosa sugli atleti</h4>
+                    <h4 className="text-sm font-bold text-white">Come posso aiutarti oggi?</h4>
                     <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                      Sono alimentato da Gemini 3.6 Flash ed ho accesso a tutti i {athletes.length} atleti registrati, alle loro note mediche ed alle loro schede.
+                      Fai domande sul database dei {athletes.length} atleti, richiedi l'analisi degli infortuni o genera variazioni di programma.
                     </p>
                   </div>
                 </div>
@@ -222,7 +329,7 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
                   <div className={`max-w-[85%] rounded-2xl p-3.5 text-xs leading-relaxed ${
                     msg.sender === 'coach'
                       ? 'bg-indigo-600 text-white rounded-tr-none font-medium'
-                      : 'bg-slate-950 border border-slate-800 text-slate-200 rounded-tl-none shadow-md'
+                      : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none shadow-md'
                   }`}>
                     <div className="flex items-center justify-between gap-3 mb-1 opacity-70 text-[10px]">
                       <span className="font-bold uppercase tracking-wider">
@@ -238,14 +345,14 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
               {isSending && (
                 <div className="flex items-center gap-2 text-amber-400 text-xs italic">
                   <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                  Gemini 3.6 Flash sta analizzando il database...
+                  Gemini 3.6 Flash sta elaborando la richiesta...
                 </div>
               )}
 
               <div ref={chatEndRef} />
             </div>
 
-            {/* Input Bar */}
+            {/* Input Bar Altamente Rifinita */}
             <div className="p-3 bg-slate-950 border-t border-slate-800 shrink-0">
               <div className="flex items-center gap-2">
                 <input
@@ -253,15 +360,15 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
                   value={inputText}
                   onChange={e => setInputText(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Scrivi all'Assistente AI su qualsiasi atleta o scheda..."
-                  className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  placeholder="Scrivi a Gemini 3.6 Flash sui tuoi atleti..."
+                  className="flex-1 px-4 py-3 bg-slate-900 border border-slate-700 rounded-2xl text-white text-xs placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)] transition-colors"
                 />
                 <button
                   onClick={() => handleSendMessage()}
                   disabled={!inputText.trim() || isSending}
-                  className="p-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-black font-extrabold rounded-xl transition-all disabled:opacity-50 shrink-0 shadow-lg shadow-amber-500/20"
+                  className="p-3 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-extrabold rounded-2xl transition-all disabled:opacity-50 shrink-0 shadow-lg shadow-amber-500/20"
                 >
-                  <Send className="w-4 h-4" />
+                  <ArrowUp className="w-4 h-4 stroke-[3]" />
                 </button>
               </div>
             </div>
