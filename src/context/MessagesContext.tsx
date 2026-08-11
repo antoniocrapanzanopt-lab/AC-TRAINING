@@ -11,6 +11,8 @@ interface MessagesContextType {
   setActiveConversation: (conv: Conversation | null) => void;
   sendMessage: (receiverId: string, content: string) => Promise<void>;
   markAsRead: (senderId: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<{ success: boolean; error?: string }>;
+  deleteConversation: (athleteId: string) => Promise<{ success: boolean; error?: string }>;
   loading: boolean;
 }
 
@@ -344,6 +346,74 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [user, athletes]);
 
+  const deleteMessage = useCallback(async (messageId: string) => {
+    // 1. Update ottimistico immediato (0ms)
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+
+    if (messageId.startsWith('temp-')) {
+      return { success: true };
+    }
+
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('id', messageId);
+
+      if (error) {
+        console.error('Error deleting message:', error);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.error('Delete message error:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  const deleteConversation = useCallback(async (athleteId: string) => {
+    if (!user) return { success: false, error: 'User not authenticated' };
+
+    const targetAthlete = athletes.find(a => a.id === athleteId || a.auth_user_id === athleteId);
+    const validIds = Array.from(new Set([
+      athleteId,
+      targetAthlete?.id,
+      targetAthlete?.auth_user_id
+    ].filter(Boolean) as string[]));
+
+    // 1. Update ottimistico immediato
+    setMessages((prev) =>
+      prev.filter(
+        (m) => !validIds.includes(m.sender_id) && !validIds.includes(m.receiver_id)
+      )
+    );
+
+    try {
+      const orCondition = validIds
+        .map((id) => `sender_id.eq.${id},receiver_id.eq.${id}`)
+        .join(',');
+
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .or(orCondition);
+
+      if (error) {
+        console.error('Error deleting conversation:', error);
+        return { success: false, error: error.message };
+      }
+
+      if (activeConversationId === athleteId) {
+        setActiveConversationId(null);
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Delete conversation error:', err);
+      return { success: false, error: err.message };
+    }
+  }, [user, athletes, activeConversationId]);
+
   return (
     <MessagesContext.Provider
       value={{
@@ -353,6 +423,8 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setActiveConversation,
         sendMessage,
         markAsRead,
+        deleteMessage,
+        deleteConversation,
         loading,
       }}
     >

@@ -8,10 +8,12 @@ import {
   Clock,
   MoreVertical,
   X,
+  Trash2,
 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
+import { useToast } from '../../context/ToastContext';
 
 export const MessagesPage: React.FC = () => {
   const { user } = useAuth();
@@ -22,8 +24,12 @@ export const MessagesPage: React.FC = () => {
     setActiveConversation,
     sendMessage,
     markAsRead,
+    deleteMessage,
+    deleteConversation,
     loading
   } = useMessages();
+
+  const { showSuccess, showError } = useToast();
 
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,6 +127,29 @@ export const MessagesPage: React.FC = () => {
         markAsRead(c.athlete_id);
       }
     });
+  };
+
+  const handleDeleteMsg = async (msgId: string) => {
+    const res = await deleteMessage(msgId);
+    if (res.success) {
+      showSuccess('Messaggio eliminato');
+    } else {
+      showError('Errore nell\'eliminazione del messaggio');
+    }
+  };
+
+  const handleDeleteActiveConversation = async () => {
+    if (!activeConversation) return;
+    if (window.confirm(`Sei sicuro di voler eliminare l'intera conversazione con ${activeConversation.athlete_name}?`)) {
+      const res = await deleteConversation(activeConversation.athlete_id);
+      if (res.success) {
+        showSuccess('Conversazione eliminata');
+        setShowChatMenu(false);
+        setActiveConversation(null);
+      } else {
+        showError('Errore nell\'eliminazione della conversazione');
+      }
+    }
   };
 
   const formatDate = (dateString?: string) => {
@@ -319,12 +348,21 @@ export const MessagesPage: React.FC = () => {
                   <MoreVertical className="w-5 h-5" />
                 </button>
                 {showChatMenu && (
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden z-50">
+                  <div className="absolute right-0 top-full mt-2 w-52 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden z-50">
                     <button 
-                      onClick={() => setActiveConversation(null)}
-                      className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-slate-700 flex items-center gap-2"
+                      onClick={() => {
+                        setShowChatMenu(false);
+                        setActiveConversation(null);
+                      }}
+                      className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-slate-700 flex items-center gap-2 transition-colors"
                     >
                       <X className="w-4 h-4" /> Chiudi chat
+                    </button>
+                    <button 
+                      onClick={handleDeleteActiveConversation}
+                      className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors border-t border-slate-700/60 font-semibold"
+                    >
+                      <Trash2 className="w-4 h-4" /> Elimina conversazione
                     </button>
                   </div>
                 )}
@@ -360,13 +398,33 @@ export const MessagesPage: React.FC = () => {
                             </span>
                           </div>
                         )}
-                        <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
-                          <div className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm shadow-sm ${
-                            isMine 
-                              ? 'bg-[var(--color-primary)] text-black rounded-tr-sm' 
-                              : 'bg-slate-800 text-white rounded-tl-sm border border-slate-700'
-                          }`}>
-                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                        <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} group`}>
+                          <div className="flex items-center gap-1.5 max-w-[85%] sm:max-w-[75%] group/msg">
+                            {isMine && (
+                              <button
+                                onClick={() => handleDeleteMsg(msg.id)}
+                                className="opacity-0 group-hover/msg:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-all"
+                                title="Elimina messaggio"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <div className={`px-4 py-3 rounded-2xl text-sm shadow-sm flex-1 ${
+                              isMine 
+                                ? 'bg-[var(--color-primary)] text-black rounded-tr-sm' 
+                                : 'bg-slate-800 text-white rounded-tl-sm border border-slate-700'
+                            }`}>
+                              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                            </div>
+                            {!isMine && (
+                              <button
+                                onClick={() => handleDeleteMsg(msg.id)}
+                                className="opacity-0 group-hover/msg:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-all"
+                                title="Elimina messaggio"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                           <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-500 font-medium px-1">
                             <Clock className="w-3 h-3" />

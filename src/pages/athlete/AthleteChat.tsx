@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Clock, ArrowLeft, CheckCheck, Check, Sparkles, MessageSquare } from 'lucide-react';
+import { Send, Clock, ArrowLeft, CheckCheck, Check, Sparkles, MessageSquare, Trash2 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -10,7 +10,7 @@ interface AthleteChatProps {
 
 export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   const { user } = useAuth();
-  const { messages, sendMessage, loading, markAsRead } = useMessages();
+  const { messages, sendMessage, loading, markAsRead, deleteMessage } = useMessages();
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -203,12 +203,32 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                 )}
 
                 <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} group`}>
-                  <div className={`max-w-[85%] sm:max-w-[75%] px-4 py-3 rounded-2xl text-sm shadow-md transition-all ${
-                    isMine 
-                      ? 'bg-gradient-to-r from-[var(--color-primary)] to-amber-400 text-slate-950 font-medium rounded-tr-xs shadow-[var(--color-primary)]/10' 
-                      : 'bg-slate-900 text-slate-100 border border-slate-800/90 rounded-tl-xs'
-                  }`}>
-                    <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
+                  <div className="flex items-center gap-1.5 max-w-[85%] sm:max-w-[75%] group/msg">
+                    {isMine && (
+                      <button
+                        onClick={() => deleteMessage(msg.id)}
+                        className="opacity-0 group-hover/msg:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-900 rounded-lg transition-all"
+                        title="Elimina messaggio"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <div className={`px-4 py-3 rounded-2xl text-sm shadow-md transition-all flex-1 ${
+                      isMine 
+                        ? 'bg-gradient-to-r from-[var(--color-primary)] to-amber-400 text-slate-950 font-medium rounded-tr-xs shadow-[var(--color-primary)]/10' 
+                        : 'bg-slate-900 text-slate-100 border border-slate-800/90 rounded-tl-xs'
+                    }`}>
+                      <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
+                    </div>
+                    {!isMine && (
+                      <button
+                        onClick={() => deleteMessage(msg.id)}
+                        className="opacity-0 group-hover/msg:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-900 rounded-lg transition-all"
+                        title="Elimina messaggio"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                   
                   <div className={`flex items-center gap-1 mt-1 text-[10px] font-semibold px-1 ${isMine ? 'text-slate-400' : 'text-slate-500'}`}>

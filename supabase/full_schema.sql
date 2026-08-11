@@ -536,6 +536,11 @@ CREATE POLICY "Users can update received messages" ON public.messages
     FOR UPDATE TO authenticated
     USING (auth.uid() = receiver_id);
 
+DROP POLICY IF EXISTS "Users can delete own messages" ON public.messages;
+CREATE POLICY "Users can delete own messages" ON public.messages
+    FOR DELETE TO authenticated
+    USING (auth.uid() = sender_id OR auth.uid() = receiver_id OR is_coach());
+
 -- Add to Realtime
 DO $$
 BEGIN

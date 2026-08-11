@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, ChevronLeft } from 'lucide-react';
+import { MessageSquare, X, Send, ChevronLeft, Trash2 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 
 export const FloatingChatWidget: React.FC = () => {
-  const { conversations, activeConversation, setActiveConversation, messages, sendMessage, markAsRead } = useMessages();
+  const { conversations, activeConversation, setActiveConversation, messages, sendMessage, markAsRead, deleteMessage, deleteConversation } = useMessages();
   const { user } = useAuth();
   const { athletes } = useAthletes();
   const [isOpen, setIsOpen] = useState(false);
@@ -97,12 +97,26 @@ export const FloatingChatWidget: React.FC = () => {
             )}
 
             <div className="flex items-center gap-1">
+              {activeConversation && (
+                <button
+                  onClick={async () => {
+                    if (confirm(`Eliminare tutta la conversazione con ${activeConversation.athlete_name}?`)) {
+                      await deleteConversation(activeConversation.athlete_id);
+                      setActiveConversation(null);
+                    }
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
+                  title="Elimina conversazione"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
               <button
                 onClick={() => {
                   setIsOpen(false);
                   setActiveConversation(null);
                 }}
-                className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -162,15 +176,35 @@ export const FloatingChatWidget: React.FC = () => {
                   activeMessages.map((msg, idx) => {
                     const isMe = msg.sender_id === user?.id;
                     return (
-                      <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                        <div
-                          className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-                            isMe
-                              ? 'bg-[var(--color-primary)] text-black rounded-tr-sm'
-                              : 'bg-[var(--color-panel)] border border-[var(--color-panel-border)] text-slate-200 rounded-tl-sm'
-                          }`}
-                        >
-                          <p>{msg.content}</p>
+                      <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group`}>
+                        <div className="flex items-center gap-1.5 max-w-[85%] group/msg">
+                          {isMe && (
+                            <button
+                              onClick={() => deleteMessage(msg.id)}
+                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-all"
+                              title="Elimina messaggio"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                          <div
+                            className={`rounded-2xl px-4 py-2.5 text-sm flex-1 ${
+                              isMe
+                                ? 'bg-[var(--color-primary)] text-black rounded-tr-sm'
+                                : 'bg-[var(--color-panel)] border border-[var(--color-panel-border)] text-slate-200 rounded-tl-sm'
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                          </div>
+                          {!isMe && (
+                            <button
+                              onClick={() => deleteMessage(msg.id)}
+                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-all"
+                              title="Elimina messaggio"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                         <span className="text-[9px] text-slate-500 mt-1 px-1">
                           {new Date(msg.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
