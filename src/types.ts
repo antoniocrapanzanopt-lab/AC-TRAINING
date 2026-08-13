@@ -28,6 +28,7 @@ export interface UserProfile {
   role: UserRole;
   canViewFinancials: boolean;
   avatarUrl?: string;
+  hasSeenDisclaimer?: boolean;
 }
 
 export interface Organization {

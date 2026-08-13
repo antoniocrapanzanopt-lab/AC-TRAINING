@@ -15,8 +15,10 @@ import {
   Edit3,
   Clock,
   Award,
-  TrendingUp
+  TrendingUp,
+  MessageSquare
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { useExercises } from '../../context/ExercisesContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { 
@@ -27,7 +29,7 @@ import { useToast } from '../../context/ToastContext';
 
 interface AICoPilotModalProps {
   onClose: () => void;
-  onGenerate: (exercises: AIWorkoutExercise[]) => void;
+  onGenerate: (result: { exercises: AIWorkoutExercise[], reasoning: string }) => void;
 }
 
 const STEPS = [
@@ -127,6 +129,13 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [progressMsg, setProgressMsg] = useState<string>('');
 
+  // IA Context esteso
+  const [chatContext, setChatContext] = useState<string>('');
+  const [loadedChatCount, setLoadedChatCount] = useState<number>(0);
+  const [metricsContext, setMetricsContext] = useState<{ weight_kg?: number; body_fat_percentage?: number }>();
+  const [latestCoachNote, setLatestCoachNote] = useState<string>('');
+  const [coachNotesCount, setCoachNotesCount] = useState<number>(0);
+
   // Aggiorna il contesto dell'atleta quando viene selezionato
   const selectedAthlete = athletes.find(a => a.id === selectedAthleteId);
 
@@ -149,8 +158,81 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
       if (lowerTags.includes('avanzato') || lowerTags.includes('agonista')) setExperienceLevel('Avanzato');
       else if (lowerTags.includes('principiante') || lowerTags.includes('neofita')) setExperienceLevel('Principiante');
       else setExperienceLevel('Intermedio');
+
+      // Async fetch per metriche e chat
+      const fetchExtraContext = async () => {
+        try {
+          // Fetch Misure
+          const { data: metricsData } = await supabase
+            .from('athlete_metrics')
+            .select('weight_kg, body_fat_percentage')
+            .eq('athlete_id', selectedAthleteId)
+            .order('date', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (metricsData) {
+            setMetricsContext({
+              weight_kg: metricsData.weight_kg ? Number(metricsData.weight_kg) : undefined,
+              body_fat_percentage: metricsData.body_fat_percentage ? Number(metricsData.body_fat_percentage) : undefined
+            });
+          } else {
+            setMetricsContext(undefined);
+          }
+
+          // Fetch messaggi chat solo se l'atleta è registrato
+          if (selectedAthlete.auth_user_id) {
+            const { data: messagesData } = await supabase
+              .from('messages')
+              .select('content, sender_id')
+              .or(`sender_id.eq.${selectedAthlete.auth_user_id},receiver_id.eq.${selectedAthlete.auth_user_id}`)
+              .order('created_at', { ascending: false })
+              .limit(20);
+
+            if (messagesData && messagesData.length > 0) {
+              setLoadedChatCount(messagesData.length);
+              // Reverse per ordine cronologico
+              const chatStr = messagesData.reverse().map(m => {
+                const prefix = m.sender_id === selectedAthlete.auth_user_id ? 'Atleta:' : 'Coach:';
+                return `${prefix} ${m.content}`;
+              }).join('\n');
+              setChatContext(chatStr);
+            } else {
+              setLoadedChatCount(0);
+              setChatContext('');
+            }
+          } else {
+            setLoadedChatCount(0);
+            setChatContext('');
+          }
+
+          // Fetch note coach
+          const { data: notesData, count } = await supabase
+            .from('athlete_notes')
+            .select('content', { count: 'exact' })
+            .eq('athlete_id', selectedAthleteId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (notesData && notesData.length > 0) {
+            setLatestCoachNote(notesData[0].content);
+            setCoachNotesCount(count || 1);
+          } else {
+            setLatestCoachNote('');
+            setCoachNotesCount(0);
+          }
+        } catch (error) {
+          console.error('Errore nel fetch extra context per AI:', error);
+        }
+      };
+      
+      fetchExtraContext();
+
     } else {
       setCustomAthleteContext('');
+      setMetricsContext(undefined);
+      setChatContext('');
+      setLoadedChatCount(0);
     }
   }, [selectedAthleteId]);
 
@@ -214,7 +296,9 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
           customAthleteContext,
           experienceLevel,
           sessionDurationMinutes,
-          progressionStyle
+          progressionStyle,
+          chatContext,
+          metricsContext
         },
         setProgressMsg
       );
@@ -383,15 +467,90 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
               </div>
 
               {selectedAthlete && (
-                <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-xl space-y-1.5">
-                  <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
-                    <User className="w-4 h-4" />
-                    Profilo Atleta Caricato Automaticamente
+                <div className="bg-slate-900 border border-slate-700/50 rounded-xl overflow-hidden mt-2 animate-in fade-in slide-in-from-top-2">
+                  {/* Header Widget */}
+                  <div className="bg-slate-800/50 px-4 py-3 border-b border-slate-700/50 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-white font-bold text-sm">
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      Sintesi Dati per l'IA
+                    </div>
+                    <div className="bg-amber-500/10 text-amber-500 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Contesto Caricato
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-300 space-y-0.5">
-                    <p><span className="font-semibold text-white">Nome:</span> {selectedAthlete.firstName} {selectedAthlete.lastName}</p>
-                    {selectedAthlete.goals && <p><span className="font-semibold text-white">Obiettivi:</span> {selectedAthlete.goals}</p>}
-                    {selectedAthlete.medicalNotes && <p><span className="font-semibold text-amber-300">Note Mediche:</span> {selectedAthlete.medicalNotes}</p>}
+
+                  {/* 4 Sezioni */}
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* 1. Biometria & Profilo */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                        <User className="w-3.5 h-3.5" /> Biometria & Profilo
+                      </h4>
+                      <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs text-slate-300 space-y-1">
+                        <p><span className="text-slate-500">Età:</span> {selectedAthlete.dateOfBirth ? new Date().getFullYear() - new Date(selectedAthlete.dateOfBirth).getFullYear() : 'N/D'}</p>
+                        <p><span className="text-slate-500">Peso:</span> {metricsContext?.weight_kg ? `${metricsContext.weight_kg} kg` : 'N/D'}</p>
+                        <p><span className="text-slate-500">Massa Grassa (BF):</span> {metricsContext?.body_fat_percentage ? `${metricsContext.body_fat_percentage}%` : 'N/D'}</p>
+                        {selectedAthlete.goals && <p className="pt-1 mt-1 border-t border-slate-800/50"><span className="text-amber-500/80 font-medium">Obiettivo:</span> {selectedAthlete.goals}</p>}
+                      </div>
+                    </div>
+
+                    {/* 2. Salute & Medico */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                        <ShieldAlert className="w-3.5 h-3.5" /> Salute & Medico
+                      </h4>
+                      <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs text-slate-300 space-y-1 h-full">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <div className={`w-2 h-2 rounded-full ${selectedAthlete.medicalCertificateExpiryDate && new Date(selectedAthlete.medicalCertificateExpiryDate) > new Date() ? 'bg-green-500' : 'bg-red-500'}`} />
+                          <span>Certificato {selectedAthlete.medicalCertificateType === 'agonistico' ? 'Agonistico' : 'Non Agonistico'}</span>
+                        </div>
+                        {selectedAthlete.medicalNotes ? (
+                          <div className="bg-red-500/10 text-red-400 p-1.5 rounded text-[11px] border border-red-500/20 leading-tight">
+                            ⚠️ {selectedAthlete.medicalNotes}
+                          </div>
+                        ) : (
+                          <p className="text-slate-500 italic">Nessun infortunio o limitazione segnalata.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3. Note Coach */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                        <FileText className="w-3.5 h-3.5" /> Note Coach ({coachNotesCount})
+                      </h4>
+                      <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs text-slate-300 h-full">
+                        {latestCoachNote ? (
+                          <p className="line-clamp-3 text-slate-400 leading-relaxed italic relative">
+                            <span className="text-amber-500/50 text-lg leading-none absolute -top-1 -left-1">"</span>
+                            &nbsp;&nbsp;&nbsp;{latestCoachNote}
+                          </p>
+                        ) : (
+                          <p className="text-slate-500 italic">Nessuna nota presente.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 4. Chat Ingestion */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                        <MessageSquare className="w-3.5 h-3.5" /> Analisi Chat
+                      </h4>
+                      <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs text-slate-300 h-full flex flex-col justify-center items-center text-center">
+                        {loadedChatCount > 0 ? (
+                          <>
+                            <div className="bg-green-500/10 text-green-400 px-3 py-1.5 rounded-full text-[11px] font-bold border border-green-500/20 mb-2 flex items-center gap-1.5">
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              {loadedChatCount} Messaggi Letti
+                            </div>
+                            <p className="text-[10px] text-slate-500 leading-tight">L'IA utilizzerà le recenti conversazioni per adattare volume e selezione esercizi in base ai feedback (stanchezza, fastidi).</p>
+                          </>
+                        ) : (
+                          <p className="text-slate-500 italic">Nessun messaggio recente.</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

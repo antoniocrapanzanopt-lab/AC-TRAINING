@@ -1,19 +1,54 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Clock, ArrowLeft, CheckCheck, Check, Sparkles, MessageSquare, Trash2 } from 'lucide-react';
+import {
+  Send,
+  Clock,
+  ArrowLeft,
+  CheckCheck,
+  Check,
+  Sparkles,
+  MessageSquare,
+  Trash2,
+  Edit2,
+  Paperclip,
+  X,
+  FileText,
+  Volume2,
+  Download,
+  ZoomIn
+} from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { supabase } from '../../lib/supabase';
+import { uploadChatAttachment } from '../../lib/chatStorage';
 
 interface AthleteChatProps {
   onBack?: () => void;
 }
 
+interface Attachment {
+  file: File;
+  previewUrl: string;
+  type: 'image' | 'video' | 'file';
+}
+
+
+
 export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   const { user } = useAuth();
-  const { messages, sendMessage, loading, markAsRead, deleteMessage } = useMessages();
+  const { messages, sendMessage, loading, markAsRead, deleteMessage, editMessage } = useMessages();
+  const { showSuccess, showError } = useToast();
+
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
+
+  // Typing Indicator State
+  const [isCoachTyping, setIsCoachTyping] = useState(false);
+
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ID dell'utente atleta (sia sessionUser.id che athleteId)
   const myIds = useMemo(() => {
@@ -29,7 +64,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
 
   const [coachId, setCoachId] = useState<string>('demo-local');
 
-  // Individuazione automatica e robusta dell'ID del Coach
+  // Individuazione automatica dell'ID del Coach
   useEffect(() => {
     if (athleteMessages.length > 0) {
       const firstMsg = athleteMessages[0];
@@ -44,7 +79,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
         .then(async ({ data }) => {
           let cid = data?.assigned_coach_id;
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          
+
           if (!cid || !uuidRegex.test(cid)) {
             const { data: anyCoach } = await supabase
               .from('athletes')
@@ -54,7 +89,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
               .neq('assigned_coach_id', '')
               .limit(1)
               .maybeSingle();
-              
+
             if (anyCoach?.assigned_coach_id && uuidRegex.test(anyCoach.assigned_coach_id)) {
               cid = anyCoach.assigned_coach_id;
             } else {
@@ -69,7 +104,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
               }
             }
           }
-          
+
           if (cid) {
             setCoachId(cid);
           }
@@ -77,41 +112,217 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
     }
   }, [athleteMessages, user, myIds]);
 
-  // Scroll sempre in fondo sui nuovi messaggi
+  // Realtime listener per stato "Il coach sta scrivendo..."
+  useEffect(() => {
+    if (!coachId || coachId === 'demo-local') return;
+
+    const channel = supabase.channel(`typing_channel_${coachId}`);
+    channel
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        if (payload.payload?.userId === coachId) {
+          setIsCoachTyping(true);
+          setTimeout(() => setIsCoachTyping(false), 3500);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [coachId]);
+
+  // Scroll automatico in fondo
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [athleteMessages]);
+  }, [athleteMessages, isCoachTyping]);
 
-  // Segna come letti i messaggi ricevuti dal coach
+  // Segna come letti i messaggi dal coach
   useEffect(() => {
     if (coachId && coachId !== 'demo-local') {
       markAsRead(coachId);
     }
   }, [athleteMessages, coachId, markAsRead]);
 
-  const handleSendMessage = async (e?: React.FormEvent, textOverride?: string) => {
+  // Calcolo dell'ULTIMO messaggio per verificare il vincolo di modifica/eliminazione
+  const lastMessage = athleteMessages[athleteMessages.length - 1];
+  const isLastMessageMine = lastMessage && myIds.includes(lastMessage.sender_id);
+
+  // Gestione File / Allegati (Foto, Video, Documenti)
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const type = file.type.startsWith('image/')
+      ? 'image'
+      : file.type.startsWith('video/')
+      ? 'video'
+      : 'file';
+
+    const previewUrl = URL.createObjectURL(file);
+    setAttachment({ file, previewUrl, type });
+  };
+
+  const handleRemoveAttachment = () => {
+    if (attachment) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+    setAttachment(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Inizio Modifica Ultimo Messaggio
+  const handleStartEdit = (msgId: string, currentContent?: string) => {
+    setEditingMessageId(msgId);
+    setNewMessage(currentContent || '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setNewMessage('');
+  };
+
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  // Invio / Salva Messaggio (o Salva Modifica)
+  const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const textToSend = textOverride || newMessage;
-    if (!textToSend.trim() || !user || isSending) return;
-    
+    const textToSend = newMessage.trim();
+
+    if ((!textToSend && !attachment) || !user || isSending) return;
+
     setIsSending(true);
     try {
-      await sendMessage(coachId, textToSend.trim());
-      if (!textOverride) setNewMessage('');
+      // Caso 1: Salva Modifica dell'ultimo messaggio
+      if (editingMessageId) {
+        await editMessage(editingMessageId, textToSend);
+        showSuccess('Messaggio modificato con successo!');
+        setEditingMessageId(null);
+        setNewMessage('');
+        return;
+      }
+
+      // Caso 2: Invia Nuovo Messaggio con caricamento su Supabase Storage
+      if (attachment) {
+        // Carica su Supabase Storage (bucket: chat-attachments) o fallback DataURL
+        const uploadedUrl = await uploadChatAttachment(attachment.file);
+        const mediaTag =
+          attachment.type === 'image'
+            ? `📷 [Immagine] ${uploadedUrl}`
+            : attachment.type === 'video'
+            ? `🎥 [Video] ${uploadedUrl}`
+            : `📎 [File] ${attachment.file.name}\n${uploadedUrl}`;
+
+        const contentWithMedia = textToSend ? `${textToSend}\n\n${mediaTag}` : mediaTag;
+        await sendMessage(coachId, contentWithMedia);
+        handleRemoveAttachment();
+        setNewMessage('');
+        showSuccess('Messaggio ed allegato caricati con successo!');
+      } else {
+        await sendMessage(coachId, textToSend);
+        setNewMessage('');
+      }
     } catch (err) {
-      console.error('Error in AthleteChat handleSendMessage:', err);
+      console.error('Error in handleSendMessage:', err);
+      showError('Impossibile inviare il messaggio');
     } finally {
       setIsSending(false);
     }
   };
 
-  const quickReplies = [
-    { label: '🏋️‍♂️ Domanda sulla scheda', text: 'Ciao Coach! Ho una domanda su uno degli esercizi della scheda.' },
-    { label: '💪 Allenamento completato!', text: 'Ho appena completato l\'allenamento di oggi! 🔥' },
-    { label: '📅 Cambiamento orario', text: 'Ciao Coach, vorrei verificare l\'orario della nostra prossima sessione.' },
-  ];
+  // Parser con controllo anti-crash 100% blindato per tutti i tipi di allegato ed Immagine Lightbox
+  const renderMessageContent = (content?: string | null) => {
+    if (!content) return null;
+    const str = String(content);
+
+    if (str.includes('📷 [Immagine] ')) {
+      const parts = str.split('📷 [Immagine] ');
+      const text = parts[0]?.trim();
+      const imageUrl = parts[1]?.trim();
+      return (
+        <div className="space-y-2">
+          {text && <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>}
+          {imageUrl && (
+            <div className="rounded-2xl overflow-hidden border border-black/10 mt-1 max-w-xs shadow-md bg-black/20 space-y-1 p-1 group/img relative">
+              <img
+                src={imageUrl}
+                alt="Allegato foto"
+                onClick={() => setLightboxImage(imageUrl)}
+                className="w-full h-auto object-cover max-h-64 rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
+              />
+              <button
+                type="button"
+                onClick={() => setLightboxImage(imageUrl)}
+                className="text-[11px] font-bold text-slate-900 flex items-center gap-1 px-1 py-0.5 hover:underline cursor-pointer"
+              >
+                <ZoomIn className="w-3.5 h-3.5" /> Inggrandisci Foto
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (str.includes('🎥 [Video] ')) {
+      const parts = str.split('🎥 [Video] ');
+      const text = parts[0]?.trim();
+      const videoUrl = parts[1]?.trim();
+      return (
+        <div className="space-y-2">
+          {text && <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>}
+          {videoUrl && (
+            <div className="rounded-2xl overflow-hidden border border-black/10 mt-1 max-w-xs shadow-md bg-black/20 p-1">
+              <video src={videoUrl} controls className="w-full h-auto max-h-64 rounded-xl" />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (str.includes('🎵 [Nota Vocale] ')) {
+      const audioUrl = str.replace('🎵 [Nota Vocale] ', '').trim();
+      return (
+        <div className="flex items-center gap-3 p-1">
+          <Volume2 className="w-5 h-5 shrink-0" />
+          <audio controls src={audioUrl} className="h-9 w-48 sm:w-56" />
+        </div>
+      );
+    }
+
+    if (str.includes('📎 [File] ')) {
+      const parts = str.split('📎 [File] ');
+      const text = parts[0]?.trim();
+      const rawFileContent = parts[1]?.trim() || '';
+      const [fileName, ...fileDataParts] = rawFileContent.split('\n');
+      const fileDataUrl = fileDataParts.join('\n').trim();
+
+      return (
+        <div className="space-y-2">
+          {text && <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>}
+          <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-950/20 border border-black/10 mt-1 max-w-xs shadow-md">
+            <FileText className="w-6 h-6 text-slate-950 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold truncate text-slate-950">{fileName || 'Documento Allegato'}</p>
+              {fileDataUrl && (
+                <a
+                  href={fileDataUrl}
+                  download={fileName || 'documento_allegato'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-black text-slate-950 underline hover:opacity-80 mt-0.5 inline-block"
+                >
+                  ⬇️ Apri / Scarica File
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return <p className="whitespace-pre-wrap break-words leading-relaxed">{str}</p>;
+  };
 
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 font-sans relative overflow-hidden">
@@ -119,14 +330,15 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
       <div className="bg-slate-900/90 backdrop-blur-xl border-b border-slate-800/80 px-4 py-3.5 flex items-center justify-between sticky top-0 z-20 shadow-lg shadow-black/40">
         <div className="flex items-center gap-3">
           {onBack && (
-            <button 
-              onClick={onBack} 
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition-all active:scale-95"
+            <button
+              type="button"
+              onClick={onBack}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition-all active:scale-95 cursor-pointer"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
-          
+
           <div className="relative">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-primary)]/30 to-amber-500/10 border border-[var(--color-primary)]/40 flex items-center justify-center text-[var(--color-primary)] font-black text-sm shadow-inner">
               C
@@ -143,18 +355,18 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
               <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             </h2>
             <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
-              Online • Risposta rapida
+              Online • Supporto Diretto
             </p>
           </div>
         </div>
 
         <div className="px-3 py-1 rounded-full bg-slate-800/60 border border-slate-700/50 text-[10px] font-bold text-slate-300 uppercase tracking-wider hidden sm:block">
-          Supporto Diretto
+          Coach Chat
         </div>
       </div>
 
       {/* Area Messaggi */}
-      <div 
+      <div
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar bg-gradient-to-b from-slate-950 via-slate-950/90 to-slate-900/30"
       >
@@ -164,81 +376,97 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
             <span>Sincronizzazione chat...</span>
           </div>
         ) : athleteMessages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8 max-w-sm mx-auto">
-            <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800/80 flex items-center justify-center mb-4 text-[var(--color-primary)] shadow-xl shadow-[var(--color-primary)]/5">
+          <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8 max-w-sm mx-auto space-y-3">
+            <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800/80 flex items-center justify-center text-[var(--color-primary)] shadow-xl shadow-[var(--color-primary)]/5">
               <MessageSquare className="w-8 h-8" />
             </div>
-            <h3 className="text-base font-bold text-white mb-1">Chat Diretta col Coach</h3>
-            <p className="text-xs text-slate-400 leading-relaxed mb-6">
-              Invia un messaggio per richiedere consigli sul tuo programma, aggiornamenti o chiarimenti sugli esercizi.
+            <h3 className="text-base font-bold text-white">Chat Diretta con il Coach</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Invia un messaggio o allega una foto per richiedere consigli sul tuo programma, aggiornamenti o chiarimenti.
             </p>
-
-            {/* Quick Prompts Iniziali */}
-            <div className="w-full space-y-2">
-              {quickReplies.map((qr, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSendMessage(undefined, qr.text)}
-                  className="w-full p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-left text-xs font-semibold text-slate-300 hover:text-white hover:border-[var(--color-primary)]/50 hover:bg-slate-900 transition-all flex items-center justify-between group"
-                >
-                  <span>{qr.label}</span>
-                  <Send className="w-3.5 h-3.5 text-slate-500 group-hover:text-[var(--color-primary)] transition-colors" />
-                </button>
-              ))}
-            </div>
           </div>
         ) : (
           athleteMessages.map((msg, idx, arr) => {
             const isMine = myIds.includes(msg.sender_id);
-            const showDate = idx === 0 || new Date(msg.created_at).toDateString() !== new Date(arr[idx-1].created_at).toDateString();
-            
+            const showDate =
+              idx === 0 ||
+              new Date(msg.created_at).toDateString() !== new Date(arr[idx - 1].created_at).toDateString();
+
+            // VINCOLO RIGIDO: Modifica/Eliminazione consentita SOLO per l'ultimo messaggio inviato dall'atleta prima della risposta del Coach
+            const isEditableAndDeletable = isLastMessageMine && msg.id === lastMessage?.id;
+
             return (
               <React.Fragment key={msg.id}>
                 {showDate && (
                   <div className="flex justify-center my-4">
                     <span className="px-3.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-widest shadow-sm">
-                      {new Date(msg.created_at).toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: 'short' })}
+                      {new Date(msg.created_at).toLocaleDateString('it-IT', {
+                        weekday: 'short',
+                        day: '2-digit',
+                        month: 'short',
+                      })}
                     </span>
                   </div>
                 )}
 
                 <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} group`}>
                   <div className="flex items-center gap-1.5 max-w-[85%] sm:max-w-[75%] group/msg">
-                    {isMine && (
-                      <button
-                        onClick={() => deleteMessage(msg.id)}
-                        className="opacity-0 group-hover/msg:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-900 rounded-lg transition-all"
-                        title="Elimina messaggio"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    {/* Pulsanti Azione (Modifica ed Elimina) visibili SOLO sull'ULTIMO messaggio dell'atleta se non ha risposta */}
+                    {isMine && isEditableAndDeletable && (
+                      <div className="opacity-0 group-hover/msg:opacity-100 flex items-center gap-1 transition-all bg-slate-900/90 border border-slate-800 p-1 rounded-xl shadow-lg">
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(msg.id, msg.content)}
+                          className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                          title="Modifica ultimo messaggio"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteMessage(msg.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                          title="Elimina ultimo messaggio"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     )}
-                    <div className={`px-4 py-3 rounded-2xl text-sm shadow-md transition-all flex-1 ${
-                      isMine 
-                        ? 'bg-gradient-to-r from-[var(--color-primary)] to-amber-400 text-slate-950 font-medium rounded-tr-xs shadow-[var(--color-primary)]/10' 
-                        : 'bg-slate-900 text-slate-100 border border-slate-800/90 rounded-tl-xs'
-                    }`}>
-                      <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
+
+                    {/* Bubble Fumetto: Contrasto Alto & Curvatura Morbida */}
+                    <div
+                      className={`px-4 py-3 rounded-3xl text-sm shadow-md transition-all flex-1 ${
+                        isMine
+                          ? 'bg-amber-400 text-slate-950 font-bold border border-amber-300 rounded-tr-xs shadow-amber-500/10'
+                          : 'bg-slate-900 text-slate-100 border border-slate-800/90 rounded-tl-xs'
+                      }`}
+                    >
+                      {renderMessageContent(msg.content)}
                     </div>
-                    {!isMine && (
-                      <button
-                        onClick={() => deleteMessage(msg.id)}
-                        className="opacity-0 group-hover/msg:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-900 rounded-lg transition-all"
-                        title="Elimina messaggio"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
                   </div>
-                  
-                  <div className={`flex items-center gap-1 mt-1 text-[10px] font-semibold px-1 ${isMine ? 'text-slate-400' : 'text-slate-500'}`}>
+
+                  {/* Stato Spunte (✓ Inviato, ✓✓ Letto dal coach) */}
+                  <div
+                    className={`flex items-center gap-1 mt-1 text-[10px] font-semibold px-1 ${
+                      isMine ? 'text-slate-400' : 'text-slate-500'
+                    }`}
+                  >
                     <Clock className="w-3 h-3 text-slate-500" />
-                    <span>{new Date(msg.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span>
+                      {new Date(msg.created_at).toLocaleTimeString('it-IT', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
                     {isMine && (
                       msg.is_read ? (
-                        <CheckCheck className="w-3.5 h-3.5 text-emerald-400 ml-0.5" />
+                        <span title="Letto dal coach">
+                          <CheckCheck className="w-3.5 h-3.5 text-emerald-400 ml-0.5" />
+                        </span>
                       ) : (
-                        <Check className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
+                        <span title="Inviato">
+                          <Check className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
+                        </span>
                       )
                     )}
                   </div>
@@ -247,50 +475,147 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
             );
           })
         )}
+
+        {/* Indicatore "Il coach sta scrivendo..." */}
+        {isCoachTyping && (
+          <div className="flex items-center gap-2 text-xs text-amber-400 font-semibold italic bg-slate-900/60 border border-slate-800 px-3 py-1.5 rounded-full w-max animate-pulse">
+            <span className="flex gap-1">
+              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce"></span>
+              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+            </span>
+            <span>Il coach sta scrivendo...</span>
+          </div>
+        )}
       </div>
 
-      {/* Quick Action Chips se ci sono già messaggi */}
-      {athleteMessages.length > 0 && (
-        <div className="px-4 py-1.5 bg-slate-950 flex gap-2 overflow-x-auto custom-scrollbar border-t border-slate-900">
-          {quickReplies.map((qr, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleSendMessage(undefined, qr.text)}
-              className="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 hover:border-[var(--color-primary)]/40 text-[11px] font-semibold text-slate-400 hover:text-white whitespace-nowrap transition-colors"
-            >
-              {qr.label}
-            </button>
-          ))}
+      {/* ANTEPRIMA ALLEGATO SELEZIONATO */}
+      {attachment && (
+        <div className="px-4 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            {attachment.type === 'image' ? (
+              <img src={attachment.previewUrl} alt="Anteprima" className="w-10 h-10 rounded-lg object-cover border border-slate-700" />
+            ) : (
+              <FileText className="w-6 h-6 text-[var(--color-primary)]" />
+            )}
+            <span className="text-xs font-semibold text-white truncate max-w-[200px]">
+              {attachment.file.name}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRemoveAttachment}
+            className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* Input Form Floating Glass */}
+      {/* BANNER MODALITÀ MODIFICA */}
+      {editingMessageId && (
+        <div className="px-4 py-2 bg-amber-500/15 border-t border-amber-500/30 flex items-center justify-between text-xs text-amber-300">
+          <span className="font-bold flex items-center gap-1.5">
+            <Edit2 className="w-3.5 h-3.5" />
+            <span>Modifica ultimo messaggio in corso...</span>
+          </span>
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+            className="text-amber-400 hover:text-white font-bold text-xs cursor-pointer"
+          >
+            Annulla
+          </button>
+        </div>
+      )}
+
+      {/* INPUT BAR FLOATING GLASS */}
       <div className="p-3 sm:p-4 bg-slate-950/95 backdrop-blur-2xl border-t border-slate-800/80 sticky bottom-0 z-10">
         <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+          {/* Input File nascosto */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="*/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          {/* Bottone Graffetta Allegati */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="p-3 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-[var(--color-primary)] hover:border-[var(--color-primary)]/40 transition-all cursor-pointer shrink-0"
+            title="Allega foto o video"
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
+
+          {/* Input Testo Messaggio */}
           <div className="flex-1 flex items-center bg-slate-900/90 border border-slate-800 rounded-2xl px-4 focus-within:border-[var(--color-primary)] focus-within:ring-1 focus-within:ring-[var(--color-primary)]/40 transition-all shadow-inner">
             <input
               type="text"
               value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
-              placeholder="Scrivi un messaggio al coach..."
+              placeholder={editingMessageId ? "Modifica il messaggio..." : "Scrivi un messaggio al coach..."}
               disabled={isSending}
               className="w-full py-3 bg-transparent text-white text-sm focus:outline-none placeholder:text-slate-500 disabled:opacity-50"
             />
           </div>
 
+          {/* Bottone Invio / Salva Modifica */}
           <button
             type="submit"
-            disabled={!newMessage.trim() || isSending}
-            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-amber-500 text-slate-950 font-bold flex items-center justify-center shrink-0 shadow-lg shadow-[var(--color-primary)]/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none"
+            disabled={(!newMessage.trim() && !attachment) || isSending}
+            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-amber-500 text-slate-950 font-bold flex items-center justify-center shrink-0 shadow-lg shadow-[var(--color-primary)]/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none cursor-pointer"
+            title={editingMessageId ? "Salva modifica" : "Invia messaggio"}
           >
             {isSending ? (
               <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+            ) : editingMessageId ? (
+              <Check className="w-5 h-5 stroke-[2.5]" />
             ) : (
               <Send className="w-5 h-5 ml-0.5" />
             )}
           </button>
         </form>
       </div>
+
+      {/* MODAL LIGHTBOX IMMAGINE A TUTTO SCHERMO */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
+            <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
+              <a
+                href={lightboxImage}
+                download="foto_chat.jpg"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2.5 bg-slate-900/80 hover:bg-slate-800 text-white rounded-full transition-all border border-slate-700 shadow-lg"
+                title="Scarica immagine"
+              >
+                <Download className="w-5 h-5" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="p-2.5 bg-slate-900/80 hover:bg-slate-800 text-white rounded-full transition-all border border-slate-700 shadow-lg cursor-pointer"
+                title="Chiudi"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <img
+              src={lightboxImage}
+              alt="Foto ingrandita"
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-slate-800"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

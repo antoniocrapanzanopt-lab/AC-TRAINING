@@ -15,6 +15,7 @@ export interface WorkoutTemplate {
   coach_id: string;
   folder_id?: string | null;
   is_template: boolean;
+  parent_template_id?: string | null;
   total_weeks?: number;
   estimated_duration_minutes?: string | number;
   created_at: string;

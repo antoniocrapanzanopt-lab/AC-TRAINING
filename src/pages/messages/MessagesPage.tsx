@@ -9,11 +9,15 @@ import {
   MoreVertical,
   X,
   Trash2,
+  Paperclip,
+  ZoomIn,
+  Download
 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useToast } from '../../context/ToastContext';
+import { uploadChatAttachment } from '../../lib/chatStorage';
 
 export const MessagesPage: React.FC = () => {
   const { user } = useAuth();
@@ -35,12 +39,41 @@ export const MessagesPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [newMessage, setNewMessage] = useState('');
-  
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
+
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [newChatSearch, setNewChatSearch] = useState('');
   const [showChatMenu, setShowChatMenu] = useState(false);
+
+  const handleCoachFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeConversation || isSending) return;
+
+    setIsSending(true);
+    try {
+      const uploadedUrl = await uploadChatAttachment(file);
+      const isImg = file.type.startsWith('image/');
+      const isVid = file.type.startsWith('video/');
+      const mediaTag = isImg
+        ? `📷 [Immagine] ${uploadedUrl}`
+        : isVid
+        ? `🎥 [Video] ${uploadedUrl}`
+        : `📎 [File] ${file.name}\n${uploadedUrl}`;
+
+      await sendMessage(activeConversation.athlete_id, mediaTag);
+      showSuccess('Allegato inviato all\'atleta!');
+    } catch (err) {
+      console.error('Error sending file from MessagesPage:', err);
+      showError('Impossibile inviare l\'allegato');
+    } finally {
+      setIsSending(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
   
   const { athletes } = useAthletes();
 
@@ -411,10 +444,82 @@ export const MessagesPage: React.FC = () => {
                             )}
                             <div className={`px-4 py-3 rounded-2xl text-sm shadow-sm flex-1 ${
                               isMine 
-                                ? 'bg-[var(--color-primary)] text-black rounded-tr-sm' 
+                                ? 'bg-[var(--color-primary)] text-black rounded-tr-sm font-semibold' 
                                 : 'bg-slate-800 text-white rounded-tl-sm border border-slate-700'
                             }`}>
-                              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                              {(() => {
+                                const contentStr = String(msg.content || '');
+                                if (contentStr.includes('📷 [Immagine] ')) {
+                                  const parts = contentStr.split('📷 [Immagine] ');
+                                  const text = parts[0]?.trim();
+                                  const imgUrl = parts[1]?.trim();
+                                  return (
+                                    <div className="space-y-2">
+                                      {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
+                                      {imgUrl && (
+                                        <div className="rounded-xl overflow-hidden mt-1 border border-slate-700 max-w-xs space-y-1">
+                                          <img
+                                            src={imgUrl}
+                                            alt="Foto allegata"
+                                            onClick={() => setLightboxImage(imgUrl)}
+                                            className="w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => setLightboxImage(imgUrl)}
+                                            className="text-[11px] font-bold text-amber-400 flex items-center gap-1 px-1 py-0.5 hover:underline cursor-pointer"
+                                          >
+                                            <ZoomIn className="w-3.5 h-3.5" /> Ingrandisci Foto
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                if (contentStr.includes('🎥 [Video] ')) {
+                                  const parts = contentStr.split('🎥 [Video] ');
+                                  const text = parts[0]?.trim();
+                                  const vidUrl = parts[1]?.trim();
+                                  return (
+                                    <div className="space-y-2">
+                                      {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
+                                      {vidUrl && (
+                                        <div className="rounded-xl overflow-hidden mt-1 border border-slate-700 max-w-xs">
+                                          <video src={vidUrl} controls className="w-full h-auto max-h-64" />
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                if (contentStr.includes('📎 [File] ')) {
+                                  const parts = contentStr.split('📎 [File] ');
+                                  const text = parts[0]?.trim();
+                                  const rawFileContent = parts[1]?.trim() || '';
+                                  const [fileName, ...fileDataParts] = rawFileContent.split('\n');
+                                  const fileDataUrl = fileDataParts.join('\n').trim();
+
+                                  return (
+                                    <div className="space-y-2">
+                                      {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
+                                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 mt-1 max-w-xs space-y-1">
+                                        <p className="text-xs font-bold text-white truncate">{fileName || 'File Allegato'}</p>
+                                        {fileDataUrl && (
+                                          <a
+                                            href={fileDataUrl}
+                                            download={fileName || 'allegato'}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs font-black text-[var(--color-primary)] underline hover:text-amber-300 block"
+                                          >
+                                            ⬇️ Apri / Scarica File
+                                          </a>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return <p className="whitespace-pre-wrap break-words">{contentStr}</p>;
+                              })()}
                             </div>
                             {!isMine && (
                               <button
@@ -439,7 +544,23 @@ export const MessagesPage: React.FC = () => {
 
             {/* Chat Input */}
             <div className="p-4 bg-slate-900/50 border-t border-[var(--color-panel-border)]">
-              <form onSubmit={handleSendMessage} className="flex gap-3">
+              <form onSubmit={handleSendMessage} className="flex gap-3 items-center">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="*/*"
+                  onChange={handleCoachFileSelect}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-[var(--color-primary)] transition-colors cursor-pointer shrink-0"
+                  title="Allega foto o file"
+                >
+                  <Paperclip className="w-5 h-5" />
+                </button>
+
                 <input
                   type="text"
                   value={newMessage}
@@ -449,8 +570,8 @@ export const MessagesPage: React.FC = () => {
                 />
                 <button
                   type="submit"
-                  disabled={!newMessage.trim()}
-                  className="px-5 py-3 rounded-xl bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] transition-colors flex items-center justify-center shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!newMessage.trim() || isSending}
+                  className="px-5 py-3 rounded-xl bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] transition-colors flex items-center justify-center shadow-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
                 >
                   <Send className="w-5 h-5" />
                 </button>
@@ -516,6 +637,42 @@ export const MessagesPage: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL LIGHTBOX IMMAGINE PER MESSAGES PAGE */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
+            <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
+              <a
+                href={lightboxImage}
+                download="foto_chat.jpg"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2.5 bg-slate-900/80 hover:bg-slate-800 text-white rounded-full transition-all border border-slate-700 shadow-lg"
+                title="Scarica immagine"
+              >
+                <Download className="w-5 h-5" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="p-2.5 bg-slate-900/80 hover:bg-slate-800 text-white rounded-full transition-all border border-slate-700 shadow-lg cursor-pointer"
+                title="Chiudi"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <img
+              src={lightboxImage}
+              alt="Foto ingrandita"
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-slate-800"
+            />
           </div>
         </div>
       )}

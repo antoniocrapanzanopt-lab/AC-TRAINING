@@ -8,14 +8,12 @@ import {
   TrendingUp,
   TrendingDown,
   Activity,
-  Award,
   Calendar,
   X
 } from 'lucide-react';
 import { useMetrics } from '../../context/MetricsContext';
 import { useToast } from '../../context/ToastContext';
-import { useExercises } from '../../context/ExercisesContext';
-import { AthleteMaxLift } from '../../types/metrics';
+import { MaxLiftsSection } from '../metrics/MaxLiftsSection';
 
 interface MetricsTabProps {
   athleteId: string;
@@ -30,11 +28,8 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
     addMetric,
     deleteMetric,
     fetchMaxLiftsForAthlete,
-    addMaxLift,
-    deleteMaxLift,
   } = useMetrics();
 
-  const { exercises } = useExercises();
   const { showSuccess, showError } = useToast();
 
   const [activeSubTab, setActiveSubTab] = useState<'misure' | 'massimali'>('misure');
@@ -42,7 +37,6 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
 
   // Modali State
   const [showMetricModal, setShowMetricModal] = useState(false);
-  const [showLiftModal, setShowLiftModal] = useState(false);
 
   // Form Metric State
   const [metricForm, setMetricForm] = useState({
@@ -61,17 +55,6 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
     thigh_left_cm: '',
     calf_right_cm: '',
     calf_left_cm: '',
-    notes: '',
-  });
-
-  // Form Lift State
-  const [liftForm, setLiftForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    exercise_name: '',
-    exercise_id: '',
-    weight_kg: '',
-    reps: '1',
-    is_real_1rm: true,
     notes: '',
   });
 
@@ -98,26 +81,6 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
     const diff = latestMetric.weight_kg - previousMetric.weight_kg;
     return Math.round(diff * 10) / 10;
   }, [latestMetric, previousMetric]);
-
-  // Massimali dell'atleta selezionato
-  const athleteMaxLifts = useMemo(() => {
-    return maxLifts
-      .filter(l => String(l.athlete_id) === String(athleteId))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [maxLifts, athleteId]);
-
-  // Massimali raggruppati per esercizio (miglior 1RM per ciascun esercizio)
-  const topPRs = useMemo(() => {
-    const map = new Map<string, AthleteMaxLift>();
-    athleteMaxLifts.forEach(lift => {
-      const key = lift.exercise_name.trim().toLowerCase();
-      const existing = map.get(key);
-      if (!existing || lift.calculated_1rm > existing.calculated_1rm) {
-        map.set(key, lift);
-      }
-    });
-    return Array.from(map.values()).sort((a, b) => b.calculated_1rm - a.calculated_1rm);
-  }, [athleteMaxLifts]);
 
 
   // Salvataggio Nuova Metrica
@@ -174,60 +137,10 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
     }
   };
 
-  // Salvataggio Nuovo Massimale
-  const handleSaveLift = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!liftForm.exercise_name || !liftForm.weight_kg) {
-      showError('Nome esercizio e peso sono obbligatori!');
-      return;
-    }
-
-    const weightKg = parseFloat(liftForm.weight_kg);
-    const reps = parseInt(liftForm.reps || '1');
-    const raw1RM = reps === 1 ? weightKg : weightKg * (1 + reps / 30);
-    const calculated1RM = Math.round(raw1RM * 10) / 10;
-
-    const res = await addMaxLift({
-      athlete_id: athleteId,
-      exercise_id: liftForm.exercise_id || null,
-      exercise_name: liftForm.exercise_name.trim(),
-      weight_kg: weightKg,
-      reps: reps,
-      calculated_1rm: calculated1RM,
-      is_real_1rm: liftForm.is_real_1rm,
-      date: liftForm.date,
-      notes: liftForm.notes || null,
-    });
-
-    if (res.success) {
-      showSuccess('Massimale aggiunto con successo!');
-      setShowLiftModal(false);
-      setLiftForm({
-        date: new Date().toISOString().slice(0, 10),
-        exercise_name: '',
-        exercise_id: '',
-        weight_kg: '',
-        reps: '1',
-        is_real_1rm: true,
-        notes: '',
-      });
-    } else {
-      showError(res.error || 'Impossibile salvare il massimale');
-    }
-  };
-
   const handleDeleteMetric = async (id: string) => {
     if (window.confirm('Sei sicuro di voler eliminare questa misurazione?')) {
       const res = await deleteMetric(id);
       if (res.success) showSuccess('Misurazione eliminata');
-      else showError(res.error || 'Errore durante l\'eliminazione');
-    }
-  };
-
-  const handleDeleteLift = async (id: string) => {
-    if (window.confirm('Sei sicuro di voler eliminare questo massimale?')) {
-      const res = await deleteMaxLift(id);
-      if (res.success) showSuccess('Massimale eliminato');
       else showError(res.error || 'Errore durante l\'eliminazione');
     }
   };
@@ -262,21 +175,13 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
         </div>
 
         <div>
-          {activeSubTab === 'misure' ? (
+          {activeSubTab === 'misure' && (
             <button
               onClick={() => setShowMetricModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/10 transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/10 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Nuovo Check Misure</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => setShowLiftModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/10 transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Aggiungi Massimale / PR</span>
             </button>
           )}
         </div>
@@ -420,102 +325,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
 
       {/* ─── SOTTO-TAB MASSIMALI & 1RM ────────────────────────────────── */}
       {activeSubTab === 'massimali' && (
-        <div className="space-y-6">
-          {/* TOP RECORD PERSONALI (PRs) */}
-          <div>
-            <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-              <Award className="w-4 h-4 text-amber-400" />
-              <span>Record Personali (Miglior 1RM per Esercizio)</span>
-            </h3>
-
-            {topPRs.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 p-8 text-center rounded-2xl text-slate-500 text-xs">
-                Nessun massimale registrato finora. Aggiungine uno manualmente o completa un allenamento!
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {topPRs.map((pr) => (
-                  <div key={pr.id} className="bg-slate-900 border border-[var(--color-primary)]/30 p-4 rounded-2xl relative overflow-hidden shadow-lg shadow-[var(--color-primary)]/5">
-                    <div className="absolute top-0 right-0 bg-[var(--color-primary)]/10 text-[var(--color-primary)] px-3 py-1 text-[10px] font-bold rounded-bl-xl uppercase tracking-wider">
-                      {pr.is_real_1rm ? '1RM Reale' : 'Calcolato'}
-                    </div>
-                    <h4 className="text-sm font-bold text-white mb-1 pr-16">{pr.exercise_name}</h4>
-                    <div className="flex items-baseline gap-2 my-2">
-                      <span className="text-3xl font-black text-[var(--color-primary)]">
-                        {pr.calculated_1rm} kg
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        ({pr.weight_kg}kg x {pr.reps} rep)
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-[10px] text-slate-500 pt-2 border-t border-slate-800">
-                      <span>Data: {new Date(pr.date).toLocaleDateString('it-IT')}</span>
-                      <span>{pr.notes || 'Record Personale'}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* TABELLA STORICO MASSIMALI LOGGATI */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-800">
-              <h3 className="font-bold text-sm text-white">Tutti i Massimali Registrati ({athleteMaxLifts.length})</h3>
-            </div>
-
-            {athleteMaxLifts.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-xs">Nessuna voce trovata nello storico massimali per questo atleta.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-semibold border-b border-slate-800">
-                    <tr>
-                      <th className="p-3">Esercizio</th>
-                      <th className="p-3">1RM Stimato / Reale</th>
-                      <th className="p-3">Carico x Reps</th>
-                      <th className="p-3">Tipo</th>
-                      <th className="p-3">Data</th>
-                      <th className="p-3">Note</th>
-                      <th className="p-3 text-right">Azioni</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50 text-slate-300">
-                    {athleteMaxLifts.map((lift) => (
-                      <tr key={lift.id} className="hover:bg-slate-800/30 transition-colors">
-
-                        <td className="p-3 font-bold text-white">{lift.exercise_name}</td>
-                        <td className="p-3 font-bold text-[var(--color-primary)]">{lift.calculated_1rm} kg</td>
-                        <td className="p-3">{lift.weight_kg} kg x {lift.reps}</td>
-                        <td className="p-3">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              lift.is_real_1rm
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
-                            }`}
-                          >
-                            {lift.is_real_1rm ? 'Test Reale' : 'Formula Epley'}
-                          </span>
-                        </td>
-                        <td className="p-3 text-slate-400">{new Date(lift.date).toLocaleDateString('it-IT')}</td>
-                        <td className="p-3 text-slate-400 max-w-[150px] truncate">{lift.notes || '—'}</td>
-                        <td className="p-3 text-right">
-                          <button
-                            onClick={() => handleDeleteLift(lift.id)}
-                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+        <MaxLiftsSection athleteId={athleteId} athleteName={athleteName} isCoachView={true} />
       )}
 
       {/* ─── MODALE AGGIUNGI CHECK MISURE ────────────────────────────── */}
@@ -711,122 +521,6 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
                   className="px-5 py-2 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-bold rounded-xl shadow-lg shadow-[var(--color-primary)]/20"
                 >
                   Salva Check
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─── MODALE AGGIUNGI MASSIMALE ────────────────────────────────── */}
-      {showLiftModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl">
-            <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
-              <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                <Dumbbell className="w-4 h-4 text-[var(--color-primary)]" />
-                <span>Aggiungi Massimale / PR - {athleteName}</span>
-              </h3>
-              <button onClick={() => setShowLiftModal(false)} className="text-slate-400 hover:text-white p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveLift} className="p-5 space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1">Seleziona o Inserisci Esercizio</label>
-                <input
-                  type="text"
-                  list="exercises-list"
-                  placeholder="Es. Panca Piana, Squat, Stacco da terra..."
-                  value={liftForm.exercise_name}
-                  onChange={(e) => setLiftForm({ ...liftForm, exercise_name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:border-[var(--color-primary)] outline-none"
-                  required
-                />
-                <datalist id="exercises-list">
-                  {exercises.map((ex) => (
-                    <option key={ex.id} value={ex.name} />
-                  ))}
-                </datalist>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Carico Sollevato (kg)</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="es. 100"
-                    value={liftForm.weight_kg}
-                    onChange={(e) => setLiftForm({ ...liftForm, weight_kg: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:border-[var(--color-primary)] outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Ripetizioni (Reps)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="30"
-                    placeholder="es. 1 per 1RM reale, 5 per stimato"
-                    value={liftForm.reps}
-                    onChange={(e) => setLiftForm({ ...liftForm, reps: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:border-[var(--color-primary)] outline-none"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1">Data del Test</label>
-                <input
-                  type="date"
-                  value={liftForm.date}
-                  onChange={(e) => setLiftForm({ ...liftForm, date: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white outline-none"
-                  required
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="is_real_1rm"
-                  checked={liftForm.is_real_1rm}
-                  onChange={(e) => setLiftForm({ ...liftForm, is_real_1rm: e.target.checked })}
-                  className="w-4 h-4 accent-[var(--color-primary)] rounded"
-                />
-                <label htmlFor="is_real_1rm" className="text-slate-300 font-semibold cursor-pointer">
-                  È un 1RM Reale Testato (non un calcolo da N reps)
-                </label>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1">Note</label>
-                <textarea
-                  rows={2}
-                  placeholder="Es. Esecuzione fluida, cinturone e fasce..."
-                  value={liftForm.notes}
-                  onChange={(e) => setLiftForm({ ...liftForm, notes: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white outline-none resize-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowLiftModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl"
-                >
-                  Annulla
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-bold rounded-xl shadow-lg shadow-[var(--color-primary)]/20"
-                >
-                  Salva Massimale
                 </button>
               </div>
             </form>

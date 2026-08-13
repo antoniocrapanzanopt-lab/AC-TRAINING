@@ -23,6 +23,7 @@ interface WorkoutsContextType {
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
   forkWorkoutForAthlete: (workoutId: string, athleteId: string, newWorkoutData: Partial<WorkoutTemplate>, newExercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
   forkWorkoutForAllAssigned: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
+  forceSyncMasterTemplate: (masterWorkoutId: string) => Promise<{ success: boolean; error?: string }>;
   
   // Athlete specific
   myAssignedWorkouts: AthleteAssignedWorkout[];
@@ -53,7 +54,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .select(`
         *,
         athlete:athletes(id, first_name, last_name, email, status),
-        workout:workouts(id, title)
+        workout:workouts(*)
       `)
       .eq('is_active', true)
       .order('assigned_date', { ascending: false });
@@ -390,6 +391,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           coach_id: user.id,
           folder_id: null,
           is_template: false, // It's a local copy, not a global template
+          parent_template_id: originalWorkoutId,
           total_weeks: newWorkoutData.total_weeks || 1,
           estimated_duration_minutes: newWorkoutData.estimated_duration_minutes ? String(newWorkoutData.estimated_duration_minutes) : null,
         })
@@ -466,8 +468,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Load original exercises
       const originalExercises = await getExercisesForWorkout(workoutId);
 
-      // Create a single "frozen" legacy copy of the template, or individual copies for each athlete?
-      // Since it's identical for all existing athletes, we can just create ONE "frozen" copy.
+      // Create a single "frozen" legacy copy of the template
       const { data: frozenWorkout, error: freezeError } = await supabase
         .from('workouts')
         .insert({
@@ -475,7 +476,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           description: originalWorkout.description,
           coach_id: user.id,
           folder_id: originalWorkout.folder_id,
-          is_template: false, // Prevent it from showing up in the templates catalog as a normal template, or maybe true but hidden
+          is_template: false, 
           total_weeks: originalWorkout.total_weeks,
           estimated_duration_minutes: originalWorkout.estimated_duration_minutes,
         })
@@ -521,6 +522,45 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (error: any) {
       console.error("Error freezing workout for assigned athletes:", error);
       return { success: false, error: error.message };
+    }
+  };
+
+  const forceSyncMasterTemplate = async (masterWorkoutId: string) => {
+    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+
+    try {
+      const { data: assignments, error: fetchError } = await supabase
+        .from('athlete_assigned_workouts')
+        .select('id, workout_id, workout:workouts(parent_template_id)')
+        .eq('is_active', true);
+
+      if (fetchError) throw fetchError;
+
+      const customizedAssignments = (assignments || []).filter(a => {
+        const w = Array.isArray(a.workout) ? a.workout[0] : a.workout;
+        return w && (w as any).parent_template_id === masterWorkoutId;
+      });
+      
+      if (customizedAssignments.length > 0) {
+        for (const assignment of customizedAssignments) {
+          const { error: assignError } = await supabase
+            .from('athlete_assigned_workouts')
+            .update({ workout_id: masterWorkoutId })
+            .eq('id', assignment.id);
+          
+          if (assignError) throw assignError;
+
+          if (assignment.workout_id) {
+            await supabase.from('workouts').delete().eq('id', assignment.workout_id);
+          }
+        }
+      }
+
+      await loadAssignedWorkouts();
+      return { success: true };
+    } catch (err: any) {
+      console.error("Error force syncing master template:", err);
+      return { success: false, error: err.message };
     }
   };
 
@@ -681,6 +721,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           getExercisesForWorkout,
           forkWorkoutForAthlete,
           forkWorkoutForAllAssigned,
+          forceSyncMasterTemplate,
           myAssignedWorkouts,
           refreshMyWorkouts,
           startWorkoutSession,

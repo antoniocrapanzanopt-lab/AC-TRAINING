@@ -1,16 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, ChevronLeft, Trash2 } from 'lucide-react';
+import { MessageSquare, X, Send, ChevronLeft, Trash2, Paperclip, ZoomIn, Download } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
+import { uploadChatAttachment } from '../../lib/chatStorage';
 
 export const FloatingChatWidget: React.FC = () => {
-  const { conversations, activeConversation, setActiveConversation, messages, sendMessage, markAsRead, deleteMessage, deleteConversation } = useMessages();
+  const { conversations, activeConversation, setActiveConversation, messages, sendMessage, markAsRead, deleteMessage } = useMessages();
   const { user } = useAuth();
   const { athletes } = useAthletes();
   const [isOpen, setIsOpen] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeMessages = activeConversation
     ? messages.filter((m) => {
@@ -37,14 +42,131 @@ export const FloatingChatWidget: React.FC = () => {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !activeConversation) return;
+    if (!inputText.trim() || !activeConversation || isSending) return;
 
-    const content = inputText;
+    const content = inputText.trim();
     setInputText('');
-    await sendMessage(activeConversation.athlete_id, content);
+    setIsSending(true);
+    try {
+      await sendMessage(activeConversation.athlete_id, content);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeConversation || isSending) return;
+
+    setIsSending(true);
+    try {
+      const uploadedUrl = await uploadChatAttachment(file);
+      const isImg = file.type.startsWith('image/');
+      const isVid = file.type.startsWith('video/');
+      const mediaTag = isImg
+        ? `📷 [Immagine] ${uploadedUrl}`
+        : isVid
+        ? `🎥 [Video] ${uploadedUrl}`
+        : `📎 [File] ${file.name}\n${uploadedUrl}`;
+
+      await sendMessage(activeConversation.athlete_id, mediaTag);
+    } catch (err) {
+      console.error('Error sending file from FloatingChatWidget:', err);
+    } finally {
+      setIsSending(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const totalUnread = conversations.reduce((acc, curr) => acc + curr.unread_count, 0);
+
+  const formatSummary = (content?: string | null) => {
+    if (!content) return 'Nessun messaggio';
+    if (content.includes('📷 [Immagine] ')) return '📷 Foto allegata';
+    if (content.includes('🎥 [Video] ')) return '🎥 Video allegato';
+    if (content.includes('📎 [File] ')) return '📎 Documento allegato';
+    if (content.includes('🎵 [Nota Vocale] ')) return '🎵 Nota vocale';
+    return content;
+  };
+
+  const renderWidgetContent = (content?: string | null, isMe?: boolean) => {
+    if (!content) return null;
+    const str = String(content);
+
+    if (str.includes('📷 [Immagine] ')) {
+      const parts = str.split('📷 [Immagine] ');
+      const text = parts[0]?.trim();
+      const imageUrl = parts[1]?.trim();
+      return (
+        <div className="space-y-1.5">
+          {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
+          {imageUrl && (
+            <div className="rounded-xl overflow-hidden mt-1 border border-black/10 max-w-[220px]">
+              <img
+                src={imageUrl}
+                alt="Foto"
+                onClick={() => setLightboxImage(imageUrl)}
+                className="w-full h-auto object-cover max-h-48 rounded-lg cursor-pointer hover:opacity-90"
+              />
+              <button
+                type="button"
+                onClick={() => setLightboxImage(imageUrl)}
+                className={`text-[10px] font-bold flex items-center gap-1 mt-1 hover:underline cursor-pointer ${isMe ? 'text-black' : 'text-amber-400'}`}
+              >
+                <ZoomIn className="w-3 h-3" /> Ingrandisci Foto
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (str.includes('🎥 [Video] ')) {
+      const parts = str.split('🎥 [Video] ');
+      const text = parts[0]?.trim();
+      const videoUrl = parts[1]?.trim();
+      return (
+        <div className="space-y-1.5">
+          {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
+          {videoUrl && (
+            <div className="rounded-xl overflow-hidden mt-1 border border-black/10 max-w-[220px]">
+              <video src={videoUrl} controls className="w-full h-auto max-h-48 rounded-lg" />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (str.includes('📎 [File] ')) {
+      const parts = str.split('📎 [File] ');
+      const text = parts[0]?.trim();
+      const raw = parts[1]?.trim() || '';
+      const [fName, ...fParts] = raw.split('\n');
+      const fUrl = fParts.join('\n').trim();
+
+      return (
+        <div className="space-y-1.5">
+          {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
+          <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-700 max-w-[220px]">
+            <p className="text-xs font-bold truncate text-white">{fName || 'File Allegato'}</p>
+            {fUrl && (
+              <a
+                href={fUrl}
+                download={fName || 'allegato'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`text-[10px] font-bold underline mt-1 inline-block ${isMe ? 'text-black' : 'text-amber-400'}`}
+              >
+                ⬇️ Apri / Scarica
+              </a>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return <p className="whitespace-pre-wrap break-words">{str}</p>;
+  };
 
   return (
     <>
@@ -52,7 +174,7 @@ export const FloatingChatWidget: React.FC = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-[var(--color-primary)] text-black flex items-center justify-center shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:scale-105 transition-all z-50 group"
+          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-[var(--color-primary)] text-black flex items-center justify-center shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:scale-105 transition-all z-50 group cursor-pointer"
         >
           <MessageSquare className="w-6 h-6" />
           {totalUnread > 0 && (
@@ -73,7 +195,7 @@ export const FloatingChatWidget: React.FC = () => {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setActiveConversation(null)}
-                  className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                  className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
@@ -96,36 +218,19 @@ export const FloatingChatWidget: React.FC = () => {
               </div>
             )}
 
-            <div className="flex items-center gap-1">
-              {activeConversation && (
-                <button
-                  onClick={async () => {
-                    if (confirm(`Eliminare tutta la conversazione con ${activeConversation.athlete_name}?`)) {
-                      await deleteConversation(activeConversation.athlete_id);
-                      setActiveConversation(null);
-                    }
-                  }}
-                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
-                  title="Elimina conversazione"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  setActiveConversation(null);
-                }}
-                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                setActiveConversation(null);
+              }}
+              className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          {/* BODY */}
-          <div className="flex-1 overflow-y-auto bg-slate-950/50 p-4 custom-scrollbar flex flex-col relative">
+          {/* MESSAGES / CONVERSATIONS BODY */}
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
             {!activeConversation ? (
               /* LISTA CONVERSAZIONI */
               <div className="space-y-2">
@@ -154,7 +259,7 @@ export const FloatingChatWidget: React.FC = () => {
                             {conv.athlete_name}
                           </h4>
                           <p className={`text-xs truncate ${conv.unread_count > 0 ? 'text-white font-medium' : 'text-slate-400'}`}>
-                            {conv.last_message?.content || 'Nessun messaggio'}
+                            {formatSummary(conv.last_message?.content)}
                           </p>
                         </div>
                       </div>
@@ -181,7 +286,7 @@ export const FloatingChatWidget: React.FC = () => {
                           {isMe && (
                             <button
                               onClick={() => deleteMessage(msg.id)}
-                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-all"
+                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-all cursor-pointer"
                               title="Elimina messaggio"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -190,16 +295,16 @@ export const FloatingChatWidget: React.FC = () => {
                           <div
                             className={`rounded-2xl px-4 py-2.5 text-sm flex-1 ${
                               isMe
-                                ? 'bg-[var(--color-primary)] text-black rounded-tr-sm'
+                                ? 'bg-[var(--color-primary)] text-black rounded-tr-sm font-semibold'
                                 : 'bg-[var(--color-panel)] border border-[var(--color-panel-border)] text-slate-200 rounded-tl-sm'
                             }`}
                           >
-                            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                            {renderWidgetContent(msg.content, isMe)}
                           </div>
                           {!isMe && (
                             <button
                               onClick={() => deleteMessage(msg.id)}
-                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-all"
+                              className="opacity-0 group-hover/msg:opacity-100 p-1 text-slate-500 hover:text-red-400 hover:bg-slate-800 rounded transition-all cursor-pointer"
                               title="Elimina messaggio"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -223,22 +328,74 @@ export const FloatingChatWidget: React.FC = () => {
             <div className="p-3 border-t border-[var(--color-panel-border)] bg-[var(--color-panel)] shrink-0">
               <form onSubmit={handleSend} className="flex items-center gap-2">
                 <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="*/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                  title="Allega foto o file"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </button>
+
+                <input
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Scrivi un messaggio..."
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)] transition-colors"
                 />
                 <button
                   type="submit"
-                  disabled={!inputText.trim()}
-                  className="p-2 rounded-xl bg-[var(--color-primary)] text-black hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100"
+                  disabled={!inputText.trim() || isSending}
+                  className="p-2 rounded-xl bg-[var(--color-primary)] text-black hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100 cursor-pointer shrink-0"
                 >
-                  <Send className="w-5 h-5" />
+                  <Send className="w-4 h-4" />
                 </button>
               </form>
             </div>
           )}
+        </div>
+      )}
+
+      {/* MODAL LIGHTBOX IMMAGINE PER FLOATING WIDGET */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
+            <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
+              <a
+                href={lightboxImage}
+                download="foto_chat.jpg"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2.5 bg-slate-900/80 hover:bg-slate-800 text-white rounded-full transition-all border border-slate-700 shadow-lg"
+                title="Scarica immagine"
+              >
+                <Download className="w-5 h-5" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                className="p-2.5 bg-slate-900/80 hover:bg-slate-800 text-white rounded-full transition-all border border-slate-700 shadow-lg cursor-pointer"
+                title="Chiudi"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <img
+              src={lightboxImage}
+              alt="Foto ingrandita"
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-slate-800"
+            />
+          </div>
         </div>
       )}
     </>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Save, Trash2, GripVertical, Dumbbell, Calendar, Clock, Copy, Sliders, Repeat, Sparkles, ArrowLeft } from 'lucide-react';
+import { Plus, Save, Trash2, X, GripVertical, Sliders, Settings2, Clock, ArrowRight, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft } from 'lucide-react';
+import { generateAISmartSuggestions } from '../../lib/ai/workoutGenerator';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useExercises } from '../../context/ExercisesContext';
@@ -17,7 +18,7 @@ interface WorkoutBuilderModalProps {
 }
 
 export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId, initialWorkout, onClose, onBack }) => {
-  const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout, folders, forkWorkoutForAthlete, forkWorkoutForAllAssigned } = useWorkouts();
+  const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout, folders, forkWorkoutForAthlete, forkWorkoutForAllAssigned, forceSyncMasterTemplate } = useWorkouts();
   const { exercises: libraryExercises } = useExercises();
   const { athletes } = useAthletes();
   const { showSuccess, showError } = useToast();
@@ -39,6 +40,18 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const [isSaving, setIsSaving] = useState(false);
   const [isCoPilotOpen, setIsCoPilotOpen] = useState(false);
   const [showTemplateUpdatePrompt, setShowTemplateUpdatePrompt] = useState(false);
+  const [confirmGlobalOverwrite, setConfirmGlobalOverwrite] = useState(false);
+  
+  // Day Renaming State
+  const [isRenamingDay, setIsRenamingDay] = useState(false);
+  const [dayNameInput, setDayNameInput] = useState('');
+
+  const [isAiSuggestionsOpen, setIsAiSuggestionsOpen] = useState(false);
+  const [aiSuggestionsLoading, setAiSuggestionsLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<{ volume?: string; fatigue?: string; progression?: string } | null>(null);
+
+  // Box Motivazione IA
+  const [aiReasoning, setAiReasoning] = useState<string>('');
 
   useEffect(() => {
     if (initialWorkout) {
@@ -68,9 +81,9 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
   const estimatedTime = calculateEstimatedWorkoutTime(currentWeekDayExercises);
 
-  const handleAIGenerated = (aiExercises: AIWorkoutExercise[]) => {
+  const handleAIGenerated = (result: { exercises: AIWorkoutExercise[], reasoning: string }) => {
     // Normalizzazione pulita dei nomi del giorno (es. da "Giorno A - Push" a "Giorno A")
-    const mapped = aiExercises.map(ex => {
+    const mapped = result.exercises.map(ex => {
       let cleanDay = (ex.day_name || 'Giorno A').trim();
       const match = cleanDay.match(/(Giorno\s+[A-Z0-9]+)/i);
       if (match) {
@@ -100,6 +113,9 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     }
     setActiveWeek(1);
     setExpandedExerciseIndex(null); // Chiudi espansioni per vista pulita
+    if (result.reasoning) {
+      setAiReasoning(result.reasoning);
+    }
   };
 
   const addExercise = () => {
@@ -143,6 +159,37 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     if (!daysList.includes(newDayName)) {
       setDaysList([...daysList, newDayName]);
       setActiveDay(newDayName);
+    }
+  };
+
+  const renameActiveDay = (newName: string) => {
+    if (!newName.trim() || newName === activeDay || daysList.includes(newName)) {
+      setIsRenamingDay(false);
+      return;
+    }
+    setDaysList(prev => prev.map(d => d === activeDay ? newName : d));
+    setExercises(prev => prev.map(ex => 
+      (ex.day_name || 'Giorno A') === activeDay ? { ...ex, day_name: newName } : ex
+    ));
+    setActiveDay(newName);
+    setIsRenamingDay(false);
+  };
+
+  const fetchAiSuggestions = async () => {
+    if (currentWeekDayExercises.length === 0) {
+      showError("Aggiungi qualche esercizio al giorno corrente prima di chiedere all'IA.");
+      return;
+    }
+    setAiSuggestionsLoading(true);
+    setIsAiSuggestionsOpen(true);
+    try {
+      const result = await generateAISmartSuggestions(currentWeekDayExercises);
+      setAiSuggestions(result);
+    } catch (err: any) {
+      showError(err.message);
+      setIsAiSuggestionsOpen(false);
+    } finally {
+      setAiSuggestionsLoading(false);
     }
   };
 
@@ -216,7 +263,13 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
             validExercises
           );
           if (!success) throw new Error(error);
-          showSuccess(globalUpdateMode === 'NEW_ONLY' ? 'Template aggiornato (le vecchie assegnazioni sono state congelate).' : 'Scheda aggiornata con successo!');
+
+          if (globalUpdateMode === 'ALL') {
+            const syncResult = await forceSyncMasterTemplate(initialWorkout.id);
+            if (!syncResult.success) throw new Error(syncResult.error);
+          }
+          
+          showSuccess(globalUpdateMode === 'NEW_ONLY' ? 'Template aggiornato (le vecchie assegnazioni sono state congelate).' : 'Scheda e assegnazioni aggiornate con successo!');
         }
       } else {
         // Creazione nuova scheda
@@ -242,6 +295,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     } finally {
       setIsSaving(false);
       setShowTemplateUpdatePrompt(false);
+      setConfirmGlobalOverwrite(false);
     }
   };
 
@@ -400,9 +454,9 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
               <button
                 onClick={addWeek}
-                className="px-3 py-2 bg-slate-800/60 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors border border-dashed border-slate-700"
+                className="px-2 py-1.5 bg-slate-800/60 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors border border-dashed border-slate-700 shrink-0"
               >
-                <Plus className="w-3.5 h-3.5" /> Settimana
+                <Plus className="w-3 h-3" /> Settimana
               </button>
             </div>
           </div>
@@ -418,7 +472,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
                   <button
                     key={dName}
                     onClick={() => setActiveDay(dName)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${isCurrentDay ? 'bg-slate-700 text-white border border-slate-600' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                    className={`px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-between min-w-[110px] shrink-0 ${isCurrentDay ? 'bg-slate-700 text-white border border-[var(--color-primary)]' : 'bg-slate-800/40 text-slate-400 border border-transparent hover:bg-slate-800'}`}
                   >
                     <span>{dName}</span>
                     <span className="text-[10px] opacity-60">({exCountDay})</span>
@@ -428,9 +482,9 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
               <button
                 onClick={addDay}
-                className="px-2.5 py-1.5 text-xs font-bold text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 rounded-lg transition-colors flex items-center gap-1"
+                className="px-2 py-1 text-[11px] font-bold text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 rounded-md transition-colors flex items-center gap-1 shrink-0"
               >
-                <Plus className="w-3.5 h-3.5" /> Giorno
+                <Plus className="w-3 h-3" /> Giorno
               </button>
             </div>
           </div>
@@ -439,9 +493,32 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-3">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <span>{activeDay}</span>
-                  <span className="text-xs font-normal text-slate-400">(Settimana {activeWeek})</span>
+                <h3 className="text-base font-bold text-white flex items-center gap-2 group cursor-pointer" onClick={() => {
+                  if (!isRenamingDay) {
+                    setDayNameInput(activeDay);
+                    setIsRenamingDay(true);
+                  }
+                }}>
+                  {isRenamingDay ? (
+                    <input 
+                      type="text" 
+                      value={dayNameInput}
+                      onChange={e => setDayNameInput(e.target.value)}
+                      onBlur={() => renameActiveDay(dayNameInput)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') renameActiveDay(dayNameInput);
+                        if (e.key === 'Escape') setIsRenamingDay(false);
+                      }}
+                      autoFocus
+                      className="bg-slate-800 text-white px-2 py-1 rounded border border-[var(--color-primary)] outline-none text-base font-bold w-48"
+                    />
+                  ) : (
+                    <>
+                      <span>{activeDay}</span>
+                      <Pencil className="w-3.5 h-3.5 text-slate-500 opacity-0 group-hover:opacity-100 hover:text-[var(--color-primary)] transition-all" />
+                    </>
+                  )}
+                  <span className="text-xs font-normal text-slate-400 ml-1">(Settimana {activeWeek})</span>
                 </h3>
 
                 {/* Badge Durata Stimata */}
@@ -452,14 +529,70 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
                   </div>
                 )}
               </div>
-              <button 
-                onClick={addExercise}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] rounded-lg transition-colors shadow-md"
-              >
-                <Plus className="w-4 h-4" />
-                Aggiungi Esercizio
-              </button>
+              <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                <button 
+                  onClick={fetchAiSuggestions}
+                  disabled={aiSuggestionsLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500/20 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                >
+                  {aiSuggestionsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {aiSuggestionsLoading ? 'Analisi...' : 'Consigli IA'}
+                </button>
+                <button 
+                  onClick={addExercise}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] rounded-lg transition-colors shadow-md shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  Aggiungi Esercizio
+                </button>
+              </div>
             </div>
+
+            {isAiSuggestionsOpen && (
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 relative shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+                <button onClick={() => setIsAiSuggestionsOpen(false)} className="absolute top-3 right-3 text-slate-400 hover:text-amber-500 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+                <h4 className="text-amber-500 font-bold text-sm flex items-center gap-2 mb-3">
+                  <Sparkles className="w-4 h-4" /> Consigli Co-Pilot
+                </h4>
+                {aiSuggestionsLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
+                  </div>
+                ) : aiSuggestions ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-slate-900/50 p-3 rounded-lg border border-amber-500/10">
+                      <div className="text-[10px] uppercase font-bold text-amber-500/80 mb-1 flex items-center gap-1"><Settings2 className="w-3 h-3"/> Volume & Bilanciamento</div>
+                      <p className="text-xs text-slate-300 leading-relaxed">{aiSuggestions.volume}</p>
+                    </div>
+                    <div className="bg-slate-900/50 p-3 rounded-lg border border-amber-500/10">
+                      <div className="text-[10px] uppercase font-bold text-amber-500/80 mb-1 flex items-center gap-1"><Info className="w-3 h-3"/> Affaticamento</div>
+                      <p className="text-xs text-slate-300 leading-relaxed">{aiSuggestions.fatigue}</p>
+                    </div>
+                    <div className="bg-slate-900/50 p-3 rounded-lg border border-amber-500/10">
+                      <div className="text-[10px] uppercase font-bold text-amber-500/80 mb-1 flex items-center gap-1"><ArrowRight className="w-3 h-3"/> Progressione</div>
+                      <p className="text-xs text-slate-300 leading-relaxed">{aiSuggestions.progression}</p>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {aiReasoning && (
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-4 relative shadow-sm flex gap-3 animate-in fade-in">
+                <button onClick={() => setAiReasoning('')} className="absolute top-2 right-2 text-slate-400 hover:text-blue-400 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+                <div className="shrink-0 mt-0.5">
+                  <Sparkles className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h4 className="text-blue-400 font-bold text-sm mb-1">Motivazione IA</h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">{aiReasoning}</p>
+                </div>
+              </div>
+            )}
 
             {currentWeekDayExercises.length === 0 ? (
               <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-xl p-8 text-center">
@@ -487,8 +620,8 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
                     >
                       {/* Standard Header Row */}
                       <div className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-800/40">
-                        <div className="flex items-center gap-3 flex-1 w-full">
-                          <div className="cursor-move text-slate-600 hidden sm:block">
+                        <div className="flex items-center gap-2 flex-1 w-full">
+                          <div className="cursor-move text-slate-500 hover:text-white p-1.5 hover:bg-slate-700/50 rounded-lg transition-colors hidden sm:flex items-center justify-center shrink-0">
                             <GripVertical className="w-4 h-4" />
                           </div>
                           
@@ -513,7 +646,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
                         </div>
 
                         {/* Parametri di base in riga */}
-                        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                        <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
                           {/* Toggle Tipo Lavoro: Reps vs Tempo */}
                           <button
                             type="button"
@@ -671,12 +804,14 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
         {/* Footer */}
         <div className="p-4 border-t border-[var(--color-panel-border)] bg-slate-900/50 flex justify-end gap-3 rounded-b-2xl">
           <button 
+            type="button"
             onClick={onClose}
             className="px-5 py-2.5 text-sm font-bold text-slate-300 hover:text-white transition-colors"
           >
             Annulla
           </button>
           <button 
+            type="button"
             onClick={() => handleSave()}
             disabled={isSaving || exercises.length === 0}
             className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-50"
@@ -711,39 +846,78 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       {showTemplateUpdatePrompt && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-2xl space-y-5 relative">
-            <h3 className="text-lg font-black text-white text-center">Aggiornamento Template Globale</h3>
-            <p className="text-sm text-slate-300 text-center">
-              Stai modificando un Template condiviso. Come vuoi applicare questi cambiamenti?
-            </p>
-            
-            <div className="space-y-3">
-              <button
-                onClick={() => handleSave('ALL')}
-                disabled={isSaving}
-                className="w-full p-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition-colors"
-              >
-                <div className="font-bold text-white mb-1">Applica a tutti gli atleti attuali</div>
-                <div className="text-xs text-slate-400">La modifica influenzerà le schede in corso di tutti gli atleti collegati.</div>
-              </button>
-              <button
-                onClick={() => handleSave('NEW_ONLY')}
-                disabled={isSaving}
-                className="w-full p-4 rounded-xl bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 text-left transition-colors"
-              >
-                <div className="font-bold text-[var(--color-primary)] mb-1">Solo alle nuove assegnazioni</div>
-                <div className="text-xs text-[var(--color-primary)]/70">Gli atleti attuali manterranno la versione precedente della scheda.</div>
-              </button>
-            </div>
+            {!confirmGlobalOverwrite ? (
+              <>
+                <h3 className="text-lg font-black text-white text-center">Aggiornamento Template Globale</h3>
+                <p className="text-sm text-slate-300 text-center">
+                  Stai modificando un Template condiviso. Come vuoi applicare questi cambiamenti?
+                </p>
+                
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmGlobalOverwrite(true)}
+                    disabled={isSaving}
+                    className="w-full p-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left transition-colors"
+                  >
+                    <div className="font-bold text-white mb-1">Applica a tutti gli atleti attuali</div>
+                    <div className="text-xs text-slate-400">La modifica influenzerà le schede in corso di tutti gli atleti collegati.</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSave('NEW_ONLY')}
+                    disabled={isSaving}
+                    className="w-full p-4 rounded-xl bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 text-left transition-colors"
+                  >
+                    <div className="font-bold text-[var(--color-primary)] mb-1">Solo alle nuove assegnazioni</div>
+                    <div className="text-xs text-[var(--color-primary)]/70">Gli atleti attuali manterranno la versione precedente della scheda.</div>
+                  </button>
+                </div>
 
-            <div className="flex justify-center mt-2">
-              <button
-                onClick={() => setShowTemplateUpdatePrompt(false)}
-                disabled={isSaving}
-                className="text-xs text-slate-500 hover:text-white font-bold"
-              >
-                Annulla
-              </button>
-            </div>
+                <div className="flex justify-center mt-2">
+                  <button
+                    onClick={() => {
+                      setShowTemplateUpdatePrompt(false);
+                      setConfirmGlobalOverwrite(false);
+                    }}
+                    disabled={isSaving}
+                    className="text-xs text-slate-500 hover:text-white font-bold"
+                  >
+                    Annulla
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className="text-center">
+                  <span className="text-4xl mb-3 block">⚠️</span>
+                  <h3 className="text-lg font-black text-white">Sei sicuro?</h3>
+                </div>
+                <p className="text-sm text-slate-300 text-center bg-red-500/10 border border-red-500/20 p-4 rounded-xl">
+                  <strong>Attenzione:</strong> applicando le modifiche a tutti gli atleti, sovrascriverai anche le schede contrassegnate come 'Personalizzate'. Vuoi procedere?
+                </p>
+                
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmGlobalOverwrite(false)}
+                    disabled={isSaving}
+                    className="flex-1 p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSave('ALL')}
+                    disabled={isSaving}
+                    className="flex-1 p-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isSaving && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    Conferma e Sovrascrivi Tutto
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -88,6 +88,8 @@ export interface GenerateWorkoutParams {
   experienceLevel?: string;
   sessionDurationMinutes?: number;
   progressionStyle?: string;
+  chatContext?: string;
+  metricsContext?: { weight_kg?: number; body_fat_percentage?: number };
 }
 
 // Interfaccia usata internamente per la risposta AI (senza id generati)
@@ -147,7 +149,7 @@ export function setGeminiKey(key: string): void {
  * Parser JSON ultra-resiliente per risposte IA.
  * Gestisce troncamenti, a capo non protetti e formatta anche schede parziali se necessario.
  */
-export function safeParseWorkoutJSON(rawText: string): AIWorkoutExercise[] {
+export function safeParseWorkoutJSON(rawText: string): { exercises: AIWorkoutExercise[], reasoning: string } {
   let cleaned = rawText.trim();
 
   // 1. Rimuovi blocchi Markdown ```json ... ```
@@ -163,10 +165,13 @@ export function safeParseWorkoutJSON(rawText: string): AIWorkoutExercise[] {
   try {
     const parsed = JSON.parse(cleaned);
     if (parsed.exercises && Array.isArray(parsed.exercises)) {
-      return parsed.exercises;
+      return {
+        exercises: parsed.exercises,
+        reasoning: parsed.reasoning || "Ragionamento non fornito dall'IA."
+      };
     }
     if (Array.isArray(parsed)) {
-      return parsed;
+      return { exercises: parsed, reasoning: "Ragionamento non fornito dall'IA." };
     }
   } catch (err) {
     console.warn("JSON.parse diretto fallito, tentativo di ripristino stringa...", err);
@@ -191,7 +196,10 @@ export function safeParseWorkoutJSON(rawText: string): AIWorkoutExercise[] {
 
     const parsed = JSON.parse(sanitized);
     if (parsed.exercises && Array.isArray(parsed.exercises)) {
-      return parsed.exercises;
+      return {
+        exercises: parsed.exercises,
+        reasoning: parsed.reasoning || "Ragionamento non fornito dall'IA (recuperato tramite sanitizzazione)."
+      };
     }
   } catch (err) {
     console.warn("Ripristino parziale fallito, passaggio all'estrazione regex singoli oggetti...", err);
@@ -223,7 +231,7 @@ export function safeParseWorkoutJSON(rawText: string): AIWorkoutExercise[] {
       }
     }
     if (recoveredExercises.length > 0) {
-      return recoveredExercises;
+      return { exercises: recoveredExercises, reasoning: "Impossibile recuperare il ragionamento (Formato JSON compromesso)." };
     }
   }
 
@@ -469,7 +477,7 @@ export function expandMesocycleWeeks(
 export async function generateWorkoutWithAI(
   params: GenerateWorkoutParams,
   onProgress?: (msg: string) => void
-): Promise<AIWorkoutExercise[]> {
+): Promise<{ exercises: AIWorkoutExercise[], reasoning: string }> {
   const keysPool = getGeminiKeysPool();
   if (params.provider === 'openai' && !getOpenAIKey()) {
     throw new Error(`API Key OpenAI mancante. Inseriscila nelle impostazioni.`);
@@ -544,6 +552,12 @@ Struttura JSON richiesta per ogni esercizio (array di oggetti):
 - rir_target (stringa opzionale, es. "RIR 2" o "RIR 4 (Deload)")
 - tut (stringa opzionale, es. "3-1-1-0")
 - notes (stringa opzionale per l'atleta con cue biomeccanico pratico)
+
+La tua risposta deve essere un oggetto JSON strutturato così:
+{
+  "reasoning": "Breve frase motivazionale che spiega il razionale delle tue scelte (es. 'Ho impostato una progressione in RIR 2 ed evitato distensioni sopra la testa perché nei messaggi recenti hai segnalato fastidio alla spalla e nell'ultimo check il peso era in stallo.')",
+  "exercises": [ { l'array degli esercizi come definito sopra } ]
+}
 `;
 
   let athleteContext = '';
@@ -557,10 +571,18 @@ Dati Atleta Selezionato:
 - Note Mediche: ${params.athlete.medicalNotes || 'Nessuna'}
 - Note Interne Coach: ${params.athlete.notes || 'Nessuna'}
 `;
+    if (params.metricsContext) {
+      athleteContext += `- Peso Attuale: ${params.metricsContext.weight_kg ? params.metricsContext.weight_kg + 'kg' : 'N/D'}\n`;
+      athleteContext += `- Massa Grassa (BF): ${params.metricsContext.body_fat_percentage ? params.metricsContext.body_fat_percentage + '%' : 'N/D'}\n`;
+    }
   }
 
   if (params.customAthleteContext?.trim()) {
     athleteContext += `\nContesto / Stile di Vita Aggiuntivo:\n${params.customAthleteContext.trim()}\n`;
+  }
+  
+  if (params.chatContext?.trim()) {
+    athleteContext += `\nSTORICO RECENTE CHAT CON IL COACH (FEEDBACK ATLETA):\n${params.chatContext.trim()}\n(Tieni conto di questi feedback recenti per adattare gli esercizi e motivare le tue scelte nel reasoning).\n`;
   }
 
   // ── SISTEMA ESPERTO: Matching cliente-esercizio con controindicazioni ──────────
@@ -614,6 +636,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
               schema: {
                 type: "object",
                 properties: {
+                  reasoning: { type: "string", description: "Breve frase motivazionale che spiega il razionale delle scelte." },
                   exercises: {
                     type: "array",
                     items: {
@@ -635,7 +658,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
                     }
                   }
                 },
-                required: ["exercises"],
+                required: ["reasoning", "exercises"],
                 additionalProperties: false
               }
             }
@@ -653,9 +676,10 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       
       if (!content) throw new Error("Risposta vuota dall'IA");
 
-      const parsed = safeParseWorkoutJSON(content);
-      const filled = fillMissingDaysAndExercises(parsed, params.daysPerWeek, params.coachExercises);
-      return expandMesocycleWeeks(filled, params.weeks);
+      const parsedObj = safeParseWorkoutJSON(content);
+      const filled = fillMissingDaysAndExercises(parsedObj.exercises, params.daysPerWeek, params.coachExercises);
+      const expanded = expandMesocycleWeeks(filled, params.weeks);
+      return { exercises: expanded, reasoning: parsedObj.reasoning };
 
     } else {
       if (onProgress) onProgress(`Generazione in corso con Gemini 3.6 Flash...`);
@@ -675,6 +699,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
               responseSchema: {
                 type: "object",
                 properties: {
+                  reasoning: { type: "string" },
                   exercises: {
                     type: "array",
                     items: {
@@ -695,7 +720,7 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
                     }
                   }
                 },
-                required: ["exercises"]
+                required: ["reasoning", "exercises"]
               }
             }
           })
@@ -712,12 +737,96 @@ Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
       let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) throw new Error("Risposta vuota dall'IA Gemini");
 
-      const parsed = safeParseWorkoutJSON(rawText);
-      const filled = fillMissingDaysAndExercises(parsed, params.daysPerWeek, params.coachExercises);
-      return expandMesocycleWeeks(filled, params.weeks);
+      const parsedObj = safeParseWorkoutJSON(rawText);
+      const filled = fillMissingDaysAndExercises(parsedObj.exercises, params.daysPerWeek, params.coachExercises);
+      const expanded = expandMesocycleWeeks(filled, params.weeks);
+      return { exercises: expanded, reasoning: parsedObj.reasoning };
     }
   } catch (error: any) {
     console.error("Errore AI Workout Generator:", error);
     throw new Error(error.message || "Errore sconosciuto durante la generazione della scheda.");
+  }
+}
+
+export interface AISmartSuggestions {
+  volume: string;
+  fatigue: string;
+  progression: string;
+}
+
+export async function generateAISmartSuggestions(exercises: any[]): Promise<AISmartSuggestions> {
+  const prompt = `
+Analizza la seguente sessione di allenamento di un singolo giorno e fornisci consigli pratici e stringati per il personal trainer.
+Esercizi nella sessione:
+${exercises.map(e => `- ${e.name} (${e.sets}x${e.reps_target}, Rec: ${e.rest_seconds}s)`).join('\n')}
+
+Restituisci un oggetto JSON con ESATTAMENTE queste chiavi:
+"volume": Breve commento sul bilanciamento muscolare (es. spinte vs tirate, enfasi su determinati distretti).
+"fatigue": Commento sulla sovrapposizione e rischio affaticamento (es. due esercizi pesanti di fila per lo stesso distretto o zona lombare).
+"progression": Suggerimento pratico su come progredire nelle settimane successive (es. scalare RIR, aumentare carico, ecc).
+
+Le risposte devono essere in italiano, professionali ma dirette (max 2-3 frasi per campo).
+Restituisci SOLO il JSON, nient'altro. Nessun blocco markdown. Esempio formato:
+{ "volume": "...", "fatigue": "...", "progression": "..." }
+  `;
+
+  try {
+    const response = await fetchGeminiWithMultiKeyPool(
+      ':generateContent',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.4,
+            maxOutputTokens: 2048,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "object",
+              properties: {
+                volume: { type: "string" },
+                fatigue: { type: "string" },
+                progression: { type: "string" }
+              },
+              required: ["volume", "fatigue", "progression"]
+            }
+          }
+        })
+      }
+    );
+
+    if (!response.ok) throw new Error("Errore durante la comunicazione con Gemini API");
+
+    const data = await response.json();
+    let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) throw new Error("Risposta vuota dall'IA Gemini");
+
+    let cleaned = rawText.trim().replace(/^```json/gi, '').replace(/^```/gi, '').replace(/```$/gi, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) cleaned = jsonMatch[0];
+
+    try {
+      const parsed = JSON.parse(cleaned);
+      return {
+        volume: parsed.volume || "Nessun dato sul volume.",
+        fatigue: parsed.fatigue || "Nessun dato sull'affaticamento.",
+        progression: parsed.progression || "Nessun dato sulla progressione."
+      };
+    } catch (parseError) {
+      console.warn("JSON Parse Fallback per i consigli IA:", parseError);
+      return {
+        volume: "Al momento non è possibile analizzare il volume. Riprova più tardi.",
+        fatigue: "Impossibile elaborare i dati di affaticamento in questo momento.",
+        progression: "Suggerimenti di progressione non disponibili."
+      };
+    }
+  } catch (error: any) {
+    console.error("Errore Smart Suggestions:", error);
+    return {
+      volume: "Si è verificato un errore di connessione. Riprova.",
+      fatigue: "Si è verificato un errore di connessione. Riprova.",
+      progression: "Si è verificato un errore di connessione. Riprova."
+    };
   }
 }

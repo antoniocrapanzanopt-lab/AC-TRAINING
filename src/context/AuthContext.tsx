@@ -24,6 +24,7 @@ interface AuthContextType {
   requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
   signUpAthlete: (email: string, password: string) => Promise<{ error: any }>;
   refreshAuthProfile: () => void;
+  markDisclaimerAsSeen: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -69,6 +70,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      const localSeen = localStorage.getItem(`builder_athlete_disclaimer_seen_${sessionUser.id}`) === 'true';
+      const metadataSeen = Boolean(sessionUser.user_metadata?.has_seen_disclaimer);
+
       const ownerProfile = getLocalOwnerProfile();
       const ownerEmail = ownerProfile?.email?.toLowerCase().trim();
       const currentEmail = email.toLowerCase().trim();
@@ -83,6 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: email,
           role: 'owner',
           canViewFinancials: true,
+          hasSeenDisclaimer: localSeen || metadataSeen,
         });
         setLoading(false);
         return;
@@ -107,6 +112,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: email,
           role: 'athlete',
           canViewFinancials: false,
+          hasSeenDisclaimer: localSeen || metadataSeen,
         });
       } else {
         // SICUREZZA: Utente autenticato ma NON riconosciuto come atleta e NON come coach.
@@ -130,6 +136,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const markDisclaimerAsSeen = useCallback(async () => {
+    if (!user) return;
+
+    // Aggiornamento immediato dello stato locale in React
+    setUser(prev => prev ? { ...prev, hasSeenDisclaimer: true } : null);
+
+    // 1. Salva in localStorage per rendering istantaneo privo di ritardi di rete
+    try {
+      localStorage.setItem(`builder_athlete_disclaimer_seen_${user.id}`, 'true');
+    } catch (e) {
+      console.warn('localStorage non disponibile:', e);
+    }
+
+    // 2. Salva nei metadata dell'utente Supabase Auth (persistente sul cloud)
+    try {
+      await supabase.auth.updateUser({
+        data: { has_seen_disclaimer: true },
+      });
+    } catch (e) {
+      console.warn('Errore aggiornamento metadata utente Supabase:', e);
+    }
+
+    // 3. Salva nella tabella del DB Supabase (athletes o profiles)
+    try {
+      if (user.role === 'athlete' && user.athleteId) {
+        await supabase.from('athletes').update({ has_seen_disclaimer: true } as any).eq('id', user.athleteId);
+      } else {
+        await supabase.from('profiles').update({ has_seen_disclaimer: true } as any).eq('id', user.id);
+      }
+    } catch (e) {
+      // Fallback grazioso se la colonna non è ancora stata creata sul DB via SQL
+    }
+  }, [user]);
 
   const refreshAuthProfile = useCallback(() => {
     // Legacy refresh, kept for compatibility
@@ -244,6 +284,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         requestPasswordReset,
         refreshAuthProfile,
+        markDisclaimerAsSeen,
       }}
     >
       {children}

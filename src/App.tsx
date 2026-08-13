@@ -24,11 +24,12 @@ import { AuthPage } from './pages/auth/AuthPage';
 import { InvitePage } from './pages/auth/InvitePage';
 import { MainLayout } from './MainLayout';
 import { AthleteLayout } from './pages/athlete/AthleteLayout';
+import { WelcomeDisclaimerModal } from './components/common/WelcomeDisclaimerModal';
 import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { isLoading } = useApp();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, markDisclaimerAsSeen } = useAuth();
 
   // 1. Schermata di caricamento iniziale senza lampi
   if (isLoading) {
@@ -56,12 +57,18 @@ const AppContent: React.FC = () => {
     return <AuthPage />;
   }
 
-  // 4. Se la sessione è attiva, mostra il layout principale
-  if (user?.role === 'athlete') {
-    return <AthleteLayout />;
-  }
+  const showDisclaimer = Boolean(isAuthenticated && user && !user.hasSeenDisclaimer);
 
-  return <MainLayout />;
+  // 4. Se la sessione è attiva, mostra il layout principale ed eventualmente la modale di benvenuto
+  return (
+    <>
+      {user?.role === 'athlete' ? <AthleteLayout /> : <MainLayout />}
+      <WelcomeDisclaimerModal
+        isOpen={showDisclaimer}
+        onConfirm={markDisclaimerAsSeen}
+      />
+    </>
+  );
 };
 
 import { ThemeProvider } from './context/ThemeContext';

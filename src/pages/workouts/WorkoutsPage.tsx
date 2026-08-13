@@ -39,6 +39,8 @@ export const WorkoutsPage: React.FC = () => {
       status: string;
       assignedDate: string;
       email: string;
+      isCustomized?: boolean;
+      customWorkout?: any; // any o WorkoutTemplate se importato correttamente
     }[];
   } | null>(null);
   const [editingAthleteWorkout, setEditingAthleteWorkout] = useState<{ athleteId: string, workout: WorkoutTemplate } | null>(null);
@@ -293,7 +295,7 @@ export const WorkoutsPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {currentTemplates.map(template => {
                 const parentFolder = folders.find(f => f.id === template.folder_id);
-                const activeAssignments = allAssignedWorkouts.filter(a => a.workout_id === template.id && a.is_active);
+                const activeAssignments = allAssignedWorkouts.filter(a => (a.workout_id === template.id || a.workout?.parent_template_id === template.id) && a.is_active);
                 const assignedAthletes = activeAssignments.map(a => {
                   const ath = athletes.find(athlete => athlete.id === a.athlete_id);
                   const name = ath ? `${ath.firstName} ${ath.lastName}`.trim() : (a.athlete?.first_name ? `${a.athlete.first_name} ${a.athlete.last_name || ''}`.trim() : 'Atleta Sconosciuto');
@@ -304,6 +306,8 @@ export const WorkoutsPage: React.FC = () => {
                     status: ath?.status || a.athlete?.status || 'active',
                     assignedDate: a.assigned_date,
                     email: ath?.email || a.athlete?.email || '',
+                    isCustomized: a.workout?.parent_template_id === template.id,
+                    customWorkout: a.workout,
                   };
                 });
 
@@ -364,6 +368,7 @@ export const WorkoutsPage: React.FC = () => {
                               >
                                 <User className="w-3 h-3 text-amber-400" />
                                 {ath.name}
+                                {ath.isCustomized && <span className="text-[9px] bg-sky-500/10 text-sky-400 px-1 py-0.5 rounded ml-1">Pers.</span>}
                               </span>
                             ))}
                             {assignedAthletes.length > 2 && (
@@ -682,6 +687,7 @@ export const WorkoutsPage: React.FC = () => {
                     <div>
                       <h4 className="text-sm font-bold text-white flex items-center gap-2">
                         {ath.name}
+                        {ath.isCustomized && <span className="text-[10px] bg-fuchsia-500/10 text-fuchsia-400 px-2 py-0.5 rounded font-bold border border-fuchsia-500/20">Personalizzata</span>}
                         {ath.status === 'active' && <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold border border-emerald-500/20">Attivo</span>}
                         {ath.status === 'trial' && <span className="text-[10px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded font-bold border border-sky-500/20">In prova</span>}
                       </h4>
@@ -708,7 +714,7 @@ export const WorkoutsPage: React.FC = () => {
                       onClick={() => {
                         setEditingAthleteWorkout({ 
                           athleteId: ath.athleteId, 
-                          workout: viewingAssignedWorkout.template 
+                          workout: ath.isCustomized ? ath.customWorkout : viewingAssignedWorkout.template 
                         });
                       }}
                       className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold rounded-lg border border-amber-500/20 transition-colors flex items-center gap-1.5"
@@ -720,7 +726,7 @@ export const WorkoutsPage: React.FC = () => {
                     <button
                       onClick={async () => {
                         if (confirm(`Vuoi rimuovere il programma "${viewingAssignedWorkout.template.title}" da ${ath.name}?`)) {
-                          const res = await unassignWorkoutFromAthlete(ath.athleteId, viewingAssignedWorkout.template.id);
+                          const res = await unassignWorkoutFromAthlete(ath.athleteId, ath.isCustomized ? ath.customWorkout.id : viewingAssignedWorkout.template.id);
                           if (res.success) {
                             showSuccess(`Scheda rimossa da ${ath.name}`);
                             const updated = viewingAssignedWorkout.assignedAthletes.filter(a => a.assignmentId !== ath.assignmentId);

@@ -12,6 +12,7 @@ interface MessagesContextType {
   sendMessage: (receiverId: string, content: string) => Promise<void>;
   markAsRead: (senderId: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<{ success: boolean; error?: string }>;
+  editMessage: (messageId: string, newContent: string) => Promise<{ success: boolean; error?: string }>;
   deleteConversation: (athleteId: string) => Promise<{ success: boolean; error?: string }>;
   loading: boolean;
 }
@@ -371,6 +372,32 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
+  const editMessage = useCallback(async (messageId: string, newContent: string) => {
+    setMessages((prev) =>
+      prev.map((msg) => (msg.id === messageId ? { ...msg, content: newContent } : msg))
+    );
+
+    if (messageId.startsWith('temp-')) {
+      return { success: true };
+    }
+
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .update({ content: newContent })
+        .eq('id', messageId);
+
+      if (error) {
+        console.error('Error editing message:', error);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.error('Edit message error:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
+
   const deleteConversation = useCallback(async (athleteId: string) => {
     if (!user) return { success: false, error: 'User not authenticated' };
 
@@ -424,6 +451,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         sendMessage,
         markAsRead,
         deleteMessage,
+        editMessage,
         deleteConversation,
         loading,
       }}
