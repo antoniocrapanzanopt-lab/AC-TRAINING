@@ -72,7 +72,7 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
       <h3 className="text-xl font-bold text-white mb-4">Scansiona il QR Code</h3>
       
       <div className="bg-white p-4 rounded-xl mb-4">
-        <QRCodeSVG value={setupData.totp.qr_code} size={200} />
+        <QRCodeSVG value={setupData.totp.uri} size={200} />
       </div>
       
       <p className="text-slate-400 text-sm mb-1 text-center">Non riesci a scansionarlo? Usa questa chiave segreta:</p>
