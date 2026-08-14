@@ -1,3 +1,4 @@
+import { User } from '@supabase/supabase-js';
 import { MFAState, UserRole } from '../types';
 
 export type AuthScreenState = 'LOADING' | 'LOGIN' | 'SETUP_REQUIRED' | 'CHALLENGE_REQUIRED' | 'ALLOWED';
@@ -7,7 +8,7 @@ export type AuthScreenState = 'LOADING' | 'LOGIN' | 'SETUP_REQUIRED' | 'CHALLENG
  * Handles race conditions, loading states, and factor checks.
  */
 export const resolveMFAAccessState = (
-  sessionUser: any,
+  sessionUser: User | null | undefined,
   mfaState: MFAState,
   role: UserRole
 ): AuthScreenState => {

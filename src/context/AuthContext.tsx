@@ -1,15 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { User, AuthError } from '@supabase/supabase-js';
 import { UserProfile, Organization, OrganizationMember, UserRole } from '../types';
 import { getLocalOwnerProfile } from '../lib/ownerProfile';
 import { getStorageItem, setStorageItem } from '../lib/storage';
 import { hasPermission } from '../lib/permissionsMatrix';
 import { supabase } from '../lib/supabase';
+import { useMFA } from '../hooks/useMFA';
+import { resolveMFAAccessState, AuthScreenState } from '../lib/mfaEngine';
 
 export interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
   authScreenState: AuthScreenState;
-  mfa: any; // ReturnType<typeof useMFA>
+  mfa: ReturnType<typeof useMFA>;
   canViewFinancials: boolean;
   currentOrganization: Organization;
   members: OrganizationMember[];
@@ -21,19 +24,15 @@ export interface AuthContextType {
   toggleMemberStatus: (memberId: string) => void;
   transferOwnership: (newOwnerMemberId: string) => boolean;
   loginAsOwner: () => void;
-  loginWithCredentials: (email: string, password?: string) => Promise<{ error: Error | null }>;
+  loginWithCredentials: (email: string, password?: string) => Promise<{ error: Error | AuthError | null }>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
-  signUpAthlete: (email: string, password: string) => Promise<{ error: any }>;
-  refreshAuthProfile: () => void;
+  signUpAthlete: (email: string, password: string) => Promise<{ error: Error | AuthError | null }>;
+  refreshAuthProfile: () => Promise<void>;
   markDisclaimerAsSeen: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-import { useMFA } from '../hooks/useMFA';
-
-import { resolveMFAAccessState, AuthScreenState } from '../lib/mfaEngine';
 
 const getDefaultMembers = (_orgId: string): OrganizationMember[] => {
   return [];
@@ -41,7 +40,7 @@ const getDefaultMembers = (_orgId: string): OrganizationMember[] => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
   const mfa = useMFA();
   const [loading, setLoading] = useState(true);
   const [ownerProfile] = useState(() => getLocalOwnerProfile());
@@ -63,89 +62,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStorageItem('builder_athlete_members', updated);
   }, []);
 
-  useEffect(() => {
-    const checkUserRoleAndSet = async (sessionUserArg: any) => {
-      if (!sessionUserArg) {
-        setUser(null);
-        setSessionUser(null);
-        setLoading(false);
-        return;
-      }
-      setSessionUser(sessionUserArg);
-      
-      const email = sessionUserArg.email;
-      if (!email) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-
-      const localSeen = localStorage.getItem(`builder_athlete_disclaimer_seen_${sessionUserArg.id}`) === 'true';
-      const metadataSeen = Boolean(sessionUserArg.user_metadata?.has_seen_disclaimer);
-
-      const ownerProfile = getLocalOwnerProfile();
-      const ownerEmail = ownerProfile?.email?.toLowerCase().trim();
-      const currentEmail = email.toLowerCase().trim();
-
-      // Se l'email è quella del proprietario/coach, assegna SEMPRE il ruolo 'owner' (Dashboard Coach)
-      const isOwnerEmail = currentEmail === 'antonio.crapanzanopt@gmail.com' || (ownerEmail && currentEmail === ownerEmail);
-
-      if (isOwnerEmail) {
-        setUser({
-          id: sessionUserArg.id,
-          name: ownerProfile?.fullName || sessionUserArg.user_metadata?.full_name || email.split('@')[0] || 'Coach',
-          email: email,
-          role: 'owner',
-          canViewFinancials: true,
-          hasSeenDisclaimer: localSeen || metadataSeen,
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Check if the user is an athlete
-      await supabase.rpc('link_athlete_account');
-
-      const { data: athleteData } = await supabase
-        .from('athletes')
-        .select('id, first_name, last_name, auth_user_id')
-        .ilike('email', email.trim())
-        .maybeSingle();
-
-      if (athleteData) {
-        setUser({
-          id: sessionUserArg.id,
-          athleteId: athleteData.id,
-          name: `${athleteData.first_name} ${athleteData.last_name}`,
-          email: email,
-          role: 'athlete',
-          canViewFinancials: false,
-          hasSeenDisclaimer: localSeen || metadataSeen,
-        });
-      } else {
-        console.warn('Security: utente non autorizzato, logout forzato.', email);
-        await supabase.auth.signOut();
-        setUser(null);
-        setSessionUser(null);
-      }
+  const checkUserRoleAndSet = useCallback(async (sessionUserArg: User | null | undefined) => {
+    if (!sessionUserArg) {
+      setUser(null);
+      setSessionUser(null);
       setLoading(false);
-    };
+      return;
+    }
+    setSessionUser(sessionUserArg);
+    
+    const email = sessionUserArg.email;
+    if (!email) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
 
+    const localSeen = localStorage.getItem(`builder_athlete_disclaimer_seen_${sessionUserArg.id}`) === 'true';
+    const metadataSeen = Boolean(sessionUserArg.user_metadata?.has_seen_disclaimer);
+
+    const owner = getLocalOwnerProfile();
+    const ownerEmail = owner?.email?.toLowerCase().trim();
+    const currentEmail = email.toLowerCase().trim();
+
+    // Se l'email è quella del proprietario/coach, assegna SEMPRE il ruolo 'owner' (Dashboard Coach)
+    const isOwnerEmail = currentEmail === 'antonio.crapanzanopt@gmail.com' || (ownerEmail && currentEmail === ownerEmail);
+
+    if (isOwnerEmail) {
+      setUser({
+        id: sessionUserArg.id,
+        name: owner?.fullName || sessionUserArg.user_metadata?.full_name || email.split('@')[0] || 'Coach',
+        email: email,
+        role: 'owner',
+        canViewFinancials: true,
+        hasSeenDisclaimer: localSeen || metadataSeen,
+      });
+      setLoading(false);
+      return;
+    }
+
+    // Check if the user is an athlete
+    await supabase.rpc('link_athlete_account');
+
+    const { data: athleteData } = await supabase
+      .from('athletes')
+      .select('id, first_name, last_name, auth_user_id')
+      .ilike('email', email.trim())
+      .maybeSingle();
+
+    if (athleteData) {
+      setUser({
+        id: sessionUserArg.id,
+        athleteId: athleteData.id,
+        name: `${athleteData.first_name} ${athleteData.last_name}`,
+        email: email,
+        role: 'athlete',
+        canViewFinancials: false,
+        hasSeenDisclaimer: localSeen || metadataSeen,
+      });
+    } else {
+      console.warn('Security: utente non autorizzato, logout forzato.', email);
+      await supabase.auth.signOut();
+      setUser(null);
+      setSessionUser(null);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
     // 1. Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       checkUserRoleAndSet(session?.user);
     });
 
     // 2. Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      checkUserRoleAndSet(session?.user);
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        mfa.loadMFAStatus();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      await checkUserRoleAndSet(session?.user);
+      if (event !== 'SIGNED_OUT') {
+        await mfa.loadMFAStatus();
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [mfa.loadMFAStatus]);
+  }, [checkUserRoleAndSet, mfa.loadMFAStatus]);
 
   const markDisclaimerAsSeen = useCallback(async () => {
     if (!user) return;
@@ -172,18 +171,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 3. Salva nella tabella del DB Supabase (athletes o profiles)
     try {
       if (user.role === 'athlete' && user.athleteId) {
-        await supabase.from('athletes').update({ has_seen_disclaimer: true } as any).eq('id', user.athleteId);
+        await supabase.from('athletes').update({ has_seen_disclaimer: true } as Record<string, unknown>).eq('id', user.athleteId);
       } else {
-        await supabase.from('profiles').update({ has_seen_disclaimer: true } as any).eq('id', user.id);
+        await supabase.from('profiles').update({ has_seen_disclaimer: true } as Record<string, unknown>).eq('id', user.id);
       }
-    } catch (e) {
-      // Fallback grazioso se la colonna non è ancora stata creata sul DB via SQL
+    } catch {
+      // Fallback se la colonna non è ancora stata creata sul DB via SQL
     }
   }, [user]);
 
-  const refreshAuthProfile = useCallback(() => {
-    // Legacy refresh, kept for compatibility
-  }, []);
+  const refreshAuthProfile = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await checkUserRoleAndSet(session.user);
+      }
+      await mfa.loadMFAStatus();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore nel refresh del profilo auth';
+      console.error('Errore durante refreshAuthProfile:', msg);
+    }
+  }, [checkUserRoleAndSet, mfa.loadMFAStatus]);
 
   const switchSimulatedRole = useCallback((role: UserRole) => {
     setSimulatedRole(role);
@@ -211,7 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [members, persistMembers]);
 
   const toggleMemberStatus = useCallback((memberId: string) => {
-    const updated = members.map(m => m.id === memberId ? { ...m, status: (m.status === 'active' ? 'inactive' : 'active') as any } : m);
+    const updated = members.map(m => m.id === memberId ? { ...m, status: (m.status === 'active' ? 'inactive' : 'active') as 'active' | 'inactive' } : m);
     persistMembers(updated);
   }, [members, persistMembers]);
 
@@ -222,7 +230,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginAsOwner = () => {
     // Deprecated in real cloud version
   };
-
 
   const loginWithCredentials = async (email: string, password?: string) => {
     if (!password) return { error: new Error('Password obbligatoria') };

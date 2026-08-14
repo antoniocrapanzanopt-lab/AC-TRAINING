@@ -1,10 +1,11 @@
 import React from 'react';
-import { useMFA } from '../../hooks/useMFA';
+import { useAuth } from '../../context/AuthContext';
 import { Smartphone, Trash2, CheckCircle2 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
 export const MFAFactorsList: React.FC = () => {
-  const { factors, unenrollFactor, loading } = useMFA();
+  const { mfa } = useAuth();
+  const { factors, unenrollFactor, loading } = mfa;
   const { showSuccess, showError } = useToast();
 
   const handleUnenroll = async (factorId: string) => {

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { Factor } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { MFAState } from '../types';
 
@@ -13,7 +14,7 @@ export const useMFA = () => {
     isLoading: true,
     error: null
   });
-  const [factors, setFactors] = useState<any[]>([]);
+  const [factors, setFactors] = useState<Factor[]>([]);
 
   const loadMFAStatus = useCallback(async () => {
     try {
@@ -50,9 +51,10 @@ export const useMFA = () => {
         isLoading: false,
         error: null
       });
-    } catch (err: any) {
-      console.error('Error loading MFA:', err.message);
-      setMfaState(prev => ({ ...prev, isLoading: false, error: err.message }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore nel caricamento dello stato MFA';
+      console.error('Error loading MFA:', msg);
+      setMfaState(prev => ({ ...prev, isLoading: false, error: msg }));
     }
   }, []);
 
@@ -69,8 +71,9 @@ export const useMFA = () => {
         await supabase.auth.mfa.unenroll({ factorId: f.id });
       }
       return true;
-    } catch (err: any) {
-      console.warn('Error cleaning up unverified factors:', err?.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore sconosciuto';
+      console.warn('Error cleaning up unverified factors:', msg);
       return false;
     }
   }, []);
@@ -83,15 +86,16 @@ export const useMFA = () => {
       await cleanupUnverifiedFactors();
 
       // 2. Registrazione del nuovo fattore TOTP
-      const { data, error } = await supabase.auth.mfa.enroll({ 
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ 
         factorType: 'totp',
         issuer: 'Builder Athlete Manager'
       });
-      if (error) throw error;
+      if (enrollError) throw enrollError;
       return data;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore durante la registrazione MFA';
       console.error('Enroll error:', err);
-      setError(err.message || 'Errore durante la registrazione MFA');
+      setError(msg);
       return null;
     } finally {
       setLoading(false);
@@ -100,12 +104,13 @@ export const useMFA = () => {
 
   const challengeFactor = useCallback(async (factorId: string) => {
     try {
-      const { data, error } = await supabase.auth.mfa.challenge({ factorId });
-      if (error) throw error;
+      const { data, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
+      if (challengeError) throw challengeError;
       return data;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore durante la challenge MFA';
       console.error('Challenge error:', err);
-      setError(err.message);
+      setError(msg);
       return null;
     }
   }, []);
@@ -114,13 +119,24 @@ export const useMFA = () => {
     setLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.mfa.verify({ factorId, challengeId, code });
-      if (error) throw error;
+      const { error: verifyError } = await supabase.auth.mfa.verify({ factorId, challengeId, code });
+      if (verifyError) throw verifyError;
+      
+      // Assicura l'immediato passaggio ad aal2 nello stato React locale per sbloccare la navigazione
+      setMfaState(prev => ({
+        ...prev,
+        currentAAL: 'aal2',
+        hasVerifiedFactors: true,
+        isLoading: false,
+        error: null
+      }));
+
       await loadMFAStatus();
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Codice non valido o scaduto';
       console.error('Verify error:', err);
-      setError(err.message || 'Codice non valido o scaduto');
+      setError(msg);
       return false;
     } finally {
       setLoading(false);
@@ -130,12 +146,13 @@ export const useMFA = () => {
   const unenrollFactor = useCallback(async (factorId: string) => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.mfa.unenroll({ factorId });
-      if (error) throw error;
+      const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId });
+      if (unenrollError) throw unenrollError;
       await loadMFAStatus();
       return true;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore durante la rimozione del fattore MFA';
+      setError(msg);
       return false;
     } finally {
       setLoading(false);

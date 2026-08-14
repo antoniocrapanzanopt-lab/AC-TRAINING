@@ -23,7 +23,9 @@ export const RequireAAL2: React.FC<{ children: React.ReactNode }> = ({ children 
   if (authScreenState === 'CHALLENGE_REQUIRED') {
     return (
       <MFAChallengeScreen 
-        onSuccess={refreshAuthProfile} 
+        onSuccess={() => {
+          void refreshAuthProfile();
+        }} 
         onCancel={logout} 
       />
     );
@@ -39,7 +41,9 @@ export const RequireAAL2: React.FC<{ children: React.ReactNode }> = ({ children 
           </div>
           
           <MFASetup 
-            onComplete={refreshAuthProfile} 
+            onComplete={() => {
+              void refreshAuthProfile();
+            }} 
             onCancel={logout} 
           />
           

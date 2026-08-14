@@ -10,10 +10,10 @@ export const SecuritySettingsPage: React.FC = () => {
   const { mfaState } = mfa;
   const [showSetup, setShowSetup] = useState(false);
 
-  const handleSetupComplete = () => {
+  const handleSetupComplete = async () => {
     setShowSetup(false);
-    refreshAuthProfile();
-    mfa.loadMFAStatus();
+    await refreshAuthProfile();
+    await mfa.loadMFAStatus();
   };
 
   return (

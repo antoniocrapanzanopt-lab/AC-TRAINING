@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useMFA } from '../../hooks/useMFA';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { ShieldAlert, ArrowRight, Lock, Loader2 } from 'lucide-react';
 
 export const MFAChallengeScreen: React.FC<{ onSuccess: () => void; onCancel: () => void }> = ({ onSuccess, onCancel }) => {
-  const { challengeFactor, verifyFactor, getPrimaryFactor } = useMFA();
+  const { mfa, refreshAuthProfile } = useAuth();
+  const { challengeFactor, verifyFactor, getPrimaryFactor } = mfa;
   const { showError } = useToast();
   
   const [code, setCode] = useState('');
@@ -34,8 +35,11 @@ export const MFAChallengeScreen: React.FC<{ onSuccess: () => void; onCancel: () 
         } else if (isMounted) {
           setErrorMsg('Impossibile avviare la verifica MFA. Ricarica la pagina.');
         }
-      } catch (err: any) {
-        if (isMounted) setErrorMsg(err?.message || 'Errore durante la verifica');
+      } catch (err: unknown) {
+        if (isMounted) {
+          const msg = err instanceof Error ? err.message : 'Errore durante la verifica';
+          setErrorMsg(msg);
+        }
       } finally {
         if (isMounted) setIsInitializing(false);
       }
@@ -57,13 +61,15 @@ export const MFAChallengeScreen: React.FC<{ onSuccess: () => void; onCancel: () 
     try {
       const success = await verifyFactor(factorId, challengeId, code);
       if (success) {
+        await refreshAuthProfile();
         onSuccess();
       } else {
         setErrorMsg('Codice non valido o scaduto. Assicurati che l\'orario del telefono sia corretto.');
         showError('Codice non valido. Riprova.');
       }
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Errore durante la verifica');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore durante la verifica';
+      setErrorMsg(msg);
     } finally {
       setIsSubmitting(false);
     }

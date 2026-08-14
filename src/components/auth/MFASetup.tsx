@@ -1,14 +1,25 @@
 import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { useMFA } from '../../hooks/useMFA';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Copy, Check, ShieldCheck } from 'lucide-react';
 
+interface TOTPEnrollData {
+  id: string;
+  type: string;
+  totp: {
+    qr_code: string;
+    secret: string;
+    uri: string;
+  };
+}
+
 export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }> = ({ onComplete, onCancel }) => {
-  const { enrollTOTP, challengeFactor, verifyFactor, cleanupUnverifiedFactors, loading, error } = useMFA();
+  const { mfa, refreshAuthProfile } = useAuth();
+  const { enrollTOTP, challengeFactor, verifyFactor, cleanupUnverifiedFactors, loading, error } = mfa;
   const { showSuccess, showError } = useToast();
   
-  const [setupData, setSetupData] = useState<any>(null);
+  const [setupData, setSetupData] = useState<TOTPEnrollData | null>(null);
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -20,7 +31,7 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
     setErrorMsg('');
     const data = await enrollTOTP();
     if (data && data.totp) {
-      setSetupData(data);
+      setSetupData(data as TOTPEnrollData);
       const challenge = await challengeFactor(data.id);
       if (challenge) {
         setChallengeId(challenge.id);
@@ -46,6 +57,7 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
     const success = await verifyFactor(setupData.id, challengeId, code);
     if (success) {
       showSuccess('Autenticazione a Due Fattori abilitata con successo!');
+      await refreshAuthProfile();
       onComplete();
     } else {
       setErrorMsg('Codice non valido o scaduto. Assicurati che l\'orario del telefono sia sincronizzato.');
