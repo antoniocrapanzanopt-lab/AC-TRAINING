@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 
 export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }> = ({ onComplete, onCancel }) => {
   const { enrollTOTP, challengeFactor, verifyFactor, cleanupUnverifiedFactors, loading } = useMFA();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   
   const [setupData, setSetupData] = useState<any>(null);
   const [challengeId, setChallengeId] = useState<string | null>(null);
