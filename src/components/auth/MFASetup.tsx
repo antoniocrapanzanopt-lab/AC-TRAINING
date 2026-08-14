@@ -83,16 +83,44 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
     );
   }
 
+  const qrCodeSrc = setupData?.totp?.qr_code 
+    ? (setupData.totp.qr_code.startsWith('data:image') 
+        ? setupData.totp.qr_code 
+        : setupData.totp.qr_code.startsWith('<svg') 
+          ? `data:image/svg+xml;utf-8,${encodeURIComponent(setupData.totp.qr_code)}`
+          : setupData.totp.qr_code)
+    : null;
+
+  const qrCodeUri = setupData?.totp?.uri;
+
   return (
     <div className="p-6 bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl flex flex-col items-center">
       <h3 className="text-xl font-bold text-white mb-4">Scansiona il QR Code</h3>
       
-      <div className="bg-white p-4 rounded-xl mb-4">
-        <QRCodeSVG value={setupData.totp.uri} size={200} />
+      <div className="bg-white p-4 rounded-2xl mb-5 flex items-center justify-center min-w-[232px] min-h-[232px] shadow-xl">
+        {qrCodeSrc ? (
+          <img 
+            src={qrCodeSrc} 
+            alt="MFA QR Code" 
+            className="w-[200px] h-[200px] object-contain block"
+          />
+        ) : qrCodeUri ? (
+          <QRCodeSVG 
+            value={qrCodeUri} 
+            size={200} 
+            fgColor="#000000" 
+            bgColor="#ffffff" 
+            level="M" 
+          />
+        ) : (
+          <p className="text-slate-800 text-xs font-semibold text-center p-4">
+            Impossibile generare il QR code.<br/>Usa la chiave segreta qui sotto.
+          </p>
+        )}
       </div>
       
-      <p className="text-slate-400 text-sm mb-1 text-center">Non riesci a scansionarlo? Usa questa chiave segreta:</p>
-      <code className="text-[var(--color-primary)] bg-slate-900 px-4 py-2 rounded-lg text-sm tracking-wider border border-[var(--color-panel-border)] mb-6 select-all text-center">
+      <p className="text-slate-400 text-sm mb-2 text-center">Non riesci a scansionarlo? Usa questa chiave segreta:</p>
+      <code className="text-[var(--color-primary)] bg-slate-900 px-4 py-2.5 rounded-lg text-sm tracking-wider font-mono border border-[var(--color-panel-border)] mb-6 select-all text-center">
         {setupData.totp.secret}
       </code>
 
