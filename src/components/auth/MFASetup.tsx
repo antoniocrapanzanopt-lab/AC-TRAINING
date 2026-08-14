@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useMFA } from '../../hooks/useMFA';
 import { useToast } from '../../context/ToastContext';
+import { Copy, Check } from 'lucide-react';
 
 export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }> = ({ onComplete, onCancel }) => {
   const { enrollTOTP, challengeFactor, verifyFactor, cleanupUnverifiedFactors, loading, error } = useMFA();
@@ -12,6 +13,7 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
   const [code, setCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const startEnroll = async () => {
     setSetupError(null);
@@ -28,6 +30,14 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
       setSetupError(msg);
       showError(msg);
     }
+  };
+
+  const handleCopySecret = () => {
+    if (!setupData?.totp?.secret) return;
+    navigator.clipboard.writeText(setupData.totp.secret);
+    setCopied(true);
+    showSuccess('Chiave segreta copiata negli appunti!');
+    setTimeout(() => setCopied(false), 2500);
   };
 
   const handleVerify = async () => {
@@ -83,6 +93,7 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
     );
   }
 
+  const qrCodeUri = setupData?.totp?.uri;
   const qrCodeSrc = setupData?.totp?.qr_code 
     ? (setupData.totp.qr_code.startsWith('data:image') 
         ? setupData.totp.qr_code 
@@ -91,26 +102,26 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
           : setupData.totp.qr_code)
     : null;
 
-  const qrCodeUri = setupData?.totp?.uri;
-
   return (
     <div className="p-6 bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl flex flex-col items-center">
       <h3 className="text-xl font-bold text-white mb-4">Scansiona il QR Code</h3>
       
-      <div className="bg-white p-4 rounded-2xl mb-5 flex items-center justify-center min-w-[232px] min-h-[232px] shadow-xl">
-        {qrCodeSrc ? (
+      {/* Box QR ad alto contrasto, margine ISO e alta correzione di errore */}
+      <div className="bg-white p-6 rounded-2xl mb-5 flex items-center justify-center shadow-2xl">
+        {qrCodeUri ? (
+          <QRCodeSVG 
+            value={qrCodeUri} 
+            size={280} 
+            fgColor="#000000" 
+            bgColor="#ffffff" 
+            level="H" 
+            includeMargin={true}
+          />
+        ) : qrCodeSrc ? (
           <img 
             src={qrCodeSrc} 
             alt="MFA QR Code" 
-            className="w-[200px] h-[200px] object-contain block"
-          />
-        ) : qrCodeUri ? (
-          <QRCodeSVG 
-            value={qrCodeUri} 
-            size={200} 
-            fgColor="#000000" 
-            bgColor="#ffffff" 
-            level="M" 
+            className="w-[280px] h-[280px] object-contain block"
           />
         ) : (
           <p className="text-slate-800 text-xs font-semibold text-center p-4">
@@ -119,10 +130,35 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
         )}
       </div>
       
-      <p className="text-slate-400 text-sm mb-2 text-center">Non riesci a scansionarlo? Usa questa chiave segreta:</p>
-      <code className="text-[var(--color-primary)] bg-slate-900 px-4 py-2.5 rounded-lg text-sm tracking-wider font-mono border border-[var(--color-panel-border)] mb-6 select-all text-center">
-        {setupData.totp.secret}
-      </code>
+      {/* Box Copia Chiave Segreta */}
+      <div className="w-full max-w-sm mb-6 space-y-2">
+        <p className="text-slate-400 text-xs text-center font-medium">
+          Non riesci a scansionarlo? Inserisci la chiave manualmente nell'app:
+        </p>
+        <div className="flex items-center gap-2 bg-slate-900 border border-[var(--color-panel-border)] p-2 rounded-xl">
+          <code className="flex-1 text-center font-mono text-xs sm:text-sm tracking-wider text-[var(--color-primary)] select-all px-2 break-all">
+            {setupData.totp.secret}
+          </code>
+          <button
+            type="button"
+            onClick={handleCopySecret}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold transition-colors border border-slate-700 shrink-0"
+            title="Copia chiave segreta"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400">Copiata</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-slate-300" />
+                <span>Copia</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
 
       <div className="w-full max-w-xs space-y-4">
         <input 
