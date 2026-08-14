@@ -37,11 +37,11 @@ export const useMFA = () => {
       const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
       if (factorsError) throw factorsError;
 
-      const totpFactors = factorsData?.totp || [];
-      const verified = totpFactors.some(f => f.status === 'verified');
-      const unverified = totpFactors.some(f => (f as any).status === 'unverified');
+      const allFactors = factorsData?.all || [];
+      const verified = allFactors.some(f => f.status === 'verified');
+      const unverified = allFactors.some(f => f.status === 'unverified');
 
-      setFactors(totpFactors);
+      setFactors(allFactors);
       setMfaState({
         currentAAL: (aalData?.currentLevel as 'aal1' | 'aal2') || 'aal1',
         nextAAL: (aalData?.nextLevel as 'aal2' | null) || null,
@@ -63,7 +63,8 @@ export const useMFA = () => {
   const cleanupUnverifiedFactors = async () => {
     try {
       const { data: factorsData } = await supabase.auth.mfa.listFactors();
-      const unverified = (factorsData?.totp || []).filter(f => (f as any).status === 'unverified');
+      const allFactors = factorsData?.all || [];
+      const unverified = allFactors.filter(f => f.status === 'unverified');
       for (const f of unverified) {
         await supabase.auth.mfa.unenroll({ factorId: f.id });
       }

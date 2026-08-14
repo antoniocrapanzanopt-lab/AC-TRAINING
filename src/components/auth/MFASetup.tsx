@@ -4,15 +4,17 @@ import { useMFA } from '../../hooks/useMFA';
 import { useToast } from '../../context/ToastContext';
 
 export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }> = ({ onComplete, onCancel }) => {
-  const { enrollTOTP, challengeFactor, verifyFactor, cleanupUnverifiedFactors, loading } = useMFA();
+  const { enrollTOTP, challengeFactor, verifyFactor, cleanupUnverifiedFactors, loading, error } = useMFA();
   const { showSuccess, showError } = useToast();
   
   const [setupData, setSetupData] = useState<any>(null);
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const startEnroll = async () => {
+    setSetupError(null);
     setErrorMsg('');
     const data = await enrollTOTP();
     if (data && data.totp) {
@@ -22,7 +24,9 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
         setChallengeId(challenge.id);
       }
     } else {
-      showError('Impossibile iniziare la configurazione. Se il problema persiste, ricarica la pagina.');
+      const msg = error || 'Impossibile iniziare la configurazione. Se il problema persiste, ricarica la pagina.';
+      setSetupError(msg);
+      showError(msg);
     }
   };
 
@@ -53,6 +57,13 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
         <p className="text-slate-400 text-sm mb-6">
           Usa un'app Authenticator (es. Google Authenticator, Authy) per proteggere il tuo account.
         </p>
+
+        {setupError && (
+          <div className="p-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs text-center">
+            {setupError}
+          </div>
+        )}
+
         <div className="flex flex-col gap-3">
           <button 
             onClick={startEnroll} 
