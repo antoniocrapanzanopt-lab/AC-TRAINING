@@ -1,9 +1,7 @@
 import { Athlete } from '../../types';
 import { WorkoutExercise, WorkoutTemplate } from '../../types/workout';
 import { ExerciseItem } from '../../types/exercise';
-import { getOpenAIKey, getGeminiKey } from './workoutGenerator';
-
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+import { supabase } from '../supabase';
 
 export interface SafetyWarning {
   id: string;
@@ -49,13 +47,10 @@ export async function analyzeWorkoutSafety(params: SafetyAnalysisParams): Promis
   const validExercises = exercises.filter(e => e.name && e.name.trim().length > 0);
   if (validExercises.length === 0) return [];
 
-  const apiKey = provider === 'openai' ? getOpenAIKey() : getGeminiKey();
-  if (!apiKey) return [];
-
-  const exerciseNames = validExercises.map(e => e.name).join(', ');
-  const libraryNames = coachExercises.map(e => e.name).join(', ');
-
-  const systemPrompt = `
+  try {
+    const exerciseNames = validExercises.map(e => e.name).join(', ');
+    const libraryNames = coachExercises.map(e => e.name).join(', ');
+    const systemPrompt = `
 Sei un esperto di Chinesiologia, Fisioterapia e Sicurezza dell'Allenamento.
 Analizza la seguente lista di esercizi impostati per l'atleta e confrontala con le sue note mediche, infortuni e limitazioni fisiche.
 
@@ -84,80 +79,36 @@ Restituisci ESCLUSIVAMENTE un oggetto JSON valido con la seguente struttura:
 Se non ci sono infortuni o tutti gli esercizi sono sicuri, restituisci {"warnings": []}.
 `;
 
-  try {
-    if (provider === 'openai') {
-      const res = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [{ role: 'system', content: systemPrompt }],
-          temperature: 0.2,
-          response_format: { type: 'json_object' }
-        })
-      });
-
-      if (!res.ok) return [];
-      const data = await res.json();
-      const content = data.choices?.[0]?.message?.content;
-      if (!content) return [];
-
-      const parsed = JSON.parse(content);
-      const warnings: SafetyWarning[] = (parsed.warnings || []).map((w: any, index: number) => ({
-        id: `warn-${Date.now()}-${index}`,
-        exerciseName: w.exerciseName || '',
-        riskLevel: w.riskLevel || 'medium',
-        reason: w.reason || '',
-        athleteCondition: w.athleteCondition || '',
-        suggestedAlternatives: w.suggestedAlternatives || []
-      }));
-
-      return warnings;
-
-    } else {
-      // Gemini Implementation
-      const geminiModels = ['gemini-3.6-flash'];
-      for (const modelName of geminiModels) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
-        try {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nRISPONDI SOLO IN FORMATO JSON:` }] }],
-              generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-            })
-          });
-          clearTimeout(timeoutId);
-
-          if (response.ok) {
-            const data = await response.json();
-            let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (rawText) {
-              rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-              const parsed = JSON.parse(rawText);
-              return (parsed.warnings || []).map((w: any, index: number) => ({
-                id: `warn-${Date.now()}-${index}`,
-                exerciseName: w.exerciseName || '',
-                riskLevel: w.riskLevel || 'medium',
-                reason: w.reason || '',
-                athleteCondition: w.athleteCondition || '',
-                suggestedAlternatives: w.suggestedAlternatives || []
-              }));
-            }
-          }
-        } catch (e) {
-          // fallback
-        }
+    const { data, error } = await supabase.functions.invoke('generate-workout', {
+      body: {
+        provider: provider,
+        systemPrompt: systemPrompt,
+        userPrompt: "Analizza questa scheda e restituisci SOLO un JSON valido.",
+        model: provider === 'openai' ? 'gpt-4o' : 'gemini-1.5-pro',
+        maxTokens: 2048,
+        temperature: 0.2,
+        responseFormat: { type: 'json_object' }
       }
+    });
+
+    if (error || !data || !data.text) {
+      console.warn("Nessuna risposta o errore Edge Function per safety.");
       return [];
     }
+
+    let rawText = data.text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+    const parsed = JSON.parse(rawText);
+    const warnings: SafetyWarning[] = (parsed.warnings || []).map((w: any, index: number) => ({
+      id: `warn-${Date.now()}-${index}`,
+      exerciseName: w.exerciseName || '',
+      riskLevel: w.riskLevel || 'medium',
+      reason: w.reason || '',
+      athleteCondition: w.athleteCondition || '',
+      suggestedAlternatives: w.suggestedAlternatives || []
+    }));
+
+    return warnings;
+
   } catch (err) {
     console.error("Errore analisi sicurezza IA:", err);
     return [];
@@ -174,11 +125,6 @@ export async function askCoachAIAssistant(
   coachExercises: ExerciseItem[],
   provider: 'openai' | 'gemini'
 ): Promise<string> {
-  const apiKey = provider === 'openai' ? getOpenAIKey() : getGeminiKey();
-  if (!apiKey) {
-    throw new Error(`API Key ${provider === 'openai' ? 'OpenAI' : 'Gemini'} non trovata.`);
-  }
-
   const athleteContext = athlete ? `
 Atleta Attuale: ${athlete.firstName} ${athlete.lastName}
 Obiettivi: ${athlete.goals || 'Non specificati'}
@@ -208,61 +154,26 @@ Regole di Risposta:
 `;
 
   try {
-    if (provider === 'openai') {
-      const res = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userText }
-          ],
-          temperature: 0.7,
-        })
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || `Errore HTTP ${res.status}`);
+    const { data, error } = await supabase.functions.invoke('generate-workout', {
+      body: {
+        provider: provider,
+        systemPrompt: systemPrompt,
+        userPrompt: userText,
+        model: provider === 'openai' ? 'gpt-4o' : 'gemini-1.5-pro',
+        maxTokens: 2048,
+        temperature: 0.7,
       }
+    });
 
-      const data = await res.json();
-      return data.choices?.[0]?.message?.content || "Scusa, non sono riuscito a elaborare una risposta.";
-
-    } else {
-      const geminiModels = ['gemini-3.6-flash'];
-      for (const modelName of geminiModels) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
-        try {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              system_instruction: { parts: [{ text: systemPrompt }] },
-              contents: [{ role: 'user', parts: [{ text: userText }] }],
-              generationConfig: { temperature: 0.7 }
-            })
-          });
-          clearTimeout(timeoutId);
-
-          if (response.ok) {
-            const data = await response.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text) return text;
-          }
-        } catch (e) {
-          // continua
-        }
-      }
-      throw new Error("Impossibile contattare Gemini. Verifica la chiave API.");
+    if (error) {
+      throw new Error(`Errore Server: ${error.message}`);
     }
+
+    if (!data || !data.text) {
+      return "Scusa, non sono riuscito a elaborare una risposta.";
+    }
+
+    return data.text;
   } catch (err: any) {
     console.error("Errore Coach AI Assistant:", err);
     throw new Error(err.message || "Errore durante la comunicazione con l'Assistente IA.");
@@ -281,11 +192,6 @@ export async function askGlobalCoachAIAssistant(params: {
   provider: 'openai' | 'gemini';
 }): Promise<string> {
   const { userText, allAthletes, allWorkouts = [], coachExercises, selectedAthleteId, provider } = params;
-
-  const apiKey = provider === 'openai' ? getOpenAIKey() : getGeminiKey();
-  if (!apiKey) {
-    throw new Error(`API Key ${provider === 'openai' ? 'OpenAI' : 'Gemini'} non configurata. Inseriscila nelle impostazioni o nell'Assistente.`);
-  }
 
   // Costruisci il sommario strutturato di tutti gli atleti nel database
   const athletesSummary = allAthletes.map(a => {
@@ -327,64 +233,28 @@ Il tuo ruolo:
 `;
 
   try {
-    if (provider === 'openai') {
-      const res = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userText }
-          ],
-          temperature: 0.6,
-        })
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || `Errore HTTP ${res.status} da OpenAI`);
+    const { data, error } = await supabase.functions.invoke('generate-workout', {
+      body: {
+        provider: provider,
+        systemPrompt: systemPrompt,
+        userPrompt: userText,
+        model: provider === 'openai' ? 'gpt-4o' : 'gemini-1.5-pro',
+        maxTokens: 2048,
+        temperature: 0.6,
       }
+    });
 
-      const data = await res.json();
-      return data.choices?.[0]?.message?.content || "Impossibile elaborare la risposta.";
-
-    } else {
-      const geminiModels = ['gemini-3.6-flash'];
-      for (const modelName of geminiModels) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
-        try {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              system_instruction: { parts: [{ text: systemPrompt }] },
-              contents: [{ role: 'user', parts: [{ text: userText }] }],
-              generationConfig: { temperature: 0.6 }
-            })
-          });
-          clearTimeout(timeoutId);
-
-          if (response.ok) {
-            const data = await response.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text) return text;
-          }
-        } catch (e) {
-          // continua
-        }
-      }
-      throw new Error("Impossibile contattare i modelli Gemini. Verifica la chiave API.");
+    if (error) {
+      throw new Error(`Errore Server: ${error.message}`);
     }
+
+    if (!data || !data.text) {
+      return "Scusa, non sono riuscito a elaborare una risposta.";
+    }
+
+    return data.text;
   } catch (err: any) {
     console.error("Errore Global Coach AI Assistant:", err);
     throw new Error(err.message || "Errore nella comunicazione con l'Assistente IA.");
   }
 }
-

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Sparkles, 
@@ -23,13 +23,13 @@ import { useExercises } from '../../context/ExercisesContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { 
   generateWorkoutWithAI, 
-  AIWorkoutExercise
+  GeneratedWorkoutResponse
 } from '../../lib/ai/workoutGenerator';
 import { useToast } from '../../context/ToastContext';
 
 interface AICoPilotModalProps {
   onClose: () => void;
-  onGenerate: (result: { exercises: AIWorkoutExercise[], reasoning: string }) => void;
+  onGenerate: (result: GeneratedWorkoutResponse) => void;
 }
 
 const STEPS = [
@@ -51,12 +51,11 @@ const SPLIT_OPTIONS = [
 ];
 
 const GOAL_OPTIONS = [
-  'Ipertrofia Generale',
-  'Forza Massimale',
-  'Dimagrimento & Definizione',
-  'Ricomposizione Corporea',
-  'Performance Atletica',
-  'Ricondizionamento / Back to Gym'
+  { id: 'Ipertrofia', label: 'Ipertrofia', desc: 'Focus su massa muscolare, volume e cedimento contestuale' },
+  { id: 'Forza', label: 'Forza', desc: 'Focus sui carichi, recuperi lunghi e progressione neurale' },
+  { id: 'Ricomposizione', label: 'Ricomposizione Corporea', desc: 'Equilibrio metabolico/ipertrofico' },
+  { id: 'Ricondizionamento', label: 'Ricondizionamento', desc: 'Ripresa sicura per neofiti, inattivi o post-stop' },
+  { id: 'Performance Generale', label: 'Performance Generale', desc: 'Misto forza, mobilità, fiato e atletismo' }
 ];
 
 const MUSCLE_FOCUS_OPTIONS = [
@@ -72,19 +71,27 @@ const MUSCLE_FOCUS_OPTIONS = [
 
 const EQUIPMENT_OPTIONS = [
   'Palestra Completa',
-  'Manubri',
-  'Bilanciere',
-  'Rack / Squat',
-  'Cavi / Carrucole',
-  'Macchine Isotoniche',
+  'Home Gym',
+  'Manubri e Bilanciere',
   'Corpo Libero',
-  'Kettlebell & Elastici'
+  'Elastici',
+  'Anelli',
+  'Altro'
+];
+
+const LIMITATION_TAGS = [
+  'Spalla (No Overhead)',
+  'Lombare (No carico assiale)',
+  'Ginocchio (No alti gradi flessione)',
+  'Gomito / Polso',
+  'Cervicale',
+  'Anca'
 ];
 
 const EXPERIENCE_LEVELS = [
   { id: 'Principiante', label: 'Principiante', desc: '0-1 anni di pesi. Focus su schemi motori ed adattamento (10-12 serie/sett)' },
   { id: 'Intermedio', label: 'Intermedio', desc: '1-3 anni di pesi. Volume medio-alto (14-18 serie/sett) e RIR progressivo' },
-  { id: 'Avanzato', label: 'Avanzato / Agonista', desc: '3+ anni di pesi. Volume alto (18-22 serie/sett), intensificazione e cue avanzati' }
+  { id: 'Avanzato', label: 'Avanzato', desc: '3+ anni di pesi. Volume alto (18-22 serie/sett), intensificazione e cue avanzati' }
 ];
 
 const PROGRESSION_STYLES = [
@@ -98,6 +105,14 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
   const { exercises: coachExercises } = useExercises();
   const { athletes } = useAthletes();
   const { showError, showSuccess } = useToast();
+
+  // Prevenzione Memory Leaks e state updates su componente smontato
+  const isMounted = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -115,12 +130,13 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
   const [progressionStyle, setProgressionStyle] = useState<string>('RIR/RPE Progressivo (Overload + Scarico)');
 
   // Step 3: Obiettivo
-  const [goal, setGoal] = useState<string>('Ipertrofia Generale');
+  const [goal, setGoal] = useState<string>('Ipertrofia');
   const [targetFocus, setTargetFocus] = useState<string[]>([]);
 
   // Step 4: Vincoli
   const [availableEquipment, setAvailableEquipment] = useState<string[]>(['Palestra Completa']);
-  const [limitations, setLimitations] = useState<string>('');
+  const [limitationTags, setLimitationTags] = useState<string[]>([]);
+  const [extraMedicalNotes, setExtraMedicalNotes] = useState<string>('');
 
   // Step 5: Note aggiuntive
   const [extraNotes, setExtraNotes] = useState<string>('');
@@ -128,6 +144,11 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
   // Loading State
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [progressMsg, setProgressMsg] = useState<string>('');
+
+  // Interactive AI States
+  const [safetyBlock, setSafetyBlock] = useState<string>('');
+  const [targetedQuestion, setTargetedQuestion] = useState<string>('');
+  const [targetedAnswer, setTargetedAnswer] = useState<string>('');
 
   // IA Context esteso
   const [chatContext, setChatContext] = useState<string>('');
@@ -244,21 +265,6 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
     }
   };
 
-  const toggleEquipment = (item: string) => {
-    if (item === 'Palestra Completa') {
-      setAvailableEquipment(['Palestra Completa']);
-      return;
-    }
-
-    const withoutFull = availableEquipment.filter(e => e !== 'Palestra Completa');
-    if (withoutFull.includes(item)) {
-      const updated = withoutFull.filter(e => e !== item);
-      setAvailableEquipment(updated.length === 0 ? ['Palestra Completa'] : updated);
-    } else {
-      setAvailableEquipment([...withoutFull, item]);
-    }
-  };
-
   const handleNextStep = () => {
     if (currentStep === 3 && !goal.trim()) {
       showError('Inserisci l\'obiettivo del programma.');
@@ -277,8 +283,17 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (overrideChatContext?: string) => {
     setIsGenerating(true);
+    setSafetyBlock('');
+    setTargetedQuestion('');
+
+    const currentChatContext = typeof overrideChatContext === 'string' ? overrideChatContext : chatContext;
+
+    const aggregatedLimitations = limitationTags.length > 0 || extraMedicalNotes.trim() 
+      ? `${limitationTags.join(', ')}. ${extraMedicalNotes}`.trim()
+      : '';
+
     try {
       const generated = await generateWorkoutWithAI(
         {
@@ -287,7 +302,7 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
           weeks,
           daysPerWeek,
           availableEquipment,
-          limitations,
+          limitations: aggregatedLimitations,
           coachExercises,
           provider: 'gemini',
           splitStyle,
@@ -297,22 +312,121 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
           experienceLevel,
           sessionDurationMinutes,
           progressionStyle,
-          chatContext,
+          chatContext: currentChatContext,
           metricsContext
         },
         setProgressMsg
       );
 
+      if (!isMounted.current) return;
+
+      if (generated.blocco_sicurezza) {
+        setSafetyBlock(generated.blocco_sicurezza);
+        return;
+      }
+
+      if (generated.domanda_mirata) {
+        setTargetedQuestion(generated.domanda_mirata);
+        return;
+      }
+
       showSuccess('Programma generato con successo!', 'La scheda è pronta nell\'editor.');
       onGenerate(generated);
       onClose();
     } catch (err: any) {
+      if (!isMounted.current) return;
       console.error(err);
       showError('Errore Generazione IA', err.message || 'Impossibile generare la scheda.');
     } finally {
-      setIsGenerating(false);
-      setProgressMsg('');
+      if (isMounted.current) {
+        setIsGenerating(false);
+        setProgressMsg('');
+      }
     }
+  };
+
+  const handleAnswerTargetedQuestion = () => {
+    if (!targetedAnswer.trim()) return;
+    const appendText = `\nDomanda dell'IA: ${targetedQuestion}\nRisposta Atleta/Coach: ${targetedAnswer}`;
+    const newContext = chatContext + appendText;
+    setChatContext(newContext);
+    setTargetedQuestion('');
+    setTargetedAnswer('');
+    handleGenerate(newContext);
+  };
+
+  const getSplitStatus = (opt: string) => {
+    if (opt === 'Auto / Scelta dall\'IA') return 'best';
+    
+    if (opt === 'Full Body') {
+      if (daysPerWeek <= 3 || experienceLevel === 'Principiante' || sessionDurationMinutes < 45) return 'best';
+      if (daysPerWeek >= 5) return 'disabled';
+      return 'standard';
+    }
+    
+    if (opt === 'Upper / Lower') {
+      if (daysPerWeek === 4 && experienceLevel !== 'Principiante') return 'best';
+      if (daysPerWeek > 5 || daysPerWeek < 3) return 'disabled';
+      return 'standard';
+    }
+
+    if (opt === 'Push / Pull / Legs (PPL)') {
+      if (daysPerWeek >= 5 && experienceLevel !== 'Principiante') return 'best';
+      if (daysPerWeek < 3 || experienceLevel === 'Principiante') return 'disabled';
+      return 'standard';
+    }
+
+    if (opt === 'Monofrequenza (Petto/Tricep, Dorso/Bicep...)') {
+      if (experienceLevel === 'Principiante') return 'disabled';
+      if (goal === 'Ipertrofia' && experienceLevel === 'Avanzato' && daysPerWeek >= 4) return 'best';
+      if (daysPerWeek < 3) return 'disabled';
+      return 'standard';
+    }
+    
+    return 'standard';
+  };
+
+  const getProgressionStatus = (style: string) => {
+    if (style === 'Aumento Carico Lineare') {
+      if (experienceLevel === 'Principiante' || goal === 'Ricondizionamento') return 'best';
+      return 'standard';
+    }
+    
+    if (style === 'RIR/RPE Progressivo (Overload + Scarico)') {
+      if (experienceLevel !== 'Principiante' && goal !== 'Ricondizionamento') return 'best';
+      return 'standard';
+    }
+
+    if (style === 'Onda / Wave Periodization' || style === 'Rampup + Backoff Sets') {
+      if (experienceLevel === 'Principiante' || goal === 'Ricondizionamento') return 'disabled';
+      if (experienceLevel === 'Avanzato' && goal === 'Forza') return 'best';
+      return 'standard';
+    }
+
+    return 'standard';
+  };
+
+  const renderCoherenceBanner = () => {
+    let recSplit = 'Full Body';
+    if (daysPerWeek === 4 && experienceLevel !== 'Principiante') recSplit = 'Upper / Lower';
+    else if (daysPerWeek >= 5 && experienceLevel !== 'Principiante') recSplit = 'Push / Pull / Legs';
+    else if (experienceLevel === 'Avanzato' && goal === 'Ipertrofia' && daysPerWeek >= 4) recSplit = 'Monofrequenza o Upper/Lower';
+    
+    let recProgression = 'Aumento Carico Lineare';
+    if (experienceLevel !== 'Principiante' && goal !== 'Ricondizionamento') recProgression = 'RIR/RPE Progressivo';
+    if (experienceLevel === 'Avanzato' && goal === 'Forza') recProgression = 'Onda/Wave o Rampup';
+
+    return (
+      <div className="bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 rounded-xl p-3 mb-5 flex gap-3 items-start">
+        <Sparkles className="w-5 h-5 text-[var(--color-primary)] shrink-0 mt-0.5" />
+        <div>
+          <p className="text-xs text-[var(--color-primary)] font-bold mb-0.5">Coherence Engine Attivo</p>
+          <p className="text-xs text-slate-300">
+            In base al profilo (<strong>{experienceLevel}</strong>, <strong>{daysPerWeek} gg/sett</strong>), il sistema suggerirà preferibilmente <strong>{recSplit}</strong> con progressione <strong>{recProgression}</strong>. Le opzioni non ottimali risultano sconsigliate.
+          </p>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -397,6 +511,61 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
               <p className="text-sm text-amber-200/80 animate-pulse max-w-md">
                 {progressMsg || 'Generazione in corso con Gemini 3.6 Flash...'}
               </p>
+            </div>
+          )}
+
+          {/* AI Safety Block */}
+          {!isGenerating && safetyBlock && (
+            <div className="absolute inset-0 z-20 bg-slate-900 flex flex-col items-center justify-center p-8 text-center animate-in zoom-in-95 duration-300">
+              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mb-4 border border-red-500/50">
+                <ShieldAlert className="w-8 h-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-black text-white mb-3">Generazione Bloccata (Sicurezza)</h3>
+              <p className="text-sm text-slate-300 mb-6 max-w-lg leading-relaxed">
+                {safetyBlock}
+              </p>
+              <button 
+                onClick={() => setSafetyBlock('')}
+                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-colors"
+              >
+                Modifica parametri e riprova
+              </button>
+            </div>
+          )}
+
+          {/* AI Targeted Question */}
+          {!isGenerating && targetedQuestion && (
+            <div className="absolute inset-0 z-20 bg-slate-900 flex flex-col p-8 text-center animate-in zoom-in-95 duration-300">
+              <div className="flex flex-col items-center justify-center flex-1">
+                <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mb-4 border border-amber-500/50">
+                  <MessageSquare className="w-8 h-8 text-amber-500" />
+                </div>
+                <h3 className="text-xl font-black text-white mb-2">L'IA ha bisogno di chiarimenti</h3>
+                <p className="text-sm text-slate-300 mb-6 max-w-lg leading-relaxed bg-slate-800 p-4 rounded-xl border border-slate-700">
+                  "{targetedQuestion}"
+                </p>
+                <textarea
+                  value={targetedAnswer}
+                  onChange={(e) => setTargetedAnswer(e.target.value)}
+                  placeholder="Scrivi qui la tua risposta..."
+                  className="w-full max-w-lg h-32 px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 transition-colors mb-4 resize-none"
+                />
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setTargetedQuestion('')}
+                    className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-colors"
+                  >
+                    Annulla
+                  </button>
+                  <button 
+                    onClick={handleAnswerTargetedQuestion}
+                    disabled={!targetedAnswer.trim()}
+                    className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold transition-colors disabled:opacity-50"
+                  >
+                    Rispondi e Genera
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -565,6 +734,8 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
                 <p className="text-xs text-slate-400">Definisci la durata temporale, la frequenza ed il modello di progressione.</p>
               </div>
 
+              {renderCoherenceBanner()}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
@@ -680,20 +851,34 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
                   <TrendingUp className="w-3.5 h-3.5 text-amber-500" /> Modello di Progressione Settimanale
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {PROGRESSION_STYLES.map((style) => (
-                    <button
-                      key={style}
-                      type="button"
-                      onClick={() => setProgressionStyle(style)}
-                      className={`p-3 rounded-xl text-xs font-bold text-left transition-all border ${
-                        progressionStyle === style
-                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/50 shadow-md'
-                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {style}
-                    </button>
-                  ))}
+                  {PROGRESSION_STYLES.map((style) => {
+                    const status = getProgressionStatus(style);
+                    
+                    let bgClass = 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white';
+                    let labelNode = null;
+                    
+                    if (progressionStyle === style) {
+                      bgClass = 'bg-amber-500/10 text-amber-400 border-amber-500/50 shadow-md';
+                    } else if (status === 'best') {
+                      bgClass = 'bg-[var(--color-primary)]/5 text-[var(--color-primary)] border-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/10';
+                      labelNode = <span className="block text-[9px] uppercase tracking-wider font-bold mt-1 text-[var(--color-primary)] opacity-80">Consigliato</span>;
+                    } else if (status === 'disabled') {
+                      bgClass = 'bg-slate-900/50 text-slate-600 border-slate-800/50 opacity-60 hover:border-rose-900/50 hover:text-rose-500/70';
+                      labelNode = <span className="block text-[9px] uppercase tracking-wider font-bold mt-1 text-rose-500/70">Sconsigliato per {experienceLevel}</span>;
+                    }
+
+                    return (
+                      <button
+                        key={style}
+                        type="button"
+                        onClick={() => setProgressionStyle(style)}
+                        className={`p-3 rounded-xl text-xs font-bold text-left transition-all border ${bgClass}`}
+                      >
+                        {style}
+                        {labelNode}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -703,20 +888,42 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
                   Organizzazione della Split
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {SPLIT_OPTIONS.map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setSplitStyle(opt)}
-                      className={`p-3 rounded-xl text-xs font-bold text-left transition-all border ${
-                        splitStyle === opt
-                          ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)] shadow-md'
-                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
+                  {SPLIT_OPTIONS.map((opt) => {
+                    const status = getSplitStatus(opt);
+                    
+                    let bgClass = 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white';
+                    let labelNode = null;
+                    let displayOpt = opt;
+                    
+                    if (opt === 'Auto / Scelta dall\'IA') {
+                       displayOpt = `Auto / Scelta dall'IA`;
+                       if (status === 'best' && splitStyle !== opt) {
+                         labelNode = <span className="block text-[9px] uppercase tracking-wider font-bold mt-1 text-[var(--color-primary)] opacity-80">Lascia decidere al sistema</span>;
+                       }
+                    }
+
+                    if (splitStyle === opt) {
+                      bgClass = 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)] shadow-md';
+                    } else if (status === 'best' && opt !== 'Auto / Scelta dall\'IA') {
+                      bgClass = 'bg-[var(--color-primary)]/5 text-slate-300 border-[var(--color-primary)]/30 hover:bg-[var(--color-primary)]/10';
+                      labelNode = <span className="block text-[9px] uppercase tracking-wider font-bold mt-1 text-[var(--color-primary)] opacity-80">Ottimale per {daysPerWeek}gg</span>;
+                    } else if (status === 'disabled') {
+                      bgClass = 'bg-slate-900/50 text-slate-600 border-slate-800/50 opacity-60 hover:border-rose-900/50 hover:text-rose-500/70';
+                      labelNode = <span className="block text-[9px] uppercase tracking-wider font-bold mt-1 text-rose-500/70">Sconsigliato (Coerenza)</span>;
+                    }
+
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setSplitStyle(opt)}
+                        className={`p-3 rounded-xl text-xs font-bold text-left transition-all border ${bgClass}`}
+                      >
+                        {displayOpt}
+                        {labelNode}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -732,31 +939,25 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider">
-                  Scegli Obiettivo Predefinito o Personalizzato
+                  Scegli Obiettivo Predefinito
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 mb-3">
                   {GOAL_OPTIONS.map((g) => (
                     <button
-                      key={g}
+                      key={g.id}
                       type="button"
-                      onClick={() => setGoal(g)}
-                      className={`p-3 rounded-xl text-xs font-bold text-left transition-all border ${
-                        goal === g
+                      onClick={() => setGoal(g.id)}
+                      className={`p-3 rounded-xl text-left transition-all border flex flex-col justify-between ${
+                        goal === g.id
                           ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)] shadow-md'
                           : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
                       }`}
                     >
-                      {g}
+                      <span className="font-bold text-xs text-white mb-1">{g.label}</span>
+                      <span className="text-[10px] text-slate-400 leading-tight">{g.desc}</span>
                     </button>
                   ))}
                 </div>
-                <input
-                  type="text"
-                  value={goal}
-                  onChange={e => setGoal(e.target.value)}
-                  placeholder="Oppure scrivi un obiettivo specifico..."
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-[var(--color-primary)]"
-                />
               </div>
 
               <div>
@@ -794,22 +995,33 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
                 <p className="text-xs text-slate-400">Specifica l'attrezzatura ed eventuali limitazioni sanitarie o infortuni.</p>
               </div>
 
+              {/* EQUIPMENT */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider">
-                  Attrezzatura Disponibile
+                <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                  <Dumbbell className="w-3.5 h-3.5 text-amber-500" /> Attrezzatura Disponibile
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {EQUIPMENT_OPTIONS.map((eq) => {
+                  {EQUIPMENT_OPTIONS.map(eq => {
                     const isSelected = availableEquipment.includes(eq);
                     return (
                       <button
                         key={eq}
                         type="button"
-                        onClick={() => toggleEquipment(eq)}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                        onClick={() => {
+                          if (eq === 'Palestra Completa') {
+                            setAvailableEquipment(isSelected ? [] : ['Palestra Completa']);
+                          } else {
+                            if (isSelected) {
+                              setAvailableEquipment(availableEquipment.filter(e => e !== eq));
+                            } else {
+                              setAvailableEquipment([...availableEquipment.filter(e => e !== 'Palestra Completa'), eq]);
+                            }
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors border ${
                           isSelected
-                            ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)]'
-                            : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                            ? 'bg-amber-500 text-slate-900 border-amber-500 shadow-md shadow-amber-500/20'
+                            : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
                         }`}
                       >
                         {isSelected ? `✓ ${eq}` : eq}
@@ -819,15 +1031,41 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
                 </div>
               </div>
 
+              {/* LIMITATIONS */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Infortuni, Dolori o Esercizi da Evitare (Opzionale)
+                <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-red-400" /> Limitazioni Fisiche & Fastidi
                 </label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {LIMITATION_TAGS.map(tag => {
+                    const isSelected = limitationTags.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          setLimitationTags(
+                            isSelected
+                              ? limitationTags.filter(t => t !== tag)
+                              : [...limitationTags, tag]
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors border ${
+                          isSelected
+                            ? 'bg-red-500/20 text-red-400 border-red-500/50 shadow-md'
+                            : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
+                        }`}
+                      >
+                        {isSelected ? `✓ ${tag}` : `+ ${tag}`}
+                      </button>
+                    );
+                  })}
+                </div>
                 <textarea
-                  value={limitations}
-                  onChange={e => setLimitations(e.target.value)}
-                  placeholder="Es. Evitare squat libero per fastidio alla parte bassa della schiena, no stacchi da terra, spalla destra con impingement."
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)] min-h-[120px] text-sm leading-relaxed"
+                  value={extraMedicalNotes}
+                  onChange={(e) => setExtraMedicalNotes(e.target.value)}
+                  placeholder="Altre note mediche specifiche (es. operazione recente, fastidio tendineo)..."
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-red-500 transition-colors placeholder:text-slate-600 min-h-[80px]"
                 />
               </div>
             </div>
@@ -915,10 +1153,14 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
                   <span className="text-xs font-bold text-slate-300">{availableEquipment.join(', ')}</span>
                 </div>
 
-                {limitations && (
-                  <div className="flex justify-between items-start pt-2.5">
-                    <span className="text-xs text-slate-400 font-semibold shrink-0 mr-4">Infortuni / Limitazioni:</span>
-                    <span className="text-xs font-medium text-rose-400 text-right">{limitations}</span>
+                {(limitationTags.length > 0 || extraMedicalNotes) && (
+                  <div className="flex justify-between items-start pt-3 border-t border-slate-800">
+                    <span className="text-xs text-slate-500">Vincoli/Fastidi</span>
+                    <span className="text-xs font-medium text-rose-400 text-right">
+                      {limitationTags.join(', ')} 
+                      {limitationTags.length > 0 && extraMedicalNotes ? ' - ' : ''}
+                      {extraMedicalNotes}
+                    </span>
                   </div>
                 )}
 
@@ -963,7 +1205,7 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
           ) : (
             <button 
               type="button" 
-              onClick={handleGenerate}
+              onClick={() => handleGenerate()}
               disabled={isGenerating}
               className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-extrabold text-xs uppercase tracking-wide rounded-xl transition-all shadow-lg shadow-amber-500/25 disabled:opacity-50 flex items-center gap-2"
             >

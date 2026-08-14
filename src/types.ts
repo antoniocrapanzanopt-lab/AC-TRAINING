@@ -719,3 +719,13 @@ export * from './types/metrics';
 
 
 
+
+// --- MFA Auth State ---
+export interface MFAState {
+  currentAAL: 'aal1' | 'aal2' | null;
+  nextAAL: 'aal2' | null;
+  hasVerifiedFactors: boolean;
+  hasUnverifiedFactors: boolean;
+  isLoading: boolean;
+  error: string | null;
+}

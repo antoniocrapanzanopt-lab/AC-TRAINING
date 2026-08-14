@@ -25,6 +25,7 @@ import { InvitePage } from './pages/auth/InvitePage';
 import { MainLayout } from './MainLayout';
 import { AthleteLayout } from './pages/athlete/AthleteLayout';
 import { WelcomeDisclaimerModal } from './components/common/WelcomeDisclaimerModal';
+import { RequireAAL2 } from './components/auth/RequireAAL2';
 import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -61,13 +62,13 @@ const AppContent: React.FC = () => {
 
   // 4. Se la sessione è attiva, mostra il layout principale ed eventualmente la modale di benvenuto
   return (
-    <>
+    <RequireAAL2>
       {user?.role === 'athlete' ? <AthleteLayout /> : <MainLayout />}
       <WelcomeDisclaimerModal
         isOpen={showDisclaimer}
         onConfirm={markDisclaimerAsSeen}
       />
-    </>
+    </RequireAAL2>
   );
 };
 

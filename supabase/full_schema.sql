@@ -272,13 +272,19 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 5b. AUTO-LINK ACCOUNT ATLETA (Messa in Sicurezza)
 -- Esegue con privilegi definer. Permette all'atleta di "reclamare" il proprio profilo
--- solo se l'email corrisponde al JWT verificato e se il profilo non è già stato reclamato.
+-- solo se l'email corrisponde al JWT e se l'email è stata verificata.
 CREATE OR REPLACE FUNCTION link_athlete_account() RETURNS BOOLEAN AS $$
 DECLARE
     affected_rows INT;
 BEGIN
     IF auth.uid() IS NULL THEN RETURN FALSE; END IF;
     IF auth.uid() = get_coach_uid() THEN RETURN FALSE; END IF;
+
+    -- SICUREZZA CRITICA: Verifica che l'email nel JWT sia effettivamente confermata
+    -- Previene Account Takeover da parte di utenti che registrano email altrui senza confermarle.
+    IF current_setting('request.jwt.claim.email_verified', true) != 'true' AND auth.jwt()->>'email_verified' != 'true' THEN
+        RAISE EXCEPTION 'Accesso Negato: Conferma prima il tuo indirizzo email cliccando sul link ricevuto.';
+    END IF;
 
     UPDATE public.athletes 
     SET auth_user_id = auth.uid()
@@ -447,25 +453,33 @@ VALUES ('exercise-videos', 'exercise-videos', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Storage RLS Policies
--- COACH UPLOAD: solo il coach può caricare certificati medici
-DROP POLICY IF EXISTS "authenticated_upload_medical_certs" ON storage.objects;
-DROP POLICY IF EXISTS "coach_upload_medical_certs" ON storage.objects;
-CREATE POLICY "coach_upload_medical_certs" 
-ON storage.objects FOR INSERT TO authenticated 
-WITH CHECK (bucket_id = 'medical-certificates' AND is_coach());
+-- MEDICAL CERTIFICATES
+DROP POLICY IF EXISTS "manage_medical_certs" ON storage.objects;
 
--- COACH VIEW: solo il coach può vedere i certificati medici
-DROP POLICY IF EXISTS "authenticated_view_medical_certs" ON storage.objects;
-DROP POLICY IF EXISTS "coach_view_medical_certs" ON storage.objects;
-CREATE POLICY "coach_view_medical_certs" 
-ON storage.objects FOR SELECT TO authenticated 
-USING (bucket_id = 'medical-certificates' AND is_coach());
-
--- COACH DELETE: solo il coach può eliminare certificati
-DROP POLICY IF EXISTS "coach_delete_medical_certs" ON storage.objects;
-CREATE POLICY "coach_delete_medical_certs"
-ON storage.objects FOR DELETE TO authenticated
-USING (bucket_id = 'medical-certificates' AND is_coach());
+CREATE POLICY "manage_medical_certs" 
+ON storage.objects FOR ALL TO authenticated 
+USING (
+  bucket_id = 'medical-certificates' AND
+  EXISTS (
+    SELECT 1 FROM public.athletes
+    WHERE athletes.id::text = (storage.foldername(name))[1]
+    AND (
+      athletes.assigned_coach_id = auth.uid()::text 
+      OR athletes.auth_user_id = auth.uid()
+    )
+  )
+)
+WITH CHECK (
+  bucket_id = 'medical-certificates' AND
+  EXISTS (
+    SELECT 1 FROM public.athletes
+    WHERE athletes.id::text = (storage.foldername(name))[1]
+    AND (
+      athletes.assigned_coach_id = auth.uid()::text 
+      OR athletes.auth_user_id = auth.uid()
+    )
+  )
+);
 
 -- VIDEO ESERCIZI: solo il coach gestisce i video
 DROP POLICY IF EXISTS "authenticated_manage_exercise_videos" ON storage.objects;

@@ -1,13 +1,15 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { UserProfile, Organization, OrganizationMember, UserRole } from '../types';
 import { getLocalOwnerProfile } from '../lib/ownerProfile';
 import { getStorageItem, setStorageItem } from '../lib/storage';
 import { hasPermission } from '../lib/permissionsMatrix';
 import { supabase } from '../lib/supabase';
 
-interface AuthContextType {
+export interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
+  authScreenState: AuthScreenState;
+  mfa: any; // ReturnType<typeof useMFA>
   canViewFinancials: boolean;
   currentOrganization: Organization;
   members: OrganizationMember[];
@@ -27,7 +29,11 @@ interface AuthContextType {
   markDisclaimerAsSeen: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+import { useMFA } from '../hooks/useMFA';
+
+import { resolveMFAAccessState, AuthScreenState } from '../lib/mfaEngine';
 
 const getDefaultMembers = (_orgId: string): OrganizationMember[] => {
   return [];
@@ -35,6 +41,8 @@ const getDefaultMembers = (_orgId: string): OrganizationMember[] => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const mfa = useMFA();
   const [loading, setLoading] = useState(true);
   const [ownerProfile] = useState(() => getLocalOwnerProfile());
   const [simulatedRole, setSimulatedRole] = useState<UserRole>('owner');
@@ -56,22 +64,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
-    const checkUserRoleAndSet = async (sessionUser: any) => {
-      if (!sessionUser) {
+    const checkUserRoleAndSet = async (sessionUserArg: any) => {
+      if (!sessionUserArg) {
         setUser(null);
+        setSessionUser(null);
         setLoading(false);
         return;
       }
+      setSessionUser(sessionUserArg);
       
-      const email = sessionUser.email;
+      const email = sessionUserArg.email;
       if (!email) {
         setUser(null);
         setLoading(false);
         return;
       }
 
-      const localSeen = localStorage.getItem(`builder_athlete_disclaimer_seen_${sessionUser.id}`) === 'true';
-      const metadataSeen = Boolean(sessionUser.user_metadata?.has_seen_disclaimer);
+      const localSeen = localStorage.getItem(`builder_athlete_disclaimer_seen_${sessionUserArg.id}`) === 'true';
+      const metadataSeen = Boolean(sessionUserArg.user_metadata?.has_seen_disclaimer);
 
       const ownerProfile = getLocalOwnerProfile();
       const ownerEmail = ownerProfile?.email?.toLowerCase().trim();
@@ -82,8 +92,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (isOwnerEmail) {
         setUser({
-          id: sessionUser.id,
-          name: ownerProfile?.fullName || sessionUser.user_metadata?.full_name || email.split('@')[0] || 'Coach',
+          id: sessionUserArg.id,
+          name: ownerProfile?.fullName || sessionUserArg.user_metadata?.full_name || email.split('@')[0] || 'Coach',
           email: email,
           role: 'owner',
           canViewFinancials: true,
@@ -94,8 +104,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Check if the user is an athlete
-      // Prima di interrogare, eseguiamo l'auto-link via RPC in modo sicuro
-      // Se è la prima volta che l'atleta si logga, l'RPC collegherà il suo auth.uid al record in DB.
       await supabase.rpc('link_athlete_account');
 
       const { data: athleteData } = await supabase
@@ -106,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (athleteData) {
         setUser({
-          id: sessionUser.id,
+          id: sessionUserArg.id,
           athleteId: athleteData.id,
           name: `${athleteData.first_name} ${athleteData.last_name}`,
           email: email,
@@ -115,11 +123,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           hasSeenDisclaimer: localSeen || metadataSeen,
         });
       } else {
-        // SICUREZZA: Utente autenticato ma NON riconosciuto come atleta e NON come coach.
-        // Forziamo il logout per evitare che account non autorizzati accedano alla dashboard.
         console.warn('Security: utente non autorizzato, logout forzato.', email);
         await supabase.auth.signOut();
         setUser(null);
+        setSessionUser(null);
       }
       setLoading(false);
     };
@@ -130,12 +137,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     // 2. Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       checkUserRoleAndSet(session?.user);
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        mfa.loadMFAStatus();
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [mfa.loadMFAStatus]);
 
   const markDisclaimerAsSeen = useCallback(async () => {
     if (!user) return;
@@ -263,11 +273,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return <div className="h-screen w-screen bg-black flex items-center justify-center text-white">Caricamento in corso...</div>;
   }
 
+  const authScreenState = useMemo(() => {
+    return resolveMFAAccessState(sessionUser, mfa.mfaState, user?.role || 'athlete');
+  }, [user, sessionUser, mfa.mfaState]);
+
   return (
     <AuthContext.Provider
       value={{
         user,
         isAuthenticated: Boolean(user),
+        authScreenState,
+        mfa,
         canViewFinancials: activeCanViewFinancials,
         currentOrganization,
         members,

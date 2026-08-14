@@ -5,14 +5,12 @@ import {
   Bilaterality,
   MovementPlane,
   KineticChain,
-  ResistanceCurve,
-  MuscleRole,
   MuscleInvolvement,
   ExerciseExecution,
   ExerciseKeyParams,
   ExerciseSafety,
 } from '../../types/exercise';
-import { fetchGeminiWithMultiKeyPool } from './workoutGenerator';
+import { supabase } from '../supabase';
 
 /** Struttura completa di un esercizio generato dall'IA */
 export interface GeneratedAIExercise {
@@ -74,35 +72,21 @@ Restituisci SOLO l'array JSON valido con la struttura completa per ogni esercizi
 `.trim();
 
   try {
-    const response = await fetchGeminiWithMultiKeyPool(
-      ':generateContent',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          generationConfig: {
-            temperature: 0.6,
-            maxOutputTokens: 32768,
-            responseMimeType: 'application/json',
-            responseSchema: buildExerciseResponseSchema(count),
-          },
-        }),
-      },
-      onProgress
-    );
+    const { data, error } = await supabase.functions.invoke('generate-workout', {
+      body: {
+        provider: 'gemini',
+        systemPrompt: systemPrompt,
+        userPrompt: userPrompt,
+        model: 'gemini-1.5-pro',
+        maxTokens: 8192,
+        temperature: 0.6
+      }
+    });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error((err as { error?: { message?: string } }).error?.message || `Errore HTTP ${response.status} da Gemini`);
-    }
+    if (error) throw new Error(`Errore Server: ${error.message}`);
+    if (!data || !data.text) throw new Error("Risposta vuota dall'IA.");
 
-    const data = await response.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawText) throw new Error("Risposta vuota dall'IA.");
+    let rawText = data.text;
 
     rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(rawText) as { exercises?: GeneratedAIExercise[] };
@@ -119,105 +103,7 @@ Restituisci SOLO l'array JSON valido con la struttura completa per ogni esercizi
   }
 }
 
-/** Costruisce lo schema JSON strutturato per la risposta di Gemini */
-function buildExerciseResponseSchema(count: number): object {
-  const muscleRoles: MuscleRole[] = ['Target', 'Sinergico', 'Stabilizzatore', 'Motore dinamico'];
-  const resistanceCurves: ResistanceCurve[] = ['Gravità (costante)', 'Ascendente', 'Discendente', 'Parabolica', 'Variabile (cam)', 'Costante (cavi)'];
-  const exerciseTypes: ExerciseType[] = ['Forza', 'Ipertrofia', 'Resistenza', 'Potenza', 'Mobilità'];
-  const bilateralities: Bilaterality[] = ['Bilaterale', 'Unilaterale'];
-  const movementPlanes: MovementPlane[] = ['Sagittale', 'Frontale (scapolare)', 'Frontale', 'Trasverso', 'Multi-piano'];
-  const kineticChains: KineticChain[] = ['Aperta', 'Chiusa', 'Mista'];
 
-  const executionPhaseSchema = {
-    type: 'object',
-    properties: {
-      descrizione: { type: 'string' },
-      vettore_movimento: { type: 'string' },
-      vettore_resistenza: { type: 'string' },
-      traiettoria: { type: 'string' },
-      cues: { type: 'array', items: { type: 'string' } },
-    },
-    required: ['descrizione', 'cues'],
-  };
-
-  return {
-    type: 'object',
-    properties: {
-      exercises: {
-        type: 'array',
-        minItems: count,
-        maxItems: count,
-        items: {
-          type: 'object',
-          properties: {
-            name: { type: 'string' },
-            category: { type: 'string', enum: ['Petto', 'Dorso', 'Gambe', 'Spalle', 'Bicipiti', 'Tricipiti', 'Addominali', 'Full Body', 'Cardio', 'Altro'] },
-            equipment: { type: 'string', enum: ['Bilanciere', 'Manubri', 'Cavi', 'Macchina', 'Corpo Libero', 'Kettlebell', 'Elastici', 'Altro'] },
-            instructions: { type: 'string' },
-            tipo: { type: 'string', enum: exerciseTypes },
-            bilateralita: { type: 'string', enum: bilateralities },
-            piano_movimento: { type: 'string', enum: movementPlanes },
-            catena_cinetica: { type: 'string', enum: kineticChains },
-            gradi_liberta: { type: 'integer', minimum: 1, maximum: 3 },
-            parametri_chiave: {
-              type: 'object',
-              properties: {
-                rom: { type: 'string' },
-                curva_resistenza: { type: 'string', enum: resistanceCurves },
-                punto_picco: { type: 'string' },
-                tipo_stimolo: { type: 'string', enum: exerciseTypes },
-                tut: {
-                  type: 'object',
-                  properties: { min: { type: 'integer' }, max: { type: 'integer' } },
-                  required: ['min', 'max'],
-                },
-                recupero: {
-                  type: 'object',
-                  properties: { min: { type: 'integer' }, max: { type: 'integer' } },
-                  required: ['min', 'max'],
-                },
-              },
-              required: ['rom', 'curva_resistenza', 'punto_picco', 'tipo_stimolo', 'tut', 'recupero'],
-            },
-            muscoli_coinvolti: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  muscolo: { type: 'string' },
-                  ruolo: { type: 'string', enum: muscleRoles },
-                  percentuale: { type: 'integer', minimum: 0, maximum: 100 },
-                },
-                required: ['muscolo', 'ruolo', 'percentuale'],
-              },
-            },
-            esecuzione: {
-              type: 'object',
-              properties: {
-                setup: { type: 'array', items: { type: 'string' } },
-                concentrica: executionPhaseSchema,
-                eccentrica: executionPhaseSchema,
-              },
-              required: ['setup', 'concentrica', 'eccentrica'],
-            },
-            sicurezza: {
-              type: 'object',
-              properties: {
-                compensi_da_evitare: { type: 'array', items: { type: 'string' } },
-                criteri_arresto: { type: 'array', items: { type: 'string' } },
-                controindicazioni: { type: 'array', items: { type: 'string' } },
-                tolleranze: { type: 'string' },
-              },
-              required: ['compensi_da_evitare', 'criteri_arresto', 'controindicazioni', 'tolleranze'],
-            },
-          },
-          required: ['name', 'category', 'equipment', 'tipo', 'bilateralita', 'piano_movimento', 'catena_cinetica', 'gradi_liberta', 'parametri_chiave', 'muscoli_coinvolti', 'esecuzione', 'sicurezza'],
-        },
-      },
-    },
-    required: ['exercises'],
-  };
-}
 
 // ─── Funzione "Compila con IA" — Suggerimento per singolo esercizio ────────────
 
@@ -230,7 +116,6 @@ export async function suggestExerciseWithAI(
   category?: string,
   equipment?: string
 ): Promise<GeneratedAIExercise> {
-  const schema = buildExerciseSingleSchema();
 
   const systemPrompt = `
 Sei un esperto di Biomeccanica, Chinesiologia e Metodologia dell'Allenamento di livello accademico.
@@ -254,34 +139,21 @@ Restituisci UN SINGOLO oggetto JSON valido (non un array).
 `.trim();
 
   try {
-    const response = await fetchGeminiWithMultiKeyPool(
-      ':generateContent',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 8192,
-            responseMimeType: 'application/json',
-            responseSchema: schema,
-          },
-        }),
+    const { data, error } = await supabase.functions.invoke('generate-workout', {
+      body: {
+        provider: 'gemini',
+        systemPrompt: systemPrompt,
+        userPrompt: userPrompt,
+        model: 'gemini-1.5-pro',
+        maxTokens: 8192,
+        temperature: 0.4
       }
-    );
+    });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({})) as { error?: { message?: string } };
-      throw new Error(err.error?.message || `Errore HTTP ${response.status} da Gemini`);
-    }
+    if (error) throw new Error(`Errore Server: ${error.message}`);
+    if (!data || !data.text) throw new Error("Risposta vuota dall'IA.");
 
-    const data = await response.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawText) throw new Error("Risposta vuota dall'IA.");
+    let rawText = data.text;
 
     rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(rawText) as GeneratedAIExercise;
@@ -295,84 +167,5 @@ Restituisci UN SINGOLO oggetto JSON valido (non un array).
   }
 }
 
-/** Schema JSON per un singolo esercizio (senza wrapper exercises[]) */
-function buildExerciseSingleSchema(): object {
-  const muscleRoles: MuscleRole[] = ['Target', 'Sinergico', 'Stabilizzatore', 'Motore dinamico'];
-  const resistanceCurves: ResistanceCurve[] = ['Gravità (costante)', 'Ascendente', 'Discendente', 'Parabolica', 'Variabile (cam)', 'Costante (cavi)'];
-  const exerciseTypes: ExerciseType[] = ['Forza', 'Ipertrofia', 'Resistenza', 'Potenza', 'Mobilità'];
-  const bilateralities: Bilaterality[] = ['Bilaterale', 'Unilaterale'];
-  const movementPlanes: MovementPlane[] = ['Sagittale', 'Frontale (scapolare)', 'Frontale', 'Trasverso', 'Multi-piano'];
-  const kineticChains: KineticChain[] = ['Aperta', 'Chiusa', 'Mista'];
 
-  const phaseSchema = {
-    type: 'object',
-    properties: {
-      descrizione: { type: 'string' },
-      vettore_movimento: { type: 'string' },
-      vettore_resistenza: { type: 'string' },
-      traiettoria: { type: 'string' },
-      cues: { type: 'array', items: { type: 'string' } },
-    },
-    required: ['descrizione', 'cues'],
-  };
-
-  return {
-    type: 'object',
-    properties: {
-      name: { type: 'string' },
-      category: { type: 'string', enum: ['Petto', 'Dorso', 'Gambe', 'Spalle', 'Bicipiti', 'Tricipiti', 'Addominali', 'Full Body', 'Cardio', 'Altro'] },
-      equipment: { type: 'string', enum: ['Bilanciere', 'Manubri', 'Cavi', 'Macchina', 'Corpo Libero', 'Kettlebell', 'Elastici', 'Altro'] },
-      instructions: { type: 'string' },
-      tipo: { type: 'string', enum: exerciseTypes },
-      bilateralita: { type: 'string', enum: bilateralities },
-      piano_movimento: { type: 'string', enum: movementPlanes },
-      catena_cinetica: { type: 'string', enum: kineticChains },
-      gradi_liberta: { type: 'integer', minimum: 1, maximum: 3 },
-      parametri_chiave: {
-        type: 'object',
-        properties: {
-          rom: { type: 'string' },
-          curva_resistenza: { type: 'string', enum: resistanceCurves },
-          punto_picco: { type: 'string' },
-          tipo_stimolo: { type: 'string', enum: exerciseTypes },
-          tut: { type: 'object', properties: { min: { type: 'integer' }, max: { type: 'integer' } }, required: ['min', 'max'] },
-          recupero: { type: 'object', properties: { min: { type: 'integer' }, max: { type: 'integer' } }, required: ['min', 'max'] },
-        },
-        required: ['rom', 'curva_resistenza', 'punto_picco', 'tipo_stimolo', 'tut', 'recupero'],
-      },
-      muscoli_coinvolti: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            muscolo: { type: 'string' },
-            ruolo: { type: 'string', enum: muscleRoles },
-            percentuale: { type: 'integer', minimum: 0, maximum: 100 },
-          },
-          required: ['muscolo', 'ruolo', 'percentuale'],
-        },
-      },
-      esecuzione: {
-        type: 'object',
-        properties: {
-          setup: { type: 'array', items: { type: 'string' } },
-          concentrica: phaseSchema,
-          eccentrica: phaseSchema,
-        },
-        required: ['setup', 'concentrica', 'eccentrica'],
-      },
-      sicurezza: {
-        type: 'object',
-        properties: {
-          compensi_da_evitare: { type: 'array', items: { type: 'string' } },
-          criteri_arresto: { type: 'array', items: { type: 'string' } },
-          controindicazioni: { type: 'array', items: { type: 'string' } },
-          tolleranze: { type: 'string' },
-        },
-        required: ['compensi_da_evitare', 'criteri_arresto', 'controindicazioni', 'tolleranze'],
-      },
-    },
-    required: ['name', 'category', 'equipment', 'tipo', 'bilateralita', 'piano_movimento', 'catena_cinetica', 'gradi_liberta', 'parametri_chiave', 'muscoli_coinvolti', 'esecuzione', 'sicurezza'],
-  };
-}
 

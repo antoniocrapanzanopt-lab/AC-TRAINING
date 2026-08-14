@@ -53,9 +53,12 @@ type SettingsTab =
   | 'users_roles'
   | 'reminders'
   | 'privacy'
+  | 'security'
   | 'backup'
   | 'integrations'
   | 'audit';
+
+import { SecuritySettingsPage } from './SecuritySettingsPage';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -385,6 +388,17 @@ export const SettingsPage: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveSubTab('security')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+            activeSubTab === 'security'
+              ? 'bg-[var(--color-primary)] text-black shadow'
+              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <Lock className="w-4 h-4" /> Sicurezza Account
+        </button>
+
+        <button
           onClick={() => setActiveSubTab('backup')}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
             activeSubTab === 'backup'
@@ -603,6 +617,10 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {activeSubTab === 'security' && (
+        <SecuritySettingsPage />
       )}
 
       {/* 10. BACKUP ED ESPORTAZIONE AVANZATA */}

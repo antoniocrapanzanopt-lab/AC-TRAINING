@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Save, Trash2, X, GripVertical, Sliders, Settings2, Clock, ArrowRight, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft } from 'lucide-react';
-import { generateAISmartSuggestions } from '../../lib/ai/workoutGenerator';
+import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft } from 'lucide-react';
+import { generateAISmartSuggestions, CoPilotActionableSuggestion } from '../../lib/ai/workoutGenerator';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useExercises } from '../../context/ExercisesContext';
@@ -8,7 +8,7 @@ import { useAthletes } from '../../context/AthletesContext';
 import { useToast } from '../../context/ToastContext';
 import { calculateEstimatedWorkoutTime } from '../../utils/workoutUtils';
 import { AICoPilotModal } from './AICoPilotModal';
-import { AIWorkoutExercise } from '../../lib/ai/workoutGenerator';
+import { GeneratedWorkoutResponse } from '../../lib/ai/workoutGenerator';
 
 interface WorkoutBuilderModalProps {
   athleteId?: string;
@@ -48,7 +48,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
   const [isAiSuggestionsOpen, setIsAiSuggestionsOpen] = useState(false);
   const [aiSuggestionsLoading, setAiSuggestionsLoading] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<{ volume?: string; fatigue?: string; progression?: string } | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<CoPilotActionableSuggestion[] | null>(null);
 
   // Box Motivazione IA
   const [aiReasoning, setAiReasoning] = useState<string>('');
@@ -81,9 +81,9 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
   const estimatedTime = calculateEstimatedWorkoutTime(currentWeekDayExercises);
 
-  const handleAIGenerated = (result: { exercises: AIWorkoutExercise[], reasoning: string }) => {
+  const handleAIGenerated = (result: GeneratedWorkoutResponse) => {
     // Normalizzazione pulita dei nomi del giorno (es. da "Giorno A - Push" a "Giorno A")
-    const mapped = result.exercises.map(ex => {
+    const mapped = (result.programma_giorno_per_giorno || []).map(ex => {
       let cleanDay = (ex.day_name || 'Giorno A').trim();
       const match = cleanDay.match(/(Giorno\s+[A-Z0-9]+)/i);
       if (match) {
@@ -113,9 +113,23 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     }
     setActiveWeek(1);
     setExpandedExerciseIndex(null); // Chiudi espansioni per vista pulita
-    if (result.reasoning) {
-      setAiReasoning(result.reasoning);
-    }
+
+    // Formatta i metadati generati in una stringa Markdown e mettila nella descrizione
+    const metaDescription = `
+**Soggetto:** ${result.classificazione_soggetto || '-'}
+**Obiettivo Blocco:** ${result.obiettivo_blocco || '-'}
+**Durata & Frequenza:** ${result.durata_blocco || '-'} - ${result.frequenza_settimanale || '-'} (${result.tempo_massimo_seduta || '-'})
+**Split Selezionata:** ${result.split_scelta || '-'}
+**Logica Progressione:** ${result.logica_progressione || '-'}
+
+**Note Tecniche:**
+${result.note_tecniche_essenziali || '-'}
+
+**Regole di Adattamento (Sicurezza / Fatica):**
+${result.regole_adattamento || '-'}
+`.trim();
+
+    setDescription(prev => prev ? `${prev}\n\n---\n\n${metaDescription}` : metaDescription);
   };
 
   const addExercise = () => {
@@ -183,7 +197,13 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     setAiSuggestionsLoading(true);
     setIsAiSuggestionsOpen(true);
     try {
-      const result = await generateAISmartSuggestions(currentWeekDayExercises);
+      const context = {
+        athleteLevel: currentAthlete?.tags?.join(', ') || 'Non specificato',
+        athleteGoal: currentAthlete?.goals || 'Non specificato',
+        sessionDuration: estimatedTime?.maxMin || 60,
+        limitations: currentAthlete?.medicalNotes || 'Nessuna limitazione nota'
+      };
+      const result = await generateAISmartSuggestions(currentWeekDayExercises, context);
       setAiSuggestions(result);
     } catch (err: any) {
       showError(err.message);
@@ -191,6 +211,55 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     } finally {
       setAiSuggestionsLoading(false);
     }
+  };
+
+  const dismissSuggestion = (id: string) => {
+    if (!aiSuggestions) return;
+    setAiSuggestions(aiSuggestions.filter((s, idx) => (s.id || String(idx)) !== id));
+  };
+
+  const applySuggestion = (suggestion: CoPilotActionableSuggestion, index: number) => {
+    const globalIndex = exercises.findIndex(ex => 
+      (ex.week_number || 1) === activeWeek && 
+      (ex.day_name || 'Giorno A').trim().toLowerCase() === activeDay.trim().toLowerCase() &&
+      ex.name?.toLowerCase().includes(suggestion.target_exercise_name.toLowerCase())
+    );
+
+    if (globalIndex === -1) {
+      showError(`Impossibile trovare l'esercizio bersaglio "${suggestion.target_exercise_name}". Modificalo manualmente.`);
+      return;
+    }
+
+    const val = suggestion.payload.new_value;
+    const updates: Partial<WorkoutExercise> = {};
+
+    switch (suggestion.azione_tipo) {
+      case 'REDUCE_SETS':
+      case 'INCREASE_SETS':
+        updates.sets = typeof val === 'number' ? val : parseInt(String(val)) || 3;
+        break;
+      case 'CHANGE_RIR':
+        updates.rir_target = String(val);
+        break;
+      case 'SWAP_EXERCISE':
+        updates.name = String(val);
+        break;
+      case 'REMOVE_EXERCISE':
+        removeExercise(globalIndex);
+        dismissSuggestion(suggestion.id || String(index));
+        showSuccess('Esercizio rimosso con successo.');
+        return;
+      case 'NONE':
+        dismissSuggestion(suggestion.id || String(index));
+        return;
+      default:
+        showError('Tipo di azione non supportato.');
+        return;
+    }
+
+    updateExerciseFields(globalIndex, updates);
+    dismissSuggestion(suggestion.id || String(index));
+    showSuccess('Suggerimento applicato!');
   };
 
   const addWeek = () => {
@@ -407,8 +476,8 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
                 placeholder="Note generali sul mesociclo, focus e indicazioni generali per l'atleta..."
                 value={description}
                 onChange={e => setDescription(e.target.value)}
-                rows={2}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] transition-colors resize-none"
+                rows={8}
+                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 text-sm leading-relaxed focus:outline-none focus:border-[var(--color-primary)] transition-colors min-h-[200px] resize-y custom-scrollbar"
               />
             </div>
           </div>
@@ -560,20 +629,44 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
                   <div className="flex items-center justify-center py-6">
                     <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
                   </div>
-                ) : aiSuggestions ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="bg-slate-900/50 p-3 rounded-lg border border-amber-500/10">
-                      <div className="text-[10px] uppercase font-bold text-amber-500/80 mb-1 flex items-center gap-1"><Settings2 className="w-3 h-3"/> Volume & Bilanciamento</div>
-                      <p className="text-xs text-slate-300 leading-relaxed">{aiSuggestions.volume}</p>
+                ) : aiSuggestions && aiSuggestions.length > 0 ? (
+                  <div className="flex flex-col gap-3">
+                    {aiSuggestions.map((suggestion, idx) => {
+                      const sId = suggestion.id || String(idx);
+                      return (
+                        <div key={sId} className="bg-slate-900/60 p-4 rounded-xl border border-amber-500/20 shadow-sm flex flex-col gap-2 relative">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h5 className="text-[11px] uppercase font-bold text-amber-500 mb-1 flex items-center gap-1.5"><Info className="w-3.5 h-3.5"/> Osservazione</h5>
+                              <p className="text-xs text-slate-300 leading-relaxed mb-3">{suggestion.osservazione}</p>
+                              
+                              <h5 className="text-[11px] uppercase font-bold text-rose-400 mb-1 flex items-center gap-1.5"><X className="w-3.5 h-3.5"/> Motivo</h5>
+                              <p className="text-xs text-slate-300 leading-relaxed mb-3">{suggestion.motivo}</p>
+
+                              <h5 className="text-[11px] uppercase font-bold text-emerald-400 mb-1 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5"/> Modifica Suggerita</h5>
+                              <p className="text-xs text-slate-200 font-bold leading-relaxed">{suggestion.modifica_suggerita}</p>
+                              <p className="text-[10px] text-slate-500 mt-1">Target: <span className="font-mono bg-slate-800 px-1 py-0.5 rounded">{suggestion.target_exercise_name}</span></p>
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 mt-2 pt-3 border-t border-slate-800/50">
+                            <button onClick={() => dismissSuggestion(sId)} className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+                              Ignora
+                            </button>
+                            <button onClick={() => applySuggestion(suggestion, idx)} className="px-3 py-1.5 text-xs font-bold bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors flex items-center gap-1.5">
+                              <Sparkles className="w-3 h-3"/> Applica
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : aiSuggestions && aiSuggestions.length === 0 ? (
+                  <div className="text-center py-6">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-2">
+                      <Sparkles className="w-5 h-5 text-emerald-500" />
                     </div>
-                    <div className="bg-slate-900/50 p-3 rounded-lg border border-amber-500/10">
-                      <div className="text-[10px] uppercase font-bold text-amber-500/80 mb-1 flex items-center gap-1"><Info className="w-3 h-3"/> Affaticamento</div>
-                      <p className="text-xs text-slate-300 leading-relaxed">{aiSuggestions.fatigue}</p>
-                    </div>
-                    <div className="bg-slate-900/50 p-3 rounded-lg border border-amber-500/10">
-                      <div className="text-[10px] uppercase font-bold text-amber-500/80 mb-1 flex items-center gap-1"><ArrowRight className="w-3 h-3"/> Progressione</div>
-                      <p className="text-xs text-slate-300 leading-relaxed">{aiSuggestions.progression}</p>
-                    </div>
+                    <p className="text-sm text-emerald-400 font-bold mb-1">Nessuna criticità rilevata!</p>
+                    <p className="text-xs text-slate-400">La seduta sembra ben bilanciata e coerente.</p>
                   </div>
                 ) : null}
               </div>

@@ -1,6 +1,8 @@
 import { Athlete } from '../../types';
 import { ExerciseItem } from '../../types/exercise';
-import { getStorageItem, setStorageItem } from '../storage';
+import { supabase } from '../supabase';
+import { METODO_ANTONIO_MASTER_PROMPT, WORKOUT_JSON_SCHEMA } from './prompts/workoutMasterPrompt';
+import { generatedWorkoutResponseSchema } from './workoutZodSchema';
 
 /**
  * Costruisce il contesto di sicurezza per l'IA analizzando le controindicazioni
@@ -70,7 +72,7 @@ ISTRUZIONI OBBLIGATORIE PER LA SICUREZZA:
 `.trim();
 }
 
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+
 
 export interface GenerateWorkoutParams {
   athlete?: Athlete;
@@ -106,50 +108,28 @@ export interface AIWorkoutExercise {
   notes?: string;
 }
 
-export function getOpenAIKey(): string {
-  return getStorageItem('openai_api_key', '');
+export interface GeneratedWorkoutResponse {
+  classificazione_soggetto: string;
+  obiettivo_blocco: string;
+  durata_blocco: string;
+  frequenza_settimanale: string;
+  split_scelta: string;
+  tempo_massimo_seduta: string;
+  logica_progressione: string;
+  programma_giorno_per_giorno: AIWorkoutExercise[];
+  note_tecniche_essenziali: string;
+  regole_adattamento: string;
+  domanda_mirata?: string;
+  blocco_sicurezza?: string;
 }
 
-export function setOpenAIKey(key: string): void {
-  setStorageItem('openai_api_key', key.trim());
-}
 
-export function getGeminiKeysPool(): string[] {
-  const pool: string[] = [];
-
-  const stored = getStorageItem<string>('gemini_api_key', '');
-  if (stored && typeof stored === 'string' && stored.trim()) {
-    pool.push(stored.trim());
-  }
-
-  // Controlla VITE_GEMINI_API_KEY e fino a VITE_GEMINI_API_KEY_10
-  const primaryEnv = (import.meta.env.VITE_GEMINI_API_KEY as string) || '';
-  if (primaryEnv && !pool.includes(primaryEnv)) pool.push(primaryEnv);
-
-  for (let i = 2; i <= 10; i++) {
-    const key = (import.meta.env[`VITE_GEMINI_API_KEY_${i}`] as string) || '';
-    if (key && typeof key === 'string' && key.trim() && !pool.includes(key.trim())) {
-      pool.push(key.trim());
-    }
-  }
-
-  return pool;
-}
-
-export function getGeminiKey(): string {
-  const pool = getGeminiKeysPool();
-  return pool.length > 0 ? pool[0] : '';
-}
-
-export function setGeminiKey(key: string): void {
-  setStorageItem('gemini_api_key', key.trim());
-}
 
 /**
  * Parser JSON ultra-resiliente per risposte IA.
  * Gestisce troncamenti, a capo non protetti e formatta anche schede parziali se necessario.
  */
-export function safeParseWorkoutJSON(rawText: string): { exercises: AIWorkoutExercise[], reasoning: string } {
+export function safeParseWorkoutJSON(rawText: string): GeneratedWorkoutResponse {
   let cleaned = rawText.trim();
 
   // 1. Rimuovi blocchi Markdown ```json ... ```
@@ -161,178 +141,45 @@ export function safeParseWorkoutJSON(rawText: string): { exercises: AIWorkoutExe
     cleaned = jsonMatch[0];
   }
 
-  // 3. Prova prima il JSON.parse diretto
-  try {
-    const parsed = JSON.parse(cleaned);
-    if (parsed.exercises && Array.isArray(parsed.exercises)) {
-      return {
-        exercises: parsed.exercises,
-        reasoning: parsed.reasoning || "Ragionamento non fornito dall'IA."
-      };
+  // 3. Ripristino di stringhe e a capo non protetti (es. newlines dentro note o stringhe aperte)
+  let sanitized = cleaned;
+  sanitized = sanitized.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
+    return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+  });
+
+  if (!sanitized.endsWith('}')) {
+    const lastObjIndex = sanitized.lastIndexOf('}');
+    if (lastObjIndex !== -1) {
+      sanitized = sanitized.substring(0, lastObjIndex + 1);
     }
-    if (Array.isArray(parsed)) {
-      return { exercises: parsed, reasoning: "Ragionamento non fornito dall'IA." };
-    }
-  } catch (err) {
-    console.warn("JSON.parse diretto fallito, tentativo di ripristino stringa...", err);
   }
 
-  // 4. Ripristino di stringhe e a capo non protetti (es. newlines dentro note o stringhe aperte)
+  // 4. Parsing e Validazione Zod
   try {
-    let sanitized = cleaned;
-
-    // Sostituisci a capo letterali dentro i valori tra virgolette
-    sanitized = sanitized.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
-      return match.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
-    });
-
-    // Se la stringa si è troncata a fine risposta (manca la chiusura } o ])
-    if (!sanitized.endsWith('}')) {
-      const lastObjIndex = sanitized.lastIndexOf('}');
-      if (lastObjIndex !== -1) {
-        sanitized = sanitized.substring(0, lastObjIndex + 1) + ']}';
-      }
-    }
-
     const parsed = JSON.parse(sanitized);
-    if (parsed.exercises && Array.isArray(parsed.exercises)) {
-      return {
-        exercises: parsed.exercises,
-        reasoning: parsed.reasoning || "Ragionamento non fornito dall'IA (recuperato tramite sanitizzazione)."
-      };
+    
+    // Gestione casi speciali (domanda_mirata o blocco_sicurezza)
+    if (parsed.domanda_mirata || parsed.blocco_sicurezza) {
+      return parsed as GeneratedWorkoutResponse;
     }
-  } catch (err) {
-    console.warn("Ripristino parziale fallito, passaggio all'estrazione regex singoli oggetti...", err);
-  }
 
-  // 5. Fallback Regex Ultra-Resiliente: Estrai ogni singolo oggetto esercizio valido dal testo grezzo
-  const exerciseMatches = cleaned.match(/\{[^{}]*"name"[^{}]*\}/g) || cleaned.match(/\{[^{}]*"week_number"[^{}]*\}/g);
-  if (exerciseMatches && exerciseMatches.length > 0) {
-    const recoveredExercises: AIWorkoutExercise[] = [];
-    for (const objStr of exerciseMatches) {
-      try {
-        const obj = JSON.parse(objStr);
-        if (obj.name && (obj.week_number !== undefined || obj.day_name)) {
-          recoveredExercises.push({
-            week_number: Number(obj.week_number) || 1,
-            day_name: String(obj.day_name || 'Giorno A'),
-            name: String(obj.name),
-            sets: Number(obj.sets) || 3,
-            reps_target: String(obj.reps_target || '10'),
-            rest_seconds: Number(obj.rest_seconds) || 60,
-            target_weight: obj.target_weight ? String(obj.target_weight) : undefined,
-            rir_target: obj.rir_target ? String(obj.rir_target) : undefined,
-            tut: obj.tut ? String(obj.tut) : undefined,
-            notes: obj.notes ? String(obj.notes) : undefined,
-          });
-        }
-      } catch (e) {
-        // Ignora singolo oggetto malformato
-      }
+    // Validazione rigorosa Zod per il programma completo
+    const validationResult = generatedWorkoutResponseSchema.safeParse(parsed);
+    
+    if (validationResult.success) {
+      return validationResult.data as GeneratedWorkoutResponse;
+    } else {
+      console.error("Zod Validation Error:", validationResult.error.format());
+      throw new Error("Formato non valido generato dall'IA. Dati mancanti o corrotti. Riprova la generazione.");
     }
-    if (recoveredExercises.length > 0) {
-      return { exercises: recoveredExercises, reasoning: "Impossibile recuperare il ragionamento (Formato JSON compromesso)." };
-    }
-  }
 
-  throw new Error("Impossibile interpretare il formato del programma generato dall'IA. Riprova la generazione.");
+  } catch (err: any) {
+    console.warn("Parsing JSON fallito", err);
+    throw new Error(err.message || "Impossibile interpretare il formato del programma generato dall'IA. Riprova la generazione.");
+  }
 }
 
-async function fetchGeminiWithRetry(
-  url: string,
-  options: RequestInit,
-  onProgress?: (msg: string) => void,
-  maxRetries = 3
-): Promise<Response> {
-  let attempt = 0;
-  while (attempt < maxRetries) {
-    attempt++;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000);
 
-    try {
-      const response = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        return response;
-      }
-
-      if (response.status === 429 && attempt < maxRetries) {
-        const errData = await response.clone().json().catch(() => ({}));
-        const msg = errData.error?.message || '';
-        
-        const retryMatch = msg.match(/retry in ([0-9\.]+)\s*s/i);
-        const delaySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) + 1 : 3.5;
-        const delayMs = Math.max(3000, delaySec * 1000);
-
-        if (onProgress) {
-          onProgress(`Quota temporanea raggiunta (20 req/min). Attesa di ${Math.round(delayMs / 1000)}s per il tentativo ${attempt + 1}/${maxRetries}...`);
-        }
-        await new Promise(res => setTimeout(res, delayMs));
-        continue;
-      }
-
-      return response;
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        throw new Error("La generazione dell'IA ha impiegato troppo tempo.");
-      }
-      if (attempt >= maxRetries) throw err;
-      await new Promise(res => setTimeout(res, 3000));
-    }
-  }
-  throw new Error("Impossibile completare la richiesta dopo diversi tentativi.");
-}
-
-export async function fetchGeminiWithMultiKeyPool(
-  endpointAction: string,
-  options: RequestInit,
-  onProgress?: (msg: string) => void
-): Promise<Response> {
-  const keysPool = getGeminiKeysPool();
-  if (keysPool.length === 0) {
-    throw new Error("Chiave API Gemini mancante. Verificare la configurazione del progetto.");
-  }
-
-  const fallbackModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
-  let lastResponse: Response | null = null;
-  let lastErrorMsg = '';
-
-  for (const modelName of fallbackModels) {
-    for (let kIdx = 0; kIdx < keysPool.length; kIdx++) {
-      const key = keysPool[kIdx];
-      const fullUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}${endpointAction}?key=${key}`;
-
-      try {
-        const response = await fetchGeminiWithRetry(fullUrl, options, onProgress, 1);
-        if (response.ok) {
-          return response;
-        }
-
-        lastResponse = response;
-        const errData = await response.clone().json().catch(() => ({}));
-        lastErrorMsg = errData.error?.message || `Errore HTTP ${response.status}`;
-
-        if (response.status === 429 || response.status === 403 || lastErrorMsg.toLowerCase().includes('quota')) {
-          console.warn(`Modello ${modelName} su chiave #${kIdx + 1} ha raggiunto la quota. Scalo al modello/chiave successivo...`);
-          if (onProgress) {
-            onProgress(`Sostituzione automatica modello (${modelName} -> Gemini Flash)...`);
-          }
-          continue;
-        } else {
-          return response;
-        }
-      } catch (e: any) {
-        lastErrorMsg = e.message || '';
-      }
-    }
-  }
-
-  if (lastResponse) return lastResponse;
-  throw new Error(`Quota temporanea Gemini superata (20 req/min). Attendi 30 secondi o attiva il piano Pay-As-You-Go su Google AI Studio.`);
-}
 
 /**
  * Garantisce che tutti i giorni della settimana (es. Giorno A, B, C, D, E, F, G) abbiano da 6 a 8 esercizi completi.
@@ -446,14 +293,38 @@ export function expandMesocycleWeeks(
       const expandedForWeek = baseWeekExercises.map(ex => {
         let newRir = rirProgression[weekInBlock] || ex.rir_target;
         let newWeight = ex.target_weight;
+        let newSets = ex.sets;
 
-        if (blockIndex === 1) {
+        // Logica espansione intelligente
+        // Week 1: Accumulo (base)
+        // Week 2: Intensificazione (RIR scende)
+        // Week 3: Picco (RIR al limite)
+        // Week 4: Scarico (Volume e intensità ridotti)
+
+        if (weekInBlock === 1) { // Week 2
           if (newWeight && !newWeight.includes('+')) {
-            newWeight = `${newWeight} (+2.5% progressione)`;
+            newWeight = `${newWeight} (+2.5%)`;
           }
-        } else if (blockIndex === 2) {
+        } else if (weekInBlock === 2) { // Week 3
           if (newWeight && !newWeight.includes('+')) {
-            newWeight = `${newWeight} (+5% picco)`;
+            newWeight = `${newWeight} (+5% Peak)`;
+          }
+        } else if (weekInBlock === 3) { // Week 4 Deload
+          newRir = 'RIR 3-4 (Scarico)';
+          if (newSets > 1) {
+             // Taglio del volume (1 serie in meno per esercizio, circa -30% di volume)
+            newSets = Math.max(1, newSets - 1);
+          }
+          if (newWeight) {
+             // Ritorno al carico base
+            newWeight = newWeight.split(' (+')[0] + ' (Scarico)';
+          }
+        }
+
+        // Progressioni per blocchi successivi (es. mese 2)
+        if (blockIndex >= 1 && weekInBlock !== 3) {
+          if (newWeight && !newWeight.includes('Mese')) {
+            newWeight = `${newWeight} (Progress. Mese ${blockIndex + 1})`;
           }
         }
 
@@ -462,6 +333,7 @@ export function expandMesocycleWeeks(
           week_number: w,
           rir_target: newRir,
           target_weight: newWeight,
+          sets: newSets,
         };
       });
 
@@ -477,13 +349,8 @@ export function expandMesocycleWeeks(
 export async function generateWorkoutWithAI(
   params: GenerateWorkoutParams,
   onProgress?: (msg: string) => void
-): Promise<{ exercises: AIWorkoutExercise[], reasoning: string }> {
-  const keysPool = getGeminiKeysPool();
-  if (params.provider === 'openai' && !getOpenAIKey()) {
-    throw new Error(`API Key OpenAI mancante. Inseriscila nelle impostazioni.`);
-  } else if (params.provider !== 'openai' && keysPool.length === 0) {
-    throw new Error(`API Key Gemini mancante. Inseriscila nelle impostazioni.`);
-  }
+): Promise<GeneratedWorkoutResponse> {
+
 
   if (onProgress) onProgress('Preparazione del contesto e della periodizzazione scientifica...');
 
@@ -499,72 +366,15 @@ export async function generateWorkoutWithAI(
   if (targetMin <= 45) recommendedExCount = '4 - 5';
   else if (targetMin >= 90) recommendedExCount = '7 - 10';
 
-  const systemPrompt = `
-Sei un Master Strength & Conditioning Coach ed esperto di metodologia dell'allenamento di livello mondiale.
-Il tuo compito è generare un programma di allenamento ESTREMAMENTE PERSONALIZZATO, scientifico e pronto all'uso, diviso per settimane e per giorni, restituendo ESCLUSIVAMENTE un array JSON strutturato.
-
-PRINCIPI DI PROGRAMMAZIONE D'ÉLITE DA APPLICARE:
-
-1. **PERIODO E PROGRESSIONE (WAVE / MICROCICLI)**:
-   - Genera gli esercizi per le settimane da 1 a ${weeksToPrompt}, coprendo TUTTI i ${params.daysPerWeek} giorni per ciascuna settimana (${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}).
-   - Modellazione della progressione: ${params.progressionStyle || 'RIR/RPE Progressivo (Overload + Scarico)'}.
-   - Settimana 1 = RIR 3 (accumulo); Settimana 2 = RIR 2 (carico progressivo); Settimana 3 = RIR 1 (picco di intensità); Settimana 4 = RIR 4-5 (scarico attivo / deload con volume ridotto del 30-40%).
-
-2. **VOLUME & ESPERIENZA DELL'ATLETA**:
-   - Livello Atleta: ${params.experienceLevel || 'Intermedio'}.
-   - Se Principiante: 10-12 serie totali per gruppo muscolare/settimana, focus su schemi motori puliti.
-   - Se Intermedio: 14-18 serie totali per gruppo muscolare/settimana.
-   - Se Avanzato: 18-22 serie totali per gruppo muscolare/settimana, intensificazione mirata.
-
-3. **DURATA SEDUTA & CALIBRAZIONE TEMPO (${targetMin} MINUTI)**:
-   - L'atleta ha selezionato ben **${targetMin} MINUTI DI TEMPO MASSIMO PER SEDUTA**!
-   - TASSATIVO: Calibra la quantità di esercizi e serie affinché la seduta sia ricca e completa per occupare pienamente i ${targetMin} minuti a disposizione! Per una durata di ${targetMin} minuti DEVI inserire esattamente **${recommendedExCount} ESERCIZI per ciascuna giornata** (con 4-5 serie per esercizio e recuperi di 90-180s per i multiarticolari).
-
-4. **GERARCHIA DEGLI ESERCIZI NELLE SEDUTE**:
-   - Per ciascun giorno, ordina gli esercizi secondo la fisiologia dell'allenamento:
-     a. **Fondamentale Multiarticolare**: primo esercizio neurale pesante (3-5 serie, recupero 120-180s, TUT tipo '3-1-1-0').
-     b. **Complementare Multiarticolare**: secondo esercizio a medio-alto carico (3-4 serie, recupero 90s).
-     c. **Isolamento / Monolaterale**: esercizi di rifinitura ipertrofica (3-4 serie, recupero 60s, RIR stretto).
-     d. **Core / Accessorio Finale**: chiusura seduta.
-
-5. **ADATTAMENTO BIOMECCANICO ED INFORTUNI**:
-   - Sostituisci IMMEDIATAMENTE qualsiasi esercizio rischioso per la condizione dell'atleta con varianti biomeccanicamente perfette (es. sbarra o manubri al posto del bilanciere in caso di impingement spalla; belt squat/leg press al posto di squat con bilanciere in caso di lombalgia).
-
-6. **NOTE TECNICHE E CUE PER L'ATLETA**:
-   - Nel campo 'notes' di ciascun esercizio, fornisci un **Cue percettivo o biomeccanico specifico** e pratico (senza virgolette doppie o caratteri di a capo).
-
-LIBRERIA ESERCIZI PREFERITA COACH:
-[${exerciseNames}]
-Scegli gli esercizi PRINCIPALMENTE da questa libreria. Se necessario per l'adattamento biomeccanico, proponi esercizi adatti.
-
-REGOLE TASSATIVE DI QUANTITÀ E NOMI GIORNO:
-1. **COPERTURA GIORNI E QUANTITÀ**: DEVI generare esercizi per TUTTI i ${params.daysPerWeek} giorni per OGNI settimana (da week_number 1 a ${weeksToPrompt}). Ogni singolo giorno (${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}) DEVE contenere esattamente **${recommendedExCount} esercizi completi**. È severamente vietato generare solo 1, 2 o 4 esercizi quando il tempo a disposizione è di ${targetMin} minuti!
-2. **FORMATO NOMI GIORNO**: Il campo 'day_name' deve essere ESATTAMENTE uno tra: ${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}.
-
-Struttura JSON richiesta per ogni esercizio (array di oggetti):
-- week_number (numero da 1 a ${weeksToPrompt})
-- day_name (ESATTAMENTE uno tra ${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')})
-- name (stringa)
-- sets (numero)
-- reps_target (stringa, es. "8-10" o "6")
-- rest_seconds (numero, es. 60, 90, 120, 180)
-- target_weight (stringa opzionale, es. "%RM", "Carico sfidante" o stimato)
-- rir_target (stringa opzionale, es. "RIR 2" o "RIR 4 (Deload)")
-- tut (stringa opzionale, es. "3-1-1-0")
-- notes (stringa opzionale per l'atleta con cue biomeccanico pratico)
-
-La tua risposta deve essere un oggetto JSON strutturato così:
-{
-  "reasoning": "Breve frase motivazionale che spiega il razionale delle tue scelte (es. 'Ho impostato una progressione in RIR 2 ed evitato distensioni sopra la testa perché nei messaggi recenti hai segnalato fastidio alla spalla e nell'ultimo check il peso era in stallo.')",
-  "exercises": [ { l'array degli esercizi come definito sopra } ]
-}
-`;
+  const systemPrompt = METODO_ANTONIO_MASTER_PROMPT;
 
   let athleteContext = '';
   if (params.athlete) {
+    // 🔒 PRIVACY GDPR: Anonimizzazione del nome prima dell'invio al LLM
+    const safeId = params.athlete.id ? params.athlete.id.substring(0, 6) : 'Anonimo';
     athleteContext = `
 Dati Atleta Selezionato:
-- Nome: ${params.athlete.firstName} ${params.athlete.lastName}
+- Identificativo: Atleta_${safeId}
 - Età: ${params.athlete.dateOfBirth ? new Date().getFullYear() - new Date(params.athlete.dateOfBirth).getFullYear() : 'N/D'}
 - Livello stimato: ${params.athlete.tags?.join(', ') || 'N/D'}
 - Obiettivi Atleta: ${params.athlete.goals || 'Non specificato'}
@@ -578,11 +388,11 @@ Dati Atleta Selezionato:
   }
 
   if (params.customAthleteContext?.trim()) {
-    athleteContext += `\nContesto / Stile di Vita Aggiuntivo:\n${params.customAthleteContext.trim()}\n`;
+    athleteContext += `\nContesto / Stile di Vita Aggiuntivo:\n<user_input_context>\n${params.customAthleteContext.trim()}\n</user_input_context>\n`;
   }
   
   if (params.chatContext?.trim()) {
-    athleteContext += `\nSTORICO RECENTE CHAT CON IL COACH (FEEDBACK ATLETA):\n${params.chatContext.trim()}\n(Tieni conto di questi feedback recenti per adattare gli esercizi e motivare le tue scelte nel reasoning).\n`;
+    athleteContext += `\nSTORICO RECENTE CHAT CON IL COACH (FEEDBACK ATLETA):\n<chat_history>\n${params.chatContext.trim()}\n</chat_history>\n(Tieni conto di questi feedback recenti per adattare gli esercizi e motivare le tue scelte nel reasoning).\n`;
   }
 
   // ── SISTEMA ESPERTO: Matching cliente-esercizio con controindicazioni ──────────
@@ -595,238 +405,173 @@ ${athleteContext}
 PARAMETRI CHIAVE DEL PROGRAMMA:
 - Obiettivo specifico: ${params.goal}
 - Livello Esperienza Atleta: ${params.experienceLevel || 'Intermedio'}
-- Durata Target Sessione: ${params.sessionDurationMinutes || 60} minuti
+- Durata Target Sessione: ${targetMin} minuti
 - Stile di Progressione: ${params.progressionStyle || 'RIR/RPE Progressivo'}
 ${params.targetFocus && params.targetFocus.length > 0 ? `- Focus Muscolare Specifico: ${params.targetFocus.join(', ')}` : ''}
 ${params.splitStyle ? `- Stile della Split: ${params.splitStyle}` : ''}
-- Settimane totali: ${params.weeks}
-- Giorni per settimana: ${params.daysPerWeek}
+- Settimane totali da programmare: ${weeksToPrompt}
+- Giorni per settimana: ${params.daysPerWeek} (Usa esattamente questi giorni: ${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')})
 - Attrezzatura a disposizione: ${params.availableEquipment.length > 0 ? params.availableEquipment.join(', ') : 'Palestra Completa'}
-${params.limitations ? `- INFORTUNI / LIMITAZIONI DA EVITARE: ${params.limitations}` : '- Nessuna limitazione segnalata'}
-${params.extraNotes ? `- Note aggiuntive / Istruzioni del Coach: ${params.extraNotes}` : ''}
+${params.limitations ? `- INFORTUNI / LIMITAZIONI DA EVITARE:\n<limitations>\n${params.limitations}\n</limitations>` : '- Nessuna limitazione segnalata'}
+${params.extraNotes ? `- Note aggiuntive / Istruzioni del Coach:\n<coach_notes>\n${params.extraNotes}\n</coach_notes>` : ''}
 
 ${safetyContext ? safetyContext + '\n' : ''}
-IMPORTANTE: Assicurati di generare tra 4 e 7 esercizi per CIASCUN giorno di CIASCUNA settimana. Usa solo "Giorno A", "Giorno B", "Giorno C" come day_name.
+LIBRERIA ESERCIZI PREFERITA COACH:
+[${exerciseNames}]
 
-Restituisci ESCLUSIVAMENTE l'array JSON valido secondo lo schema richiesto.
+REGOLE TASSATIVE: 
+1. Assicurati di generare tra ${recommendedExCount} esercizi per CIASCUN giorno di CIASCUNA settimana (${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}).
+2. Usa principalmente la libreria esercizi del coach.
+3. Se mancano dati critici per generare, usa il campo "domanda_mirata".
+4. Se c'è un blocco di sicurezza (es. infortunio non compatibile), usa il campo "blocco_sicurezza".
 `;
 
   try {
-    if (params.provider === 'openai') {
-      const apiKey = getOpenAIKey();
-      const response = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ],
-          temperature: 0.7,
-          max_tokens: 8192,
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "workout_program",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  reasoning: { type: "string", description: "Breve frase motivazionale che spiega il razionale delle scelte." },
-                  exercises: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        week_number: { type: "number", description: "Numero della settimana (es. 1)" },
-                        day_name: { type: "string", description: "Nome del giorno (es. Giorno A)" },
-                        name: { type: "string", description: "Nome dell'esercizio" },
-                        sets: { type: "number" },
-                        reps_target: { type: "string" },
-                        rest_seconds: { type: "number" },
-                        target_weight: { type: "string" },
-                        rir_target: { type: "string" },
-                        tut: { type: "string" },
-                        notes: { type: "string" }
-                      },
-                      required: ["week_number", "day_name", "name", "sets", "reps_target", "rest_seconds"],
-                      additionalProperties: false
-                    }
-                  }
-                },
-                required: ["reasoning", "exercises"],
-                additionalProperties: false
-              }
-            }
+    if (onProgress) onProgress(`Generazione in corso (tramite Edge Function protetta)...`);
+
+    const { data, error } = await supabase.functions.invoke('generate-workout', {
+      body: {
+        provider: params.provider,
+        systemPrompt,
+        userPrompt,
+        model: params.provider === 'openai' ? 'gpt-4o' : 'gemini-1.5-pro',
+        maxTokens: 8192,
+        temperature: 0.7,
+        responseFormat: params.provider === 'openai' ? {
+          type: "json_schema",
+          json_schema: {
+            name: "workout_program",
+            strict: false,
+            schema: WORKOUT_JSON_SCHEMA
           }
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error?.message || `Errore HTTP ${response.status} da OpenAI`);
+        } : undefined
       }
+    });
 
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
-      
-      if (!content) throw new Error("Risposta vuota dall'IA");
-
-      const parsedObj = safeParseWorkoutJSON(content);
-      const filled = fillMissingDaysAndExercises(parsedObj.exercises, params.daysPerWeek, params.coachExercises);
-      const expanded = expandMesocycleWeeks(filled, params.weeks);
-      return { exercises: expanded, reasoning: parsedObj.reasoning };
-
-    } else {
-      if (onProgress) onProgress(`Generazione in corso con Gemini 3.6 Flash...`);
-
-      const response = await fetchGeminiWithMultiKeyPool(
-        ':generateContent',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-            generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: 8192,
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: "object",
-                properties: {
-                  reasoning: { type: "string" },
-                  exercises: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        week_number: { type: "number" },
-                        day_name: { type: "string" },
-                        name: { type: "string" },
-                        sets: { type: "number" },
-                        reps_target: { type: "string" },
-                        rest_seconds: { type: "number" },
-                        target_weight: { type: "string" },
-                        rir_target: { type: "string" },
-                        tut: { type: "string" },
-                        notes: { type: "string" }
-                      },
-                      required: ["week_number", "day_name", "name", "sets", "reps_target", "rest_seconds"]
-                    }
-                  }
-                },
-                required: ["reasoning", "exercises"]
-              }
-            }
-          })
-        },
-        onProgress
-      );
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error?.message || `Errore HTTP ${response.status} da Gemini`);
-      }
-
-      const data = await response.json();
-      let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) throw new Error("Risposta vuota dall'IA Gemini");
-
-      const parsedObj = safeParseWorkoutJSON(rawText);
-      const filled = fillMissingDaysAndExercises(parsedObj.exercises, params.daysPerWeek, params.coachExercises);
-      const expanded = expandMesocycleWeeks(filled, params.weeks);
-      return { exercises: expanded, reasoning: parsedObj.reasoning };
+    if (error) {
+      console.error("Errore Edge Function", error);
+      throw new Error(`Errore Server: ${error.message}`);
     }
-  } catch (error: any) {
-    console.error("Errore AI Workout Generator:", error);
-    throw new Error(error.message || "Errore sconosciuto durante la generazione della scheda.");
+
+    if (!data || !data.text) {
+      throw new Error("Risposta vuota o malformata dall'IA");
+    }
+
+    const content = data.text;
+    const parsedObj = safeParseWorkoutJSON(content);
+    
+    // Se c'è una domanda mirata o un blocco sicurezza, ritorniamo immediatamente
+    if (parsedObj.domanda_mirata || parsedObj.blocco_sicurezza) {
+      return parsedObj;
+    }
+    
+    const filled = fillMissingDaysAndExercises(parsedObj.programma_giorno_per_giorno || [], params.daysPerWeek, params.coachExercises);
+    const expanded = expandMesocycleWeeks(filled, params.weeks);
+    parsedObj.programma_giorno_per_giorno = expanded;
+    
+    return parsedObj;
+
+  } catch (err: any) {
+    console.error("Errore Generazione IA:", err);
+    throw err;
   }
 }
 
-export interface AISmartSuggestions {
-  volume: string;
-  fatigue: string;
-  progression: string;
+export interface CoPilotActionableSuggestion {
+  id: string;
+  osservazione: string;
+  motivo: string;
+  modifica_suggerita: string;
+  azione_tipo: 'REDUCE_SETS' | 'INCREASE_SETS' | 'CHANGE_RIR' | 'SWAP_EXERCISE' | 'REMOVE_EXERCISE' | 'NONE';
+  target_exercise_name: string;
+  payload: {
+    new_value?: string | number;
+  };
 }
 
-export async function generateAISmartSuggestions(exercises: any[]): Promise<AISmartSuggestions> {
+export interface AISmartSuggestionsContext {
+  athleteLevel: string;
+  athleteGoal: string;
+  sessionDuration: number;
+  limitations: string;
+}
+
+export async function generateAISmartSuggestions(
+  exercises: any[],
+  context?: AISmartSuggestionsContext
+): Promise<CoPilotActionableSuggestion[]> {
+  const profileContext = context 
+    ? `Profilo Atleta: ${context.athleteLevel}. Obiettivo: ${context.athleteGoal}. Tempo Seduta: ${context.sessionDuration} min. Limitazioni/Fastidi: ${context.limitations || 'Nessuna'}.`
+    : `Nessun profilo specifico fornito.`;
+
   const prompt = `
-Analizza la seguente sessione di allenamento di un singolo giorno e fornisci consigli pratici e stringati per il personal trainer.
+Agisci come un Senior Coach esperto (Metodo Antonio) che sta revisionando la scheda di un collega.
+Analizza la seguente sessione di allenamento contestualizzandola sul profilo dell'atleta.
+
+${profileContext}
+
 Esercizi nella sessione:
-${exercises.map(e => `- ${e.name} (${e.sets}x${e.reps_target}, Rec: ${e.rest_seconds}s)`).join('\n')}
+${exercises.map(e => `- ${e.name} (Serie: ${e.sets}, Target: ${e.reps_target}, Rec: ${e.rest_seconds}s)`).join('\n')}
 
-Restituisci un oggetto JSON con ESATTAMENTE queste chiavi:
-"volume": Breve commento sul bilanciamento muscolare (es. spinte vs tirate, enfasi su determinati distretti).
-"fatigue": Commento sulla sovrapposizione e rischio affaticamento (es. due esercizi pesanti di fila per lo stesso distretto o zona lombare).
-"progression": Suggerimento pratico su come progredire nelle settimane successive (es. scalare RIR, aumentare carico, ecc).
+Restituisci ESATTAMENTE un array JSON (e nient'altro) contenente da 1 a 3 suggerimenti di ottimizzazione.
+Ogni elemento dell'array deve rispettare ESATTAMENTE questo schema:
+{
+  "id": "generare_un_id_univoco_stringa",
+  "osservazione": "Cosa rilevi di subottimale",
+  "motivo": "Perché è subottimale rispetto al profilo o alla fatica",
+  "modifica_suggerita": "Descrizione sintetica della correzione",
+  "azione_tipo": "Scegli tra: REDUCE_SETS, INCREASE_SETS, CHANGE_RIR, SWAP_EXERCISE, REMOVE_EXERCISE",
+  "target_exercise_name": "NOME_ESATTO_DELL_ESERCIZIO_DA_MODIFICARE",
+  "payload": {
+    "new_value": "Il nuovo valore. Se REDUCE_SETS o INCREASE_SETS, un numero intero. Se SWAP_EXERCISE o CHANGE_RIR, una stringa."
+  }
+}
 
-Le risposte devono essere in italiano, professionali ma dirette (max 2-3 frasi per campo).
-Restituisci SOLO il JSON, nient'altro. Nessun blocco markdown. Esempio formato:
-{ "volume": "...", "fatigue": "...", "progression": "..." }
-  `;
+Se non ci sono criticità, restituisci un array vuoto [].
+Non inserire MAI blocchi markdown (es. \`\`\`json), restituisci direttamente l'array JSON puro.
+`;
 
   try {
-    const response = await fetchGeminiWithMultiKeyPool(
-      ':generateContent',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 2048,
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "object",
-              properties: {
-                volume: { type: "string" },
-                fatigue: { type: "string" },
-                progression: { type: "string" }
-              },
-              required: ["volume", "fatigue", "progression"]
-            }
-          }
-        })
+    const { data, error } = await supabase.functions.invoke('generate-workout', {
+      body: {
+        provider: 'gemini',
+        systemPrompt: "Sei un analista di fatica per schede di allenamento.",
+        userPrompt: prompt,
+        model: 'gemini-1.5-pro',
+        maxTokens: 2048,
+        temperature: 0.4
       }
-    );
+    });
 
-    if (!response.ok) throw new Error("Errore durante la comunicazione con Gemini API");
+    if (error) throw new Error(`Errore Server: ${error.message}`);
+    if (!data || !data.text) throw new Error("Risposta vuota dall'IA Gemini");
 
-    const data = await response.json();
-    let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawText) throw new Error("Risposta vuota dall'IA Gemini");
+    let rawText = data.text;
 
     let cleaned = rawText.trim().replace(/^```json/gi, '').replace(/^```/gi, '').replace(/```$/gi, '').trim();
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    // Estract array brackets if there's surrounding text
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
     if (jsonMatch) cleaned = jsonMatch[0];
 
     try {
       const parsed = JSON.parse(cleaned);
-      return {
-        volume: parsed.volume || "Nessun dato sul volume.",
-        fatigue: parsed.fatigue || "Nessun dato sull'affaticamento.",
-        progression: parsed.progression || "Nessun dato sulla progressione."
-      };
+      if (!Array.isArray(parsed)) return [];
+      
+      // Fix types if necessary
+      return parsed.map((item: any) => ({
+        ...item,
+        payload: {
+          new_value: ['REDUCE_SETS', 'INCREASE_SETS'].includes(item.azione_tipo) 
+            ? Number(item.payload?.new_value) 
+            : item.payload?.new_value
+        }
+      }));
     } catch (parseError) {
       console.warn("JSON Parse Fallback per i consigli IA:", parseError);
-      return {
-        volume: "Al momento non è possibile analizzare il volume. Riprova più tardi.",
-        fatigue: "Impossibile elaborare i dati di affaticamento in questo momento.",
-        progression: "Suggerimenti di progressione non disponibili."
-      };
+      return [];
     }
   } catch (error: any) {
     console.error("Errore Smart Suggestions:", error);
-    return {
-      volume: "Si è verificato un errore di connessione. Riprova.",
-      fatigue: "Si è verificato un errore di connessione. Riprova.",
-      progression: "Si è verificato un errore di connessione. Riprova."
-    };
+    return [];
   }
 }

@@ -19,7 +19,7 @@ import {
   analyzeWorkoutSafety, 
   askCoachAIAssistant 
 } from '../../lib/ai/aiSafetyAssistant';
-import { getOpenAIKey, getGeminiKey } from '../../lib/ai/workoutGenerator';
+
 import { useToast } from '../../context/ToastContext';
 
 interface CoachAIAssistantDrawerProps {
@@ -47,7 +47,7 @@ export const CoachAIAssistantDrawer: React.FC<CoachAIAssistantDrawerProps> = ({
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
-  const hasKey = provider === 'openai' ? !!getOpenAIKey() : !!getGeminiKey();
+  const hasKey = true; // API keys sono protette e gestite lato server (Edge Function)
 
   // Scroll to bottom when messages update
   useEffect(() => {

@@ -46,10 +46,10 @@ export async function uploadMedicalCertificateToStorage(
       return { url: fallbackDataUrl, isRemote: false };
     }
 
-    // Per bucket privati, ottieni Signed URL (scadenza 1 anno) o Public URL
+    // Per bucket privati, ottieni Signed URL (scadenza 15 minuti) o Public URL
     const { data: signedUrlData } = await supabase.storage
       .from('medical-certificates')
-      .createSignedUrl(data.path, 60 * 60 * 24 * 365); // 1 Anno
+      .createSignedUrl(data.path, 60 * 15); // 15 Minuti
 
     if (signedUrlData?.signedUrl) {
       return { url: signedUrlData.signedUrl, isRemote: true };
