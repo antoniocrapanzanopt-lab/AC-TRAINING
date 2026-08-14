@@ -41,20 +41,12 @@ export const useMFA = () => {
       const verified = totpFactors.some(f => f.status === 'verified');
       const unverified = totpFactors.some(f => (f as any).status === 'unverified');
 
-      // 3. Auto-cleanup di fattori unverified rimasti appesi
-      if (unverified) {
-        const unverifiedFactors = totpFactors.filter(f => (f as any).status === 'unverified');
-        for (const f of unverifiedFactors) {
-          await supabase.auth.mfa.unenroll({ factorId: f.id });
-        }
-      }
-
-      setFactors(totpFactors.filter(f => f.status === 'verified'));
+      setFactors(totpFactors);
       setMfaState({
         currentAAL: (aalData?.currentLevel as 'aal1' | 'aal2') || 'aal1',
         nextAAL: (aalData?.nextLevel as 'aal2' | null) || null,
         hasVerifiedFactors: verified,
-        hasUnverifiedFactors: false,
+        hasUnverifiedFactors: unverified,
         isLoading: false,
         error: null
       });
@@ -68,16 +60,37 @@ export const useMFA = () => {
     loadMFAStatus();
   }, [loadMFAStatus]);
 
+  const cleanupUnverifiedFactors = async () => {
+    try {
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      const unverified = (factorsData?.totp || []).filter(f => (f as any).status === 'unverified');
+      for (const f of unverified) {
+        await supabase.auth.mfa.unenroll({ factorId: f.id });
+      }
+      return true;
+    } catch (err: any) {
+      console.warn('Error cleaning up unverified factors:', err?.message);
+      return false;
+    }
+  };
+
   const enrollTOTP = async () => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
+      // 1. Pulizia preventiva dei fattori non verificati rimasti appesi
+      await cleanupUnverifiedFactors();
+
+      // 2. Registrazione del nuovo fattore TOTP
+      const { data, error } = await supabase.auth.mfa.enroll({ 
+        factorType: 'totp',
+        issuer: 'Builder Athlete Manager'
+      });
       if (error) throw error;
-      await loadMFAStatus();
       return data;
     } catch (err: any) {
-      setError(err.message);
+      console.error('Enroll error:', err);
+      setError(err.message || 'Errore durante la registrazione MFA');
       return null;
     } finally {
       setLoading(false);
@@ -85,13 +98,18 @@ export const useMFA = () => {
   };
 
   const challengeFactor = async (factorId: string) => {
+    setLoading(true);
+    setError(null);
     try {
       const { data, error } = await supabase.auth.mfa.challenge({ factorId });
       if (error) throw error;
       return data;
     } catch (err: any) {
+      console.error('Challenge error:', err);
       setError(err.message);
       return null;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -104,7 +122,8 @@ export const useMFA = () => {
       await loadMFAStatus();
       return true;
     } catch (err: any) {
-      setError(err.message);
+      console.error('Verify error:', err);
+      setError(err.message || 'Codice non valido o scaduto');
       return false;
     } finally {
       setLoading(false);
@@ -123,13 +142,6 @@ export const useMFA = () => {
       return false;
     } finally {
       setLoading(false);
-    }
-  };
-
-  const cleanupUnverifiedFactors = async () => {
-    const unverified = factors.filter(f => (f as any).status === 'unverified');
-    for (const f of unverified) {
-      await unenrollFactor(f.id);
     }
   };
 

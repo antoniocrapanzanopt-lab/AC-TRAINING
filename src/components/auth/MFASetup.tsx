@@ -13,14 +13,14 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
   const [errorMsg, setErrorMsg] = useState('');
 
   const startEnroll = async () => {
-    // Pulizia fattori appesi per evitare blocchi "already have an unverified factor"
-    await cleanupUnverifiedFactors();
-    
+    setErrorMsg('');
     const data = await enrollTOTP();
-    if (data) {
+    if (data && data.totp) {
       setSetupData(data);
       const challenge = await challengeFactor(data.id);
-      if (challenge) setChallengeId(challenge.id);
+      if (challenge) {
+        setChallengeId(challenge.id);
+      }
     } else {
       showError('Impossibile iniziare la configurazione. Se il problema persiste, ricarica la pagina.');
     }
