@@ -268,14 +268,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user?.role === 'owner' ? true : !!user?.canViewFinancials
   );
 
+  const authScreenState = useMemo(() => {
+    return resolveMFAAccessState(sessionUser, mfa.mfaState, user?.role || 'athlete');
+  }, [user, sessionUser, mfa.mfaState]);
+
   // Non mostrare l'app finché non controlliamo la sessione
   if (loading) {
     return <div className="h-screen w-screen bg-black flex items-center justify-center text-white">Caricamento in corso...</div>;
   }
-
-  const authScreenState = useMemo(() => {
-    return resolveMFAAccessState(sessionUser, mfa.mfaState, user?.role || 'athlete');
-  }, [user, sessionUser, mfa.mfaState]);
 
   return (
     <AuthContext.Provider
