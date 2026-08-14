@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useMFA } from '../../hooks/useMFA';
 import { useToast } from '../../context/ToastContext';
-import { Copy, Check, KeyRound, ShieldCheck } from 'lucide-react';
+import { Copy, Check, ShieldCheck } from 'lucide-react';
 
 export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }> = ({ onComplete, onCancel }) => {
   const { enrollTOTP, challengeFactor, verifyFactor, cleanupUnverifiedFactors, loading, error } = useMFA();
@@ -47,7 +48,7 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
       showSuccess('Autenticazione a Due Fattori abilitata con successo!');
       onComplete();
     } else {
-      setErrorMsg('Codice non valido o scaduto. Riprova.');
+      setErrorMsg('Codice non valido o scaduto. Assicurati che l\'orario del telefono sia sincronizzato.');
     }
   };
 
@@ -64,9 +65,9 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
         <div className="mx-auto w-12 h-12 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center mb-4">
           <ShieldCheck className="w-6 h-6 text-[var(--color-primary)]" />
         </div>
-        <h3 className="text-xl font-bold text-white mb-2">Configura l'MFA</h3>
+        <h3 className="text-xl font-bold text-white mb-2">Configura MFA</h3>
         <p className="text-slate-400 text-sm mb-6">
-          Usa un'app Authenticator (es. Google Authenticator, Authy, 1Password) per proteggere il tuo account.
+          Usa l'app <strong>Google Authenticator</strong> per proteggere il tuo account con la verifica in due passaggi.
         </p>
 
         {setupError && (
@@ -94,33 +95,59 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
     );
   }
 
+  const qrCodeUri = setupData?.totp?.uri;
+  const qrCodeSrc = setupData?.totp?.qr_code 
+    ? (setupData.totp.qr_code.startsWith('data:image') 
+        ? setupData.totp.qr_code 
+        : setupData.totp.qr_code.startsWith('<svg') 
+          ? `data:image/svg+xml;utf-8,${encodeURIComponent(setupData.totp.qr_code)}`
+          : setupData.totp.qr_code)
+    : null;
+
   return (
     <div className="p-6 bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl flex flex-col items-center">
-      <div className="mx-auto w-12 h-12 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center mb-3">
-        <KeyRound className="w-6 h-6 text-[var(--color-primary)]" />
-      </div>
-
-      <h3 className="text-xl font-bold text-white mb-2">Configura MFA manualmente</h3>
-      
-      <p className="text-slate-400 text-xs sm:text-sm text-center max-w-sm mb-5">
-        1. Apri la tua app Authenticator (Google Authenticator, Authy, ecc.)<br/>
-        2. Aggiungi un account inserendo la <strong>chiave segreta</strong> qui sotto<br/>
-        3. Digita il codice a 6 cifre generato per confermare.
+      <h3 className="text-xl font-bold text-white mb-1">Configura MFA</h3>
+      <p className="text-slate-400 text-xs sm:text-sm text-center max-w-sm mb-4">
+        Scansiona il QR code con <strong>Google Authenticator</strong> sul tuo smartphone.
       </p>
-
-      {/* Box Copia Chiave Segreta */}
-      <div className="w-full max-w-sm mb-6 space-y-2">
-        <span className="text-slate-400 text-xs font-semibold block text-center uppercase tracking-wider">
-          Chiave Segreta
-        </span>
-        <div className="flex items-center gap-2 bg-slate-900 border border-[var(--color-panel-border)] p-2.5 rounded-xl">
-          <code className="flex-1 text-center font-mono text-sm tracking-widest text-[var(--color-primary)] font-bold select-all px-2 break-all">
+      
+      {/* Box QR Code ad altissima visibilità con margine bianco ISO */}
+      <div className="bg-white p-5 rounded-2xl mb-4 flex items-center justify-center shadow-2xl">
+        {qrCodeUri ? (
+          <QRCodeSVG 
+            value={qrCodeUri} 
+            size={240} 
+            fgColor="#000000" 
+            bgColor="#ffffff" 
+            level="H" 
+            includeMargin={true}
+          />
+        ) : qrCodeSrc ? (
+          <img 
+            src={qrCodeSrc} 
+            alt="MFA QR Code" 
+            className="w-[240px] h-[240px] object-contain block"
+          />
+        ) : (
+          <p className="text-slate-800 text-xs font-semibold text-center p-4">
+            Impossibile generare il QR code.<br/>Usa la chiave segreta qui sotto.
+          </p>
+        )}
+      </div>
+      
+      {/* Box Fallback Manuale Chiave Segreta */}
+      <div className="w-full max-w-sm mb-5 space-y-1.5">
+        <p className="text-slate-400 text-xs text-center font-medium">
+          Se non riesci a scansionarlo, usa la chiave segreta qui sotto in <strong>Google Authenticator</strong>:
+        </p>
+        <div className="flex items-center gap-2 bg-slate-900 border border-[var(--color-panel-border)] p-2 rounded-xl">
+          <code className="flex-1 text-center font-mono text-xs sm:text-sm tracking-wider text-[var(--color-primary)] font-bold select-all px-2 break-all">
             {setupData.totp.secret}
           </code>
           <button
             type="button"
             onClick={handleCopySecret}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold transition-colors border border-slate-700 shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold transition-colors border border-slate-700 shrink-0"
             title="Copia chiave segreta"
           >
             {copied ? (
@@ -142,7 +169,7 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
       <div className="w-full max-w-xs space-y-4">
         <div>
           <label className="text-slate-400 text-xs font-semibold block text-center mb-1 uppercase tracking-wider">
-            Codice a 6 cifre
+            Codice a 6 cifre da Google Authenticator
           </label>
           <input 
             type="text" 
@@ -150,14 +177,14 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
             placeholder="123456"
             value={code} 
             onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
-            className="text-center text-3xl tracking-[0.3em] p-3.5 rounded-xl bg-slate-900 border border-[var(--color-panel-border)] text-white w-full focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+            className="text-center text-3xl tracking-[0.3em] p-3 rounded-xl bg-slate-900 border border-[var(--color-panel-border)] text-white w-full focus:outline-none focus:border-[var(--color-primary)] transition-colors"
             autoFocus
           />
         </div>
         
-        {errorMsg && <p className="text-red-400 text-sm text-center font-medium">{errorMsg}</p>}
+        {errorMsg && <p className="text-red-400 text-xs text-center font-medium">{errorMsg}</p>}
         
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2.5">
           <button 
             onClick={handleVerify} 
             disabled={loading || code.length !== 6} 
@@ -169,7 +196,7 @@ export const MFASetup: React.FC<{ onComplete: () => void; onCancel: () => void }
           <button 
             onClick={handleCancel} 
             disabled={loading}
-            className="text-slate-400 hover:text-white transition-colors py-2 text-sm disabled:opacity-50"
+            className="text-slate-400 hover:text-white transition-colors py-1.5 text-xs disabled:opacity-50"
           >
             Annulla Configurazione
           </button>
