@@ -60,7 +60,7 @@ export const useMFA = () => {
     loadMFAStatus();
   }, [loadMFAStatus]);
 
-  const cleanupUnverifiedFactors = async () => {
+  const cleanupUnverifiedFactors = useCallback(async () => {
     try {
       const { data: factorsData } = await supabase.auth.mfa.listFactors();
       const allFactors = factorsData?.all || [];
@@ -73,9 +73,9 @@ export const useMFA = () => {
       console.warn('Error cleaning up unverified factors:', err?.message);
       return false;
     }
-  };
+  }, []);
 
-  const enrollTOTP = async () => {
+  const enrollTOTP = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -96,11 +96,9 @@ export const useMFA = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [cleanupUnverifiedFactors]);
 
-  const challengeFactor = async (factorId: string) => {
-    setLoading(true);
-    setError(null);
+  const challengeFactor = useCallback(async (factorId: string) => {
     try {
       const { data, error } = await supabase.auth.mfa.challenge({ factorId });
       if (error) throw error;
@@ -109,12 +107,10 @@ export const useMFA = () => {
       console.error('Challenge error:', err);
       setError(err.message);
       return null;
-    } finally {
-      setLoading(false);
     }
-  };
+  }, []);
 
-  const verifyFactor = async (factorId: string, challengeId: string, code: string) => {
+  const verifyFactor = useCallback(async (factorId: string, challengeId: string, code: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -129,9 +125,9 @@ export const useMFA = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadMFAStatus]);
 
-  const unenrollFactor = async (factorId: string) => {
+  const unenrollFactor = useCallback(async (factorId: string) => {
     setLoading(true);
     try {
       const { error } = await supabase.auth.mfa.unenroll({ factorId });
@@ -144,9 +140,11 @@ export const useMFA = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadMFAStatus]);
 
-  const getPrimaryFactor = () => factors.find(f => f.status === 'verified');
+  const getPrimaryFactor = useCallback(() => {
+    return factors.find(f => f.status === 'verified');
+  }, [factors]);
 
   return {
     mfaState,

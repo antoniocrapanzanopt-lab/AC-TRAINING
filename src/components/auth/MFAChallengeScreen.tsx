@@ -1,52 +1,73 @@
 import React, { useState, useEffect } from 'react';
 import { useMFA } from '../../hooks/useMFA';
 import { useToast } from '../../context/ToastContext';
-import { ShieldAlert, ArrowRight, Lock } from 'lucide-react';
+import { ShieldAlert, ArrowRight, Lock, Loader2 } from 'lucide-react';
 
 export const MFAChallengeScreen: React.FC<{ onSuccess: () => void; onCancel: () => void }> = ({ onSuccess, onCancel }) => {
-  const { challengeFactor, verifyFactor, getPrimaryFactor, loading } = useMFA();
+  const { challengeFactor, verifyFactor, getPrimaryFactor } = useMFA();
   const { showError } = useToast();
   
   const [code, setCode] = useState('');
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [factorId, setFactorId] = useState<string | null>(null);
-  const [localLoading, setLocalLoading] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    let isMounted = true;
+
     const initChallenge = async () => {
-      setLocalLoading(true);
-      const factor = getPrimaryFactor();
-      if (!factor) {
-        setLocalLoading(false);
-        return;
+      setIsInitializing(true);
+      setErrorMsg('');
+      try {
+        const factor = getPrimaryFactor();
+        if (!factor) {
+          if (isMounted) setIsInitializing(false);
+          return;
+        }
+        
+        if (isMounted) setFactorId(factor.id);
+        const challenge = await challengeFactor(factor.id);
+        if (challenge && isMounted) {
+          setChallengeId(challenge.id);
+        } else if (isMounted) {
+          setErrorMsg('Impossibile avviare la verifica MFA. Ricarica la pagina.');
+        }
+      } catch (err: any) {
+        if (isMounted) setErrorMsg(err?.message || 'Errore durante la verifica');
+      } finally {
+        if (isMounted) setIsInitializing(false);
       }
-      
-      setFactorId(factor.id);
-      const challenge = await challengeFactor(factor.id);
-      if (challenge) {
-        setChallengeId(challenge.id);
-      } else {
-        showError('Impossibile inizializzare la verifica MFA.');
-      }
-      setLocalLoading(false);
     };
     
     initChallenge();
-  }, [getPrimaryFactor, challengeFactor, showError]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getPrimaryFactor, challengeFactor]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (code.length !== 6 || !factorId || !challengeId) return;
     
-    const success = await verifyFactor(factorId, challengeId, code);
-    if (success) {
-      onSuccess();
-    } else {
-      showError('Codice non valido. Riprova.');
+    setIsSubmitting(true);
+    setErrorMsg('');
+    try {
+      const success = await verifyFactor(factorId, challengeId, code);
+      if (success) {
+        onSuccess();
+      } else {
+        setErrorMsg('Codice non valido o scaduto. Assicurati che l\'orario del telefono sia corretto.');
+        showError('Codice non valido. Riprova.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Errore durante la verifica');
+    } finally {
+      setIsSubmitting(false);
     }
   };
-
-  const isWorking = loading || localLoading;
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4 fixed inset-0 z-50">
@@ -62,34 +83,54 @@ export const MFAChallengeScreen: React.FC<{ onSuccess: () => void; onCancel: () 
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-2">
             <input
               type="text"
               placeholder="123456"
               maxLength={6}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, ''))}
-              className="w-full bg-slate-900 text-white text-center text-3xl tracking-[0.4em] p-4 rounded-xl border border-[var(--color-panel-border)] focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+              className="w-full bg-slate-900 text-white text-center text-3xl tracking-[0.4em] p-4 rounded-xl border border-[var(--color-panel-border)] focus:outline-none focus:border-[var(--color-primary)] transition-colors disabled:opacity-50"
               autoFocus
               required
-              disabled={isWorking}
+              disabled={isInitializing || isSubmitting}
             />
+
+            {errorMsg && (
+              <p className="text-red-400 text-xs text-center font-medium mt-1">
+                {errorMsg}
+              </p>
+            )}
           </div>
           
           <button 
             type="submit"
-            disabled={isWorking || code.length !== 6}
-            className="w-full flex items-center justify-center gap-2 bg-[var(--color-primary)] text-black px-6 py-3 rounded-xl font-bold hover:bg-[var(--color-primary-hover)] transition-all shadow-lg shadow-[var(--color-primary)]/20 disabled:opacity-50"
+            disabled={isInitializing || isSubmitting || code.length !== 6}
+            className="w-full flex items-center justify-center gap-2 bg-[var(--color-primary)] text-black px-6 py-3.5 rounded-xl font-bold hover:bg-[var(--color-primary-hover)] transition-all shadow-lg shadow-[var(--color-primary)]/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span>{isWorking ? 'Verifica in corso...' : 'Verifica Accesso'}</span>
-            {!isWorking && <ArrowRight className="w-4 h-4" />}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Verifica in corso...</span>
+              </>
+            ) : isInitializing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Inizializzazione...</span>
+              </>
+            ) : (
+              <>
+                <span>Verifica Accesso</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </form>
 
-        <div className="text-center pt-6 border-t border-[var(--color-panel-border)]">
+        <div className="text-center pt-4 border-t border-[var(--color-panel-border)]">
           <button 
             onClick={onCancel}
-            disabled={isWorking}
+            disabled={isSubmitting}
             className="text-xs text-slate-400 hover:text-white transition-colors"
           >
             Annulla e disconnettiti
