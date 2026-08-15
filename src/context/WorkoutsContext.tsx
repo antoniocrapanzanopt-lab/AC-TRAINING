@@ -67,14 +67,19 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const loadFolders = useCallback(async () => {
     if (!user || user.role !== 'owner') return;
 
-    const { data, error } = await supabase
-      .from('workout_folders')
-      .select('*')
-      .eq('coach_id', user.id)
-      .order('name', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('workout_folders')
+        .select('*')
+        .order('name', { ascending: true });
 
-    if (!error && data) {
-      setFolders(data);
+      if (error) {
+        console.warn('Errore nel caricamento delle cartelle workout:', error.message);
+      } else if (data) {
+        setFolders(data);
+      }
+    } catch (err: unknown) {
+      console.error('Eccezione loadFolders:', err);
     }
   }, [user]);
 
@@ -156,17 +161,24 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user || user.role !== 'owner') return;
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from('workouts')
-      .select('*')
-      .eq('coach_id', user.id)
-      .eq('is_template', true)
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('workouts')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setCoachTemplates(data);
+      if (error) {
+        console.warn('Errore nel caricamento delle schede coach:', error.message);
+      } else if (data) {
+        // Mostra tutte le schede template o master del coach (esclude solo le copie private create per atleti singoli)
+        const templates = data.filter(w => w.is_template !== false);
+        setCoachTemplates(templates);
+      }
+    } catch (err: unknown) {
+      console.error('Eccezione loadCoachTemplates:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [user]);
 
   useEffect(() => {
