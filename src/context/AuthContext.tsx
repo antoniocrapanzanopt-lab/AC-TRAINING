@@ -168,12 +168,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Errore aggiornamento metadata utente Supabase:', e);
     }
 
-    // 3. Salva nella tabella del DB Supabase (athletes o profiles)
+    // 3. Salva nella tabella del DB Supabase (athletes per il profilo atleta)
     try {
       if (user.role === 'athlete' && user.athleteId) {
         await supabase.from('athletes').update({ has_seen_disclaimer: true } as Record<string, unknown>).eq('id', user.athleteId);
-      } else {
-        await supabase.from('profiles').update({ has_seen_disclaimer: true } as Record<string, unknown>).eq('id', user.id);
       }
     } catch {
       // Fallback se la colonna non è ancora stata creata sul DB via SQL
