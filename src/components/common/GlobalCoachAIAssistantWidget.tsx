@@ -208,7 +208,7 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
                   onClick={() => setIsAddingShortcut(!isAddingShortcut)}
                   className="text-[10px] font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1"
                 >
-                  <Plus className="w-3 h-3" /> Aggiungi Preferito
+                  <Plus className="w-3 h-3" /> Crea Scorciatoia
                 </button>
               </div>
 
@@ -232,42 +232,62 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
                 </div>
               )}
 
-              {/* Grid Chips Preset */}
+              {/* Grid Chips Preset - Singola Label & Icona Decorativa */}
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => handleSendMessage("Quali atleti hanno un check-in o rinnovo in scadenza nei prossimi 7 giorni?")}
+                  onClick={() => handleSendMessage("Aggiungi Preferito")}
+                  aria-label={selectedAthleteId ? "Segna atleta come preferito" : "Suggerisci atleti prioritari per preferiti"}
+                  className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-yellow-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
+                >
+                  <span className="p-1 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs" aria-hidden="true">⭐</span>
+                  <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">
+                    {selectedAthleteId ? 'Segna come preferito' : 'Suggerisci preferiti'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage("Check in scadenza?")}
+                  aria-label="Verifica check-in in scadenza"
                   className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
                 >
-                  <span className="p-1 rounded-lg bg-amber-500/10 text-amber-400">🚨</span>
+                  <span className="p-1 rounded-lg bg-amber-500/10 text-amber-400 text-xs" aria-hidden="true">🚨</span>
                   <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">Check in scadenza?</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => handleSendMessage("Analizza gli atleti che presentano un plateau o stallo nei carichi.")}
+                  onClick={() => handleSendMessage("Atleti in stallo?")}
+                  aria-label="Analisi stallo e plateau carichi"
                   className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-purple-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
                 >
-                  <span className="p-1 rounded-lg bg-purple-500/10 text-purple-400">📈</span>
-                  <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">Atleti in stallo?</span>
+                  <span className="p-1 rounded-lg bg-purple-500/10 text-purple-400 text-xs" aria-hidden="true">📈</span>
+                  <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">
+                    {selectedAthleteId ? 'Stato stallo carichi' : 'Atleti in stallo?'}
+                  </span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => handleSendMessage("Quali atleti hanno segnalato note sanitarie, dolori o infortuni recenti?")}
+                  onClick={() => handleSendMessage("Segnalazioni fastidi")}
+                  aria-label="Riepilogo segnalazioni fisiche e fastidi"
                   className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-rose-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
                 >
-                  <span className="p-1 rounded-lg bg-rose-500/10 text-rose-400">⚠️</span>
+                  <span className="p-1 rounded-lg bg-rose-500/10 text-rose-400 text-xs" aria-hidden="true">⚠️</span>
                   <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">Segnalazioni fastidi</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => handleSendMessage("Mostrami quali atleti hanno le schede di allenamento in scadenza o da rinnovare.")}
-                  className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-sky-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
+                  onClick={() => handleSendMessage("Schede da rinnovare")}
+                  aria-label="Verifica schede di allenamento in scadenza"
+                  className="col-span-2 p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-sky-500/50 text-left transition-all flex items-center gap-2 group shrink-0"
                 >
-                  <span className="p-1 rounded-lg bg-sky-500/10 text-sky-400">📋</span>
-                  <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">Schede da rinnovare</span>
+                  <span className="p-1 rounded-lg bg-sky-500/10 text-sky-400 text-xs" aria-hidden="true">📋</span>
+                  <span className="text-[11px] font-bold text-slate-300 group-hover:text-white truncate">
+                    {selectedAthleteId ? 'Stato scheda allenamento' : 'Schede da rinnovare'}
+                  </span>
                 </button>
               </div>
 
