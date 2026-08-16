@@ -40,17 +40,40 @@ const WorkoutCard: React.FC<{
 
         const { data } = await supabase
           .from('workout_sessions')
-          .select('id, end_time')
+          .select(`
+            id,
+            end_time,
+            notes,
+            exercise_logs (
+              workout_exercises (
+                week_number,
+                day_name
+              )
+            )
+          `)
           .eq('athlete_id', athId)
           .eq('workout_id', wId)
           .not('end_time', 'is', null);
 
         if (data && data.length > 0) {
           const daysList = ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D'];
-          data.forEach((_, idx) => {
-            const weekNum = Math.floor(idx / daysList.length) + 1;
-            const dayName = daysList[idx % daysList.length];
-            currentMap[`${weekNum}-${dayName}`] = true;
+          data.forEach((sess: any, idx: number) => {
+            let matched = false;
+            if (Array.isArray(sess.exercise_logs) && sess.exercise_logs.length > 0) {
+              sess.exercise_logs.forEach((log: any) => {
+                const we = log.workout_exercises;
+                if (we && we.week_number && we.day_name) {
+                  currentMap[`${we.week_number}-${we.day_name}`] = true;
+                  matched = true;
+                }
+              });
+            }
+
+            if (!matched) {
+              const weekNum = Math.floor(idx / daysList.length) + 1;
+              const dayName = daysList[idx % daysList.length];
+              currentMap[`${weekNum}-${dayName}`] = true;
+            }
           });
           localStorage.setItem(progressKey, JSON.stringify(currentMap));
         }

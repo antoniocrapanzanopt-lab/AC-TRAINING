@@ -288,6 +288,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         if (error) {
           console.error('Error sending message to Supabase:', error);
+          setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
         } else if (data) {
           setMessages(prev => prev.map(m => m.id === tempMsg.id ? data : m));
 
@@ -311,6 +312,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       } catch (err) {
         console.error('Async message send error:', err);
+        setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
       }
     })();
   }, [user, athletes]);

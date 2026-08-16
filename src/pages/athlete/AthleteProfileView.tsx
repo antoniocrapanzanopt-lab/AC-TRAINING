@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useMetrics } from '../../context/MetricsContext';
 import { supabase } from '../../lib/supabase';
+import { getDaysRemaining } from '../../lib/statusEngine';
 import { ChangeLogTab } from '../../components/athletes/ChangeLogTab';
 
 interface PastSession {
@@ -170,14 +171,13 @@ export const AthleteProfileView: React.FC = () => {
     fetchPastSessions();
   }, [athleteId]);
 
-  // Controllo scadenza certificato medico
+  // Controllo scadenza certificato medico unificato
   const getCertificateStatus = () => {
     if (!currentAthlete?.medicalCertificateExpiryDate) {
       return { status: 'missing', label: 'Certificato Non Presente', color: 'text-amber-400 bg-amber-500/10 border-amber-500/30' };
     }
     const expDate = new Date(currentAthlete.medicalCertificateExpiryDate);
-    const today = new Date();
-    const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const diffDays = getDaysRemaining(currentAthlete.medicalCertificateExpiryDate);
 
     if (diffDays < 0) {
       return { status: 'expired', label: `Scaduto il ${expDate.toLocaleDateString('it-IT')}`, color: 'text-rose-400 bg-rose-500/10 border-rose-500/30' };

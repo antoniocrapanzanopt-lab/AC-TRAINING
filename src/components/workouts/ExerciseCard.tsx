@@ -198,6 +198,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                       placeholder={exercise.reps_target}
                       value={setLog.reps}
                       disabled={isSetCompleted}
+                      onFocus={(e) => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                       onChange={(e) => onLogChange(setIdx, 'reps', e.target.value)}
                       className={`w-full py-3 px-2 border rounded-xl text-center text-base sm:text-lg font-black transition-all ${
                         isSetCompleted
@@ -215,6 +216,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                       placeholder="0"
                       value={setLog.weight}
                       disabled={isSetCompleted}
+                      onFocus={(e) => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                       onChange={(e) => onLogChange(setIdx, 'weight', e.target.value)}
                       className={`w-full py-3 px-2 border rounded-xl text-center text-base sm:text-lg font-black transition-all ${
                         isSetCompleted
@@ -232,6 +234,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                       placeholder="-"
                       value={setLog.rpe}
                       disabled={isSetCompleted}
+                      onFocus={(e) => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                       onChange={(e) => onLogChange(setIdx, 'rpe', e.target.value)}
                       className={`w-full py-3 px-1 border rounded-xl text-center text-sm sm:text-base font-extrabold transition-all ${
                         isSetCompleted
@@ -280,6 +283,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               type="text"
               placeholder="Es. Fastidio alla spalla nella 3ª serie, oppure carico percepito leggero..."
               value={noteFeedback}
+              onFocus={(e) => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })}
               onChange={(e) => onNoteFeedbackChange(e.target.value)}
               className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-[var(--color-primary)] transition-colors"
             />

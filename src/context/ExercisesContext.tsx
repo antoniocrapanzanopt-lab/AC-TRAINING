@@ -15,6 +15,8 @@ interface ExercisesContextType {
 
 const ExercisesContext = createContext<ExercisesContextType | undefined>(undefined);
 
+const isCoachRole = (role?: string) => role === 'owner' || role === 'admin' || role === 'coach' || role === 'collaborator';
+
 export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [exercises, setExercises] = useState<ExerciseItem[]>([]);
@@ -55,7 +57,7 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [user, loadExercises]);
 
   const createExercise = async (exercise: Partial<ExerciseItem>) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Non autorizzato' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Non autorizzato' };
 
     try {
       const { error } = await supabase
@@ -90,7 +92,7 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const createExercisesBatch = async (exercisesList: Partial<ExerciseItem>[]) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Non autorizzato' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Non autorizzato' };
     if (!exercisesList || exercisesList.length === 0) return { success: true, count: 0 };
 
     try {
@@ -128,7 +130,7 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const updateExercise = async (id: string, exercise: Partial<ExerciseItem>) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Non autorizzato' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Non autorizzato' };
 
     try {
       const updatePayload: Record<string, unknown> = {
@@ -170,7 +172,7 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const deleteExercise = async (id: string) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Non autorizzato' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Non autorizzato' };
 
     try {
       const { error } = await supabase

@@ -324,12 +324,12 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     weightKg: number,
     reps: number
   ): Promise<{ isNewPR: boolean; calculated1RM: number }> => {
-    if (weightKg <= 0 || reps <= 0) {
-      return { isNewPR: false, calculated1RM: 0 };
+    // Se le ripetizioni superano 15, la stima 1RM non è scientificamente affidabile
+    if (weightKg <= 0 || reps <= 0 || reps > 15) {
+      return { isNewPR: false, calculated1RM: reps === 1 ? weightKg : 0 };
     }
 
-    const safeReps = Math.min(reps, 36);
-    const raw1RM = reps === 1 ? weightKg : weightKg * (36 / (37 - safeReps));
+    const raw1RM = reps === 1 ? weightKg : weightKg * (36 / (37 - reps));
     const calculated1RM = Math.round(raw1RM * 10) / 10;
 
     try {

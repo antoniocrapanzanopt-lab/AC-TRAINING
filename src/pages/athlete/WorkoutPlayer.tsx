@@ -71,26 +71,52 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
     initSession();
   }, [athleteId, workout.id, startWorkoutSession]);
 
+  const startTimestampRef = React.useRef<number>(Date.now());
+  const restEndTimestampRef = React.useRef<number | null>(null);
+
   // Cronometro Allenamento Globale
   useEffect(() => {
     let interval: any = null;
     if (isTimerRunning) {
       interval = setInterval(() => {
-        setElapsedTime(prev => prev + 1);
+        setElapsedTime(Math.floor((Date.now() - startTimestampRef.current) / 1000));
       }, 1000);
     }
     return () => clearInterval(interval);
   }, [isTimerRunning]);
 
-  // Cronometro Recupero Tra Serie
+  // Cronometro Recupero Tra Serie (timestamp-based contro il throttling in background)
   useEffect(() => {
-    let interval: any = null;
-    if (restTimer !== null && restTimer > 0) {
-      interval = setInterval(() => {
-        setRestTimer(prev => (prev! > 0 ? prev! - 1 : 0));
-      }, 1000);
+    if (restTimer === null || restTimer <= 0) {
+      restEndTimestampRef.current = null;
+      return;
     }
-    return () => clearInterval(interval);
+
+    const updateTimer = () => {
+      if (!restEndTimestampRef.current) return;
+      const remaining = Math.max(0, Math.ceil((restEndTimestampRef.current - Date.now()) / 1000));
+      setRestTimer(remaining > 0 ? remaining : null);
+      if (remaining <= 0) {
+        restEndTimestampRef.current = null;
+      }
+    };
+
+    const interval = setInterval(updateTimer, 1000);
+    const handleVisibilityOrFocus = () => {
+      if (!document.hidden) {
+        updateTimer();
+        setElapsedTime(Math.floor((Date.now() - startTimestampRef.current) / 1000));
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
   }, [restTimer]);
 
   const formatTime = (seconds: number) => {
@@ -114,6 +140,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
       currentList[setIdx] = isNowCompleted;
 
       if (isNowCompleted) {
+        restEndTimestampRef.current = Date.now() + restSeconds * 1000;
         setRestTimer(restSeconds);
         if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
       }
@@ -261,13 +288,13 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
       // 2. Salva i log su supabase
       if (logsToSave.length > 0) {
         const { error: logsError } = await saveExerciseLogs(logsToSave);
-        if (logsError) throw new Error(logsError);
+        if (logsError) throw new Error(`Errore salvataggio esercizi: ${logsError}`);
       }
 
       // 3. Chiudi la sessione con RPE complessivo del questionario
       const questionnaireNotes = `Questionario: Fatica ${difficulty}/5, Dolore Articolare ${jointPain}/5, Pump ${pump}/5${jointPainNotes ? ` — Note: ${jointPainNotes}` : ''}`;
       const { error: sessionError } = await endWorkoutSession(sessionId!, questionnaireNotes, difficulty * 2);
-      if (sessionError) throw new Error(sessionError);
+      if (sessionError) throw new Error(`Errore chiusura sessione: ${sessionError}`);
 
       // 4. Aggiorna il progresso locale per nascondere il giorno appena completato
       try {
@@ -286,12 +313,13 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
       } else {
         showSuccess('Allenamento e Questionario completati!');
       }
-    } catch (err: any) {
-      console.error(err);
-      showSuccess('Allenamento completato!');
-    } finally {
+
       setIsSaving(false);
       onClose();
+    } catch (err: any) {
+      console.error('Errore durante il salvataggio dell\'allenamento:', err);
+      showError('Errore di Salvataggio', err.message || 'Impossibile salvare i dati della sessione sul server. Riprova.');
+      setIsSaving(false);
     }
   };
 

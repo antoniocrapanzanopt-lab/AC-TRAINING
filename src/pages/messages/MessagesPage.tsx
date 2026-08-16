@@ -631,17 +631,17 @@ export const MessagesPage: React.FC = () => {
       {/* MODAL LIGHTBOX IMMAGINE PER MESSAGES PAGE */}
       {lightboxImage && (
         <div
-          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-pointer"
           onClick={() => setLightboxImage(null)}
         >
-          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
-            <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
+          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center cursor-default" onClick={e => e.stopPropagation()}>
+            <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
               <a
                 href={lightboxImage}
                 download="foto_chat.jpg"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-2.5 bg-slate-900/80 hover:bg-slate-800 text-white rounded-full transition-all border border-slate-700 shadow-lg"
+                className="w-11 h-11 flex items-center justify-center bg-slate-900/90 hover:bg-slate-800 text-white rounded-2xl transition-all border border-slate-700 shadow-xl"
                 title="Scarica immagine"
               >
                 <Download className="w-5 h-5" />
@@ -649,7 +649,7 @@ export const MessagesPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setLightboxImage(null)}
-                className="p-2.5 bg-slate-900/80 hover:bg-slate-800 text-white rounded-full transition-all border border-slate-700 shadow-lg cursor-pointer"
+                className="w-11 h-11 flex items-center justify-center bg-slate-900/90 hover:bg-slate-800 text-white rounded-2xl transition-all border border-slate-700 shadow-xl cursor-pointer"
                 title="Chiudi"
               >
                 <X className="w-5 h-5" />

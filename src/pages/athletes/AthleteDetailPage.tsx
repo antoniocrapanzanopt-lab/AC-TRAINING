@@ -690,7 +690,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">{formatDate(athlete.createdAt)}</span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-800 text-amber-400 border border-slate-700">
-                      Cliente da {coachingTenure}
+                      Atleta da {coachingTenure}
                     </span>
                   </div>
                 } />

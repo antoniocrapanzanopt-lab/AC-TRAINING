@@ -37,6 +37,8 @@ interface WorkoutsContextType {
 
 const WorkoutsContext = createContext<WorkoutsContextType | undefined>(undefined);
 
+const isCoachRole = (role?: string) => role === 'owner' || role === 'admin' || role === 'coach' || role === 'collaborator';
+
 export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [coachTemplates, setCoachTemplates] = useState<WorkoutTemplate[]>([]);
@@ -48,7 +50,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // --- COACH LOGIC ---
 
   const loadAssignedWorkouts = useCallback(async () => {
-    if (!user || user.role !== 'owner') return;
+    if (!user || !isCoachRole(user.role)) return;
     const { data, error } = await supabase
       .from('athlete_assigned_workouts')
       .select(`
@@ -65,7 +67,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [user]);
 
   const loadFolders = useCallback(async () => {
-    if (!user || user.role !== 'owner') return;
+    if (!user || !isCoachRole(user.role)) return;
 
     try {
       const { data, error } = await supabase
@@ -85,7 +87,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [user]);
 
   const createFolder = async (name: string, parentId?: string | null) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
       const { error } = await supabase
         .from('workout_folders')
@@ -105,7 +107,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateFolder = async (folderId: string, name: string) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
       const { error } = await supabase
         .from('workout_folders')
@@ -125,7 +127,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteFolder = async (folderId: string) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
       const { error } = await supabase
         .from('workout_folders')
@@ -143,7 +145,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const moveWorkoutToFolder = async (workoutId: string, folderId: string | null) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
       const { error } = await supabase
         .from('workouts')
@@ -163,7 +165,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const loadCoachTemplates = useCallback(async () => {
-    if (!user || user.role !== 'owner') return;
+    if (!user || !isCoachRole(user.role)) return;
     setLoading(true);
 
     try {
@@ -187,7 +189,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [user]);
 
   useEffect(() => {
-    if (user && user.role === 'owner') {
+    if (user && isCoachRole(user.role)) {
       loadFolders();
       loadCoachTemplates();
       loadAssignedWorkouts();
@@ -195,7 +197,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [user, loadFolders, loadCoachTemplates, loadAssignedWorkouts]);
 
   const createWorkoutTemplate = async (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     
     try {
       // 1. Inserisci il workout
@@ -252,7 +254,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateWorkoutTemplate = async (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
 
     try {
       const { error: workoutError } = await supabase
@@ -312,7 +314,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteWorkoutTemplate = async (workoutId: string) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
 
     try {
       const { error } = await supabase
@@ -332,7 +334,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const assignWorkoutToAthlete = async (athleteId: string, workoutId: string) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
       const { error } = await supabase
         .from('athlete_assigned_workouts')
@@ -352,7 +354,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const unassignWorkoutFromAthlete = async (athleteId: string, workoutId: string) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
       const { error } = await supabase
         .from('athlete_assigned_workouts')
@@ -402,7 +404,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const forkWorkoutForAthlete = async (originalWorkoutId: string, athleteId: string, newWorkoutData: Partial<WorkoutTemplate>, newExercises: Partial<WorkoutExercise>[]) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
       // 1. Create a private copy of the workout
       const { data: clonedWorkout, error: workoutError } = await supabase
@@ -468,7 +470,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const forkWorkoutForAllAssigned = async (workoutId: string) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
       // Find all athletes assigned to this template
       const { data: assignments, error: assignmentsError } = await supabase
@@ -550,7 +552,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const forceSyncMasterTemplate = async (masterWorkoutId: string) => {
-    if (!user || user.role !== 'owner') return { success: false, error: 'Unauthorized' };
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
 
     try {
       const { data: assignments, error: fetchError } = await supabase

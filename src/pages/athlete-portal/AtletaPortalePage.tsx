@@ -19,6 +19,7 @@ import { useSubscriptions } from '../../context/SubscriptionsContext';
 import { usePayments } from '../../context/PaymentsContext';
 import { useCalendarEvents } from '../../context/CalendarContext';
 import { useDocuments } from '../../context/DocumentsContext';
+import { useWorkouts } from '../../context/WorkoutsContext';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { getMedicalCertificateStatus, getDaysRemaining } from '../../lib/statusEngine';
@@ -31,6 +32,7 @@ export const AtletaPortalePage: React.FC = () => {
   const { payments } = usePayments();
   const { allEvents } = useCalendarEvents();
   const { documents } = useDocuments();
+  const { allAssignedWorkouts, coachTemplates } = useWorkouts();
   const { ownerProfile } = useApp();
   const { currentOrganization } = useAuth();
 
@@ -336,37 +338,50 @@ export const AtletaPortalePage: React.FC = () => {
         )}
       </div>
 
-      {/* CONTENUTO STATICAMENTE DIMOSTRATIVO: SCHEDA ALLENAMENTO DEMO */}
+      {/* SCHEDA ALLENAMENTO IN CORSO */}
       <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4 relative">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
-            <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" /> Scheda Allenamento In Corso
+            <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" /> Scheda Allenamento Attiva
           </h3>
-
-          {/* Etichetta Dato Dimostrativo Obbligatoria */}
-          <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 font-bold text-[10px] uppercase border border-amber-500/20">
-            Dato dimostrativo
+          <span className="px-2.5 py-1 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold text-[10px] uppercase border border-[var(--color-primary)]/20">
+            Dati Reali
           </span>
         </div>
 
-        <p className="text-xs text-slate-400">
-          Scheda di ipertrofia e forza personalizzata (Esempio dimostrativo per l'interfaccia portale atleta).
-        </p>
+        {(() => {
+          const activeAssignment = allAssignedWorkouts.find(aw => aw.athlete_id === selectedAthlete?.id && aw.is_active);
+          const activeTmpl = activeAssignment ? (activeAssignment.workout || coachTemplates.find(t => t.id === activeAssignment.workout_id)) : null;
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            { exercise: 'Squat con Bilanciere', sets: '4 Set x 8 Reps', rest: '90 sec recupero' },
-            { exercise: 'Panca Piana Bilanciere', sets: '4 Set x 10 Reps', rest: '90 sec recupero' },
-            { exercise: 'Stacco da Terra Rumeno', sets: '3 Set x 12 Reps', rest: '60 sec recupero' },
-          ].map((ex, idx) => (
-            <div key={idx} className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-              <span className="text-[10px] font-bold text-[var(--color-primary)] uppercase block">Esercizio {idx + 1}</span>
-              <h4 className="text-xs font-bold text-white">{ex.exercise}</h4>
-              <p className="text-[11px] text-slate-300">{ex.sets}</p>
-              <span className="text-[10px] text-slate-500 block">{ex.rest}</span>
+          if (!activeTmpl) {
+            return (
+              <p className="text-xs text-slate-500 py-4 text-center">
+                Nessun programma di allenamento attualmente assegnato a questo atleta.
+              </p>
+            );
+          }
+
+          return (
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 bg-slate-900 border border-slate-800 rounded-xl">
+                <div>
+                  <h4 className="text-sm font-bold text-white">{activeTmpl.title}</h4>
+                  <p className="text-xs text-slate-400 mt-0.5">{activeTmpl.description || 'Nessuna descrizione specificata'}</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
+                  <span className="px-2 py-0.5 bg-slate-800 rounded text-[11px] font-bold text-slate-300">
+                    {activeTmpl.total_weeks || 1} Settiman{(activeTmpl.total_weeks || 1) === 1 ? 'a' : 'e'}
+                  </span>
+                  {activeAssignment?.assigned_date && (
+                    <span className="text-[10px] text-slate-500">
+                      Assegnata il {new Date(activeAssignment.assigned_date).toLocaleDateString('it-IT')}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
+          );
+        })()}
       </div>
 
       {/* DOCUMENTI PERSONALI ATLETA */}
