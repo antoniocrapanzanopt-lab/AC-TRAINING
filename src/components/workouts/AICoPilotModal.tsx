@@ -26,6 +26,7 @@ import {
   GeneratedWorkoutResponse
 } from '../../lib/ai/workoutGenerator';
 import { useToast } from '../../context/ToastContext';
+import { AI_CONFIG } from '../../config/aiConfig';
 
 interface AICoPilotModalProps {
   onClose: () => void;
@@ -304,7 +305,7 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
           availableEquipment,
           limitations: aggregatedLimitations,
           coachExercises,
-          provider: 'gemini',
+          provider: AI_CONFIG.DEFAULT_PROVIDER,
           splitStyle,
           targetFocus,
           extraNotes,
@@ -443,7 +444,7 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 Crea programma con AI
               </h2>
-              <p className="text-xs text-slate-400">Generazione intelligente del programma con periodizzazione scientifica & Gemini 3.6 Flash</p>
+              <p className="text-xs text-slate-400">Generazione intelligente del programma con periodizzazione scientifica & {AI_CONFIG.GEMINI.DISPLAY_NAME}</p>
             </div>
           </div>
           <button 
@@ -509,7 +510,7 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
               <Loader2 className="w-12 h-12 text-amber-500 animate-spin mb-4" />
               <h3 className="text-xl font-bold text-white mb-2">L'IA sta elaborando la scheda...</h3>
               <p className="text-sm text-amber-200/80 animate-pulse max-w-md">
-                {progressMsg || 'Generazione in corso con Gemini 3.6 Flash...'}
+                {progressMsg || `Generazione in corso con ${AI_CONFIG.GEMINI.DISPLAY_NAME}...`}
               </p>
             </div>
           )}
@@ -1098,7 +1099,7 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
             <div className="space-y-5 animate-in fade-in duration-200">
               <div>
                 <h3 className="text-base font-bold text-white mb-1">Riepilogo Scheda IA</h3>
-                <p className="text-xs text-slate-400">Verifica le specifiche avanzate prima di avviare la generazione automatica con Gemini 3.6 Flash.</p>
+                <p className="text-xs text-slate-400">Verifica le specifiche avanzate prima di avviare la generazione automatica con {AI_CONFIG.GEMINI.DISPLAY_NAME}.</p>
               </div>
 
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3 divide-y divide-slate-800/80">
@@ -1167,7 +1168,7 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
                 <div className="flex justify-between items-center pt-2.5">
                   <span className="text-xs text-slate-400 font-semibold">Motore IA:</span>
                   <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                    ✓ Google Gemini 3.6 Flash (Integrato nel progetto)
+                    ✓ {AI_CONFIG.GEMINI.TAGLINE}
                   </span>
                 </div>
               </div>

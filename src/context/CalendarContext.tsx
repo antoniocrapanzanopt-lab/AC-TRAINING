@@ -30,48 +30,6 @@ interface CalendarContextType {
 
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
 
-const buildDemoCustomEvents = (): CalendarEvent[] => {
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const nextWeek = new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10);
-
-  return [
-    {
-      id: 'cust-evt-1',
-      title: 'Gara Regionale Bodybuilding & Fitness',
-      description: 'Competizione ufficiale di selezione atleti.',
-      type: 'competition',
-      date: nextWeek,
-      startTime: '09:00',
-      endTime: '18:00',
-      athleteId: 'athlete-demo-01',
-      athleteName: 'Marco Bianchi',
-      status: 'scheduled',
-      isSystemGenerated: false,
-      location: 'Palasport Milano',
-      notes: 'Verificare ricarica carboidrati e tana di colore.',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-    {
-      id: 'cust-evt-2',
-      title: 'Consegna Integrazione Nutrizionale',
-      description: 'Consegna integratori ed allineamento dieta.',
-      type: 'program_delivery',
-      date: today,
-      startTime: '15:30',
-      endTime: '16:00',
-      athleteId: 'athlete-demo-02',
-      athleteName: 'Giulia Esposito',
-      status: 'scheduled',
-      isSystemGenerated: false,
-      notes: 'BCAA e Proteine isolate.',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-  ];
-};
-
 export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [customEvents, setCustomEvents] = useState<CalendarEvent[]>([]);
   const [googleEvents, setGoogleEvents] = useState<CalendarEvent[]>([]);
@@ -90,13 +48,16 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     const saved = getStorageItem<CalendarEvent[]>(STORAGE_KEYS.CALENDAR, []);
 
-    if (saved.length === 0) {
-      const demo = buildDemoCustomEvents();
-      setStorageItem(STORAGE_KEYS.CALENDAR, demo);
-      setCustomEvents(demo);
-    } else {
-      setCustomEvents(saved);
-    }
+    // Filtra e bonifica eventuali residui demo (Marco Bianchi / Giulia Esposito)
+    const cleanEvents = saved.filter(e => 
+      !e.id?.startsWith('cust-evt-') &&
+      !e.athleteId?.startsWith('athlete-demo-') &&
+      e.athleteName !== 'Marco Bianchi' &&
+      e.athleteName !== 'Giulia Esposito'
+    );
+
+    setCustomEvents(cleanEvents);
+    setStorageItem(STORAGE_KEYS.CALENDAR, cleanEvents);
 
     // Inizializza stato Google Calendar (attivo di default)
     const gState = getGoogleCalendarState();

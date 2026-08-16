@@ -65,56 +65,6 @@ interface RenewalsContextType {
 
 const RenewalsContext = createContext<RenewalsContextType | undefined>(undefined);
 
-const buildDemoRenewals = (ownerName: string): AthleteRenewal[] => {
-  const now = new Date();
-  const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString();
-  
-  return [
-    {
-      id: `ren-${Date.now()}-1`,
-      athleteId: 'athlete-demo-01',
-      athleteName: 'Marco Bianchi',
-      currentSubscriptionId: 'sub-demo-1',
-      packageId: 'pkg-1',
-      packageName: 'Abbonamento Annuale PRO',
-      price: 600,
-      coachName: ownerName,
-      endDate: nextWeek,
-      paymentStatus: 'regular',
-      lastCommunicationDate: new Date(Date.now() - 2 * 86400000).toISOString(),
-      nextActionDate: new Date(Date.now() + 1 * 86400000).toISOString(),
-      nextActionNotes: 'Inviare proposta di rinnovo scontata del 10%',
-      managerId: 'local-owner',
-      managerName: ownerName,
-      status: 'to_contact',
-      notes: 'L\'atleta si dice molto soddisfatto del percorso di forza.',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-    {
-      id: `ren-${Date.now()}-2`,
-      athleteId: 'athlete-demo-02',
-      athleteName: 'Giulia Esposito',
-      currentSubscriptionId: 'sub-demo-2',
-      packageId: 'pkg-2',
-      packageName: 'Trimestrale Base',
-      price: 150,
-      coachName: ownerName,
-      endDate: new Date(Date.now() + 3 * 86400000).toISOString(),
-      paymentStatus: 'expiring',
-      lastCommunicationDate: new Date(Date.now() - 5 * 86400000).toISOString(),
-      nextActionDate: new Date(Date.now() + 2 * 86400000).toISOString(),
-      nextActionNotes: 'Chiamata telefonica per proporre l\'annuale',
-      managerId: 'local-owner',
-      managerName: ownerName,
-      status: 'contacted',
-      notes: 'In attesa di decisione sulla rateizzazione.',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-  ];
-};
-
 export const RenewalsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [renewals, setRenewals] = useState<AthleteRenewal[]>([]);
   const [pauses, setPauses] = useState<SubscriptionPause[]>([]);
@@ -125,19 +75,18 @@ export const RenewalsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { createInstallment, updatePaymentRecord, payments } = usePayments();
 
   useEffect(() => {
-    const owner = getLocalOwnerProfile();
-    const ownerName = owner?.fullName || 'Proprietario Demo';
     const savedRenewals = getStorageItem<AthleteRenewal[]>(STORAGE_KEYS.RENEWALS, []);
     const savedPauses = getStorageItem<SubscriptionPause[]>(STORAGE_KEYS.PAUSES, []);
 
-    if (savedRenewals.length === 0) {
-      const demo = buildDemoRenewals(ownerName);
-      setStorageItem(STORAGE_KEYS.RENEWALS, demo);
-      setRenewals(demo);
-    } else {
-      setRenewals(savedRenewals);
-    }
+    // Filtra e bonifica eventuali residui demo (Marco Bianchi / Giulia Esposito)
+    const cleanRenewals = savedRenewals.filter(r => 
+      !r.athleteId?.startsWith('athlete-demo-') &&
+      r.athleteName !== 'Marco Bianchi' &&
+      r.athleteName !== 'Giulia Esposito'
+    );
 
+    setRenewals(cleanRenewals);
+    setStorageItem(STORAGE_KEYS.RENEWALS, cleanRenewals);
     setPauses(savedPauses);
     setIsLoading(false);
   }, []);

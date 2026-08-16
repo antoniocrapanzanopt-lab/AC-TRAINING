@@ -73,46 +73,6 @@ const defaultTemplates: MessageTemplate[] = [
   },
 ];
 
-const buildDemoCommunications = (ownerName: string): CommunicationLog[] => {
-  const now = new Date();
-  const yesterday = new Date(Date.now() - 86400000).toISOString();
-
-  return [
-    {
-      id: 'comm-demo-1',
-      athleteId: 'athlete-demo-01',
-      athleteName: 'Marco Bianchi',
-      dateTime: yesterday,
-      channel: 'whatsapp',
-      author: ownerName,
-      subject: 'Sollecito Pagamento Rata 1',
-      summary: 'Inviato messaggio di cortesia per la rata in scadenza.',
-      outcome: 'replied',
-      nextAction: 'Verificare bonifico entro venerdì',
-      recontactDate: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
-      messageText: 'Ciao Marco, ti ricordiamo che la rata di € 150.00 per la tua iscrizione scade il 2026-08-05. Cordiali saluti.',
-      createdAt: yesterday,
-      updatedAt: yesterday,
-    },
-    {
-      id: 'comm-demo-2',
-      athleteId: 'athlete-demo-02',
-      athleteName: 'Giulia Esposito',
-      dateTime: now.toISOString(),
-      channel: 'email',
-      author: ownerName,
-      subject: 'Invio programma allenamento Mese 2',
-      summary: 'Spedita email con allegato nuovo programma di allenamento.',
-      outcome: 'delivered',
-      nextAction: 'Check-in telefonico tra 7 giorni',
-      recontactDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-      messageText: 'Ciao Giulia, ti abbiamo inviato il nuovo programma di allenamento per la stagione.',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-  ];
-};
-
 export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [communications, setCommunications] = useState<CommunicationLog[]>([]);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -122,20 +82,20 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
   const { addTimelineEvent } = useAthletes();
 
   useEffect(() => {
-    const owner = getLocalOwnerProfile();
-    const ownerName = owner?.fullName || 'Proprietario Demo';
-
     const savedComms = getStorageItem<CommunicationLog[]>(STORAGE_KEYS.COMMUNICATIONS, []);
     const savedTpls = getStorageItem<MessageTemplate[]>(STORAGE_KEYS.MESSAGE_TEMPLATES, []);
     const savedApiConfig = getStorageItem<ApiIntegrationConfig | null>(STORAGE_KEYS.DEMO_API_CONFIG, null);
 
-    if (savedComms.length === 0) {
-      const demoComms = buildDemoCommunications(ownerName);
-      try { setStorageItem(STORAGE_KEYS.COMMUNICATIONS, demoComms); } catch { /* quota ignore */ }
-      setCommunications(demoComms);
-    } else {
-      setCommunications(savedComms);
-    }
+    // Filtra e bonifica eventuali residui demo (Marco Bianchi / Giulia Esposito)
+    const cleanComms = savedComms.filter(c => 
+      !c.id?.startsWith('comm-demo-') &&
+      !c.athleteId?.startsWith('athlete-demo-') &&
+      c.athleteName !== 'Marco Bianchi' &&
+      c.athleteName !== 'Giulia Esposito'
+    );
+
+    setCommunications(cleanComms);
+    try { setStorageItem(STORAGE_KEYS.COMMUNICATIONS, cleanComms); } catch { /* quota ignore */ }
 
     if (savedTpls.length === 0) {
       try { setStorageItem(STORAGE_KEYS.MESSAGE_TEMPLATES, defaultTemplates); } catch { /* quota ignore */ }

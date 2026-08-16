@@ -21,6 +21,7 @@ import { useToast } from '../../context/ToastContext';
 import { validateAndInspectVideoFile } from '../../utils/fileCompressor';
 import { uploadExerciseVideoToStorage } from '../../lib/storage';
 import { suggestExerciseWithAI } from '../../lib/ai/aiExerciseGenerator';
+import { AI_CONFIG } from '../../config/aiConfig';
 
 interface ExerciseModalProps {
   initialExercise?: ExerciseItem | null;
@@ -115,7 +116,7 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
   const [controindicazioni, setControindicazioni] = useState<string[]>(initialExercise?.sicurezza?.controindicazioni || ['']);
   const [tolleranze, setTolleranze] = useState(initialExercise?.sicurezza?.tolleranze || '');
 
-  // ── AI Autocompilazione Magica con Gemini 3.6 Flash ────────────────────────
+  // ── AI Autocompilazione Magica con Gemini 3.7 Flash ────────────────────────
   const handleAISuggest = async () => {
     if (!name.trim()) {
       showError('Inserisci il nome dell\'esercizio', 'Scrivi un nome come "Squat promo" o "Lat Machine" per attivare l\'IA.');
@@ -166,7 +167,7 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
       }
 
       setAiSuggested(true);
-      showSuccess('✨ Scheda compilata al 100% con Gemini 3.6 Flash!', 'I dati biomeccanici e clinici sono stati inseriti in tutti i tab.');
+      showSuccess(`✨ Scheda compilata al 100% con ${AI_CONFIG.GEMINI.DISPLAY_NAME}!`, 'I dati biomeccanici e clinici sono stati inseriti in tutti i tab.');
     } catch (err: unknown) {
       showError('Errore IA', err instanceof Error ? err.message : 'Impossibile completare la richiesta.');
     } finally {
@@ -301,7 +302,7 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
               <span className="text-xs font-extrabold text-amber-400 uppercase tracking-wider">
-                Compilazione Magica IA (Gemini 3.6 Flash)
+                Compilazione Magica IA ({AI_CONFIG.GEMINI.DISPLAY_NAME})
               </span>
             </div>
 

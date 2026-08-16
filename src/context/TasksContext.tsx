@@ -18,70 +18,6 @@ interface TasksContextType {
 
 const TasksContext = createContext<TasksContextType | undefined>(undefined);
 
-const buildDemoTasks = (ownerName: string): AthleteTask[] => {
-  const now = new Date();
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const today = now.toISOString().slice(0, 10);
-  const nextWeek = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
-
-  return [
-    {
-      id: `task-demo-1`,
-      title: 'Consegna Scheda Allenamento Mese 2',
-      description: 'Preparare la scheda ipertrofia per la fase di accumulo.',
-      athleteId: 'athlete-demo-01',
-      athleteName: 'Marco Bianchi',
-      assigneeId: 'local-owner',
-      assigneeName: ownerName,
-      priority: 'high',
-      dueDate: yesterday,
-      dueTime: '15:00',
-      status: 'overdue',
-      category: 'training',
-      reminder: true,
-      notes: 'Focus su squat e stacco da terra.',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-    {
-      id: `task-demo-2`,
-      title: 'Checkup Plicometria e Pesata',
-      description: 'Rilevazione pieghe ed analisi della composizione corporea.',
-      athleteId: 'athlete-demo-02',
-      athleteName: 'Giulia Esposito',
-      assigneeId: 'local-owner',
-      assigneeName: ownerName,
-      priority: 'medium',
-      dueDate: today,
-      dueTime: '18:30',
-      status: 'pending',
-      category: 'assessment',
-      reminder: true,
-      notes: 'Confrontare dati con mese precedente.',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-    {
-      id: `task-demo-3`,
-      title: 'Chiamata di Controllo Motivazionale',
-      description: 'Verificare aderenza alla dieta ed allineamento obiettivi.',
-      athleteId: 'athlete-demo-01',
-      athleteName: 'Marco Bianchi',
-      assigneeId: 'local-owner',
-      assigneeName: ownerName,
-      priority: 'urgent',
-      dueDate: nextWeek,
-      dueTime: '11:00',
-      status: 'pending',
-      category: 'call',
-      reminder: false,
-      notes: 'Pianificare anche rinnovo abbonamento.',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-  ];
-};
-
 export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [tasks, setTasks] = useState<AthleteTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,17 +25,18 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const { addTimelineEvent } = useAthletes();
 
   useEffect(() => {
-    const owner = getLocalOwnerProfile();
-    const ownerName = owner?.fullName || 'Proprietario Demo';
     const saved = getStorageItem<AthleteTask[]>(STORAGE_KEYS.ACTIVITIES, []);
 
-    if (saved.length === 0) {
-      const demo = buildDemoTasks(ownerName);
-      setStorageItem(STORAGE_KEYS.ACTIVITIES, demo);
-      setTasks(demo);
-    } else {
-      setTasks(saved);
-    }
+    // Filtra e bonifica eventuali residui demo (Marco Bianchi / Giulia Esposito)
+    const cleanTasks = saved.filter(t => 
+      !t.id?.startsWith('task-demo-') &&
+      !t.athleteId?.startsWith('athlete-demo-') &&
+      t.athleteName !== 'Marco Bianchi' &&
+      t.athleteName !== 'Giulia Esposito'
+    );
+
+    setTasks(cleanTasks);
+    setStorageItem(STORAGE_KEYS.ACTIVITIES, cleanTasks);
     setIsLoading(false);
   }, []);
 

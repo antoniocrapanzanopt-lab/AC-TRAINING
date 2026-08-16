@@ -16,6 +16,7 @@ import {
 import { useAthletes } from '../../../context/AthletesContext';
 import { AICopilotActionModal, CopilotAlertContext } from './AICopilotActionModal';
 import { supabase } from '../../../lib/supabase';
+import { AI_CONFIG } from '../../../config/aiConfig';
 
 interface CriticalNoteAlert {
   id: string;
@@ -320,11 +321,11 @@ export const AITrainingCopilotWidget: React.FC = () => {
             </div>
             <h3 className="text-lg font-black text-white">AI Athlete Training Copilot</h3>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[var(--color-primary)] text-black uppercase tracking-wider">
-              Gemini 3.6 Flash
+              {AI_CONFIG.GEMINI.DISPLAY_NAME}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            L'assistente IA basato su Google Gemini 3.6 Flash scansiona in tempo reale le schede degli atleti per segnalare dolori, stallo carichi ed inattività.
+            L'assistente IA basato su Google {AI_CONFIG.GEMINI.DISPLAY_NAME} scansiona in tempo reale le schede degli atleti per segnalare dolori, stallo carichi ed inattività.
           </p>
         </div>
 

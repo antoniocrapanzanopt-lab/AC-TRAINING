@@ -17,6 +17,7 @@ import { useWorkouts } from '../../context/WorkoutsContext';
 import { useExercises } from '../../context/ExercisesContext';
 import { askGlobalCoachAIAssistant, CoachChatMessage } from '../../lib/ai/aiSafetyAssistant';
 import { useToast } from '../../context/ToastContext';
+import { AI_CONFIG } from '../../config/aiConfig';
 
 export const GlobalCoachAIAssistantWidget: React.FC = () => {
   const { athletes } = useAthletes();
@@ -100,7 +101,7 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
         allWorkouts: coachTemplates,
         coachExercises,
         selectedAthleteId,
-        provider: 'gemini'
+        provider: AI_CONFIG.DEFAULT_PROVIDER
       });
 
       const aiMessage: CoachChatMessage = {
@@ -157,7 +158,7 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-black text-white">Assistente AI Coach</h3>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-amber-400 border border-slate-700 font-bold">
-                      Gemini 3.6 Flash
+                      {AI_CONFIG.GEMINI.DISPLAY_NAME}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">Co-Pilot collegato a {athletes.length} atleti in tempo reale</p>
@@ -365,7 +366,7 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
               {isSending && (
                 <div className="flex items-center gap-2 text-amber-400 text-xs italic">
                   <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                  Gemini 3.6 Flash sta elaborando la richiesta...
+                  {AI_CONFIG.GEMINI.DISPLAY_NAME} sta elaborando la richiesta...
                 </div>
               )}
 
@@ -380,7 +381,7 @@ export const GlobalCoachAIAssistantWidget: React.FC = () => {
                   value={inputText}
                   onChange={e => setInputText(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Scrivi a Gemini 3.6 Flash sui tuoi atleti..."
+                  placeholder={`Scrivi a ${AI_CONFIG.GEMINI.DISPLAY_NAME} sui tuoi atleti...`}
                   className="flex-1 px-4 py-3 bg-slate-900 border border-slate-700 rounded-2xl text-white text-xs placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)] transition-colors"
                 />
                 <button

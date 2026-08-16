@@ -20,6 +20,7 @@ import { useAthletes } from '../../../context/AthletesContext';
 import { useApp } from '../../../context/AppContext';
 import { useToast } from '../../../context/ToastContext';
 import { useMessages } from '../../../context/MessagesContext';
+import { AI_CONFIG } from '../../../config/aiConfig';
 
 export interface CopilotAlertContext {
   athleteId: string;
@@ -207,7 +208,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
         after: `Variante IA (${methodologyNames[variationMethodology]}) — 4x8-10 (TUT 3-1-1)`,
       });
 
-      showSuccess('Variazione Elaborata con Gemini 3.6 Flash', 'Anteprima modifiche e messaggio atleta aggiornati.');
+      showSuccess(`Variazione Elaborata con ${AI_CONFIG.GEMINI.DISPLAY_NAME}`, 'Anteprima modifiche e messaggio atleta aggiornati.');
     }, 600);
   };
 
@@ -258,7 +259,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-white">{alertData.athleteName}</h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                  Gemini 3.6 Flash
+                  {AI_CONFIG.GEMINI.DISPLAY_NAME}
                 </span>
               </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -335,7 +336,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
               {/* Strategie IA 1-Click */}
               <div className="space-y-2">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-amber-400" /> Strategie IA 1-Click (Gemini 3.6 Flash)
+                  <Sparkles className="w-4 h-4 text-amber-400" /> Strategie IA 1-Click ({AI_CONFIG.GEMINI.DISPLAY_NAME})
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
@@ -459,7 +460,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                   className="w-full py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-[var(--color-primary)] text-slate-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2"
                 >
                   <RefreshCw className={`w-4 h-4 text-sky-400 ${isProcessingAI ? 'animate-spin' : ''}`} />
-                  <span>Elabora Variazione con Gemini 3.6 Flash</span>
+                  <span>Elabora Variazione con {AI_CONFIG.GEMINI.DISPLAY_NAME}</span>
                 </button>
               </div>
 
@@ -490,7 +491,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                   <label className="text-xs font-bold text-white flex items-center gap-1.5">
                     <MessageSquare className="w-4 h-4 text-[var(--color-primary)]" /> Messaggio per l'Atleta (Modificabile)
                   </label>
-                  <span className="text-[10px] text-slate-400">Generato da Gemini 3.6 Flash</span>
+                  <span className="text-[10px] text-slate-400">Generato da {AI_CONFIG.GEMINI.DISPLAY_NAME}</span>
                 </div>
                 <textarea
                   rows={3}

@@ -53,6 +53,9 @@ export const darkenHex = (hex: string, percent: number = 15): string => {
 interface ThemeContextType {
   primaryHex: string;
   primaryRgb: string;
+  savedHex: string;
+  applySessionTheme: (hex: string) => void;
+  saveTheme: (hex: string) => void;
   setPrimaryColor: (hex: string) => void;
   resetThemeToDefault: () => void;
   presets: ThemePreset[];
@@ -61,6 +64,10 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [savedHex, setSavedHex] = useState<string>(() => {
+    return localStorage.getItem('builder_theme_primary_hex') || '#eab308';
+  });
+
   const [primaryHex, setPrimaryHex] = useState<string>(() => {
     return localStorage.getItem('builder_theme_primary_hex') || '#eab308';
   });
@@ -90,6 +97,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     const handleStorageOrEventChange = () => {
       const storedHex = localStorage.getItem('builder_theme_primary_hex') || '#eab308';
+      setSavedHex(storedHex);
       applyThemeToDOM(storedHex);
     };
 
@@ -101,23 +109,39 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [applyThemeToDOM]);
 
-  const setPrimaryColor = (hex: string) => {
+  // 1. Applica alla sola sessione corrente (in memoria / DOM)
+  const applySessionTheme = useCallback((hex: string) => {
+    applyThemeToDOM(hex);
+  }, [applyThemeToDOM]);
+
+  // 2. Salva in modo permanente in localStorage
+  const saveTheme = useCallback((hex: string) => {
     const rgb = hexToRgb(hex);
     localStorage.setItem('builder_theme_primary_hex', hex);
     localStorage.setItem('builder_theme_primary_rgb', rgb);
+    setSavedHex(hex);
     applyThemeToDOM(hex);
     window.dispatchEvent(new Event('theme_color_changed'));
-  };
+  }, [applyThemeToDOM]);
 
-  const resetThemeToDefault = () => {
-    setPrimaryColor('#eab308');
-  };
+  // Compatibilità
+  const setPrimaryColor = useCallback((hex: string) => {
+    saveTheme(hex);
+  }, [saveTheme]);
+
+  // 3. Ripristina predefiniti Giallo Oro AC
+  const resetThemeToDefault = useCallback(() => {
+    saveTheme('#eab308');
+  }, [saveTheme]);
 
   return (
     <ThemeContext.Provider
       value={{
         primaryHex,
         primaryRgb,
+        savedHex,
+        applySessionTheme,
+        saveTheme,
         setPrimaryColor,
         resetThemeToDefault,
         presets: THEME_PRESETS,

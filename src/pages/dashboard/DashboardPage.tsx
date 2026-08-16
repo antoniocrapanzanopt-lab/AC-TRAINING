@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   UserPlus,
   DollarSign,
@@ -13,6 +13,8 @@ import {
   BarChart3,
   CheckSquare,
   Dumbbell,
+  X,
+  Info,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAthletes } from '../../context/AthletesContext';
@@ -55,6 +57,8 @@ export const DashboardPage: React.FC = () => {
   const now = new Date();
   const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const todayStr = now.toISOString().slice(0, 10);
+
+  const [showKPIInfoModal, setShowKPIInfoModal] = useState(false);
 
   // 1. Calcoli Metriche Generali dai Context
   const metrics = useMemo(() => {
@@ -290,14 +294,25 @@ export const DashboardPage: React.FC = () => {
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
           <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-purple-500/5 rounded-full blur-[80px] group-hover/kpi:bg-purple-500/10 transition-all duration-700" />
         </div>
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3 relative z-10">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3 relative z-10">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-[var(--color-primary)]" />
             <h3 className="text-base font-bold text-white">KPI & Financial Performance (Ricorrenti)</h3>
           </div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg">
-            Algoritmo Puro
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowKPIInfoModal(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-[11px] font-bold text-slate-300 hover:text-white transition-all cursor-pointer"
+              title="Visualizza la guida alle formule dei KPI"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+              <span>Guida Formule</span>
+            </button>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg">
+              Algoritmo Puro
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 relative z-10 pt-2">
@@ -313,7 +328,7 @@ export const DashboardPage: React.FC = () => {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">MRR</span>
                   <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute left-0 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-2 after:border-[5px] after:border-transparent after:border-t-slate-700">
+                    <div className="absolute left-0 bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-3 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
                     </div>
@@ -339,7 +354,7 @@ export const DashboardPage: React.FC = () => {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">ARR</span>
                   <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
+                    <div className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:right-3 sm:after:right-auto sm:after:left-1/2 sm:after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
                     </div>
@@ -365,7 +380,7 @@ export const DashboardPage: React.FC = () => {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Incasso</span>
                   <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
+                    <div className="absolute left-0 sm:left-1/2 sm:-translate-x-1/2 bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-3 sm:after:left-1/2 sm:after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
                     </div>
@@ -391,7 +406,7 @@ export const DashboardPage: React.FC = () => {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Valore/Atleta (ARPU)">Valore/Atleta</span>
                   <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
+                    <div className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:right-3 sm:after:right-auto sm:after:left-1/2 sm:after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
                     </div>
@@ -417,7 +432,7 @@ export const DashboardPage: React.FC = () => {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Rinnovo</span>
                   <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
+                    <div className="absolute left-0 sm:left-1/2 sm:-translate-x-1/2 bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-3 sm:after:left-1/2 sm:after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
                     </div>
@@ -443,7 +458,7 @@ export const DashboardPage: React.FC = () => {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Churn Rate</span>
                   <div className="relative group/tip shrink-0">
                     <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 bottom-[calc(100%+10px)] hidden group-hover/tip:block z-50 w-48 p-3 rounded-xl bg-slate-950 border border-slate-700 text-[9px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:right-2.5 after:border-[5px] after:border-transparent after:border-t-slate-700">
+                    <div className="absolute right-0 bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:right-3 after:border-[5px] after:border-transparent after:border-t-slate-700">
                       <p className="font-bold text-white">{info.formula}</p>
                       <p className="text-slate-400">{info.description}</p>
                     </div>
@@ -458,6 +473,68 @@ export const DashboardPage: React.FC = () => {
           })()}
         </div>
       </div>
+
+      {/* MODALE GUIDA FORMULE KPI FINANCIAL */}
+      {showKPIInfoModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setShowKPIInfoModal(false)}
+        >
+          <div
+            className="w-full max-w-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl shadow-2xl p-6 space-y-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">
+                  <Info className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Guida Formule KPI & Metriche Ricorrenti</h3>
+                  <p className="text-xs text-slate-400">Algoritmi applicati per l'analisi finanziaria e contrattuale</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowKPIInfoModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-[65vh] overflow-y-auto pr-1">
+              {[
+                { key: 'mrr', label: 'MRR (Monthly Recurring Revenue)' },
+                { key: 'arr', label: 'ARR (Annual Recurring Revenue)' },
+                { key: 'collectionRate', label: 'Tasso di Incasso' },
+                { key: 'averageValuePerAthlete', label: 'Valore Medio / ARPU' },
+                { key: 'renewalRate', label: 'Tasso di Rinnovo' },
+                { key: 'estimatedChurn', label: 'Churn Rate (Tasso Abbandono)' },
+              ].map(({ key, label }) => {
+                const info = getKPIFormulaTooltip(key);
+                return (
+                  <div key={key} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                    <span className="text-xs font-bold text-[var(--color-primary)] block">{label}</span>
+                    <p className="text-xs font-mono font-bold text-white">{info.formula}</p>
+                    <p className="text-[11px] text-slate-400">{info.description}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 flex justify-end border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowKPIInfoModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                Chiudi Guida
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* GRAFICO ANDAMENTO */}
       <DashboardChart />

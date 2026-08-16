@@ -26,89 +26,6 @@ interface DocumentsContextType {
 
 const DocumentsContext = createContext<DocumentsContextType | undefined>(undefined);
 
-const sampleDataUrlPdf = 'data:application/pdf;base64,JVBERi0xLjQKJcOkw7zDtsOfCjEgMCBvYmoKPDwvTGVuZ3RoIDQyPj5zdHJlYW0KQlQKL0YxIDEyIFRmcjAgMCBUZCAoRG9jdW1lbnRvIERpbW9zdHJhdGl2byBCdWlsZGVyIEF0aGxldGUpIFRqCkVUCmVuZHN0cmVhbQplbmRvYmoK';
-
-const buildDemoDocuments = (ownerName: string): AthleteDocument[] => {
-  const now = new Date();
-  const nextMonth = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-
-  return [
-    {
-      id: `doc-demo-1`,
-      title: 'Certificato Medico Agonistico 2026',
-      category: 'medical_certificate',
-      visibility: 'shared_with_athlete',
-      athleteId: 'athlete-demo-01',
-      athleteName: 'Marco Bianchi',
-      expiryDate: nextMonth,
-      file: {
-        fileName: 'certificato_medico_marco_bianchi.pdf',
-        fileSize: 45056,
-        fileType: 'application/pdf',
-        dataUrl: sampleDataUrlPdf,
-      },
-      notes: 'Rilasciato dal Centro Medicina dello Sport.',
-      uploadedBy: ownerName,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-    {
-      id: `doc-demo-2`,
-      title: 'Modulo Privacy e Consenso Trattamento',
-      category: 'privacy_consent',
-      visibility: 'private',
-      athleteId: 'athlete-demo-02',
-      athleteName: 'Giulia Esposito',
-      file: {
-        fileName: 'consenso_privacy_giulia_esposito.pdf',
-        fileSize: 32768,
-        fileType: 'application/pdf',
-        dataUrl: sampleDataUrlPdf,
-      },
-      notes: 'Firmato in data iscrizione.',
-      uploadedBy: ownerName,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-  ];
-};
-
-const buildDemoConsents = (ownerName: string): AthleteConsent[] => {
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10);
-
-  return [
-    {
-      id: `consent-demo-1`,
-      athleteId: 'athlete-demo-01',
-      athleteName: 'Marco Bianchi',
-      consentType: 'privacy',
-      status: 'granted',
-      grantDate: today,
-      documentId: 'doc-demo-1',
-      documentTitle: 'Certificato Medico Agonistico 2026',
-      notes: 'Consenso privacy generale registrato al momento del tesseramento.',
-      registeredBy: ownerName,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-    {
-      id: `consent-demo-2`,
-      athleteId: 'athlete-demo-02',
-      athleteName: 'Giulia Esposito',
-      consentType: 'photo_video',
-      status: 'granted',
-      grantDate: today,
-      documentId: 'doc-demo-2',
-      documentTitle: 'Modulo Privacy e Consenso Trattamento',
-      notes: 'Autorizzazione pubblicazione foto social di squadra.',
-      registeredBy: ownerName,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
-  ];
-};
-
 export const DocumentsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [documents, setDocuments] = useState<AthleteDocument[]>([]);
   const [consents, setConsents] = useState<AthleteConsent[]>([]);
@@ -117,26 +34,29 @@ export const DocumentsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { addTimelineEvent } = useAthletes();
 
   useEffect(() => {
-    const owner = getLocalOwnerProfile();
-    const ownerName = owner?.fullName || 'Proprietario Demo';
     const savedDocs = getStorageItem<AthleteDocument[]>(STORAGE_KEYS.DOCUMENTS, []);
     const savedConsents = getStorageItem<AthleteConsent[]>(STORAGE_KEYS.CONSENTS, []);
 
-    if (savedDocs.length === 0) {
-      const demoDocs = buildDemoDocuments(ownerName);
-      try { setStorageItem(STORAGE_KEYS.DOCUMENTS, demoDocs); } catch { /* quota ignore */ }
-      setDocuments(demoDocs);
-    } else {
-      setDocuments(savedDocs);
-    }
+    // Filtra e bonifica eventuali residui demo (Marco Bianchi / Giulia Esposito)
+    const cleanDocs = savedDocs.filter(d => 
+      !d.id?.startsWith('doc-demo-') &&
+      !d.athleteId?.startsWith('athlete-demo-') &&
+      d.athleteName !== 'Marco Bianchi' &&
+      d.athleteName !== 'Giulia Esposito'
+    );
 
-    if (savedConsents.length === 0) {
-      const demoConsents = buildDemoConsents(ownerName);
-      try { setStorageItem(STORAGE_KEYS.CONSENTS, demoConsents); } catch { /* quota ignore */ }
-      setConsents(demoConsents);
-    } else {
-      setConsents(savedConsents);
-    }
+    const cleanConsents = savedConsents.filter(c => 
+      !c.id?.startsWith('consent-demo-') &&
+      !c.athleteId?.startsWith('athlete-demo-') &&
+      c.athleteName !== 'Marco Bianchi' &&
+      c.athleteName !== 'Giulia Esposito'
+    );
+
+    setDocuments(cleanDocs);
+    try { setStorageItem(STORAGE_KEYS.DOCUMENTS, cleanDocs); } catch { /* quota ignore */ }
+
+    setConsents(cleanConsents);
+    try { setStorageItem(STORAGE_KEYS.CONSENTS, cleanConsents); } catch { /* quota ignore */ }
 
     setIsLoading(false);
   }, []);

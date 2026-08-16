@@ -11,6 +11,7 @@ import { ExerciseCategory, ExerciseEquipment } from '../../types/exercise';
 import { useExercises } from '../../context/ExercisesContext';
 import { useToast } from '../../context/ToastContext';
 import { generateExercisesWithAI, GeneratedAIExercise } from '../../lib/ai/aiExerciseGenerator';
+import { AI_CONFIG } from '../../config/aiConfig';
 
 interface AIExerciseGeneratorModalProps {
   onClose: () => void;
@@ -135,7 +136,7 @@ export const AIExerciseGeneratorModal: React.FC<AIExerciseGeneratorModalProps> =
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 Genera Esercizi con IA
               </h2>
-              <p className="text-xs text-slate-400">Popola e trasforma la tua banca dati con esercizi professionali generati da Gemini 3.6 Flash</p>
+              <p className="text-xs text-slate-400">Popola e trasforma la tua banca dati con esercizi professionali generati da {AI_CONFIG.GEMINI.DISPLAY_NAME}</p>
             </div>
           </div>
           <button 

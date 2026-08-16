@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ExerciseItem, MuscleRole } from '../../types/exercise';
+import { AI_CONFIG } from '../../config/aiConfig';
 
 interface ExerciseDetailModalProps {
   exercise: ExerciseItem;
@@ -401,7 +402,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
               </div>
               <h4 className="text-base font-extrabold text-white mb-1">Scheda avanzata non ancora presente</h4>
               <p className="text-xs text-slate-400 max-w-md mx-auto mb-4">
-                Clicca su "Modifica" e usa il pulsante ⚡ Auto-Compila per generare istantaneamente tutti i dati biomeccanici con Gemini 3.6 Flash!
+                Clicca su "Modifica" e usa il pulsante ⚡ Auto-Compila per generare istantaneamente tutti i dati biomeccanici con {AI_CONFIG.GEMINI.DISPLAY_NAME}!
               </p>
               {onEdit && (
                 <button

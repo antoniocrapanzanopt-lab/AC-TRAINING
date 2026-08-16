@@ -14,6 +14,7 @@ import {
 import { usePayments } from '../../context/PaymentsContext';
 import { useSubscriptions } from '../../context/SubscriptionsContext';
 import { useAthletes } from '../../context/AthletesContext';
+import { useTasks } from '../../context/TasksContext';
 import { useToast } from '../../context/ToastContext';
 import { PaymentRecord, AthleteActivity, PaymentMethod } from '../../types';
 import { PaymentModal } from '../../components/payments/PaymentModal';
@@ -23,34 +24,11 @@ import {
   RecalculationReport,
 } from '../../lib/statusEngine';
 
-// Demo Attività Scadute se il context attività non è ancora implementato
-const demoActivities: AthleteActivity[] = [
-  {
-    id: 'act-demo-1',
-    athleteId: 'athlete-demo-01',
-    athleteName: 'Marco Bianchi',
-    title: 'Consegna Scheda Allenamento Mese 2',
-    dueDate: new Date(Date.now() - 3 * 86400000).toISOString(),
-    status: 'overdue',
-    category: 'training',
-    createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
-  },
-  {
-    id: 'act-demo-2',
-    athleteId: 'athlete-demo-02',
-    athleteName: 'Giulia Esposito',
-    title: 'Verifica plicometria e pesata di controllo',
-    dueDate: new Date(Date.now() - 1 * 86400000).toISOString(),
-    status: 'overdue',
-    category: 'assessment',
-    createdAt: new Date(Date.now() - 7 * 86400000).toISOString(),
-  },
-];
-
 export const DeadlinesPage: React.FC = () => {
   const { payments, registerPayment } = usePayments();
   const { subscriptions } = useSubscriptions();
   const { athletes } = useAthletes();
+  const { tasks } = useTasks();
   const { showSuccess } = useToast();
 
   const [activeTab, setActiveTab] = useState<'all' | 'payments' | 'subscriptions' | 'medical' | 'activities'>('all');
@@ -64,10 +42,29 @@ export const DeadlinesPage: React.FC = () => {
     report: null,
   });
 
-  // Sintesi Scadenze
+  // Sintesi Scadenze con Attività Reali
+  const activitiesList: AthleteActivity[] = useMemo(() => {
+    return tasks
+      .filter((t): t is typeof t & { athleteId: string; athleteName: string } => !!t.athleteId && !!t.athleteName)
+      .map(t => {
+        const activityStatus: AthleteActivity['status'] = t.status === 'in_progress' ? 'pending' : t.status;
+        const activityCategory: AthleteActivity['category'] = t.category === 'checkup' ? 'assessment' : t.category;
+        return {
+          id: t.id,
+          athleteId: t.athleteId,
+          athleteName: t.athleteName,
+          title: t.title,
+          dueDate: t.dueDate,
+          status: activityStatus,
+          category: activityCategory,
+          createdAt: t.createdAt,
+        };
+      });
+  }, [tasks]);
+
   const summary = useMemo(() => {
-    return getDeadlinesSummary(payments, subscriptions, athletes, demoActivities);
-  }, [payments, subscriptions, athletes]);
+    return getDeadlinesSummary(payments, subscriptions, athletes, activitiesList);
+  }, [payments, subscriptions, athletes, activitiesList]);
 
   const handleManualRecalculate = () => {
     const report = recalculateAllStatuses(athletes, subscriptions, payments);

@@ -11,6 +11,7 @@ import {
   ExerciseSafety,
 } from '../../types/exercise';
 import { supabase } from '../supabase';
+import { AI_CONFIG } from '../../config/aiConfig';
 
 /** Struttura completa di un esercizio generato dall'IA */
 export interface GeneratedAIExercise {
@@ -43,7 +44,7 @@ export async function generateExercisesWithAI(
   params: GenerateExercisesParams,
   onProgress?: (msg: string) => void
 ): Promise<GeneratedAIExercise[]> {
-  if (onProgress) onProgress("Generazione schede esercizi strutturate con Gemini 3.6 Flash...");
+  if (onProgress) onProgress(`Generazione schede esercizi strutturate con ${AI_CONFIG.GEMINI.DISPLAY_NAME}...`);
 
   const count = params.count || 20;
 
@@ -74,10 +75,10 @@ Restituisci SOLO l'array JSON valido con la struttura completa per ogni esercizi
   try {
     const { data, error } = await supabase.functions.invoke('generate-workout', {
       body: {
-        provider: 'gemini',
+        provider: AI_CONFIG.DEFAULT_PROVIDER,
         systemPrompt: systemPrompt,
         userPrompt: userPrompt,
-        model: 'gemini-1.5-pro',
+        model: AI_CONFIG.GEMINI.MODEL_ID,
         maxTokens: 8192,
         temperature: 0.6
       }
@@ -89,7 +90,7 @@ Restituisci SOLO l'array JSON valido con la struttura completa per ogni esercizi
     let rawText = data.text;
 
     rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-    const parsed = JSON.parse(rawText) as { exercises?: GeneratedAIExercise[] };
+    const parsed = JSON.parse(rawText);
 
     if (!parsed.exercises || !Array.isArray(parsed.exercises)) {
       throw new Error('Formato risposta IA non valido.');
@@ -141,10 +142,10 @@ Restituisci UN SINGOLO oggetto JSON valido (non un array).
   try {
     const { data, error } = await supabase.functions.invoke('generate-workout', {
       body: {
-        provider: 'gemini',
+        provider: AI_CONFIG.DEFAULT_PROVIDER,
         systemPrompt: systemPrompt,
         userPrompt: userPrompt,
-        model: 'gemini-1.5-pro',
+        model: AI_CONFIG.GEMINI.MODEL_ID,
         maxTokens: 8192,
         temperature: 0.4
       }
