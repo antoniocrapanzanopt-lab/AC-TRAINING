@@ -71,6 +71,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const { data, error } = await supabase
         .from('workout_folders')
         .select('*')
+        .eq('coach_id', user.id)
         .order('name', { ascending: true });
 
       if (error) {
@@ -97,8 +98,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (error) throw error;
       await loadFolders();
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -116,8 +118,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (error) throw error;
       await loadFolders();
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -133,8 +136,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await loadFolders();
       await loadCoachTemplates();
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -152,8 +156,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (error) throw error;
       await loadCoachTemplates();
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -165,14 +170,14 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const { data, error } = await supabase
         .from('workouts')
         .select('*')
+        .eq('coach_id', user.id)
+        .or('is_template.eq.true,is_template.is.null')
         .order('created_at', { ascending: false });
 
       if (error) {
         console.warn('Errore nel caricamento delle schede coach:', error.message);
       } else if (data) {
-        // Mostra tutte le schede template o master del coach (esclude solo le copie private create per atleti singoli)
-        const templates = data.filter(w => w.is_template !== false);
-        setCoachTemplates(templates);
+        setCoachTemplates(data);
       }
     } catch (err: unknown) {
       console.error('Eccezione loadCoachTemplates:', err);
@@ -239,9 +244,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       await loadCoachTemplates();
       return { success: true, workoutId: newWorkout.id };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error creating workout:", error);
-      return { success: false, error: error.message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -298,9 +304,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       await loadCoachTemplates();
       return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error updating workout:", error);
-      return { success: false, error: error.message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -317,9 +324,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       await loadCoachTemplates();
       return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error deleting workout:", error);
-      return { success: false, error: error.message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -337,8 +345,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (error) throw error;
       await loadAssignedWorkouts();
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -354,8 +363,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (error) throw error;
       await loadAssignedWorkouts();
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -450,9 +460,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await assignWorkoutToAthlete(athleteId, clonedWorkout.id);
       
       return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error forking workout for athlete:", error);
-      return { success: false, error: error.message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -531,9 +542,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       await loadAssignedWorkouts();
       return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error freezing workout for assigned athletes:", error);
-      return { success: false, error: error.message };
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -550,7 +562,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const customizedAssignments = (assignments || []).filter(a => {
         const w = Array.isArray(a.workout) ? a.workout[0] : a.workout;
-        return w && (w as any).parent_template_id === masterWorkoutId;
+        return w && (w as { parent_template_id?: string }).parent_template_id === masterWorkoutId;
       });
       
       if (customizedAssignments.length > 0) {
@@ -570,9 +582,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       await loadAssignedWorkouts();
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error force syncing master template:", err);
-      return { success: false, error: err.message };
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      return { success: false, error: msg };
     }
   };
 
@@ -626,7 +639,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         start_time: new Date().toISOString()
       };
       return { session: fallbackSession };
-    } catch (error: any) {
+    } catch (error: unknown) {
       const fallbackSession: WorkoutSession = {
         id: crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`,
         athlete_id: effectiveAthleteId,
@@ -639,7 +652,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const endWorkoutSession = async (sessionId: string, notes?: string, rpe?: number) => {
     try {
-      const updateData: any = { end_time: new Date().toISOString() };
+      const updateData: Record<string, unknown> = { end_time: new Date().toISOString() };
       if (notes) updateData.notes = notes;
       if (rpe) updateData.rpe = rpe;
 
@@ -680,8 +693,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       return { success: true };
-    } catch (error: any) {
-      console.warn('endWorkoutSession exception:', error.message);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.warn('endWorkoutSession exception:', msg);
       return { success: true };
     }
   };
@@ -691,14 +705,15 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const { error } = await supabase
         .from('exercise_logs')
-        .insert(logs as any);
+        .insert(logs as Record<string, unknown>[]);
         
       if (error) {
         console.warn('saveExerciseLogs warning:', error.message);
       }
       return { success: true };
-    } catch (error: any) {
-      console.warn('saveExerciseLogs exception:', error.message);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      console.warn('saveExerciseLogs exception:', msg);
       return { success: true };
     }
   };
