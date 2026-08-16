@@ -13,14 +13,14 @@ import {
   X,
   FileText,
   Volume2,
-  Download,
-  ZoomIn
+  Download
 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { uploadChatAttachment } from '../../lib/chatStorage';
+import { SecureChatAttachment } from '../../components/chat/SecureChatAttachment';
 
 interface AthleteChatProps {
   onBack?: () => void;
@@ -205,14 +205,15 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
 
       // Caso 2: Invia Nuovo Messaggio con caricamento su Supabase Storage
       if (attachment) {
-        // Carica su Supabase Storage (bucket: chat-attachments) o fallback DataURL
-        const uploadedUrl = await uploadChatAttachment(attachment.file);
+        // Carica su Supabase Storage (bucket privato: chat-attachments) o fallback DataURL
+        const athleteIdForUpload = (user as unknown as { athleteId?: string })?.athleteId || user?.id;
+        const uploadedPath = await uploadChatAttachment(attachment.file, athleteIdForUpload);
         const mediaTag =
           attachment.type === 'image'
-            ? `📷 [Immagine] ${uploadedUrl}`
+            ? `📷 [Immagine] ${uploadedPath}`
             : attachment.type === 'video'
-            ? `🎥 [Video] ${uploadedUrl}`
-            : `📎 [File] ${attachment.file.name}\n${uploadedUrl}`;
+            ? `🎥 [Video] ${uploadedPath}`
+            : `📎 [File] ${attachment.file.name}\n${uploadedPath}`;
 
         const contentWithMedia = textToSend ? `${textToSend}\n\n${mediaTag}` : mediaTag;
         await sendMessage(coachId, contentWithMedia);
@@ -223,7 +224,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
         await sendMessage(coachId, textToSend);
         setNewMessage('');
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error in handleSendMessage:', err);
       showError('Impossibile inviare il messaggio');
     } finally {
@@ -232,7 +233,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   };
 
   // Parser con controllo anti-crash 100% blindato per tutti i tipi di allegato ed Immagine Lightbox
-  const renderMessageContent = (content?: string | null) => {
+  const renderMessageContent = (content?: string | null, isMineMsg?: boolean) => {
     if (!content) return null;
     const str = String(content);
 
@@ -244,21 +245,12 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
         <div className="space-y-2">
           {text && <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>}
           {imageUrl && (
-            <div className="rounded-2xl overflow-hidden border border-black/10 mt-1 max-w-xs shadow-md bg-black/20 space-y-1 p-1 group/img relative">
-              <img
-                src={imageUrl}
-                alt="Allegato foto"
-                onClick={() => setLightboxImage(imageUrl)}
-                className="w-full h-auto object-cover max-h-64 rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
-              />
-              <button
-                type="button"
-                onClick={() => setLightboxImage(imageUrl)}
-                className="text-[11px] font-bold text-slate-900 flex items-center gap-1 px-1 py-0.5 hover:underline cursor-pointer"
-              >
-                <ZoomIn className="w-3.5 h-3.5" /> Inggrandisci Foto
-              </button>
-            </div>
+            <SecureChatAttachment
+              type="image"
+              pathOrUrl={imageUrl}
+              isMine={isMineMsg}
+              onOpenLightbox={setLightboxImage}
+            />
           )}
         </div>
       );
@@ -272,9 +264,11 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
         <div className="space-y-2">
           {text && <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>}
           {videoUrl && (
-            <div className="rounded-2xl overflow-hidden border border-black/10 mt-1 max-w-xs shadow-md bg-black/20 p-1">
-              <video src={videoUrl} controls className="w-full h-auto max-h-64 rounded-xl" />
-            </div>
+            <SecureChatAttachment
+              type="video"
+              pathOrUrl={videoUrl}
+              isMine={isMineMsg}
+            />
           )}
         </div>
       );
@@ -300,23 +294,14 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
       return (
         <div className="space-y-2">
           {text && <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>}
-          <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-950/20 border border-black/10 mt-1 max-w-xs shadow-md">
-            <FileText className="w-6 h-6 text-slate-950 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold truncate text-slate-950">{fileName || 'Documento Allegato'}</p>
-              {fileDataUrl && (
-                <a
-                  href={fileDataUrl}
-                  download={fileName || 'documento_allegato'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] font-black text-slate-950 underline hover:opacity-80 mt-0.5 inline-block"
-                >
-                  ⬇️ Apri / Scarica File
-                </a>
-              )}
-            </div>
-          </div>
+          {fileDataUrl && (
+            <SecureChatAttachment
+              type="file"
+              pathOrUrl={fileDataUrl}
+              fileName={fileName || 'Documento Allegato'}
+              isMine={isMineMsg}
+            />
+          )}
         </div>
       );
     }
@@ -441,7 +426,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                           : 'bg-slate-900 text-slate-100 border border-slate-800/90 rounded-tl-xs'
                       }`}
                     >
-                      {renderMessageContent(msg.content)}
+                      {renderMessageContent(msg.content, isMine)}
                     </div>
                   </div>
 

@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, ChevronLeft, Trash2, Paperclip, ZoomIn, Download } from 'lucide-react';
+import { MessageSquare, X, Send, ChevronLeft, Trash2, Paperclip, Download } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { uploadChatAttachment } from '../../lib/chatStorage';
+import { SecureChatAttachment } from './SecureChatAttachment';
 
 export const FloatingChatWidget: React.FC = () => {
   const { conversations, activeConversation, setActiveConversation, messages, sendMessage, markAsRead, deleteMessage } = useMessages();
@@ -60,17 +61,17 @@ export const FloatingChatWidget: React.FC = () => {
 
     setIsSending(true);
     try {
-      const uploadedUrl = await uploadChatAttachment(file);
+      const uploadedPath = await uploadChatAttachment(file, activeConversation.athlete_id);
       const isImg = file.type.startsWith('image/');
       const isVid = file.type.startsWith('video/');
       const mediaTag = isImg
-        ? `📷 [Immagine] ${uploadedUrl}`
+        ? `📷 [Immagine] ${uploadedPath}`
         : isVid
-        ? `🎥 [Video] ${uploadedUrl}`
-        : `📎 [File] ${file.name}\n${uploadedUrl}`;
+        ? `🎥 [Video] ${uploadedPath}`
+        : `📎 [File] ${file.name}\n${uploadedPath}`;
 
       await sendMessage(activeConversation.athlete_id, mediaTag);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error sending file from FloatingChatWidget:', err);
     } finally {
       setIsSending(false);
@@ -101,21 +102,13 @@ export const FloatingChatWidget: React.FC = () => {
         <div className="space-y-1.5">
           {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
           {imageUrl && (
-            <div className="rounded-xl overflow-hidden mt-1 border border-black/10 max-w-[220px]">
-              <img
-                src={imageUrl}
-                alt="Foto"
-                onClick={() => setLightboxImage(imageUrl)}
-                className="w-full h-auto object-cover max-h-48 rounded-lg cursor-pointer hover:opacity-90"
-              />
-              <button
-                type="button"
-                onClick={() => setLightboxImage(imageUrl)}
-                className={`text-[10px] font-bold flex items-center gap-1 mt-1 hover:underline cursor-pointer ${isMe ? 'text-black' : 'text-amber-400'}`}
-              >
-                <ZoomIn className="w-3 h-3" /> Ingrandisci Foto
-              </button>
-            </div>
+            <SecureChatAttachment
+              type="image"
+              pathOrUrl={imageUrl}
+              isMine={isMe}
+              onOpenLightbox={setLightboxImage}
+              className="max-w-[220px]"
+            />
           )}
         </div>
       );
@@ -129,9 +122,12 @@ export const FloatingChatWidget: React.FC = () => {
         <div className="space-y-1.5">
           {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
           {videoUrl && (
-            <div className="rounded-xl overflow-hidden mt-1 border border-black/10 max-w-[220px]">
-              <video src={videoUrl} controls className="w-full h-auto max-h-48 rounded-lg" />
-            </div>
+            <SecureChatAttachment
+              type="video"
+              pathOrUrl={videoUrl}
+              isMine={isMe}
+              className="max-w-[220px]"
+            />
           )}
         </div>
       );
@@ -147,20 +143,15 @@ export const FloatingChatWidget: React.FC = () => {
       return (
         <div className="space-y-1.5">
           {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
-          <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-700 max-w-[220px]">
-            <p className="text-xs font-bold truncate text-white">{fName || 'File Allegato'}</p>
-            {fUrl && (
-              <a
-                href={fUrl}
-                download={fName || 'allegato'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`text-[10px] font-bold underline mt-1 inline-block ${isMe ? 'text-black' : 'text-amber-400'}`}
-              >
-                ⬇️ Apri / Scarica
-              </a>
-            )}
-          </div>
+          {fUrl && (
+            <SecureChatAttachment
+              type="file"
+              pathOrUrl={fUrl}
+              fileName={fName || 'File Allegato'}
+              isMine={isMe}
+              className="max-w-[220px]"
+            />
+          )}
         </div>
       );
     }

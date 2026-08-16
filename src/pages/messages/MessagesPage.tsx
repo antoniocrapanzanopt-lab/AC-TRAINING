@@ -10,7 +10,6 @@ import {
   X,
   Trash2,
   Paperclip,
-  ZoomIn,
   Download
 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
@@ -18,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useToast } from '../../context/ToastContext';
 import { uploadChatAttachment } from '../../lib/chatStorage';
+import { SecureChatAttachment } from '../../components/chat/SecureChatAttachment';
 
 export const MessagesPage: React.FC = () => {
   const { user } = useAuth();
@@ -55,18 +55,18 @@ export const MessagesPage: React.FC = () => {
 
     setIsSending(true);
     try {
-      const uploadedUrl = await uploadChatAttachment(file);
+      const uploadedPath = await uploadChatAttachment(file, activeConversation.athlete_id);
       const isImg = file.type.startsWith('image/');
       const isVid = file.type.startsWith('video/');
       const mediaTag = isImg
-        ? `📷 [Immagine] ${uploadedUrl}`
+        ? `📷 [Immagine] ${uploadedPath}`
         : isVid
-        ? `🎥 [Video] ${uploadedUrl}`
-        : `📎 [File] ${file.name}\n${uploadedUrl}`;
+        ? `🎥 [Video] ${uploadedPath}`
+        : `📎 [File] ${file.name}\n${uploadedPath}`;
 
       await sendMessage(activeConversation.athlete_id, mediaTag);
       showSuccess('Allegato inviato all\'atleta!');
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error sending file from MessagesPage:', err);
       showError('Impossibile inviare l\'allegato');
     } finally {
@@ -457,21 +457,12 @@ export const MessagesPage: React.FC = () => {
                                     <div className="space-y-2">
                                       {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
                                       {imgUrl && (
-                                        <div className="rounded-xl overflow-hidden mt-1 border border-slate-700 max-w-xs space-y-1">
-                                          <img
-                                            src={imgUrl}
-                                            alt="Foto allegata"
-                                            onClick={() => setLightboxImage(imgUrl)}
-                                            className="w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                          />
-                                          <button
-                                            type="button"
-                                            onClick={() => setLightboxImage(imgUrl)}
-                                            className="text-[11px] font-bold text-amber-400 flex items-center gap-1 px-1 py-0.5 hover:underline cursor-pointer"
-                                          >
-                                            <ZoomIn className="w-3.5 h-3.5" /> Ingrandisci Foto
-                                          </button>
-                                        </div>
+                                        <SecureChatAttachment
+                                          type="image"
+                                          pathOrUrl={imgUrl}
+                                          isMine={isMine}
+                                          onOpenLightbox={setLightboxImage}
+                                        />
                                       )}
                                     </div>
                                   );
@@ -484,9 +475,11 @@ export const MessagesPage: React.FC = () => {
                                     <div className="space-y-2">
                                       {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
                                       {vidUrl && (
-                                        <div className="rounded-xl overflow-hidden mt-1 border border-slate-700 max-w-xs">
-                                          <video src={vidUrl} controls className="w-full h-auto max-h-64" />
-                                        </div>
+                                        <SecureChatAttachment
+                                          type="video"
+                                          pathOrUrl={vidUrl}
+                                          isMine={isMine}
+                                        />
                                       )}
                                     </div>
                                   );
@@ -501,20 +494,14 @@ export const MessagesPage: React.FC = () => {
                                   return (
                                     <div className="space-y-2">
                                       {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
-                                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 mt-1 max-w-xs space-y-1">
-                                        <p className="text-xs font-bold text-white truncate">{fileName || 'File Allegato'}</p>
-                                        {fileDataUrl && (
-                                          <a
-                                            href={fileDataUrl}
-                                            download={fileName || 'allegato'}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-xs font-black text-[var(--color-primary)] underline hover:text-amber-300 block"
-                                          >
-                                            ⬇️ Apri / Scarica File
-                                          </a>
-                                        )}
-                                      </div>
+                                      {fileDataUrl && (
+                                        <SecureChatAttachment
+                                          type="file"
+                                          pathOrUrl={fileDataUrl}
+                                          fileName={fileName || 'Documento Allegato'}
+                                          isMine={isMine}
+                                        />
+                                      )}
                                     </div>
                                   );
                                 }
