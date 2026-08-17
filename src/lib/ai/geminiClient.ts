@@ -75,7 +75,10 @@ export function getGeminiRuntimeConfig() {
     typeof import.meta !== 'undefined' && import.meta.env ? (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) : undefined;
   const nodeEnvKey =
     typeof process !== 'undefined' && process.env ? (process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY) : undefined;
-  const apiKey = (viteEnvKey || nodeEnvKey || '').trim();
+  const localStorageKey =
+    typeof window !== 'undefined' && window.localStorage ? (window.localStorage.getItem('ac_gemini_api_key') || window.localStorage.getItem('gemini_api_key')) : undefined;
+
+  const apiKey = (viteEnvKey || nodeEnvKey || localStorageKey || '').trim();
 
   const viteEnvModel =
     typeof import.meta !== 'undefined' && import.meta.env ? (import.meta.env.VITE_GEMINI_MODEL as string | undefined) : undefined;
@@ -88,6 +91,29 @@ export function getGeminiRuntimeConfig() {
     : 'NON PRESENTE (Client)';
 
   return { apiKey, model, maskedKey };
+}
+
+export function setGeminiApiKey(key: string) {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem('ac_gemini_api_key', key.trim());
+  }
+  const cfg = getGeminiRuntimeConfig();
+  updateDiagnostic({
+    apiKeyStatus: cfg.apiKey ? 'client_key_present' : 'missing',
+    apiKeyMasked: cfg.maskedKey,
+  });
+}
+
+export function clearGeminiApiKey() {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.removeItem('ac_gemini_api_key');
+    window.localStorage.removeItem('gemini_api_key');
+  }
+  const cfg = getGeminiRuntimeConfig();
+  updateDiagnostic({
+    apiKeyStatus: cfg.apiKey ? 'client_key_present' : 'missing',
+    apiKeyMasked: cfg.maskedKey,
+  });
 }
 
 /**

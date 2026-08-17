@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, ChevronUp, ChevronDown, Terminal, Clock, Key, Cpu } from 'lucide-react';
-import { subscribeToAIDiagnostics, AIDiagnosticInfo, getGeminiRuntimeConfig } from '../../lib/ai/geminiClient';
+import {
+  subscribeToAIDiagnostics,
+  AIDiagnosticInfo,
+  getGeminiRuntimeConfig,
+  setGeminiApiKey,
+  clearGeminiApiKey,
+} from '../../lib/ai/geminiClient';
 
 interface AIDiagnosticPanelProps {
   className?: string;
@@ -17,6 +23,7 @@ export const AIDiagnosticPanel: React.FC<AIDiagnosticPanelProps> = ({ className 
   });
 
   const [isOpen, setIsOpen] = useState(false);
+  const [inputKey, setInputKey] = useState('');
   const runtimeConfig = getGeminiRuntimeConfig();
 
   useEffect(() => {
@@ -89,14 +96,58 @@ export const AIDiagnosticPanel: React.FC<AIDiagnosticPanelProps> = ({ className 
 
             <div className="p-2 rounded-lg bg-slate-900/50 border border-slate-800/60 flex items-start gap-2">
               <Key className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-              <div>
+              <div className="flex-1">
                 <span className="text-[10px] uppercase text-slate-500 block font-bold">Stato API Key</span>
                 <span className={`font-bold ${isConfigured ? 'text-emerald-400' : 'text-amber-400'}`}>
-                  {runtimeConfig.apiKey ? 'VITE_GEMINI_API_KEY (Attiva)' : 'Edge Function Route'}
+                  {runtimeConfig.apiKey ? 'Google Gemini API (Attiva)' : 'Non Rilevata (Richiesta Chiave)'}
                 </span>
                 <span className="text-slate-400 block text-[11px]">{runtimeConfig.maskedKey}</span>
               </div>
             </div>
+          </div>
+
+          {/* Sezione Gestione Rapida Chiave API Gemini */}
+          <div className="p-2.5 rounded-lg bg-slate-900/40 border border-slate-800/60 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-300 font-bold text-[11px]">Chiave API Google Gemini (Google AI Studio)</span>
+              {runtimeConfig.apiKey && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearGeminiApiKey();
+                    setInputKey('');
+                  }}
+                  className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                >
+                  Rimuovi
+                </button>
+              )}
+            </div>
+            <div className="flex gap-1.5">
+              <input
+                type="password"
+                placeholder={runtimeConfig.apiKey ? "Chiave configurata (incolla per sovrascrivere)" : "Incolla qui la chiave AQ.Ab8..."}
+                value={inputKey}
+                onChange={(e) => setInputKey(e.target.value)}
+                className="flex-1 px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)] font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (inputKey.trim()) {
+                    setGeminiApiKey(inputKey.trim());
+                    setInputKey('');
+                  }
+                }}
+                disabled={!inputKey.trim()}
+                className="px-3 py-1.5 bg-[var(--color-primary)] hover:opacity-90 disabled:opacity-40 text-black font-bold rounded text-xs transition cursor-pointer"
+              >
+                Salva
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500">
+              La chiave viene salvata in modo sicuro nel browser per le chiamate dirette all'API Gemini.
+            </p>
           </div>
 
           <div className="p-2.5 rounded-lg bg-slate-900/30 border border-slate-800/40 space-y-1.5 text-[11px]">
