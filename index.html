@@ -10,6 +10,67 @@
       content="Builder Athlete Manager — Demo didattica locale per la gestione di atleti, abbonamenti, pagamenti rateizzati, comunicazioni e reportistica per palestre e coach."
     />
     <title>Builder Athlete Manager</title>
+    <script>
+      (function() {
+        try {
+          var mode = 'dark';
+          var accent = '#eab308';
+          
+          var rawPrefs = localStorage.getItem('builder_athlete_theme_preferences');
+          if (rawPrefs) {
+            try {
+              var parsed = JSON.parse(rawPrefs);
+              if (parsed && typeof parsed === 'object') {
+                if (parsed.mode === 'dark' || parsed.mode === 'light' || parsed.mode === 'system') {
+                  mode = parsed.mode;
+                }
+                if (parsed.accentColor && /^#[0-9A-Fa-f]{6}$/.test(parsed.accentColor)) {
+                  accent = parsed.accentColor;
+                }
+              }
+            } catch(e) {}
+          } else {
+            var legacyHex = localStorage.getItem('builder_theme_primary_hex');
+            if (legacyHex && /^#[0-9A-Fa-f]{6}$/.test(legacyHex)) {
+              accent = legacyHex;
+            }
+          }
+
+          var effectiveTheme = mode;
+          if (mode === 'system') {
+            effectiveTheme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+          }
+          
+          document.documentElement.setAttribute('data-theme', effectiveTheme);
+          if (effectiveTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('light');
+          } else {
+            document.documentElement.classList.add('light');
+            document.documentElement.classList.remove('dark');
+          }
+
+          var cleaned = accent.replace('#', '');
+          var num = parseInt(cleaned, 16);
+          var r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+          var rgb = r + ', ' + g + ', ' + b;
+
+          var hoverR = Math.max(0, Math.floor(r * 0.85)), hoverG = Math.max(0, Math.floor(g * 0.85)), hoverB = Math.max(0, Math.floor(b * 0.85));
+          var hoverHex = '#' + ((1 << 24) + (hoverR << 16) + (hoverG << 8) + hoverB).toString(16).slice(1);
+
+          var activeR = Math.max(0, Math.floor(r * 0.70)), activeG = Math.max(0, Math.floor(g * 0.70)), activeB = Math.max(0, Math.floor(b * 0.70));
+          var activeHex = '#' + ((1 << 24) + (activeR << 16) + (activeG << 8) + activeB).toString(16).slice(1);
+
+          document.documentElement.style.setProperty('--color-primary', accent);
+          document.documentElement.style.setProperty('--color-primary-hex', accent);
+          document.documentElement.style.setProperty('--color-primary-rgb', rgb);
+          document.documentElement.style.setProperty('--color-primary-hover', hoverHex);
+          document.documentElement.style.setProperty('--color-primary-active', activeHex);
+          document.documentElement.style.setProperty('--color-primary-soft', 'rgba(' + rgb + ', 0.12)');
+          document.documentElement.style.setProperty('--color-focus', 'rgba(' + rgb + ', 0.4)');
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body class="bg-[#090D16] text-slate-100 antialiased selection:bg-amber-500 selection:text-black">
     <div id="root"></div>

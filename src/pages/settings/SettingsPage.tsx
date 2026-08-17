@@ -10,11 +10,8 @@ import {
   Bell,
   Lock,
   Download,
-  Share2,
   History,
-  Info,
   Save,
-  RotateCcw,
   Check,
   Upload,
   Package,
@@ -22,6 +19,10 @@ import {
   X,
   FileCheck2,
   FileX,
+  Plus,
+  Trash2,
+  ExternalLink,
+  ChevronRight,
 } from 'lucide-react';
 import { useSettings } from '../../context/SettingsContext';
 import { useToast } from '../../context/ToastContext';
@@ -29,9 +30,9 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useRenewals } from '../../context/RenewalsContext';
+import { usePackages } from '../../context/PackagesContext';
 import {
   exportAppLocalStorage,
-  clearAppDemoData,
   clearAppLocalStorage,
   validateImportPayload,
   importAppLocalStorageTransactional,
@@ -41,8 +42,9 @@ import { getLocalOwnerProfile, saveOwnerProfile } from '../../lib/ownerProfile';
 import { OwnerProfileTab } from './components/OwnerProfileTab';
 import { BackupSettingsTab } from './components/BackupSettingsTab';
 import { ThemeCustomizer } from '../../components/settings/ThemeCustomizer';
+import { SecuritySettingsPage } from './SecuritySettingsPage';
 
-type SettingsTab =
+export type SettingsTab =
   | 'owner'
   | 'organization'
   | 'appearance'
@@ -51,27 +53,50 @@ type SettingsTab =
   | 'payments_activities'
   | 'tags'
   | 'users_roles'
-  | 'reminders'
-  | 'privacy'
   | 'security'
+  | 'reminders'
   | 'backup'
-  | 'integrations'
   | 'audit';
 
-import { SecuritySettingsPage } from './SecuritySettingsPage';
+interface SectionMeta {
+  id: SettingsTab;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  description: string;
+}
+
+const SETTINGS_SECTIONS: SectionMeta[] = [
+  { id: 'owner', label: 'Profilo Proprietario', icon: User, description: 'Anagrafica, contatti e credenziali del titolare' },
+  { id: 'organization', label: 'Organizzazione & Logo', icon: Building2, description: 'Dati della palestra, sede, recapiti e brand visuale' },
+  { id: 'appearance', label: 'Colori & Tema Live', icon: Palette, description: 'Palette aziendale, preset colore e modalità scura' },
+  { id: 'localization', label: 'Valuta & Data', icon: Globe, description: 'Valuta predefinita, fuso orario e formato date' },
+  { id: 'packages', label: 'Pacchetti', icon: Package, description: 'Listino abbonamenti, ingressi e servizi' },
+  { id: 'payments_activities', label: 'Pagamenti & Categorie', icon: CreditCard, description: 'Metodi di incasso e categorie appuntamenti' },
+  { id: 'tags', label: 'Etichette', icon: Tag, description: 'Tag di classificazione e profilazione atleti' },
+  { id: 'users_roles', label: 'Utenti, Ruoli & Permessi', icon: Users, description: 'Organigramma staff, permessi e privilegi' },
+  { id: 'security', label: 'Sicurezza Account', icon: Lock, description: 'Autenticazione a due fattori (MFA) e sessioni' },
+  { id: 'reminders', label: 'Promemoria', icon: Bell, description: 'Soglie di notifica scadenze visite e rinnovi' },
+  { id: 'backup', label: 'Backup & Esportazione', icon: Download, description: 'Salvataggio, esportazione e ripristino dati' },
+  { id: 'audit', label: 'Audit Log Generale', icon: History, description: 'Registro cronologico di tutte le azioni di sistema' },
+];
 
 export const SettingsPage: React.FC = () => {
   const {
     settings,
     updateOrgSettings,
     updateAppearanceSettings,
+    updateReminderRules,
+    updatePaymentMethods,
+    updateActivityCategories,
+    updateAthleteTags,
     logGeneralAudit,
-    resetSettingsToDefault,
+    auditLogs,
   } = useSettings();
 
+  const { packages } = usePackages();
   const { showSuccess, showInfo, showError } = useToast();
   const { ownerProfile, setOwnerProfile } = useApp();
-  const { refreshAuthProfile, logout } = useAuth();
+  const { refreshAuthProfile, logout, members } = useAuth();
   const { syncOwnerNameInAthletes } = useAthletes();
   const { syncOwnerNameInRenewalsAndPauses } = useRenewals();
 
@@ -83,23 +108,26 @@ export const SettingsPage: React.FC = () => {
     firstName: currentOwner?.firstName || '',
     lastName: currentOwner?.lastName || '',
     email: currentOwner?.email || 'owner.demo@example.com',
-    organizationName: currentOwner?.organizationName || 'Builder Athlete Manager Demo',
+    organizationName: currentOwner?.organizationName || 'Builder Athlete Manager',
   });
 
   // Modal di rimozione proprietario (Step 1 e Step 2)
   const [removeOwnerStep, setRemoveOwnerStep] = useState<0 | 1 | 2>(0);
 
-  // Modal di ripristino dati demo (Step 1 e Step 2)
-  const [resetDemoStep, setResetDemoStep] = useState<0 | 1 | 2>(0);
-
   // Anteprima ed Importazione JSON
   const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
 
-  // Form locali per modifiche generali
+  // Form locali
   const [orgForm, setOrgForm] = useState(settings.organization);
   const [appearanceForm, setAppearanceForm] = useState(settings.appearance);
+  const [reminderForm, setReminderForm] = useState(settings.reminderRules);
 
-  // 1. SALVATAGGIO PROFILO PROPRIETARIO (con sincro istantanea)
+  // State per nuovi elementi dinamici (Pagamenti, Categorie, Tag)
+  const [newPaymentMethod, setNewPaymentMethod] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [newTag, setNewTag] = useState('');
+
+  // 1. SALVATAGGIO PROFILO PROPRIETARIO
   const handleSaveOwnerProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!ownerForm.firstName.trim() || !ownerForm.lastName.trim()) {
@@ -138,7 +166,7 @@ export const SettingsPage: React.FC = () => {
     );
   };
 
-  // 2. RIMOZIONE COMPLETA CONFIGURAZIONE PROPRIETARIO (2 CONFERME)
+  // 2. RIMOZIONE COMPLETA CONFIGURAZIONE PROPRIETARIO
   const handleExecuteFullOwnerRemoval = () => {
     clearAppLocalStorage();
     logout();
@@ -146,18 +174,7 @@ export const SettingsPage: React.FC = () => {
     showInfo('Profilo Rimosso', 'La configurazione del proprietario è stata totalmente cancellata. Ripristino del setup iniziale.');
   };
 
-  // 3. RIPRISTINO DATI DEMO CONSERVANDO IL PROPRIETARIO (2 CONFERME)
-  const handleExecuteDemoDataReset = () => {
-    clearAppDemoData();
-    resetSettingsToDefault();
-    logGeneralAudit('Ripristino Dati Demo', 'Ripristino', 'Ripristinati i dati dimostrativi dei moduli. Profilo proprietario conservato.');
-    showSuccess('Ripristinato', 'Dati della demo ripristinati. Profilo proprietario conservato. Ricarica la pagina in corso.');
-    setTimeout(() => {
-      window.location.reload();
-    }, 1000);
-  };
-
-  // 4. ESPORTAZIONE BACKUP JSON
+  // 3. ESPORTAZIONE BACKUP JSON
   const handleExportBackup = () => {
     const data = exportAppLocalStorage();
     const jsonStr = JSON.stringify(data, null, 2);
@@ -174,7 +191,7 @@ export const SettingsPage: React.FC = () => {
     showSuccess('Backup Scaricato', 'Il file di backup completo è stato salvato sul computer.');
   };
 
-  // 5. CARICAMENTO E VALIDAZIONE FILE JSON IMPORTAZIONE
+  // 4. CARICAMENTO E VALIDAZIONE FILE JSON IMPORTAZIONE
   const handleSelectImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -204,7 +221,7 @@ export const SettingsPage: React.FC = () => {
     e.target.value = '';
   };
 
-  // 6. ESECUZIONE IMPORTAZIONE TRANSAZIONALE CON ROLLBACK AUTOMATICO
+  // 5. ESECUZIONE IMPORTAZIONE TRANSAZIONALE
   const handleExecuteImport = () => {
     if (!importValidation || !importValidation.parsedData) return;
 
@@ -232,28 +249,84 @@ export const SettingsPage: React.FC = () => {
     }, 1200);
   };
 
-  // Salvataggio Organizzazione
+  // 6. Salvataggio Organizzazione
   const handleSaveOrg = (e: React.FormEvent) => {
     e.preventDefault();
     updateOrgSettings(orgForm);
     showSuccess('Salvato', 'Dati organizzazione aggiornati con successo.');
   };
 
+  // 7. Salvataggio Promemoria
+  const handleSaveReminders = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateReminderRules(reminderForm);
+    showSuccess('Regole Salvate', 'Regole di promemoria aggiornate.');
+  };
 
+  // 8. Handler Metodi Pagamento
+  const handleAddPaymentMethod = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPaymentMethod.trim()) return;
+    if (settings.paymentMethods.includes(newPaymentMethod.trim())) {
+      showError('Esistente', 'Questo metodo di pagamento è già presente.');
+      return;
+    }
+    updatePaymentMethods([...settings.paymentMethods, newPaymentMethod.trim()]);
+    setNewPaymentMethod('');
+    showSuccess('Metodo Aggiunto', 'Nuovo metodo di pagamento registrato.');
+  };
+
+  const handleRemovePaymentMethod = (method: string) => {
+    if (settings.paymentMethods.length <= 1) {
+      showError('Operazione Rifiutata', 'Deve rimanere almeno un metodo di pagamento.');
+      return;
+    }
+    updatePaymentMethods(settings.paymentMethods.filter(m => m !== method));
+    showInfo('Metodo Rimosso', `Rimosso: ${method}`);
+  };
+
+  // 9. Handler Categorie Attività
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategory.trim()) return;
+    if (settings.activityCategories.includes(newCategory.trim())) {
+      showError('Esistente', 'Questa categoria è già presente.');
+      return;
+    }
+    updateActivityCategories([...settings.activityCategories, newCategory.trim()]);
+    setNewCategory('');
+    showSuccess('Categoria Aggiunta', 'Nuova categoria attività registrata.');
+  };
+
+  const handleRemoveCategory = (cat: string) => {
+    if (settings.activityCategories.length <= 1) {
+      showError('Operazione Rifiutata', 'Deve rimanere almeno una categoria.');
+      return;
+    }
+    updateActivityCategories(settings.activityCategories.filter(c => c !== cat));
+    showInfo('Categoria Rimossa', `Rimossa: ${cat}`);
+  };
+
+  // 10. Handler Tag Atleta
+  const handleAddTag = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTag.trim()) return;
+    if (settings.athleteTags.includes(newTag.trim())) {
+      showError('Esistente', 'Questa etichetta è già presente.');
+      return;
+    }
+    updateAthleteTags([...settings.athleteTags, newTag.trim()]);
+    setNewTag('');
+    showSuccess('Etichetta Creata', 'Nuovo tag atleta aggiunto.');
+  };
+
+  const handleRemoveTag = (tagItem: string) => {
+    updateAthleteTags(settings.athleteTags.filter(t => t !== tagItem));
+    showInfo('Etichetta Rimossa', `Rimossa: ${tagItem}`);
+  };
 
   return (
-    <div className="space-y-8">
-      {/* Banner Disclaimer Legale Permanente */}
-      <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-start gap-3 shadow-lg">
-        <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-        <div>
-          <span className="font-bold uppercase tracking-wider block text-[11px] text-amber-400">
-            DISCLAIMER SISTEMA DIMOSTRATIVO
-          </span>
-          Le impostazioni, i parametri privacy/GDPR, le chiavi API ed i ruoli definiti in questo modulo hanno scopo puramente dimostrativo e didattico. Non costituiscono conformità legale, contabile o di sicurezza reale.
-        </div>
-      </div>
-
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
@@ -264,372 +337,621 @@ export const SettingsPage: React.FC = () => {
             Configura il profilo del proprietario, l'organizzazione, i colori visivi, i ruoli utente ed i promemoria.
           </p>
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setResetDemoStep(1)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs hover:border-slate-600 transition-all shadow"
-          >
-            <RotateCcw className="w-4 h-4 text-amber-400" /> Ripristina Dati Demo (Conserva Proprietario)
-          </button>
-        </div>
       </div>
 
-      {/* NAVIGAZIONE SUB-TABS SEZIONI */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-800 scrollbar-none">
-        <button
-          onClick={() => setActiveSubTab('owner')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'owner'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <User className="w-4 h-4" /> Profilo Proprietario
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('organization')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'organization'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Building2 className="w-4 h-4" /> Organizzazione & Logo
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('appearance')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'appearance'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Palette className="w-4 h-4" /> Colori & Tema Live
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('localization')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'localization'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Globe className="w-4 h-4" /> Valuta & Data
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('packages')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'packages'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Package className="w-4 h-4" /> Pacchetti
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('payments_activities')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'payments_activities'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <CreditCard className="w-4 h-4" /> Pagamenti & Categorie
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('tags')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'tags'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Tag className="w-4 h-4" /> Etichette
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('users_roles')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'users_roles'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Users className="w-4 h-4" /> Utenti, Ruoli & Permessi
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('reminders')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'reminders'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Bell className="w-4 h-4" /> Promemoria
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('privacy')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'privacy'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Lock className="w-4 h-4" /> Privacy & GDPR Demo
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('security')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'security'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Lock className="w-4 h-4" /> Sicurezza Account
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('backup')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'backup'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Download className="w-4 h-4" /> Backup & Esportazione
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('integrations')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'integrations'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <Share2 className="w-4 h-4" /> Integrazioni
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('audit')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-            activeSubTab === 'audit'
-              ? 'bg-[var(--color-primary)] text-black shadow'
-              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <History className="w-4 h-4" /> Audit Log Generale
-        </button>
-      </div>
-
-      {/* SEZIONE 0: PROFILO PROPRIETARIO */}
-      {activeSubTab === 'owner' && (
-        <OwnerProfileTab
-          ownerForm={ownerForm}
-          onOwnerFormChange={setOwnerForm}
-          onSaveOwnerProfile={handleSaveOwnerProfile}
-          onOpenRemoveModal={() => setRemoveOwnerStep(1)}
-        />
-      )}
-
-      {/* 1. ORGANIZZAZIONE E LOGO */}
-      {activeSubTab === 'organization' && (
-        <form onSubmit={handleSaveOrg} className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-[var(--color-primary)]" /> Dati dell'Organizzazione / Palestra
-            </h3>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Valori dimostrativi</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Nome Attività / Palestra *</label>
-              <input
-                type="text"
-                required
-                value={orgForm.name}
-                onChange={e => setOrgForm({ ...orgForm, name: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Codice Fiscale / Partita IVA (Dimostrativo)</label>
-              <input
-                type="text"
-                value={orgForm.vatNumber}
-                onChange={e => setOrgForm({ ...orgForm, vatNumber: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Indirizzo Sede</label>
-              <input
-                type="text"
-                value={orgForm.address}
-                onChange={e => setOrgForm({ ...orgForm, address: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Telefono Contatto</label>
-              <input
-                type="text"
-                value={orgForm.phone}
-                onChange={e => setOrgForm({ ...orgForm, phone: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Email Amministrativa</label>
-              <input
-                type="email"
-                value={orgForm.email}
-                onChange={e => setOrgForm({ ...orgForm, email: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Sito Web</label>
-              <input
-                type="text"
-                value={orgForm.website}
-                onChange={e => setOrgForm({ ...orgForm, website: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              />
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-slate-800 space-y-3">
-            <h4 className="text-xs font-bold text-white flex items-center gap-2">
-              <Upload className="w-4 h-4 text-sky-400" /> Logo della Palestra / Organizzazione
-            </h4>
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-xs font-bold text-[var(--color-primary)] overflow-hidden">
-                {orgForm.logoUrl ? <img src={orgForm.logoUrl} alt="Logo" className="w-full h-full object-cover" /> : 'LOGO'}
+      {/* Main Responsive Grid: Colonna Sinistra (Menu Verticale) + Colonna Destra (Contenuto) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        {/* ========================================================================= */}
+        {/* COLONNA SINISTRA: MENU VERTICALE DELLE SEZIONI                            */}
+        {/* ========================================================================= */}
+        <aside className="lg:col-span-4 xl:col-span-3 space-y-3">
+          
+          {/* Selettore Compatto per Mobile */}
+          <div className="lg:hidden p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-lg space-y-2">
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+              Seleziona Sezione
+            </label>
+            <div className="relative">
+              <select
+                value={activeSubTab}
+                onChange={(e) => setActiveSubTab(e.target.value as SettingsTab)}
+                className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:outline-none focus:border-[var(--color-primary)] shadow-inner appearance-none cursor-pointer"
+              >
+                {SETTINGS_SECTIONS.map((sec) => (
+                  <option key={sec.id} value={sec.id}>
+                    {sec.label}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                <ChevronRight className="w-4 h-4 rotate-90" />
               </div>
-              <div className="space-y-1 flex-1">
+            </div>
+          </div>
+
+          {/* Sidebar Verticale Completa per Desktop */}
+          <div className="hidden lg:flex flex-col p-2.5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-1 sticky top-6">
+            <div className="px-3.5 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800/80 mb-1 flex items-center justify-between">
+              <span>Sezioni Impostazioni</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                {SETTINGS_SECTIONS.length}
+              </span>
+            </div>
+
+            <nav className="space-y-1">
+              {SETTINGS_SECTIONS.map((sec) => {
+                const Icon = sec.icon;
+                const isActive = activeSubTab === sec.id;
+                return (
+                  <button
+                    key={sec.id}
+                    onClick={() => setActiveSubTab(sec.id)}
+                    className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all text-left group ${
+                      isActive
+                        ? 'bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/40 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/60 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                          isActive
+                            ? 'bg-[var(--color-primary)] text-black font-black shadow'
+                            : 'bg-slate-800/80 text-slate-400 group-hover:text-white group-hover:bg-slate-800'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className={`block truncate ${isActive ? 'text-white font-extrabold' : 'text-slate-300'}`}>
+                          {sec.label}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isActive ? (
+                      <div className="w-1.5 h-4 rounded-full bg-[var(--color-primary)] shrink-0 ml-2" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-transform group-hover:translate-x-0.5 shrink-0 ml-2 opacity-0 group-hover:opacity-100" />
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </aside>
+
+        {/* ========================================================================= */}
+        {/* COLONNA DESTRA: CONTENUTO DELLA SEZIONE ATTIVA                            */}
+        {/* ========================================================================= */}
+        <main className="lg:col-span-8 xl:col-span-9 min-w-0 space-y-6">
+          
+          {/* SEZIONE 1: PROFILO PROPRIETARIO */}
+          {activeSubTab === 'owner' && (
+            <OwnerProfileTab
+              ownerForm={ownerForm}
+              onOwnerFormChange={setOwnerForm}
+              onSaveOwnerProfile={handleSaveOwnerProfile}
+              onOpenRemoveModal={() => setRemoveOwnerStep(1)}
+            />
+          )}
+
+          {/* SEZIONE 2: ORGANIZZAZIONE E LOGO */}
+          {activeSubTab === 'organization' && (
+            <form onSubmit={handleSaveOrg} className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-[var(--color-primary)]" /> Dati dell'Organizzazione / Palestra
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Nome Attività / Palestra *</label>
+                  <input
+                    type="text"
+                    required
+                    value={orgForm.name}
+                    onChange={e => setOrgForm({ ...orgForm, name: e.target.value })}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Codice Fiscale / Partita IVA</label>
+                  <input
+                    type="text"
+                    value={orgForm.vatNumber}
+                    onChange={e => setOrgForm({ ...orgForm, vatNumber: e.target.value })}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Indirizzo Sede</label>
+                  <input
+                    type="text"
+                    value={orgForm.address}
+                    onChange={e => setOrgForm({ ...orgForm, address: e.target.value })}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Telefono Contatto</label>
+                  <input
+                    type="text"
+                    value={orgForm.phone}
+                    onChange={e => setOrgForm({ ...orgForm, phone: e.target.value })}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Email Amministrativa</label>
+                  <input
+                    type="email"
+                    value={orgForm.email}
+                    onChange={e => setOrgForm({ ...orgForm, email: e.target.value })}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Sito Web</label>
+                  <input
+                    type="text"
+                    value={orgForm.website}
+                    onChange={e => setOrgForm({ ...orgForm, website: e.target.value })}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-800 space-y-3">
+                <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-sky-400" /> Logo della Palestra / Organizzazione
+                </h4>
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-xs font-bold text-[var(--color-primary)] overflow-hidden">
+                    {orgForm.logoUrl ? <img src={orgForm.logoUrl} alt="Logo" className="w-full h-full object-cover" /> : 'LOGO'}
+                  </div>
+                  <div className="space-y-1 flex-1">
+                    <input
+                      type="text"
+                      placeholder="URL del logo aziendale..."
+                      value={orgForm.logoUrl || ''}
+                      onChange={e => setOrgForm({ ...orgForm, logoUrl: e.target.value })}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow"
+                >
+                  <Save className="w-4 h-4" /> Salva Dati Organizzazione
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* SEZIONE 3: COLORI E TEMA LIVE */}
+          {activeSubTab === 'appearance' && (
+            <ThemeCustomizer />
+          )}
+
+          {/* SEZIONE 4: VALUTA E DATA */}
+          {activeSubTab === 'localization' && (
+            <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-[var(--color-primary)]" /> Valuta, Fuso Orario e Formato Data
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Valuta Principale</label>
+                  <select
+                    value={appearanceForm.currency}
+                    onChange={e => {
+                      const updated = { ...appearanceForm, currency: e.target.value };
+                      setAppearanceForm(updated);
+                      updateAppearanceSettings(updated);
+                      showSuccess('Valuta Salvata', `Valuta impostata a ${e.target.value}`);
+                    }}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  >
+                    <option value="EUR">EUR (€) - Euro</option>
+                    <option value="USD">USD ($) - Dollaro USA</option>
+                    <option value="GBP">GBP (£) - Sterlina Inglese</option>
+                    <option value="CHF">CHF (Fr) - Franco Svizzero</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Fuso Orario</label>
+                  <select
+                    value={appearanceForm.timeZone}
+                    onChange={e => {
+                      const updated = { ...appearanceForm, timeZone: e.target.value };
+                      setAppearanceForm(updated);
+                      updateAppearanceSettings(updated);
+                      showSuccess('Fuso Orario Salvato', `Fuso orario impostato a ${e.target.value}`);
+                    }}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  >
+                    <option value="Europe/Rome">Europe/Rome (GMT+1 / CET)</option>
+                    <option value="Europe/London">Europe/London (GMT+0)</option>
+                    <option value="America/New_York">America/New_York (EST)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Formato Data Predefinito</label>
+                  <select
+                    value={appearanceForm.dateFormat}
+                    onChange={e => {
+                      const updated = { ...appearanceForm, dateFormat: e.target.value };
+                      setAppearanceForm(updated);
+                      updateAppearanceSettings(updated);
+                      showSuccess('Formato Data Salvato', `Formato data impostato a ${e.target.value}`);
+                    }}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  >
+                    <option value="DD/MM/YYYY">DD/MM/YYYY (es. 31/12/2026)</option>
+                    <option value="YYYY-MM-DD">YYYY-MM-DD (es. 2026-12-31)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SEZIONE 5: PACCHETTI */}
+          {activeSubTab === 'packages' && (
+            <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Package className="w-5 h-5 text-[var(--color-primary)]" /> Listino Pacchetti & Abbonamenti
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Panoramica dei pacchetti attivi configurati nel sistema.</p>
+                </div>
+                <a
+                  href="/pacchetti"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Gestione Completa
+                </a>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {packages.map((pkg) => (
+                  <div key={pkg.id} className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm">{pkg.name}</span>
+                        {pkg.isActive ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">Attivo</span>
+                        ) : (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">Disattivato</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Durata: {pkg.duration} {pkg.durationUnit} • {pkg.installments > 1 ? `${pkg.installments} Rate` : 'Pagamento Unico'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-base font-black text-[var(--color-primary)]">€ {pkg.price}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* SEZIONE 6: PAGAMENTI E CATEGORIE ATTIVITÀ */}
+          {activeSubTab === 'payments_activities' && (
+            <div className="space-y-6">
+              {/* Metodi di Pagamento */}
+              <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-[var(--color-primary)]" /> Metodi di Pagamento Accettati
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Definisci i canali di incasso abilitati nella registrazione pagamenti.</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleAddPaymentMethod} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nuovo metodo di pagamento (es. Satispay, Bonifico Istantaneo)..."
+                    value={newPaymentMethod}
+                    onChange={e => setNewPaymentMethod(e.target.value)}
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                  <button
+                    type="submit"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all"
+                  >
+                    <Plus className="w-4 h-4" /> Aggiungi
+                  </button>
+                </form>
+
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {settings.paymentMethods.map(method => (
+                    <div
+                      key={method}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold shadow-sm"
+                    >
+                      <span>{method}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePaymentMethod(method)}
+                        className="text-slate-500 hover:text-red-400 transition-colors"
+                        title="Rimuovi metodo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Categorie Attività & Calendario */}
+              <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <Tag className="w-5 h-5 text-[var(--color-primary)]" /> Categorie Attività & Calendario
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Tipologie di eventi e appuntamenti nel diario gestionale.</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleAddCategory} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nuova categoria (es. Check-in Fisico, Plicometria)..."
+                    value={newCategory}
+                    onChange={e => setNewCategory(e.target.value)}
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                  <button
+                    type="submit"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all"
+                  >
+                    <Plus className="w-4 h-4" /> Aggiungi
+                  </button>
+                </form>
+
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {settings.activityCategories.map(cat => (
+                    <div
+                      key={cat}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold shadow-sm"
+                    >
+                      <span>{cat}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCategory(cat)}
+                        className="text-slate-500 hover:text-red-400 transition-colors"
+                        title="Rimuovi categoria"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SEZIONE 7: ETICHETTE ATLETI */}
+          {activeSubTab === 'tags' && (
+            <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Tag className="w-5 h-5 text-[var(--color-primary)]" /> Etichette & Tag Profilo Atleti
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Personalizza i tag rapidi per filtrare e raggruppare gli atleti.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleAddTag} className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="URL del logo dimostrativo..."
-                  value={orgForm.logoUrl || ''}
-                  onChange={e => setOrgForm({ ...orgForm, logoUrl: e.target.value })}
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  placeholder="Nuova etichetta (es. Powerlifting, Gara Autunno, Posturale)..."
+                  value={newTag}
+                  onChange={e => setNewTag(e.target.value)}
+                  className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
                 />
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all"
+                >
+                  <Plus className="w-4 h-4" /> Crea Etichetta
+                </button>
+              </form>
+
+              <div className="flex flex-wrap gap-2.5 pt-2">
+                {settings.athleteTags.map(tagItem => (
+                  <div
+                    key={tagItem}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold"
+                  >
+                    <span>#{tagItem}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTag(tagItem)}
+                      className="text-amber-400/60 hover:text-red-400 transition-colors"
+                      title="Elimina tag"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow"
-            >
-              <Save className="w-4 h-4" /> Salva Dati Organizzazione
-            </button>
-          </div>
-        </form>
-      )}
+          {/* SEZIONE 8: UTENTI, RUOLI E PERMESSI */}
+          {activeSubTab === 'users_roles' && (
+            <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Users className="w-5 h-5 text-[var(--color-primary)]" /> Utenti, Ruoli & Permessi dello Staff
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Gestione collaboratori, privilegi e accessi della piattaforma.</p>
+                </div>
+                <a
+                  href="/collaboratori"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow"
+                >
+                  <Users className="w-4 h-4" /> Gestione Team Completa
+                </a>
+              </div>
 
-      {/* 2. COLORI E TEMA LIVE */}
-      {activeSubTab === 'appearance' && (
-        <ThemeCustomizer />
-      )}
-
-      {/* 3. LOCALIZZAZIONE */}
-      {activeSubTab === 'localization' && (
-        <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Globe className="w-5 h-5 text-[var(--color-primary)]" /> Valuta, Fuso Orario e Formato Data
-            </h3>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Localizzazione</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Valuta Principale</label>
-              <select
-                value={appearanceForm.currency}
-                onChange={e => {
-                  const updated = { ...appearanceForm, currency: e.target.value };
-                  setAppearanceForm(updated);
-                  updateAppearanceSettings(updated);
-                  showSuccess('Valuta Salvata', `Valuta impostata a ${e.target.value}`);
-                }}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              >
-                <option value="EUR">EUR (€) - Euro</option>
-                <option value="USD">USD ($) - Dollaro USA</option>
-                <option value="GBP">GBP (£) - Sterlina Inglese</option>
-                <option value="CHF">CHF (Fr) - Franco Svizzero</option>
-              </select>
+              <div className="space-y-3">
+                {members.map(member => (
+                  <div key={member.id} className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm">{member.fullName}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-[var(--color-primary)] font-black uppercase">
+                          {member.role}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">{member.email}</p>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {member.canViewFinancials ? 'Visibilità Finanziaria: Attiva' : 'Visibilità Finanziaria: Nascosta'}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
+          )}
 
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Fuso Orario</label>
-              <select
-                value={appearanceForm.timeZone}
-                onChange={e => {
-                  const updated = { ...appearanceForm, timeZone: e.target.value };
-                  setAppearanceForm(updated);
-                  updateAppearanceSettings(updated);
-                  showSuccess('Fuso Orario Salvato', `Fuso orario impostato a ${e.target.value}`);
-                }}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              >
-                <option value="Europe/Rome">Europe/Rome (GMT+1 / CET)</option>
-                <option value="Europe/London">Europe/London (GMT+0)</option>
-                <option value="America/New_York">America/New_York (EST)</option>
-              </select>
+          {/* SEZIONE 9: SICUREZZA ACCOUNT */}
+          {activeSubTab === 'security' && (
+            <SecuritySettingsPage />
+          )}
+
+          {/* SEZIONE 10: PROMEMORIA */}
+          {activeSubTab === 'reminders' && (
+            <form onSubmit={handleSaveReminders} className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-[var(--color-primary)]" /> Regole Automatiche di Promemoria
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Certificato Medico (giorni)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="90"
+                    value={reminderForm.certificateDaysBefore}
+                    onChange={e => setReminderForm({ ...reminderForm, certificateDaysBefore: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Abbonamento (giorni)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="90"
+                    value={reminderForm.subscriptionDaysBefore}
+                    onChange={e => setReminderForm({ ...reminderForm, subscriptionDaysBefore: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Rata (giorni)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="90"
+                    value={reminderForm.installmentDaysBefore}
+                    onChange={e => setReminderForm({ ...reminderForm, installmentDaysBefore: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow"
+                >
+                  <Save className="w-4 h-4" /> Salva Regole Promemoria
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* SEZIONE 11: BACKUP ED ESPORTAZIONE AVANZATA */}
+          {activeSubTab === 'backup' && (
+            <BackupSettingsTab
+              onExportBackup={handleExportBackup}
+              onSelectImportFile={handleSelectImportFile}
+            />
+          )}
+
+          {/* SEZIONE 12: AUDIT LOG GENERALE */}
+          {activeSubTab === 'audit' && (
+            <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <History className="w-5 h-5 text-[var(--color-primary)]" /> Registro Audit di Sistema
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Storico tracciato di tutte le operazioni di configurazione e amministrazione.</p>
+                </div>
+                <span className="text-xs font-mono text-slate-400">{auditLogs.length} eventi registrati</span>
+              </div>
+
+              <div className="max-h-[500px] overflow-y-auto space-y-2 pr-1">
+                {auditLogs.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-4 text-center">Nessun evento di audit registrato finora.</p>
+                ) : (
+                  auditLogs.map((log) => (
+                    <div key={log.id} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white">{log.action}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold">{log.section}</span>
+                        </div>
+                        <p className="text-slate-400">{log.description}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] text-slate-400 block">{new Date(log.timestamp).toLocaleString('it-IT')}</span>
+                        <span className="text-[10px] text-slate-400 font-medium">Utente: {log.user}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
+          )}
 
-            <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Formato Data Predefinito</label>
-              <select
-                value={appearanceForm.dateFormat}
-                onChange={e => {
-                  const updated = { ...appearanceForm, dateFormat: e.target.value };
-                  setAppearanceForm(updated);
-                  updateAppearanceSettings(updated);
-                  showSuccess('Formato Data Salvato', `Formato data impostato a ${e.target.value}`);
-                }}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              >
-                <option value="DD/MM/YYYY">DD/MM/YYYY (es. 31/12/2026)</option>
-                <option value="YYYY-MM-DD">YYYY-MM-DD (es. 2026-12-31)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeSubTab === 'security' && (
-        <SecuritySettingsPage />
-      )}
-
-      {/* 10. BACKUP ED ESPORTAZIONE AVANZATA */}
-      {activeSubTab === 'backup' && (
-        <BackupSettingsTab
-          onExportBackup={handleExportBackup}
-          onSelectImportFile={handleSelectImportFile}
-        />
-      )}
+        </main>
+      </div>
 
       {/* MODALE ANTEPRIMA IMPORTAZIONE TRANSAZIONALE */}
       {importValidation && (
@@ -705,70 +1027,6 @@ export const SettingsPage: React.FC = () => {
         </div>
       )}
 
-      {/* MODALE RIPRISTINO DATI DEMO STEP 1 & STEP 2 (CONSERVA PROPRIETARIO) */}
-      {resetDemoStep === 1 && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-slate-900 border border-amber-500/50 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-amber-400 flex items-center gap-2">
-                <RotateCcw className="w-5 h-5 text-amber-400" /> Prima Conferma: Ripristina Dati Demo
-              </h3>
-              <button onClick={() => setResetDemoStep(0)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-300">
-              Sei sicuro di voler ripristinare tutti i dati dimostrativi dei moduli? Il profilo del proprietario VERRÀ CONSERVATO.
-            </p>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button onClick={() => setResetDemoStep(0)} className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs">
-                Annulla
-              </button>
-              <button onClick={() => setResetDemoStep(2)} className="px-4 py-2 rounded-xl bg-amber-500 text-black font-black text-xs hover:bg-amber-400">
-                Procedi alla Seconda Conferma →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {resetDemoStep === 2 && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-amber-950 border border-amber-500 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
-            <div className="flex items-center justify-between border-b border-amber-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-400" /> Seconda e Ultima Conferma Definitiva
-              </h3>
-              <button onClick={() => setResetDemoStep(0)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3 rounded-xl bg-black/40 border border-amber-500/40 text-xs text-amber-200 space-y-1">
-              <p className="font-bold">RIPRISTINO DATI DEMO MODULI</p>
-              <p>Confermi il ripristino di atleti, abbonamenti e pagamenti ai dati dimostrativi di default? Il tuo profilo proprietario rimarrà intatto.</p>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button onClick={() => setResetDemoStep(0)} className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs">
-                Annulla
-              </button>
-              <button
-                onClick={() => {
-                  setResetDemoStep(0);
-                  handleExecuteDemoDataReset();
-                }}
-                className="px-5 py-2.5 rounded-xl bg-amber-500 text-black font-black text-xs shadow-lg uppercase tracking-wider"
-              >
-                Conferma Ripristino Demo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODALE CONFERMA STEP 1 PER RIMOZIONE PROPRIETARIO */}
       {removeOwnerStep === 1 && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
@@ -813,7 +1071,7 @@ export const SettingsPage: React.FC = () => {
 
             <div className="p-3 rounded-xl bg-black/40 border border-red-500/40 text-xs text-red-200 space-y-1">
               <p className="font-bold">CANCELLAZIONE DEFINITIVA SISTEMA</p>
-              <p>Confermi la rimozione del profilo proprietario ed il reset completo della demo? L'applicazione verrà riportata alla schermata di Prima Configurazione.</p>
+              <p>Confermi la rimozione del profilo proprietario ed il reset completo? L'applicazione verrà riportata alla schermata di Prima Configurazione.</p>
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">

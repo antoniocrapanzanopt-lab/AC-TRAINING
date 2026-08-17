@@ -22,6 +22,7 @@ export interface AuthContextType {
   updateMemberRole: (memberId: string, role: UserRole) => void;
   toggleFinancialVisibility: (memberId: string) => void;
   toggleMemberStatus: (memberId: string) => void;
+  deleteMember: (memberId: string) => void;
   transferOwnership: (newOwnerMemberId: string) => boolean;
   loginAsOwner: () => void;
   loginWithCredentials: (email: string, password?: string) => Promise<{ error: Error | AuthError | null }>;
@@ -54,7 +55,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const [members, setMembers] = useState<OrganizationMember[]>(() => {
-    return getStorageItem<OrganizationMember[]>('builder_athlete_members', getDefaultMembers(currentOrganization.id));
+    const raw = getStorageItem<OrganizationMember[]>('builder_athlete_members', getDefaultMembers(currentOrganization.id));
+    const demoEmails = [
+      'marco.admin@example.com',
+      'giuseppe.coach@example.com',
+      'laura.frontdesk@example.com',
+      'owner.demo@example.com',
+    ];
+    const filtered = (raw || []).filter(
+      m => !demoEmails.includes(m.email.toLowerCase().trim()) && m.fullName.toLowerCase().trim() !== 'aa aa'
+    );
+    return filtered;
   });
 
   const persistMembers = useCallback((updated: OrganizationMember[]) => {
@@ -221,6 +232,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     persistMembers(updated);
   }, [members, persistMembers]);
 
+  const deleteMember = useCallback((memberId: string) => {
+    const updated = members.filter(m => m.id !== memberId);
+    persistMembers(updated);
+  }, [members, persistMembers]);
+
   const transferOwnership = useCallback((_newOwnerMemberId: string): boolean => {
     return false; // Disabled for now in cloud version until fully refactored
   }, []);
@@ -298,6 +314,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateMemberRole,
         toggleFinancialVisibility,
         toggleMemberStatus,
+        deleteMember,
         transferOwnership,
         loginAsOwner,
         loginWithCredentials,

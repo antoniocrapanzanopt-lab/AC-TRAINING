@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Sparkles, 
@@ -21,10 +21,8 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useExercises } from '../../context/ExercisesContext';
 import { useAthletes } from '../../context/AthletesContext';
-import { 
-  generateWorkoutWithAI, 
-  GeneratedWorkoutResponse
-} from '../../lib/ai/workoutGenerator';
+import { generateWorkoutWithAI, GeneratedWorkoutResponse } from '../../lib/ai/workoutGenerator';
+import { AIDiagnosticPanel } from '../common/AIDiagnosticPanel';
 import { useToast } from '../../context/ToastContext';
 import { AI_CONFIG } from '../../config/aiConfig';
 
@@ -106,14 +104,6 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
   const { exercises: coachExercises } = useExercises();
   const { athletes } = useAthletes();
   const { showError, showSuccess } = useToast();
-
-  // Prevenzione Memory Leaks e state updates su componente smontato
-  const isMounted = useRef(true);
-  useEffect(() => {
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -319,30 +309,28 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
         setProgressMsg
       );
 
-      if (!isMounted.current) return;
-
       if (generated.blocco_sicurezza) {
         setSafetyBlock(generated.blocco_sicurezza);
+        setIsGenerating(false);
         return;
       }
 
       if (generated.domanda_mirata) {
         setTargetedQuestion(generated.domanda_mirata);
+        setIsGenerating(false);
         return;
       }
 
       showSuccess('Programma generato con successo!', 'La scheda è pronta nell\'editor.');
       onGenerate(generated);
       onClose();
-    } catch (err: any) {
-      if (!isMounted.current) return;
-      console.error(err);
-      showError('Errore Generazione IA', err.message || 'Impossibile generare la scheda.');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Impossibile generare la scheda.';
+      console.error("Errore Generazione IA:", err);
+      showError('Errore Generazione IA', errorMessage);
     } finally {
-      if (isMounted.current) {
-        setIsGenerating(false);
-        setProgressMsg('');
-      }
+      setIsGenerating(false);
+      setProgressMsg('');
     }
   };
 
@@ -457,7 +445,8 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
         </div>
 
         {/* Stepper Header (6 Steps) */}
-        <div className="px-6 pt-5 pb-3 border-b border-slate-800/80 bg-slate-950/40 shrink-0">
+        <div className="px-6 pt-5 pb-3 border-b border-slate-800/80 bg-slate-950/40 shrink-0 space-y-3">
+          <AIDiagnosticPanel compact={false} />
           <div className="flex items-center justify-between relative">
             <div className="absolute top-4 left-6 right-6 h-0.5 bg-slate-800 -z-0" />
             

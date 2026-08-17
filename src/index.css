@@ -2,20 +2,62 @@
 
 @layer base {
   :root {
-    --color-primary: #eab308; /* Giallo Oro */
+    /* ─── Default Brand Accent (Giallo Oro AC) ─── */
+    --color-primary: #eab308;
+    --color-primary-rgb: 234, 179, 8;
+    --color-primary-hex: #eab308;
     --color-primary-hover: #ca8a04;
-    --color-secondary: #64748b; /* Grigio secondario */
-    --color-bg: #09090b; /* Nero / Antracite molto scuro */
-    --color-panel: #18181b; /* Grigio scuro pannelli */
+    --color-primary-active: #a16207;
+    --color-primary-soft: rgba(234, 179, 8, 0.12);
+    --color-focus: rgba(234, 179, 8, 0.4);
+
+    /* ─── Semantic Status Colors (Rigidamente separati dal tema) ─── */
+    --color-danger: #ef4444;
+    --color-success: #10b981;
+    --color-warning: #f59e0b;
+    --color-info: #06b6d4;
+
+    /* ─── Default Dark Theme Surface & Text ─── */
+    --color-bg: #09090b;
+    --color-surface: #111827;
+    --color-surface-strong: #0f172a;
+    --color-panel: #18181b;
     --color-panel-border: #27272a;
+    --color-border: #27272a;
     --color-text: #f4f4f5;
-    --color-danger: #ef4444; /* Rosso per avvisi e criticità */
+    --color-text-muted: #94a3b8;
+    --color-secondary: #64748b;
+  }
+
+  [data-theme="dark"] {
+    --color-bg: #09090b;
+    --color-surface: #111827;
+    --color-surface-strong: #0f172a;
+    --color-panel: #18181b;
+    --color-panel-border: #27272a;
+    --color-border: #27272a;
+    --color-text: #f4f4f5;
+    --color-text-muted: #94a3b8;
+    --color-secondary: #64748b;
+  }
+
+  [data-theme="light"] {
+    --color-bg: #f8fafc;
+    --color-surface: #ffffff;
+    --color-surface-strong: #f1f5f9;
+    --color-panel: #ffffff;
+    --color-panel-border: #e2e8f0;
+    --color-border: #e2e8f0;
+    --color-text: #0f172a;
+    --color-text-muted: #64748b;
+    --color-secondary: #94a3b8;
   }
 
   body {
     background-color: var(--color-bg);
     color: var(--color-text);
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 }
 

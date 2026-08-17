@@ -111,7 +111,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
             {onEdit && (
               <button
                 onClick={onEdit}
-                className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-black hover:bg-amber-400 text-xs font-extrabold rounded-xl transition-all shadow-md"
+                className="flex items-center gap-1.5 px-4 py-2 bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] text-xs font-extrabold rounded-xl transition-all shadow-md cursor-pointer"
               >
                 <Pencil className="w-3.5 h-3.5" />
                 Modifica

@@ -7,6 +7,7 @@
 -- =====================================================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- =====================================================================================
 -- 0. FUNZIONI DI SUPPORTO & AUTH TRIGGER
@@ -890,6 +891,413 @@ VALUES
     ('Pushdown Tricipiti ai Cavi', 'Tricipiti', 'Cavi', 'Estendi completamente le braccia mantenendo la tensione.'),
     ('Plank Addominale', 'Addominali', 'Corpo Libero', 'Mantieni la linea dritta senza spanciare.')
 ON CONFLICT DO NOTHING;
+
+-- =====================================================================================
+-- 1.15 PROGRESSION BUILDER (RULES, SUGGESTIONS & AUDIT EVENTS)
+-- =====================================================================================
+
+CREATE TABLE IF NOT EXISTS public.progression_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coach_id UUID REFERENCES auth.users(id) NOT NULL,
+    athlete_id UUID REFERENCES public.athletes(id) ON DELETE CASCADE,
+    program_id UUID REFERENCES public.workouts(id) ON DELETE CASCADE,
+    workout_exercise_id UUID REFERENCES public.workout_exercises(id) ON DELETE CASCADE,
+    exercise_catalog_id UUID REFERENCES public.exercises(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    method TEXT NOT NULL CHECK (method IN (
+        'double_progression', 'linear_load', 'linear_reps', 'linear_sets', 
+        'rir_progression', 'rpe_progression', 'tut_progression', 'density_progression', 
+        'regression', 'substitution', 'deload'
+    )),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft', 'pending_approval', 'active', 'paused', 'completed', 'archived', 'rejected'
+    )),
+    conditions JSONB NOT NULL DEFAULT '{"consecutive_success_sessions": 1, "max_consecutive_failures": 2, "pain_threshold_max": 2}'::jsonb,
+    increments JSONB NOT NULL DEFAULT '{"load_increment_kg": 2.5, "reps_increment": 1}'::jsonb,
+    current_step INTEGER NOT NULL DEFAULT 1,
+    max_steps INTEGER,
+    current_target JSONB NOT NULL,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    created_by UUID REFERENCES auth.users(id) NOT NULL,
+    approved_by UUID REFERENCES auth.users(id),
+    approved_at TIMESTAMPTZ,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_prog_rules_coach ON public.progression_rules(coach_id);
+CREATE INDEX IF NOT EXISTS idx_prog_rules_athlete ON public.progression_rules(athlete_id);
+CREATE INDEX IF NOT EXISTS idx_prog_rules_program ON public.progression_rules(program_id);
+CREATE INDEX IF NOT EXISTS idx_prog_rules_workout_ex ON public.progression_rules(workout_exercise_id);
+CREATE INDEX IF NOT EXISTS idx_prog_rules_status ON public.progression_rules(status);
+
+CREATE TABLE IF NOT EXISTS public.progression_suggestions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coach_id UUID REFERENCES auth.users(id) NOT NULL,
+    athlete_id UUID REFERENCES public.athletes(id) ON DELETE CASCADE NOT NULL,
+    program_id UUID REFERENCES public.workouts(id) ON DELETE CASCADE NOT NULL,
+    workout_exercise_id UUID REFERENCES public.workout_exercises(id) ON DELETE CASCADE NOT NULL,
+    exercise_name TEXT NOT NULL,
+    current_target JSONB NOT NULL,
+    proposed_target JSONB NOT NULL,
+    suggested_method TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    confidence_score NUMERIC(3,2) NOT NULL DEFAULT 0.85,
+    warnings JSONB DEFAULT '[]'::jsonb,
+    alternative_exercise JSONB,
+    status TEXT NOT NULL DEFAULT 'pending_approval' CHECK (status IN (
+        'pending_approval', 'approved', 'rejected', 'modified', 'expired'
+    )),
+    requires_coach_approval BOOLEAN NOT NULL DEFAULT true,
+    brain_decision_version TEXT NOT NULL DEFAULT 'v1.0.0',
+    policy_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    proposal_hash TEXT NOT NULL DEFAULT '',
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '24 HOURS'),
+    approved_by UUID REFERENCES auth.users(id),
+    approved_at TIMESTAMPTZ,
+    rejected_by UUID REFERENCES auth.users(id),
+    rejected_at TIMESTAMPTZ,
+    final_action TEXT CHECK (final_action IN ('applied_primary', 'applied_alternative', 'applied_custom', 'rejected', 'expired')),
+    coach_feedback TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    reviewed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_prog_sugg_coach_status ON public.progression_suggestions(coach_id, status);
+CREATE INDEX IF NOT EXISTS idx_prog_sugg_athlete ON public.progression_suggestions(athlete_id);
+CREATE INDEX IF NOT EXISTS idx_prog_sugg_pending_expiry ON public.progression_suggestions(status, expires_at) WHERE status = 'pending_approval';
+CREATE INDEX IF NOT EXISTS idx_prog_sugg_hash ON public.progression_suggestions(proposal_hash);
+
+CREATE TABLE IF NOT EXISTS public.progression_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sequence_number BIGSERIAL,
+    previous_event_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000',
+    event_hash TEXT NOT NULL DEFAULT '',
+    rule_id UUID REFERENCES public.progression_rules(id) ON DELETE SET NULL,
+    suggestion_id UUID REFERENCES public.progression_suggestions(id) ON DELETE SET NULL,
+    athlete_id UUID REFERENCES public.athletes(id) ON DELETE CASCADE NOT NULL,
+    program_id UUID REFERENCES public.workouts(id) ON DELETE SET NULL,
+    workout_exercise_id UUID REFERENCES public.workout_exercises(id) ON DELETE SET NULL,
+    event_type TEXT NOT NULL,
+    previous_target JSONB,
+    new_target JSONB,
+    performed_data JSONB,
+    payload_hash TEXT,
+    brain_decision_version TEXT DEFAULT 'v1.0.0',
+    validation_checks JSONB DEFAULT '{"integrity_verified": true, "safety_revalidated": true}'::jsonb,
+    reason TEXT NOT NULL,
+    triggered_by TEXT NOT NULL CHECK (triggered_by IN ('system_engine', 'coach', 'ai_assistant')),
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_prog_events_seq ON public.progression_events(sequence_number);
+CREATE INDEX IF NOT EXISTS idx_prog_events_hash ON public.progression_events(event_hash);
+CREATE INDEX IF NOT EXISTS idx_prog_events_prev_hash ON public.progression_events(previous_event_hash);
+CREATE INDEX IF NOT EXISTS idx_prog_events_rule ON public.progression_events(rule_id);
+CREATE INDEX IF NOT EXISTS idx_prog_events_athlete ON public.progression_events(athlete_id);
+CREATE INDEX IF NOT EXISTS idx_prog_events_created ON public.progression_events(created_at DESC);
+
+-- Indice Univoco Anti-Fork (impedisce ramificazioni concorrenti della hash chain)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prog_events_unique_chain_link 
+    ON public.progression_events(athlete_id, previous_event_hash)
+    WHERE previous_event_hash != '0000000000000000000000000000000000000000000000000000000000000000';
+
+CREATE TABLE IF NOT EXISTS public.progression_chain_audits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    athlete_id UUID REFERENCES public.athletes(id) ON DELETE CASCADE,
+    last_verified_seq BIGINT NOT NULL DEFAULT 0,
+    last_verified_event_hash TEXT NOT NULL,
+    events_verified INTEGER NOT NULL DEFAULT 0,
+    is_valid BOOLEAN NOT NULL DEFAULT true,
+    broken_sequence BIGINT,
+    alert_triggered BOOLEAN NOT NULL DEFAULT false,
+    error_message TEXT,
+    verified_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_prog_audits_athlete ON public.progression_chain_audits(athlete_id, verified_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prog_audits_invalid ON public.progression_chain_audits(is_valid) WHERE is_valid = false;
+
+ALTER TABLE public.workout_exercises 
+ADD COLUMN IF NOT EXISTS progression_rule_id UUID REFERENCES public.progression_rules(id) ON DELETE SET NULL;
+
+-- -------------------------------------------------------------------------------------
+-- TRIGGER PROGRESSIONI: IMMUTABILITÀ ASSOLUTA & HASH CHAIN SERIALIZZATA ANTI-RACE
+-- -------------------------------------------------------------------------------------
+
+-- Blocco Rigido di UPDATE e DELETE su progression_events
+CREATE OR REPLACE FUNCTION public.enforce_progression_events_insert_only()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'TABELLA IMMUTABILE: progression_events è un audit trail append-only. Modifiche ed eliminazioni sono vietate a livello database.'
+    USING ERRCODE = '55000';
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+DROP TRIGGER IF EXISTS trg_progression_events_insert_only ON public.progression_events;
+CREATE TRIGGER trg_progression_events_insert_only
+    BEFORE UPDATE OR DELETE ON public.progression_events
+    FOR EACH ROW
+    EXECUTE FUNCTION public.enforce_progression_events_insert_only();
+
+-- Calcolo Deterministico Hash Chain con PostgreSQL Transaction Advisory Lock
+CREATE OR REPLACE FUNCTION public.compute_progression_event_hash_chain()
+RETURNS TRIGGER AS $$
+DECLARE
+    last_hash TEXT;
+    canonical_payload TEXT;
+    lock_key BIGINT;
+BEGIN
+    -- Advisory lock atomico per serializzare le insert concorrenti sullo stesso atleta
+    lock_key := ('x' || substr(md5(NEW.athlete_id::text), 1, 15))::bit(64)::bigint;
+    PERFORM pg_advisory_xact_lock(lock_key);
+
+    -- Recupera l'ultimo hash dell'atleta
+    SELECT event_hash INTO last_hash
+    FROM public.progression_events
+    WHERE athlete_id = NEW.athlete_id
+    ORDER BY sequence_number DESC, created_at DESC
+    LIMIT 1;
+
+    IF last_hash IS NULL OR last_hash = '' THEN
+        NEW.previous_event_hash := '0000000000000000000000000000000000000000000000000000000000000000';
+    ELSE
+        NEW.previous_event_hash := last_hash;
+    END IF;
+
+    -- Stringa canonica crittografica (previous_hash + athlete + type + payload_hash + trigger + timestamp)
+    canonical_payload := NEW.previous_event_hash || '|' ||
+                         NEW.athlete_id::text || '|' ||
+                         NEW.event_type || '|' ||
+                         COALESCE(NEW.payload_hash, 'none') || '|' ||
+                         NEW.triggered_by || '|' ||
+                         COALESCE(NEW.brain_decision_version, 'v1.0.0') || '|' ||
+                         to_char(COALESCE(NEW.created_at, NOW()), 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"');
+
+    NEW.event_hash := encode(digest(canonical_payload, 'sha256'), 'hex');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+DROP TRIGGER IF EXISTS trg_progression_event_hash_chain ON public.progression_events;
+CREATE TRIGGER trg_progression_event_hash_chain
+    BEFORE INSERT ON public.progression_events
+    FOR EACH ROW
+    EXECUTE FUNCTION public.compute_progression_event_hash_chain();
+
+-- Stored Procedure: Verifica Periodica Integrità della Catena
+CREATE OR REPLACE FUNCTION public.verify_athlete_progression_chain(p_athlete_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    r RECORD;
+    expected_prev TEXT := '0000000000000000000000000000000000000000000000000000000000000000';
+    recalculated_hash TEXT;
+    canonical_payload TEXT;
+    verified_count INT := 0;
+    last_seq BIGINT := 0;
+    last_hash TEXT := 'none';
+BEGIN
+    FOR r IN (
+        SELECT * FROM public.progression_events
+        WHERE athlete_id = p_athlete_id
+        ORDER BY sequence_number ASC
+    ) LOOP
+        -- Verifica puntatore al blocco precedente
+        IF r.previous_event_hash != expected_prev THEN
+            INSERT INTO public.progression_chain_audits (
+                athlete_id, last_verified_seq, last_verified_event_hash, events_verified, is_valid, broken_sequence, alert_triggered, error_message
+            ) VALUES (
+                p_athlete_id, r.sequence_number, r.event_hash, verified_count, false, r.sequence_number, true,
+                'Discontinuità hash chain: previous_event_hash non corrisponde al blocco precedente'
+            );
+            
+            RETURN jsonb_build_object(
+                'is_valid', false,
+                'events_verified', verified_count,
+                'broken_sequence', r.sequence_number,
+                'error_message', 'Discontinuità hash chain'
+            );
+        END IF;
+
+        -- Ricalcola il digest SHA-256
+        canonical_payload := r.previous_event_hash || '|' ||
+                             r.athlete_id::text || '|' ||
+                             r.event_type || '|' ||
+                             COALESCE(r.payload_hash, 'none') || '|' ||
+                             r.triggered_by || '|' ||
+                             COALESCE(r.brain_decision_version, 'v1.0.0') || '|' ||
+                             to_char(r.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"');
+                             
+        recalculated_hash := encode(digest(canonical_payload, 'sha256'), 'hex');
+
+        IF recalculated_hash != r.event_hash THEN
+            INSERT INTO public.progression_chain_audits (
+                athlete_id, last_verified_seq, last_verified_event_hash, events_verified, is_valid, broken_sequence, alert_triggered, error_message
+            ) VALUES (
+                p_athlete_id, r.sequence_number, r.event_hash, verified_count, false, r.sequence_number, true,
+                'Corruzione payload o alterazione digest SHA-256'
+            );
+
+            RETURN jsonb_build_object(
+                'is_valid', false,
+                'events_verified', verified_count,
+                'broken_sequence', r.sequence_number,
+                'error_message', 'Digest SHA-256 alterato'
+            );
+        END IF;
+
+        expected_prev := r.event_hash;
+        last_hash := r.event_hash;
+        last_seq := r.sequence_number;
+        verified_count := verified_count + 1;
+    END LOOP;
+
+    -- Registra audit positivo
+    INSERT INTO public.progression_chain_audits (
+        athlete_id, last_verified_seq, last_verified_event_hash, events_verified, is_valid, broken_sequence, alert_triggered
+    ) VALUES (
+        p_athlete_id, last_seq, last_hash, verified_count, true, NULL, false
+    );
+
+    RETURN jsonb_build_object(
+        'is_valid', true,
+        'events_verified', verified_count,
+        'last_verified_seq', last_seq,
+        'last_verified_hash', last_hash
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+ALTER TABLE public.progression_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.progression_suggestions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.progression_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.progression_chain_audits ENABLE ROW LEVEL SECURITY;
+
+-- 1. progression_rules
+DROP POLICY IF EXISTS "coach_manage_progression_rules_mfa" ON public.progression_rules;
+DROP POLICY IF EXISTS "coach_business_access_progression_rules" ON public.progression_rules;
+CREATE POLICY "coach_business_access_progression_rules" ON public.progression_rules
+FOR ALL TO authenticated
+USING (
+    ((auth.jwt()->'app_metadata'->>'role') = 'coach' OR public.is_coach())
+    AND coach_id = auth.uid()
+)
+WITH CHECK (
+    ((auth.jwt()->'app_metadata'->>'role') = 'coach' OR public.is_coach())
+    AND coach_id = auth.uid()
+);
+
+DROP POLICY IF EXISTS "athlete_read_own_progression_rules" ON public.progression_rules;
+CREATE POLICY "athlete_read_own_progression_rules" ON public.progression_rules
+FOR SELECT TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM public.athletes a 
+        WHERE a.id = progression_rules.athlete_id 
+        AND a.auth_user_id = auth.uid()
+    )
+);
+
+DROP POLICY IF EXISTS "mfa_aal2_enforcement_progression_rules_write" ON public.progression_rules;
+DROP POLICY IF EXISTS "mfa_aal2_enforcement_progression_rules_insert" ON public.progression_rules;
+DROP POLICY IF EXISTS "mfa_aal2_enforcement_progression_rules_update" ON public.progression_rules;
+DROP POLICY IF EXISTS "mfa_aal2_enforcement_progression_rules_delete" ON public.progression_rules;
+
+CREATE POLICY "mfa_aal2_enforcement_progression_rules_insert" ON public.progression_rules
+AS RESTRICTIVE
+FOR INSERT TO authenticated
+WITH CHECK ( (auth.jwt()->>'aal') = 'aal2' );
+
+CREATE POLICY "mfa_aal2_enforcement_progression_rules_update" ON public.progression_rules
+AS RESTRICTIVE
+FOR UPDATE TO authenticated
+USING ( (auth.jwt()->>'aal') = 'aal2' )
+WITH CHECK ( (auth.jwt()->>'aal') = 'aal2' );
+
+CREATE POLICY "mfa_aal2_enforcement_progression_rules_delete" ON public.progression_rules
+AS RESTRICTIVE
+FOR DELETE TO authenticated
+USING ( (auth.jwt()->>'aal') = 'aal2' );
+
+-- 2. progression_suggestions
+DROP POLICY IF EXISTS "coach_manage_progression_suggestions_mfa" ON public.progression_suggestions;
+DROP POLICY IF EXISTS "coach_business_access_progression_suggestions" ON public.progression_suggestions;
+CREATE POLICY "coach_business_access_progression_suggestions" ON public.progression_suggestions
+FOR ALL TO authenticated
+USING (
+    ((auth.jwt()->'app_metadata'->>'role') = 'coach' OR public.is_coach())
+    AND coach_id = auth.uid()
+)
+WITH CHECK (
+    ((auth.jwt()->'app_metadata'->>'role') = 'coach' OR public.is_coach())
+    AND coach_id = auth.uid()
+);
+
+DROP POLICY IF EXISTS "mfa_aal2_enforcement_progression_suggestions" ON public.progression_suggestions;
+CREATE POLICY "mfa_aal2_enforcement_progression_suggestions" ON public.progression_suggestions
+AS RESTRICTIVE
+FOR ALL TO authenticated
+USING ( (auth.jwt()->>'aal') = 'aal2' )
+WITH CHECK ( (auth.jwt()->>'aal') = 'aal2' );
+
+-- 3. progression_events (Append-only)
+DROP POLICY IF EXISTS "coach_manage_progression_events" ON public.progression_events;
+DROP POLICY IF EXISTS "coach_select_progression_events" ON public.progression_events;
+DROP POLICY IF EXISTS "coach_insert_progression_events" ON public.progression_events;
+
+CREATE POLICY "coach_select_progression_events" ON public.progression_events
+FOR SELECT TO authenticated
+USING (
+    (auth.jwt()->'app_metadata'->>'role') = 'coach' OR public.is_coach()
+);
+
+CREATE POLICY "coach_insert_progression_events" ON public.progression_events
+FOR INSERT TO authenticated
+WITH CHECK (
+    (auth.jwt()->'app_metadata'->>'role') = 'coach' OR public.is_coach()
+);
+
+DROP POLICY IF EXISTS "athlete_read_own_progression_events" ON public.progression_events;
+CREATE POLICY "athlete_read_own_progression_events" ON public.progression_events
+FOR SELECT TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM public.athletes a 
+        WHERE a.id = progression_events.athlete_id 
+        AND a.auth_user_id = auth.uid()
+    )
+);
+
+DROP POLICY IF EXISTS "mfa_aal2_enforcement_progression_events" ON public.progression_events;
+CREATE POLICY "mfa_aal2_enforcement_progression_events" ON public.progression_events
+AS RESTRICTIVE
+FOR ALL TO authenticated
+USING ( (auth.jwt()->>'aal') = 'aal2' )
+WITH CHECK ( (auth.jwt()->>'aal') = 'aal2' );
+
+-- 4. progression_chain_audits
+DROP POLICY IF EXISTS "coach_manage_progression_audits" ON public.progression_chain_audits;
+DROP POLICY IF EXISTS "coach_business_access_progression_audits" ON public.progression_chain_audits;
+CREATE POLICY "coach_business_access_progression_audits" ON public.progression_chain_audits
+FOR ALL TO authenticated
+USING (
+    (auth.jwt()->'app_metadata'->>'role') = 'coach' OR public.is_coach()
+)
+WITH CHECK (
+    (auth.jwt()->'app_metadata'->>'role') = 'coach' OR public.is_coach()
+);
+
+DROP POLICY IF EXISTS "mfa_aal2_enforcement_progression_audits" ON public.progression_chain_audits;
+CREATE POLICY "mfa_aal2_enforcement_progression_audits" ON public.progression_chain_audits
+AS RESTRICTIVE
+FOR ALL TO authenticated
+USING ( (auth.jwt()->>'aal') = 'aal2' )
+WITH CHECK ( (auth.jwt()->>'aal') = 'aal2' );
 
 -- Notifica ricaricamento dello schema REST
 NOTIFY pgrst, 'reload schema';

@@ -10,8 +10,8 @@ import {
   ExerciseKeyParams,
   ExerciseSafety,
 } from '../../types/exercise';
-import { supabase } from '../supabase';
 import { AI_CONFIG } from '../../config/aiConfig';
+import { generateContentWithGemini } from './geminiClient';
 
 /** Struttura completa di un esercizio generato dall'IA */
 export interface GeneratedAIExercise {
@@ -19,48 +19,53 @@ export interface GeneratedAIExercise {
   category: ExerciseCategory;
   equipment: ExerciseEquipment;
   instructions?: string;
+  description?: string;
   video_url?: string;
-  // ── Informazioni Chiave ──────────────────────────────────────────────────
   tipo?: ExerciseType;
+  type?: ExerciseType;
   bilateralita?: Bilaterality;
+  bilaterality?: Bilaterality;
   piano_movimento?: MovementPlane;
+  movement_plane?: MovementPlane;
   catena_cinetica?: KineticChain;
+  kinetic_chain?: KineticChain;
   gradi_liberta?: number;
-  // ── Blocchi JSONB Strutturati ────────────────────────────────────────────
+  degrees_of_freedom?: number;
+  unilateral_execution?: boolean;
   parametri_chiave?: ExerciseKeyParams;
+  key_parameters?: ExerciseKeyParams;
   muscoli_coinvolti?: MuscleInvolvement[];
+  muscles?: MuscleInvolvement[];
   esecuzione?: ExerciseExecution;
+  execution?: ExerciseExecution;
   sicurezza?: ExerciseSafety;
+  safety?: ExerciseSafety;
+  is_verified?: boolean;
 }
 
-export interface GenerateExercisesParams {
+export interface BulkGenerateParams {
+  count?: number;
   category?: ExerciseCategory | 'Tutti';
   equipmentFilter?: string;
-  count?: number; // 10, 20, 30, 50
   customPrompt?: string;
 }
 
+export type GenerateExercisesParams = BulkGenerateParams;
+
+// ─── Funzione Generazione Massiva ─────────────────────────────────────────────
+
 export async function generateExercisesWithAI(
-  params: GenerateExercisesParams,
+  params: BulkGenerateParams,
   onProgress?: (msg: string) => void
 ): Promise<GeneratedAIExercise[]> {
+  const count = params.count || 5;
+
   if (onProgress) onProgress(`Generazione schede esercizi strutturate con ${AI_CONFIG.GEMINI.DISPLAY_NAME}...`);
 
-  const count = params.count || 20;
-
   const systemPrompt = `
-Sei un docente universitario di Biomeccanica e Chinesiologia e Master Trainer d'élite certificato NSCA/FISIOCREM.
-Il tuo compito è generare un elenco di ${count} esercizi di allenamento con pesi e a corpo libero di altissima qualità, anatomicamente precisi e vari.
-
-Regole di Generazione:
-1. Genera ESATTAMENTE ${count} esercizi ben dettagliati.
-2. Nomi in ITALIANO corretto, chiari e standard nel settore (es. "Panca Piana con Bilanciere", "Alzate Laterali con Manubri", "Lat Machine Presa Inversa").
-3. Categorie ammesse: 'Petto', 'Dorso', 'Gambe', 'Spalle', 'Bicipiti', 'Tricipiti', 'Addominali', 'Full Body', 'Cardio', 'Altro'.
-4. Attrezzatura ammessa: 'Bilanciere', 'Manubri', 'Cavi', 'Macchina', 'Corpo Libero', 'Kettlebell', 'Elastici', 'Altro'.
-5. Per ogni esercizio compila TUTTI i campi strutturati descritti nello schema JSON.
-6. Le controindicazioni devono essere clinicamente accurate e specifiche (es. "Conflitto subacromiale", "Protrusione discale lombare L4-L5").
-7. I muscoli coinvolti devono avere percentuali coerenti (la somma dei 'Target' non supera 100%).
-8. I cue tecnici devono essere pratici, concisi e orientati all'atleta.
+Sei un docente universitario di Chinesiologia e Biomeccanica applicata al Bodybuilding e Strength & Conditioning.
+Il tuo compito è generare un array di ${count} esercizi professionali completi, dettagliati e clinicamente impeccabili.
+Ogni esercizio deve avere la struttura JSON ESATTA richiesta, senza omissioni.
 `.trim();
 
   const userPrompt = `
@@ -73,26 +78,20 @@ Restituisci SOLO l'array JSON valido con la struttura completa per ogni esercizi
 `.trim();
 
   try {
-    const { data, error } = await supabase.functions.invoke('generate-workout', {
-      body: {
-        provider: AI_CONFIG.DEFAULT_PROVIDER,
-        systemPrompt: systemPrompt,
-        userPrompt: userPrompt,
-        model: AI_CONFIG.GEMINI.MODEL_ID,
-        maxTokens: 8192,
-        temperature: 0.6
-      }
+    const genResult = await generateContentWithGemini({
+      provider: AI_CONFIG.DEFAULT_PROVIDER,
+      systemPrompt,
+      userPrompt,
+      temperature: 0.6,
+      maxTokens: 8192,
+      responseMimeType: 'application/json',
     });
 
-    if (error) throw new Error(`Errore Server: ${error.message}`);
-    if (!data || !data.text) throw new Error("Risposta vuota dall'IA.");
-
-    let rawText = data.text;
-
-    rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    let rawText = genResult.text.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(rawText);
 
     if (!parsed.exercises || !Array.isArray(parsed.exercises)) {
+      if (Array.isArray(parsed)) return parsed;
       throw new Error('Formato risposta IA non valido.');
     }
 
@@ -103,8 +102,6 @@ Restituisci SOLO l'array JSON valido con la struttura completa per ogni esercizi
     throw new Error(errorMessage);
   }
 }
-
-
 
 // ─── Funzione "Compila con IA" — Suggerimento per singolo esercizio ────────────
 
@@ -140,25 +137,17 @@ Restituisci UN SINGOLO oggetto JSON valido (non un array).
 `.trim();
 
   try {
-    const { data, error } = await supabase.functions.invoke('generate-workout', {
-      body: {
-        provider: AI_CONFIG.DEFAULT_PROVIDER,
-        systemPrompt: systemPrompt,
-        userPrompt: userPrompt,
-        model: AI_CONFIG.GEMINI.MODEL_ID,
-        maxTokens: 8192,
-        temperature: 0.4
-      }
+    const genResult = await generateContentWithGemini({
+      provider: AI_CONFIG.DEFAULT_PROVIDER,
+      systemPrompt,
+      userPrompt,
+      temperature: 0.4,
+      maxTokens: 8192,
+      responseMimeType: 'application/json',
     });
 
-    if (error) throw new Error(`Errore Server: ${error.message}`);
-    if (!data || !data.text) throw new Error("Risposta vuota dall'IA.");
-
-    let rawText = data.text;
-
-    rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    let rawText = genResult.text.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(rawText) as GeneratedAIExercise;
-
     // Preserva il nome originale inserito dall'utente
     parsed.name = name;
     return parsed;

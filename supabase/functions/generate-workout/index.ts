@@ -153,7 +153,7 @@ serve(async (req) => {
       }
     } else {
       apiKey = Deno.env.get('GEMINI_API_KEY') || ''
-      apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-1.5-pro'}:generateContent?key=${apiKey}`
+      apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-3.7-flash'}:generateContent?key=${apiKey}`
       if (!apiKey) throw new Error('API Key non configurata')
 
       requestBody = {

@@ -358,7 +358,7 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
 
             <button
               type="submit"
-              className="w-full py-3 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/20 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-extrabold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>Salva Check-in</span>

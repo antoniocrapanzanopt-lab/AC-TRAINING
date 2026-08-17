@@ -25,6 +25,11 @@ export const STORAGE_KEYS = {
   USER_SESSION: 'builder_athlete_user_session',
   ATHLETE_NOTES: 'builder_athlete_athlete_notes',
   ATHLETE_TIMELINE: 'builder_athlete_athlete_timeline',
+  THEME_PREFERENCES: 'builder_athlete_theme_preferences',
+  PROGRESSION_RULES: 'builder_athlete_progression_rules',
+  PROGRESSION_SUGGESTIONS: 'builder_athlete_progression_suggestions',
+  PROGRESSION_EVENTS: 'builder_athlete_progression_events',
+  PROGRESSION_TEMPLATES: 'builder_athlete_progression_templates',
 } as const;
 
 export type AppStorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

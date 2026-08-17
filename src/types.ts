@@ -15,8 +15,11 @@ export type NavigationTab =
   | 'impostazioni'
   | 'atleta_portale'
   | 'schede'
+  | 'progressioni'
   | 'esercizi'
   | 'messaggi';
+
+export * from './types/progression';
 
 export type UserRole = 'owner' | 'admin' | 'coach' | 'receptionist' | 'athlete' | 'collaborator';
 
@@ -707,6 +710,35 @@ export interface GeneralAuditLogEntry {
 }
 
 export * from './types/metrics';
+
+// --- Theme & Appearance Types ---
+export type ThemeMode = 'dark' | 'light' | 'system';
+
+export interface ThemePreferences {
+  mode: ThemeMode;
+  accentColor: string;
+  customAccentColor?: string;
+  savedAt: string;
+}
+
+export interface ThemePreset {
+  id: string;
+  name: string;
+  description: string;
+  accent: string;
+  accentHover: string;
+  accentActive: string;
+  accentSoft: string;
+  foreground: string; // '#000000' | '#ffffff'
+  badgeBg: string;
+}
+
+export interface ColorContrastResult {
+  ratio: number;
+  score: 'AAA' | 'AA' | 'AA Large' | 'Fail';
+  isAccessible: boolean;
+  message: string;
+}
 
 
 

@@ -78,15 +78,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsLoading(false);
   }, []);
 
-  // 2. Applicazione live delle variabili CSS dei colori
-  useEffect(() => {
-    if (settings.appearance?.primaryColor) {
-      document.documentElement.style.setProperty('--color-primary', settings.appearance.primaryColor);
-      // Calcolo indicativo di hover (-10% luminosità)
-      document.documentElement.style.setProperty('--color-primary-hover', settings.appearance.primaryColor);
-    }
-  }, [settings.appearance?.primaryColor]);
-
   const persistSettings = useCallback((newSettings: SystemSettings) => {
     setSettings(newSettings);
     setStorageItem(STORAGE_KEYS.SETTINGS, newSettings);

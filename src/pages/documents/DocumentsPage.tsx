@@ -13,7 +13,6 @@ import {
   Edit2,
   ShieldCheck,
   XCircle,
-  Info,
 } from 'lucide-react';
 import {
   AthleteDocument,
@@ -206,17 +205,6 @@ export const DocumentsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Avviso Dati Riservati e Privacy */}
-      <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-start gap-3 shadow-lg">
-        <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-        <div>
-          <span className="font-bold uppercase tracking-wider block text-[11px] text-amber-400">
-            AMBIENTE DIMOSTRATIVO LOCALE — PRIVACY E DATI RISERVATI
-          </span>
-          I file ed i consensi salvati risiedono unicamente nel browser locale. Non caricare documenti sanitari, dati personali o documenti reali.
-        </div>
-      </div>
-
       {/* Navigation Tabs */}
       <div className="flex items-center gap-2 p-1.5 rounded-xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl w-fit">
         <button
@@ -402,17 +390,6 @@ export const DocumentsPage: React.FC = () => {
       {/* TAB 2: CONSENSI PRIVACY & LIBERATORIE */}
       {activeTab === 'consents' && (
         <div className="space-y-6">
-          {/* BANNER AVVISO LEGALE DIMOSTRATIVO OBBLIGATORIO */}
-          <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/50 flex items-start gap-3 shadow-xl">
-            <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Avviso Importante</h4>
-              <p className="text-xs text-amber-200/90 font-medium mt-0.5">
-                Registrazione dimostrativa: non sostituisce la raccolta e conservazione legale del consenso.
-              </p>
-            </div>
-          </div>
-
           {/* Metrics Bar Consensi */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="p-4 rounded-xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl flex flex-col">

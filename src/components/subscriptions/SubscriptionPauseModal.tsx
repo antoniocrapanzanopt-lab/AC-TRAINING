@@ -292,7 +292,7 @@ export const SubscriptionPauseModal: React.FC<SubscriptionPauseModalProps> = ({
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors">
             Annulla
           </button>
-          <button type="submit" form="subscription-pause-form" className="px-6 py-2 rounded-xl bg-amber-500 text-black text-xs font-black hover:bg-amber-400 transition-colors shadow-lg">
+          <button type="submit" form="subscription-pause-form" className="px-6 py-2 rounded-xl bg-[var(--color-primary)] text-black text-xs font-black hover:bg-[var(--color-primary-hover)] transition-colors shadow-lg cursor-pointer">
             Avvia Sospensione
           </button>
         </div>

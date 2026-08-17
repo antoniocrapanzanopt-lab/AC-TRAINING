@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle, Folder, FolderPlus, ChevronRight, FolderOpen, MoveRight, X, Save, Clock, Users, User, ExternalLink } from 'lucide-react';
+import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle, Folder, FolderPlus, ChevronRight, FolderOpen, MoveRight, X, Save, Clock, Users, User, ExternalLink, TrendingUp } from 'lucide-react';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useApp } from '../../context/AppContext';
@@ -172,6 +172,14 @@ export const WorkoutsPage: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setActiveTab('progressioni')}
+            className="flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-[var(--color-primary)] text-sm font-bold rounded-xl border border-[var(--color-primary)]/40 transition-all shadow-sm cursor-pointer"
+          >
+            <TrendingUp className="w-4 h-4 text-[var(--color-primary)]" />
+            Progressioni & Sovraccarico
+          </button>
+
           <button 
             onClick={() => {
               setEditingFolder(null);

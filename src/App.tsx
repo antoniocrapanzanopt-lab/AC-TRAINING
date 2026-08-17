@@ -18,6 +18,7 @@ import { MessagesProvider } from './context/MessagesContext';
 import { ExercisesProvider } from './context/ExercisesContext';
 import { MetricsProvider } from './context/MetricsContext';
 import { NotificationsProvider } from './context/NotificationsContext';
+import { ProgressionsProvider } from './context/ProgressionsContext';
 
 
 import { AuthPage } from './pages/auth/AuthPage';
@@ -96,7 +97,9 @@ export const App: React.FC = () => {
                                     <MessagesProvider>
                                       <MetricsProvider>
                                         <NotificationsProvider>
-                                          <AppContent />
+                                          <ProgressionsProvider>
+                                            <AppContent />
+                                          </ProgressionsProvider>
                                         </NotificationsProvider>
                                       </MetricsProvider>
                                     </MessagesProvider>

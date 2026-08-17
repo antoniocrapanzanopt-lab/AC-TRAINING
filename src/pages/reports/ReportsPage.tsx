@@ -25,7 +25,6 @@ import {
   Users,
   CreditCard,
   RefreshCw,
-  Info,
   Trash2,
   Package,
   UserCheck,
@@ -310,17 +309,6 @@ export const ReportsPage: React.FC = () => {
 
   return (
     <div className="space-y-8 print:space-y-4 print:p-0">
-      {/* Disclaimer Legale Obbligatorio */}
-      <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-start gap-3 print:hidden shadow-lg">
-        <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-        <div>
-          <span className="font-bold uppercase tracking-wider block text-[11px] text-amber-400">
-            DOCUMENTO DIMOSTRATIVO — NON FISCALE
-          </span>
-          I report ed i grafici generati hanno scopo puramente didattico ed analitico per la gestione della palestra. Non costituiscono documentazione contabile o fiscale ufficiale.
-        </div>
-      </div>
-
       {/* Header & Titolo */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>

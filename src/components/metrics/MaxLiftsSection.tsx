@@ -202,7 +202,7 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
         <button
           type="button"
           onClick={() => setShowLiftModal(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/10 transition-all cursor-pointer shrink-0"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-extrabold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/10 transition-all cursor-pointer shrink-0"
         >
           <Plus className="w-4 h-4 stroke-[3]" />
           <span>Aggiungi PR / Massimale</span>
@@ -600,7 +600,7 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-extrabold rounded-xl shadow-lg shadow-[var(--color-primary)]/20 transition-all flex items-center gap-2 cursor-pointer"
+                  className="px-5 py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-extrabold rounded-xl shadow-lg shadow-[var(--color-primary)]/20 transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Salva Massimale</span>

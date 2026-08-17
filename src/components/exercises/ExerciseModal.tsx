@@ -532,7 +532,7 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
                         setMuscoli(prev => [...prev, { muscolo: newMuscoloName.trim(), ruolo: newMuscoloRuolo, percentuale: newMuscoloPerc }]);
                         setNewMuscoloName('');
                       }}
-                      className="px-4 py-2.5 bg-amber-500 text-black text-xs font-bold rounded-xl hover:bg-amber-400 transition-colors disabled:opacity-40 shrink-0"
+                      className="px-4 py-2.5 bg-[var(--color-primary)] text-black text-xs font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-40 shrink-0 cursor-pointer"
                     >
                       Aggiungi
                     </button>

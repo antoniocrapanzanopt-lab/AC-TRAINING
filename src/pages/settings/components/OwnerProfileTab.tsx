@@ -70,7 +70,7 @@ export const OwnerProfileTab: React.FC<OwnerProfileTabProps> = ({
             <button
               type="button"
               onClick={() => setIsLogoModalOpen(true)}
-              className="mt-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-black text-xs rounded-xl transition-all shadow-md inline-flex items-center gap-1.5"
+              className="mt-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs rounded-xl transition-all shadow-md inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Camera className="w-3.5 h-3.5" />
               <span>Carica / Modifica Logo</span>

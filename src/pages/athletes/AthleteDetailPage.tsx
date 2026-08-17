@@ -26,8 +26,10 @@ import {
   CheckCircle2,
   Link as LinkIcon,
   Dumbbell,
+  Sparkles,
 } from 'lucide-react';
 import { AthleteModal, ModalSection } from '../../components/athletes/AthleteModal';
+import { AIProgressionAssistantModal } from '../../components/progressions/AIProgressionAssistantModal';
 import { AthleteFormData } from '../../types';
 import { AthleteNote, NoteCategory, NoteVisibility } from '../../types';
 import { useAthletes } from '../../context/AthletesContext';
@@ -293,6 +295,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   const [activeTab, setActiveTab] = useState<DetailTab>('panoramica');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editModalSection, setEditModalSection] = useState<ModalSection>('all');
+  const [isAiProgressionOpen, setIsAiProgressionOpen] = useState(false);
 
   const athlete = getAthleteById(athleteId);
   const athleteNotes = notes?.[athleteId] ?? [];
@@ -500,6 +503,21 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                             className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors"
                           >
                             Vedi Programma
+                          </button>
+                          <button
+                            onClick={() => setAppActiveTab('progressioni')}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-[var(--color-primary)] text-xs font-bold rounded-lg border border-[var(--color-primary)]/30 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <TrendingUp className="w-3.5 h-3.5" />
+                            Progressioni
+                          </button>
+                          <button
+                            onClick={() => setIsAiProgressionOpen(true)}
+                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer shadow-sm shadow-purple-600/20"
+                            title="Genera progressioni su misura con l'Assistente IA per questo atleta"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-purple-200" />
+                            <span>IA Progressioni</span>
                           </button>
                           <button
                             onClick={async () => {
@@ -1082,6 +1100,19 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             } else {
               showError('Errore', 'Si è verificato un errore durante l\'aggiornamento dell\'atleta.');
             }
+          }}
+        />
+      )}
+
+      {/* Modal Assistente IA Progressioni per Atleta */}
+      {athlete && (
+        <AIProgressionAssistantModal
+          isOpen={isAiProgressionOpen}
+          onClose={() => setIsAiProgressionOpen(false)}
+          initialContext={{
+            athlete_id: athlete.id,
+            athlete_name: safeFullName,
+            limitations: athlete.medicalNotes || '',
           }}
         />
       )}

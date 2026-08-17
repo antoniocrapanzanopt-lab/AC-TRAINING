@@ -17,6 +17,7 @@ import {
   X,
   Dumbbell,
   BookOpen,
+  TrendingUp,
   MessageCircle,
 } from 'lucide-react';
 import { NavigationTab } from '../../types';
@@ -47,6 +48,7 @@ const menuSections: MenuSection[] = [
     items: [
       { id: 'atleti', label: 'Atleti', icon: Users },
       { id: 'schede', label: 'Schede Allenamento', icon: Dumbbell },
+      { id: 'progressioni', label: 'Progressioni', icon: TrendingUp },
       { id: 'esercizi', label: 'Libreria Esercizi', icon: BookOpen },
       { id: 'documenti', label: 'Documenti', icon: FileText },
     ],

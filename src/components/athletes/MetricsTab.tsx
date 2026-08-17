@@ -178,7 +178,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
           {activeSubTab === 'misure' && (
             <button
               onClick={() => setShowMetricModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/10 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-bold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/10 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Nuovo Check Misure</span>
@@ -518,7 +518,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-bold rounded-xl shadow-lg shadow-[var(--color-primary)]/20"
+                  className="px-5 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-bold rounded-xl shadow-lg shadow-[var(--color-primary)]/20 cursor-pointer"
                 >
                   Salva Check
                 </button>

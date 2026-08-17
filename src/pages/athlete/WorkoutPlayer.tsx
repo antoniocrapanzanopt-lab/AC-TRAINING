@@ -576,7 +576,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
               <button
                 onClick={executeWorkoutSave}
                 disabled={isSaving}
-                className="flex-1 py-3 bg-[var(--color-primary)] hover:bg-amber-400 text-black font-black text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/20 transition-all flex items-center justify-center gap-2"
+                className="flex-1 py-3 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {isSaving ? (
                   <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />

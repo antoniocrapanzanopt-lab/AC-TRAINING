@@ -2,6 +2,7 @@ import { Athlete } from '../../types';
 import { WorkoutExercise, WorkoutTemplate } from '../../types/workout';
 import { ExerciseItem } from '../../types/exercise';
 import { supabase } from '../supabase';
+import { generateContentWithGemini } from './geminiClient';
 
 export interface SafetyWarning {
   id: string;
@@ -79,24 +80,22 @@ Restituisci ESCLUSIVAMENTE un oggetto JSON valido con la seguente struttura:
 Se non ci sono infortuni o tutti gli esercizi sono sicuri, restituisci {"warnings": []}.
 `;
 
-    const { data, error } = await supabase.functions.invoke('generate-workout', {
-      body: {
-        provider: provider,
-        systemPrompt: systemPrompt,
-        userPrompt: "Analizza questa scheda e restituisci SOLO un JSON valido.",
-        model: provider === 'openai' ? 'gpt-4o' : 'gemini-1.5-pro',
-        maxTokens: 2048,
-        temperature: 0.2,
-        responseFormat: { type: 'json_object' }
-      }
+    const genResult = await generateContentWithGemini({
+      provider: provider,
+      systemPrompt: systemPrompt,
+      userPrompt: "Analizza questa scheda e restituisci SOLO un JSON valido.",
+      model: provider === 'openai' ? 'gpt-4o' : 'gemini-1.5-pro',
+      maxTokens: 2048,
+      temperature: 0.2,
+      responseMimeType: 'application/json'
     });
 
-    if (error || !data || !data.text) {
+    if (!genResult || !genResult.text) {
       console.warn("Nessuna risposta o errore Edge Function per safety.");
       return [];
     }
 
-    let rawText = data.text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+    let rawText = genResult.text.replace(/```json/gi, '').replace(/```/gi, '').trim();
     const parsed = JSON.parse(rawText);
     const warnings: SafetyWarning[] = (parsed.warnings || []).map((w: any, index: number) => ({
       id: `warn-${Date.now()}-${index}`,
@@ -326,26 +325,19 @@ assistant:
 `;
 
   try {
-    const { data, error } = await supabase.functions.invoke('generate-workout', {
-      body: {
-        provider: provider,
-        systemPrompt: systemPrompt,
-        userPrompt: userText,
-        model: provider === 'openai' ? 'gpt-4o' : 'gemini-1.5-pro',
-        maxTokens: 2048,
-        temperature: 0.5,
-      }
+    const genResult = await generateContentWithGemini({
+      provider: provider,
+      systemPrompt: systemPrompt,
+      userPrompt: userText,
+      maxTokens: 2048,
+      temperature: 0.5,
     });
 
-    if (!error && data && data.text) {
-      return data.text;
-    }
-
-    if (error) {
-      console.warn("Edge Function non disponibile, utilizzo motore AI deterministico locale:", error.message);
+    if (genResult && genResult.text) {
+      return genResult.text;
     }
   } catch (err: unknown) {
-    console.warn("Chiamata Edge Function fallita, fallback al motore locale:", err);
+    console.warn("Chiamata AI fallita, utilizzo fallback locale assistente:", err);
   }
 
   // Motore di fallback deterministico con risoluzione rigorosa di scope

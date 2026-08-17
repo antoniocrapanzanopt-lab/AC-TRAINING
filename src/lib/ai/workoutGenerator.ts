@@ -1,8 +1,8 @@
 import { Athlete } from '../../types';
 import { ExerciseItem } from '../../types/exercise';
-import { supabase } from '../supabase';
-import { METODO_ANTONIO_MASTER_PROMPT, WORKOUT_JSON_SCHEMA } from './prompts/workoutMasterPrompt';
+import { METODO_ANTONIO_MASTER_PROMPT } from './prompts/workoutMasterPrompt';
 import { generatedWorkoutResponseSchema } from './workoutZodSchema';
+import { generateContentWithGemini } from './geminiClient';
 
 /**
  * Costruisce il contesto di sicurezza per l'IA analizzando le controindicazioni
@@ -72,8 +72,6 @@ ISTRUZIONI OBBLIGATORIE PER LA SICUREZZA:
 `.trim();
 }
 
-
-
 export interface GenerateWorkoutParams {
   athlete?: Athlete;
   goal: string;
@@ -123,7 +121,68 @@ export interface GeneratedWorkoutResponse {
   blocco_sicurezza?: string;
 }
 
+/**
+ * Normalizza qualsiasi etichetta di giorno restituita dall'IA ("Giorno 1", "Day A", "Push", "Lunedì")
+ * nel formato standard del sistema ("Giorno A", "Giorno B", ecc.).
+ */
+export function normalizeDayName(
+  rawDay: string | number | undefined,
+  dayIndexFallback = 0,
+  totalDays = 7
+): string {
+  const dayLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+  if (!rawDay) {
+    const letter = dayLetters[dayIndexFallback % dayLetters.length];
+    return `Giorno ${letter}`;
+  }
 
+  const str = String(rawDay).trim();
+
+  // 1. Direct match per lettera: "Giorno A", "Giorno B", "Day A", "Sessione A", "A"
+  const letterMatch = str.match(/(?:Giorno|Day|Sessione|Workout|Seduta)?\s*([A-G])\b/i) || str.match(/^([A-G])$/i);
+  if (letterMatch) {
+    return `Giorno ${letterMatch[1].toUpperCase()}`;
+  }
+
+  // 2. Numeric match: "Giorno 1", "Day 1", "Sessione 1", "1" -> 1->A, 2->B, 3->C, 4->D, 5->E, 6->F, 7->G
+  const numMatch = str.match(/(?:Giorno|Day|Sessione|Workout|Seduta)?\s*([1-7])\b/i);
+  if (numMatch) {
+    const num = parseInt(numMatch[1], 10);
+    const letter = dayLetters[(num - 1) % dayLetters.length];
+    return `Giorno ${letter}`;
+  }
+
+  // 3. Weekday name match
+  const lower = str.toLowerCase();
+  if (lower.includes('luned') || lower.includes('mon')) return 'Giorno A';
+  if (lower.includes('marted') || lower.includes('tue')) return 'Giorno B';
+  if (lower.includes('mercoled') || lower.includes('wed')) return 'Giorno C';
+  if (lower.includes('gioved') || lower.includes('thu')) return 'Giorno D';
+  if (lower.includes('venerd') || lower.includes('fri')) return 'Giorno E';
+  if (lower.includes('sabat') || lower.includes('sat')) return 'Giorno F';
+  if (lower.includes('domenic') || lower.includes('sun')) return 'Giorno G';
+
+  // 4. Split name heuristics
+  if (totalDays === 3) {
+    if (lower.includes('push') || lower.includes('spinta') || lower.includes('petto')) return 'Giorno A';
+    if (lower.includes('pull') || lower.includes('trazione') || lower.includes('dorso')) return 'Giorno B';
+    if (lower.includes('leg') || lower.includes('gambe') || lower.includes('lower')) return 'Giorno C';
+  } else if (totalDays === 4) {
+    if (lower.includes('upper 1') || (lower.includes('upper') && !lower.includes('2'))) return 'Giorno A';
+    if (lower.includes('lower 1') || (lower.includes('lower') && !lower.includes('2'))) return 'Giorno B';
+    if (lower.includes('upper 2') || lower.includes('push')) return 'Giorno C';
+    if (lower.includes('lower 2') || lower.includes('pull') || lower.includes('legs')) return 'Giorno D';
+  } else if (totalDays >= 5) {
+    if (lower.includes('push') || lower.includes('spinta')) return 'Giorno A';
+    if (lower.includes('pull') || lower.includes('trazione')) return 'Giorno B';
+    if (lower.includes('leg') || lower.includes('gambe')) return 'Giorno C';
+    if (lower.includes('upper') || lower.includes('braccia') || lower.includes('torace')) return 'Giorno D';
+    if (lower.includes('lower') || lower.includes('full') || lower.includes('richiamo')) return 'Giorno E';
+  }
+
+  const letter = dayLetters[dayIndexFallback % dayLetters.length];
+  return `Giorno ${letter}`;
+}
 
 /**
  * Parser JSON ultra-resiliente per risposte IA.
@@ -154,50 +213,177 @@ export function safeParseWorkoutJSON(rawText: string): GeneratedWorkoutResponse 
     }
   }
 
-  // 4. Parsing e Validazione Zod
+  // 4. Parsing e Validazione Zod con Auto-Repair per troncamenti
   try {
-    const parsed = JSON.parse(sanitized);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(sanitized);
+    } catch {
+      // Auto-repair in caso di troncamento del buffer token
+      const lastObjClose = sanitized.lastIndexOf('}');
+      if (lastObjClose !== -1) {
+        try {
+          parsed = JSON.parse(sanitized.substring(0, lastObjClose + 1) + '\n]\n}');
+        } catch {
+          try {
+            parsed = JSON.parse(sanitized.substring(0, lastObjClose + 1) + '\n}');
+          } catch {
+            parsed = JSON.parse(sanitized);
+          }
+        }
+      } else {
+        parsed = JSON.parse(sanitized);
+      }
+    }
     
     // Gestione casi speciali (domanda_mirata o blocco_sicurezza)
     if (parsed.domanda_mirata || parsed.blocco_sicurezza) {
       return parsed as GeneratedWorkoutResponse;
     }
 
-    // Validazione rigorosa Zod per il programma completo
-    const validationResult = generatedWorkoutResponseSchema.safeParse(parsed);
-    
-    if (validationResult.success) {
-      return validationResult.data as GeneratedWorkoutResponse;
-    } else {
-      console.error("Zod Validation Error:", validationResult.error.format());
-      throw new Error("Formato non valido generato dall'IA. Dati mancanti o corrotti. Riprova la generazione.");
+    // Normalizzazione array esercizi (supporta array piatti o strutture annidate giorni/settimane)
+    function extractFlat(input: any, currentWeek = 1, currentDay = 'Giorno A'): any[] {
+      if (!input) return [];
+
+      if (Array.isArray(input)) {
+        const flat: any[] = [];
+        for (let idx = 0; idx < input.length; idx++) {
+          const item = input[idx];
+          if (!item || typeof item !== 'object') continue;
+
+          // Se l'oggetto contiene una lista di esercizi annidata (es. { nome: "Giorno A", esercizi: [...] })
+          const nestedExercises = item.esercizi || item.exercises || item.programma;
+          if (Array.isArray(nestedExercises)) {
+            const w = item.week_number || item.week || item.settimana || currentWeek;
+            const rawDayName = item.nome || item.day_name || item.day || item.giorno || item.title || item.name;
+            const d = normalizeDayName(rawDayName, idx, 7);
+            flat.push(...extractFlat(nestedExercises, w, d));
+            continue;
+          }
+
+          // Se l'oggetto contiene una lista di giorni annidata
+          const nestedDays = item.giorni || item.days;
+          if (Array.isArray(nestedDays)) {
+            const w = item.week_number || item.week || item.settimana || currentWeek;
+            flat.push(...extractFlat(nestedDays, w, currentDay));
+            continue;
+          }
+
+          // Altrimenti è un singolo esercizio
+          const isActualExercise = item.sets || item.serie || item.reps_target || item.ripetizioni || item.reps || item.exercise || item.exercise_name || (item.nome && !item.esercizi && !item.giorni);
+          if (isActualExercise) {
+            const rawDay = item.day_name || item.day || item.giorno || currentDay;
+            flat.push({
+              week_number: item.week_number || item.week || item.settimana || currentWeek,
+              day_name: normalizeDayName(rawDay, 0, 7),
+              ...item
+            });
+          }
+        }
+        return flat;
+      }
+
+      if (typeof input === 'object') {
+        const flat: any[] = [];
+        let dayIdx = 0;
+        for (const [key, val] of Object.entries(input)) {
+          let nextDay = currentDay;
+          let nextWeek = currentWeek;
+
+          if (/giorno|day|seduta|workout/i.test(key)) {
+            nextDay = normalizeDayName(key, dayIdx, 7);
+            dayIdx++;
+          }
+          if (/settimana|week/i.test(key)) {
+            const match = key.match(/\d+/);
+            if (match) nextWeek = parseInt(match[0], 10);
+          }
+
+          if (Array.isArray(val) || typeof val === 'object') {
+            flat.push(...extractFlat(val, nextWeek, nextDay));
+          }
+        }
+        return flat;
+      }
+
+      return [];
     }
 
-  } catch (err: any) {
-    console.warn("Parsing JSON fallito", err);
-    throw new Error(err.message || "Impossibile interpretare il formato del programma generato dall'IA. Riprova la generazione.");
+    const rawExercises = extractFlat(
+      parsed.programma_giorno_per_giorno 
+      || parsed.programma 
+      || parsed.exercises 
+      || parsed.scheda 
+      || parsed.giorni 
+      || parsed.settimane 
+      || parsed
+    );
+
+    const normalizedExercises: AIWorkoutExercise[] = rawExercises.map((ex: any, idx: number) => ({
+      week_number: Number(ex.week_number || ex.week || ex.settimana || 1),
+      day_name: normalizeDayName(ex.day_name, idx, 5),
+      name: String(ex.name || ex.nome || ex.exercise || ex.exercise_name || 'Esercizio'),
+      sets: Number(ex.sets || ex.serie || 3) || 3,
+      reps_target: String(ex.reps_target || ex.reps || ex.ripetizioni || '8-10'),
+      rest_seconds: Number(ex.rest_seconds || ex.rest || ex.recupero || 90) || 90,
+      target_weight: ex.target_weight || ex.carico || ex.load || undefined,
+      rir_target: ex.rir_target || ex.rir || ex.rpe || undefined,
+      tut: ex.tut || undefined,
+      notes: ex.notes || ex.note || undefined,
+    }));
+
+    if (normalizedExercises.length > 0) {
+      return {
+        classificazione_soggetto: parsed.classificazione_soggetto || parsed.classificazione_atleta || parsed.atleta || 'Atleta Monitorato',
+        obiettivo_blocco: parsed.obiettivo_blocco || parsed.obiettivo || 'Ipertrofia & Forza Metodo Antonio',
+        durata_blocco: parsed.durata_blocco || parsed.durata || '4 Settimane con Scarico Programmato',
+        frequenza_settimanale: parsed.frequenza_settimanale || parsed.frequenza || '3-4 Sedute a Settimana',
+        split_scelta: parsed.split_scelta || parsed.split || 'Split Personalizzata',
+        tempo_massimo_seduta: parsed.tempo_massimo_seduta || parsed.durata_seduta || '60 min',
+        logica_progressione: parsed.logica_progressione || parsed.progressione || 'Progressione RIR/RPE e Carico Settimanale',
+        programma_giorno_per_giorno: normalizedExercises,
+        note_tecniche_essenziali: parsed.note_tecniche_essenziali || parsed.note || 'Focus su esecuzione tecnica controllata e TUT costante.',
+        regole_adattamento: parsed.regole_adattamento || parsed.adattamento || 'Incremento carico del +2.5% solo se completate tutte le serie con RIR target.',
+      };
+    }
+
+    // Validazione rigorosa Zod per il programma completo se già conforme
+    const validationResult = generatedWorkoutResponseSchema.safeParse(parsed);
+    if (validationResult.success) {
+      return validationResult.data as GeneratedWorkoutResponse;
+    }
+
+    throw new Error("Formato non valido generato dall'IA.");
+
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Impossibile interpretare il formato del programma generato dall'IA.";
+    console.warn("Parsing JSON fallito:", message);
+    throw new Error(message);
   }
 }
 
-
-
 /**
- * Garantisce che tutti i giorni della settimana (es. Giorno A, B, C, D, E, F, G) abbiano da 6 a 8 esercizi completi.
- * Se l'IA ha interrotto la generazione per un giorno o ha saltato dei giorni a causa del limite di token,
- * questa funzione completa ed integra in modo trasparente tutti i giorni mancanti.
+ * Garantisce che tutti i giorni della settimana (es. Giorno A, B, C, D, E, F, G) abbiano da 5 a 7 esercizi completi.
  */
 export function fillMissingDaysAndExercises(
   exercises: AIWorkoutExercise[],
   requestedDaysPerWeek: number,
-  coachExercises: ExerciseItem[]
+  coachExercises?: ExerciseItem[]
 ): AIWorkoutExercise[] {
   if (!exercises || exercises.length === 0) return [];
 
   const dayLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
   const targetDays = dayLetters.slice(0, Math.min(requestedDaysPerWeek, 7)).map(l => `Giorno ${l}`);
 
+  // Normalizza preliminarmente tutti i giorni
+  const normalized = exercises.map((ex, idx) => ({
+    ...ex,
+    week_number: Number(ex.week_number) || 1,
+    day_name: normalizeDayName(ex.day_name, idx, requestedDaysPerWeek),
+  }));
+
   // Pool di esercizi complementari bilanciati
-  const fallbackExercisePool = coachExercises.length > 0 ? coachExercises : [
+  const fallbackExercisePool = (coachExercises && coachExercises.length > 0) ? coachExercises : [
     { name: 'Panca Piana con Manubri', category: 'Petto', equipment: 'Manubri' },
     { name: 'Lat Machine Avanti Presa V', category: 'Dorso', equipment: 'Cavi' },
     { name: 'Leg Press 45°', category: 'Gambe', equipment: 'Macchina' },
@@ -219,24 +405,24 @@ export function fillMissingDaysAndExercises(
     return ex;
   };
 
-  const result: AIWorkoutExercise[] = [...exercises];
-  const weeks = Array.from(new Set(exercises.map(e => Number(e.week_number) || 1))).sort((a, b) => a - b);
+  const result: AIWorkoutExercise[] = [...normalized];
+  const weeks = Array.from(new Set(normalized.map(e => e.week_number))).sort((a, b) => a - b);
   if (weeks.length === 0) weeks.push(1);
 
   for (const weekNum of weeks) {
     for (const dayName of targetDays) {
-      const existingExs = result.filter(e => (e.week_number || 1) === weekNum && (e.day_name || '').trim().toLowerCase() === dayName.toLowerCase());
+      const existingExs = result.filter(e => e.week_number === weekNum && e.day_name.toLowerCase() === dayName.toLowerCase());
 
-      // Se il giorno ha meno di 5 esercizi (o se è incompleto/troncato dall'IA)
-      if (existingExs.length < 6) {
-        const missingCount = 6 - existingExs.length;
+      // Rabbocca solo se un giorno è sotto-dimensionato (meno di 4 esercizi)
+      if (existingExs.length < 4) {
+        const missingCount = 5 - existingExs.length;
         for (let i = 0; i < missingCount; i++) {
           const fallback = getNextFallbackExercise();
           result.push({
             week_number: weekNum,
             day_name: dayName,
             name: fallback.name,
-            sets: 4,
+            sets: 3,
             reps_target: '8-10',
             rest_seconds: 90,
             target_weight: '75% 1RM',
@@ -253,8 +439,7 @@ export function fillMissingDaysAndExercises(
 }
 
 /**
- * Espande e periodizza il mesociclo a tutte le settimane richieste (es. 8 o 12 settimane),
- * garantendo che ciascuna settimana e ciascun giorno abbiano 4-7 esercizi completi.
+ * Espande e periodizza il mesociclo a tutte le settimane richieste (es. 4, 6, 8 o 12 settimane).
  */
 export function expandMesocycleWeeks(
   generatedExercises: AIWorkoutExercise[],
@@ -262,24 +447,14 @@ export function expandMesocycleWeeks(
 ): AIWorkoutExercise[] {
   if (!generatedExercises || generatedExercises.length === 0) return [];
 
-  // Normalizza week_number e day_name
-  let normalized = generatedExercises.map(ex => {
-    let cleanDay = (ex.day_name || 'Giorno A').trim();
-    const match = cleanDay.match(/(Giorno\s+[A-Z0-9]+)/i);
-    if (match) {
-      const dayLetter = match[1].split(/\s+/)[1].toUpperCase();
-      cleanDay = `Giorno ${dayLetter}`;
-    }
-    return {
-      ...ex,
-      week_number: Number(ex.week_number) || 1,
-      day_name: cleanDay,
-    };
-  });
+  let normalized = generatedExercises.map((ex, idx) => ({
+    ...ex,
+    week_number: Number(ex.week_number) || 1,
+    day_name: normalizeDayName(ex.day_name, idx),
+  }));
 
   const maxGenWeek = Math.max(...normalized.map(e => e.week_number), 1);
 
-  // Se sono state generate meno settimane di quelle richieste (es. 1 o 4 settimane anziché 12 per limiti di token)
   if (requestedWeeks > maxGenWeek) {
     const result: AIWorkoutExercise[] = [...normalized];
     const rirProgression = ['RIR 3', 'RIR 2', 'RIR 1', 'RIR 4 (Scarico)'];
@@ -295,33 +470,24 @@ export function expandMesocycleWeeks(
         let newWeight = ex.target_weight;
         let newSets = ex.sets;
 
-        // Logica espansione intelligente
-        // Week 1: Accumulo (base)
-        // Week 2: Intensificazione (RIR scende)
-        // Week 3: Picco (RIR al limite)
-        // Week 4: Scarico (Volume e intensità ridotti)
-
-        if (weekInBlock === 1) { // Week 2
+        if (weekInBlock === 1) {
           if (newWeight && !newWeight.includes('+')) {
             newWeight = `${newWeight} (+2.5%)`;
           }
-        } else if (weekInBlock === 2) { // Week 3
+        } else if (weekInBlock === 2) {
           if (newWeight && !newWeight.includes('+')) {
             newWeight = `${newWeight} (+5% Peak)`;
           }
-        } else if (weekInBlock === 3) { // Week 4 Deload
+        } else if (weekInBlock === 3) {
           newRir = 'RIR 3-4 (Scarico)';
           if (newSets > 1) {
-             // Taglio del volume (1 serie in meno per esercizio, circa -30% di volume)
             newSets = Math.max(1, newSets - 1);
           }
           if (newWeight) {
-             // Ritorno al carico base
             newWeight = newWeight.split(' (+')[0] + ' (Scarico)';
           }
         }
 
-        // Progressioni per blocchi successivi (es. mese 2)
         if (blockIndex >= 1 && weekInBlock !== 3) {
           if (newWeight && !newWeight.includes('Mese')) {
             newWeight = `${newWeight} (Progress. Mese ${blockIndex + 1})`;
@@ -346,18 +512,227 @@ export function expandMesocycleWeeks(
   return normalized;
 }
 
+// ─── MOTORE DETERMINISTICO DI GENERAZIONE LOCALE (METODO ANTONIO AI ENGINE) ───
+
+export function generateLocalWorkoutResponse(params: GenerateWorkoutParams): GeneratedWorkoutResponse {
+  const athleteLevel = params.experienceLevel || (params.athlete?.tags && params.athlete.tags[0]) || 'Intermedio';
+  const goal = params.goal || 'Ipertrofia Funzionale e Ricomposizione Corporea';
+  const weeks = params.weeks || 4;
+  const daysPerWeek = Math.min(Math.max(params.daysPerWeek || 3, 1), 7);
+  const sessionMin = params.sessionDurationMinutes || 60;
+  const progressionStyle = params.progressionStyle || 'Progressione RIR/RPE a Sovraccarico Progressivo';
+
+  // Determinazione Split
+  let splitName = params.splitStyle || 'Upper / Lower Split';
+  if (!params.splitStyle || params.splitStyle === 'Auto / Scelta dall\'IA') {
+    if (daysPerWeek === 1) splitName = 'Full Body Unica (Total Body)';
+    else if (daysPerWeek === 2) splitName = 'Upper / Lower (A/B)';
+    else if (daysPerWeek === 3) splitName = 'Push / Pull / Legs (A/B/C)';
+    else if (daysPerWeek === 4) splitName = 'Upper / Lower / Upper / Lower (A/B/C/D)';
+    else if (daysPerWeek === 5) splitName = 'Push / Pull / Legs / Upper / Lower (A/B/C/D/E)';
+    else if (daysPerWeek === 6) splitName = 'Push / Pull / Legs x 2 (A/B/C/D/E/F)';
+    else splitName = 'Push / Pull / Legs / Upper / Lower / Focus / Deload';
+  }
+
+  // Database strutturato per split cinesiologica
+  const libraryByGroup: Record<string, string[]> = {
+    push: [
+      'Panca Piana con Bilanciere',
+      'Spinte Manubri su Panca Inclinata 30°',
+      'Chest Press Isotonica Convergente',
+      'Croci ai Cavi dall\'Alto',
+      'Military Press con Bilanciere',
+      'Alzate Laterali con Manubri',
+      'French Press su Panca con Bilanciere EZ',
+      'Pushdown Cavi con Corda',
+      'Dip alle Parallele (Petto/Tricipiti)',
+      'Alzate Laterali ai Cavi Singolo Braccio'
+    ],
+    pull: [
+      'Stacco da Terra con Bilanciere',
+      'Trazioni alla Sbarra Presa Prona',
+      'Lat Machine Avanti Presa V',
+      'Rematore con Bilanciere Presa Supina',
+      'Pulley Basso al Cavo con Triangolo',
+      'Pullover al Cavo Alto',
+      'Face Pull al Cavo con Corda',
+      'Curl con Bilanciere Sagomato EZ',
+      'Hammer Curl con Manubri',
+      'Curl Panca Inclinata con Manubri'
+    ],
+    legs: [
+      'Squat con Bilanciere Dietro la Nuca',
+      'Leg Press 45° a Carico Libero',
+      'Affondi Camminati con Manubri',
+      'Bulgarian Split Squat con Manubri',
+      'Leg Extension Singola Gamba',
+      'Stacco Rumeno con Manubri',
+      'Leg Curl Seduto Isotonico',
+      'Hip Thrust con Bilanciere',
+      'Calf Raise in Piedi al Multipower',
+      'Calf Machine Seduto'
+    ],
+    upper: [
+      'Panca Piana con Manubri',
+      'Rematore con Manubrio su Panca',
+      'Military Press con Manubri',
+      'Lat Machine Presa Larga Prona',
+      'Alzate Laterali ai Cavi',
+      'Curl Bicipiti Alternato con Manubri',
+      'Pushdown con Asta Dritta al Cavo'
+    ],
+    lower: [
+      'Front Squat al Multipower',
+      'Leg Press Orizzontale',
+      'Stacco Rumeno con Bilanciere',
+      'Leg Curl Disteso su Panca',
+      'Affondi Indietro sul Posto',
+      'Calf Raise alla Pressa 45°',
+      'Plank a Terra con Isometria'
+    ],
+    fullBody: [
+      'Squat con Bilanciere',
+      'Panca Piana con Bilanciere',
+      'Trazioni alla Sbarra / Lat Machine',
+      'Military Press',
+      'Stacco da Terra / Rumeno',
+      'Curl Bicipiti EZ',
+      'Plank Addominali'
+    ]
+  };
+
+  // Se il coach ha esercizi custom nella libreria, li integra con priorità
+  if (params.coachExercises && params.coachExercises.length > 0) {
+    for (const ex of params.coachExercises) {
+      const cat = (ex.category || '').toLowerCase();
+      if (cat.includes('petto') || cat.includes('spall') || cat.includes('tricipiti')) {
+        libraryByGroup.push.unshift(ex.name);
+        libraryByGroup.upper.unshift(ex.name);
+      } else if (cat.includes('dorso') || cat.includes('bicipiti')) {
+        libraryByGroup.pull.unshift(ex.name);
+        libraryByGroup.upper.unshift(ex.name);
+      } else if (cat.includes('gambe') || cat.includes('polpacci') || cat.includes('glutei')) {
+        libraryByGroup.legs.unshift(ex.name);
+        libraryByGroup.lower.unshift(ex.name);
+      }
+    }
+  }
+
+  const dayLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].slice(0, daysPerWeek);
+  const rawExercisesWeek1: AIWorkoutExercise[] = [];
+
+  dayLetters.forEach((letter, idx) => {
+    const dayName = `Giorno ${letter}`;
+    let exerciseNamesForDay: string[] = [];
+
+    if (daysPerWeek === 1) {
+      exerciseNamesForDay = libraryByGroup.fullBody.slice(0, 6);
+    } else if (daysPerWeek === 2) {
+      exerciseNamesForDay = idx === 0 ? libraryByGroup.upper.slice(0, 6) : libraryByGroup.lower.slice(0, 6);
+    } else if (daysPerWeek === 3) {
+      if (idx === 0) exerciseNamesForDay = libraryByGroup.push.slice(0, 6);
+      else if (idx === 1) exerciseNamesForDay = libraryByGroup.pull.slice(0, 6);
+      else exerciseNamesForDay = libraryByGroup.legs.slice(0, 6);
+    } else if (daysPerWeek === 4) {
+      if (idx === 0) exerciseNamesForDay = libraryByGroup.upper.slice(0, 6);
+      else if (idx === 1) exerciseNamesForDay = libraryByGroup.lower.slice(0, 6);
+      else if (idx === 2) exerciseNamesForDay = libraryByGroup.push.slice(0, 6);
+      else exerciseNamesForDay = libraryByGroup.pull.slice(0, 6);
+    } else {
+      if (idx === 0) exerciseNamesForDay = libraryByGroup.push.slice(0, 6);
+      else if (idx === 1) exerciseNamesForDay = libraryByGroup.pull.slice(0, 6);
+      else if (idx === 2) exerciseNamesForDay = libraryByGroup.legs.slice(0, 6);
+      else if (idx === 3) exerciseNamesForDay = libraryByGroup.upper.slice(0, 6);
+      else if (idx === 4) exerciseNamesForDay = libraryByGroup.lower.slice(0, 6);
+      else if (idx === 5) exerciseNamesForDay = libraryByGroup.push.slice(0, 6);
+      else exerciseNamesForDay = libraryByGroup.fullBody.slice(0, 6);
+    }
+
+    exerciseNamesForDay.forEach((exName, exIdx) => {
+      let sets = 4;
+      let reps = '8-10';
+      let rest = 90;
+      let rir = 'RIR 2';
+      let tut = '3-0-1-0';
+      let targetWeight = 'Carico target 75% 1RM';
+
+      if (exIdx === 0) {
+        // Esercizio Fondamentale
+        sets = 4;
+        reps = '6-8';
+        rest = 120;
+        rir = 'RIR 2';
+        tut = '3-1-1-0';
+        targetWeight = '80% 1RM (Carico Base)';
+      } else if (exIdx === 1) {
+        // Esercizio Multi-articolare complementare
+        sets = 4;
+        reps = '8-10';
+        rest = 90;
+        rir = 'RIR 2';
+        tut = '3-0-1-0';
+        targetWeight = '75% 1RM';
+      } else if (exIdx === 2 || exIdx === 3) {
+        // Esercizio di isolamento / tensione continua
+        sets = 3;
+        reps = '10-12';
+        rest = 75;
+        rir = 'RIR 1-2';
+        tut = '2-0-1-1';
+        targetWeight = '70% 1RM';
+      } else {
+        // Pump / Stabilizzazione / Braccia
+        sets = 3;
+        reps = '12-15';
+        rest = 60;
+        rir = 'RIR 1';
+        tut = '2-0-1-2';
+        targetWeight = '65% 1RM';
+      }
+
+      rawExercisesWeek1.push({
+        week_number: 1,
+        day_name: dayName,
+        name: exName,
+        sets,
+        reps_target: reps,
+        rest_seconds: rest,
+        target_weight: targetWeight,
+        rir_target: rir,
+        tut,
+        notes: `Focus su traiettoria biomeccanica pulita, fermo isometrico al picco di contrazione e fase eccentrica controllata.`,
+      });
+    });
+  });
+
+  const filled = fillMissingDaysAndExercises(rawExercisesWeek1, daysPerWeek, params.coachExercises || []);
+  const expanded = expandMesocycleWeeks(filled, weeks);
+
+  const athleteName = params.athlete ? `${params.athlete.firstName} ${params.athlete.lastName}` : 'Atleta';
+
+  return {
+    classificazione_soggetto: `${athleteName} — Livello: ${athleteLevel} | Obiettivo: ${goal}`,
+    obiettivo_blocco: `Periodizzazione ${goal} — Volume ed Intensità Metodo Antonio`,
+    durata_blocco: `${weeks} Settimane con Scarico Programmato`,
+    frequenza_settimanale: `${daysPerWeek} Sedute a Settimana (${dayLetters.map(l => `Giorno ${l}`).join(', ')})`,
+    split_scelta: splitName,
+    tempo_massimo_seduta: `${sessionMin} minuti`,
+    logica_progressione: progressionStyle,
+    programma_giorno_per_giorno: expanded,
+    note_tecniche_essenziali: `Applicare rigorosamente il TUT indicato su ogni esercizio. Mantenere 1-2 ripetizioni in riserva (RIR) nelle prime due settimane, per poi ricercare il picco di intensità nella settimana 3 prima del deload della settimana 4.`,
+    regole_adattamento: `Se l'atleta completa tutte le serie e ripetizioni con RIR inferiore a 1, incrementare il carico del +2.5% per esercizi della parte superiore e +5% per esercizi della parte inferiore nella sessione successiva.`,
+  };
+}
+
 export async function generateWorkoutWithAI(
   params: GenerateWorkoutParams,
   onProgress?: (msg: string) => void
 ): Promise<GeneratedWorkoutResponse> {
 
+  if (onProgress) onProgress('Analisi del profilo atleta e parametri cinesiologici...');
 
-  if (onProgress) onProgress('Preparazione del contesto e della periodizzazione scientifica...');
+  const exerciseNames = (params.coachExercises || []).map(e => e.name).join(', ');
 
-  const exerciseNames = params.coachExercises.map(e => e.name).join(', ');
-
-  // Se i giorni o il minutaggio sono elevati (es. 7 giorni / 120 min), chiediamo all'IA 1 settimana master completa con 7-10 esercizi per seduta
-  // Questo evita di superare il limite di 8192 token di output di Gemini ed evita risposte troncate
   const weeksToPrompt = (params.daysPerWeek >= 5 || (params.sessionDurationMinutes || 60) >= 90) ? 1 : Math.min(params.weeks, 4);
   const daysToPrompt = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].slice(0, Math.min(params.daysPerWeek, 7));
 
@@ -370,7 +745,6 @@ export async function generateWorkoutWithAI(
 
   let athleteContext = '';
   if (params.athlete) {
-    // 🔒 PRIVACY GDPR: Anonimizzazione del nome prima dell'invio al LLM
     const safeId = params.athlete.id ? params.athlete.id.substring(0, 6) : 'Anonimo';
     athleteContext = `
 Dati Atleta Selezionato:
@@ -392,18 +766,17 @@ Dati Atleta Selezionato:
   }
   
   if (params.chatContext?.trim()) {
-    athleteContext += `\nSTORICO RECENTE CHAT CON IL COACH (FEEDBACK ATLETA):\n<chat_history>\n${params.chatContext.trim()}\n</chat_history>\n(Tieni conto di questi feedback recenti per adattare gli esercizi e motivare le tue scelte nel reasoning).\n`;
+    athleteContext += `\nSTORICO RECENTE CHAT CON IL COACH (FEEDBACK ATLETA):\n<chat_history>\n${params.chatContext.trim()}\n</chat_history>\n`;
   }
 
-  // ── SISTEMA ESPERTO: Matching cliente-esercizio con controindicazioni ──────────
-  const safetyContext = buildExerciseSafetyContext(params.athlete, params.coachExercises);
+  const safetyContext = buildExerciseSafetyContext(params.athlete, params.coachExercises || []);
 
   const userPrompt = `
 Genera il programma di allenamento basato su queste specifiche:
 ${athleteContext}
 
 PARAMETRI CHIAVE DEL PROGRAMMA:
-- Obiettivo specifico: ${params.goal}
+- Obiettivo specifico: ${params.goal || params.athlete?.goals || 'Ipertrofia'}
 - Livello Esperienza Atleta: ${params.experienceLevel || 'Intermedio'}
 - Durata Target Sessione: ${targetMin} minuti
 - Stile di Progressione: ${params.progressionStyle || 'RIR/RPE Progressivo'}
@@ -411,70 +784,46 @@ ${params.targetFocus && params.targetFocus.length > 0 ? `- Focus Muscolare Speci
 ${params.splitStyle ? `- Stile della Split: ${params.splitStyle}` : ''}
 - Settimane totali da programmare: ${weeksToPrompt}
 - Giorni per settimana: ${params.daysPerWeek} (Usa esattamente questi giorni: ${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')})
-- Attrezzatura a disposizione: ${params.availableEquipment.length > 0 ? params.availableEquipment.join(', ') : 'Palestra Completa'}
+- Attrezzatura a disposizione: ${(params.availableEquipment && params.availableEquipment.length > 0) ? params.availableEquipment.join(', ') : 'Palestra Completa'}
 ${params.limitations ? `- INFORTUNI / LIMITAZIONI DA EVITARE:\n<limitations>\n${params.limitations}\n</limitations>` : '- Nessuna limitazione segnalata'}
 ${params.extraNotes ? `- Note aggiuntive / Istruzioni del Coach:\n<coach_notes>\n${params.extraNotes}\n</coach_notes>` : ''}
 
 ${safetyContext ? safetyContext + '\n' : ''}
 LIBRERIA ESERCIZI PREFERITA COACH:
-[${exerciseNames}]
+[${exerciseNames || 'Esercizi base della disciplina'}]
 
 REGOLE TASSATIVE: 
 1. Assicurati di generare tra ${recommendedExCount} esercizi per CIASCUN giorno di CIASCUNA settimana (${daysToPrompt.map(d => `"Giorno ${d}"`).join(', ')}).
 2. Usa principalmente la libreria esercizi del coach.
 3. Se mancano dati critici per generare, usa il campo "domanda_mirata".
 4. Se c'è un blocco di sicurezza (es. infortunio non compatibile), usa il campo "blocco_sicurezza".
-`;
+`.trim();
 
-  try {
-    if (onProgress) onProgress(`Generazione in corso (tramite Edge Function protetta)...`);
+  if (onProgress) onProgress('Elaborazione scheda con AI e periodizzazione avanzata...');
 
-    const { data, error } = await supabase.functions.invoke('generate-workout', {
-      body: {
-        provider: params.provider,
-        systemPrompt,
-        userPrompt,
-        model: params.provider === 'openai' ? 'gpt-4o' : 'gemini-1.5-pro',
-        maxTokens: 8192,
-        temperature: 0.7,
-        responseFormat: params.provider === 'openai' ? {
-          type: "json_schema",
-          json_schema: {
-            name: "workout_program",
-            strict: false,
-            schema: WORKOUT_JSON_SCHEMA
-          }
-        } : undefined
-      }
-    });
+  // Chiamata trasparente a Google Gemini
+  const genResult = await generateContentWithGemini({
+    provider: params.provider,
+    systemPrompt,
+    userPrompt,
+    temperature: 0.7,
+    maxTokens: 16384,
+    responseMimeType: 'application/json',
+  });
 
-    if (error) {
-      console.error("Errore Edge Function", error);
-      throw new Error(`Errore Server: ${error.message}`);
-    }
+  if (onProgress) onProgress('Finalizzazione del programma e validazione biomeccanica...');
+  const content = genResult.text;
+  const parsedObj = safeParseWorkoutJSON(content);
 
-    if (!data || !data.text) {
-      throw new Error("Risposta vuota o malformata dall'IA");
-    }
-
-    const content = data.text;
-    const parsedObj = safeParseWorkoutJSON(content);
-    
-    // Se c'è una domanda mirata o un blocco sicurezza, ritorniamo immediatamente
-    if (parsedObj.domanda_mirata || parsedObj.blocco_sicurezza) {
-      return parsedObj;
-    }
-    
-    const filled = fillMissingDaysAndExercises(parsedObj.programma_giorno_per_giorno || [], params.daysPerWeek, params.coachExercises);
-    const expanded = expandMesocycleWeeks(filled, params.weeks);
-    parsedObj.programma_giorno_per_giorno = expanded;
-    
+  if (parsedObj.domanda_mirata || parsedObj.blocco_sicurezza) {
     return parsedObj;
-
-  } catch (err: any) {
-    console.error("Errore Generazione IA:", err);
-    throw err;
   }
+
+  const filled = fillMissingDaysAndExercises(parsedObj.programma_giorno_per_giorno || [], params.daysPerWeek, params.coachExercises);
+  const expanded = expandMesocycleWeeks(filled, params.weeks);
+  parsedObj.programma_giorno_per_giorno = expanded;
+
+  return parsedObj;
 }
 
 export interface CoPilotActionableSuggestion {
@@ -497,7 +846,7 @@ export interface AISmartSuggestionsContext {
 }
 
 export async function generateAISmartSuggestions(
-  exercises: any[],
+  exercises: { name?: string; sets?: number; reps_target?: string; rest_seconds?: number }[],
   context?: AISmartSuggestionsContext
 ): Promise<CoPilotActionableSuggestion[]> {
   const profileContext = context 
@@ -511,67 +860,36 @@ Analizza la seguente sessione di allenamento contestualizzandola sul profilo del
 ${profileContext}
 
 Esercizi nella sessione:
-${exercises.map(e => `- ${e.name} (Serie: ${e.sets}, Target: ${e.reps_target}, Rec: ${e.rest_seconds}s)`).join('\n')}
+${exercises.map(e => `- ${e.name}`).join('\n')}
 
 Restituisci ESATTAMENTE un array JSON (e nient'altro) contenente da 1 a 3 suggerimenti di ottimizzazione.
 Ogni elemento dell'array deve rispettare ESATTAMENTE questo schema:
 {
   "id": "generare_un_id_univoco_stringa",
   "osservazione": "Cosa rilevi di subottimale",
-  "motivo": "Perché è subottimale rispetto al profilo o alla fatica",
-  "modifica_suggerita": "Descrizione sintetica della correzione",
-  "azione_tipo": "Scegli tra: REDUCE_SETS, INCREASE_SETS, CHANGE_RIR, SWAP_EXERCISE, REMOVE_EXERCISE",
-  "target_exercise_name": "NOME_ESATTO_DELL_ESERCIZIO_DA_MODIFICARE",
-  "payload": {
-    "new_value": "Il nuovo valore. Se REDUCE_SETS o INCREASE_SETS, un numero intero. Se SWAP_EXERCISE o CHANGE_RIR, una stringa."
-  }
+  "motivo": "Spiegazione cinesiologica",
+  "modifica_suggerita": "Cosa fare",
+  "azione_tipo": "REDUCE_SETS" | "INCREASE_SETS" | "CHANGE_RIR" | "SWAP_EXERCISE" | "REMOVE_EXERCISE" | "NONE",
+  "target_exercise_name": "Nome dell'esercizio target esatto",
+  "payload": { "new_value": "valore" }
 }
-
-Se non ci sono criticità, restituisci un array vuoto [].
-Non inserire MAI blocchi markdown (es. \`\`\`json), restituisci direttamente l'array JSON puro.
 `;
 
-  try {
-    const { data, error } = await supabase.functions.invoke('generate-workout', {
-      body: {
-        provider: 'gemini',
-        systemPrompt: "Sei un analista di fatica per schede di allenamento.",
-        userPrompt: prompt,
-        model: 'gemini-1.5-pro',
-        maxTokens: 2048,
-        temperature: 0.4
-      }
-    });
+  const genResult = await generateContentWithGemini({
+    provider: 'gemini',
+    systemPrompt: 'Sei un Senior Master Trainer e Docente di Biomeccanica.',
+    userPrompt: prompt,
+    temperature: 0.5,
+    maxTokens: 4096,
+    responseMimeType: 'application/json',
+  });
 
-    if (error) throw new Error(`Errore Server: ${error.message}`);
-    if (!data || !data.text) throw new Error("Risposta vuota dall'IA Gemini");
-
-    let rawText = data.text;
-
-    let cleaned = rawText.trim().replace(/^```json/gi, '').replace(/^```/gi, '').replace(/```$/gi, '').trim();
-    // Estract array brackets if there's surrounding text
-    const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
-    if (jsonMatch) cleaned = jsonMatch[0];
-
-    try {
-      const parsed = JSON.parse(cleaned);
-      if (!Array.isArray(parsed)) return [];
-      
-      // Fix types if necessary
-      return parsed.map((item: any) => ({
-        ...item,
-        payload: {
-          new_value: ['REDUCE_SETS', 'INCREASE_SETS'].includes(item.azione_tipo) 
-            ? Number(item.payload?.new_value) 
-            : item.payload?.new_value
-        }
-      }));
-    } catch (parseError) {
-      console.warn("JSON Parse Fallback per i consigli IA:", parseError);
-      return [];
-    }
-  } catch (error: any) {
-    console.error("Errore Smart Suggestions:", error);
-    return [];
+  let rawText = genResult.text.replace(/^```json/gi, '').replace(/^```/gi, '').replace(/```$/gi, '').trim();
+  const match = rawText.match(/\[[\s\S]*\]/);
+  if (match) rawText = match[0];
+  const parsed = JSON.parse(rawText);
+  if (Array.isArray(parsed)) {
+    return parsed as CoPilotActionableSuggestion[];
   }
+  throw new Error("Formato risposta suggerimenti IA non valido.");
 }

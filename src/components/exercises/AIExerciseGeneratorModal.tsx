@@ -12,6 +12,7 @@ import { useExercises } from '../../context/ExercisesContext';
 import { useToast } from '../../context/ToastContext';
 import { generateExercisesWithAI, GeneratedAIExercise } from '../../lib/ai/aiExerciseGenerator';
 import { AI_CONFIG } from '../../config/aiConfig';
+import { AIDiagnosticPanel } from '../common/AIDiagnosticPanel';
 
 interface AIExerciseGeneratorModalProps {
   onClose: () => void;
@@ -28,25 +29,26 @@ const CATEGORIES: ('Tutti' | ExerciseCategory)[] = [
   'Addominali',
   'Full Body',
   'Cardio',
-  'Altro',
+  'Altro'
 ];
 
-const EQUIPMENT_LIST = [
+const EQUIPMENTS: ('Qualsiasi' | ExerciseEquipment)[] = [
   'Qualsiasi',
-  'Manubri',
   'Bilanciere',
+  'Manubri',
   'Cavi',
   'Macchina',
   'Corpo Libero',
   'Kettlebell',
-  'Elastici'
+  'Elastici',
+  'Altro'
 ];
 
 export const AIExerciseGeneratorModal: React.FC<AIExerciseGeneratorModalProps> = ({ onClose }) => {
-  const { createExercisesBatch } = useExercises();
+  const { createExercise } = useExercises();
   const { showSuccess, showError } = useToast();
 
-  const [selectedCategory, setSelectedCategory] = useState<'Tutti' | ExerciseCategory>('Tutti');
+  const [selectedCategory, setSelectedCategory] = useState<string>('Tutti');
   const [selectedEquipment, setSelectedEquipment] = useState<string>('Qualsiasi');
   const [count, setCount] = useState<number>(20);
   const [customPrompt, setCustomPrompt] = useState<string>('');
@@ -62,8 +64,8 @@ export const AIExerciseGeneratorModal: React.FC<AIExerciseGeneratorModalProps> =
     setGeneratedList([]);
     try {
       const results = await generateExercisesWithAI({
-        category: selectedCategory,
-        equipmentFilter: selectedEquipment === 'Qualsiasi' ? undefined : selectedEquipment,
+        category: selectedCategory as any,
+        equipmentFilter: selectedEquipment === 'Qualsiasi' ? undefined : (selectedEquipment as any),
         count,
         customPrompt
       }, setProgressMsg);
@@ -88,39 +90,51 @@ export const AIExerciseGeneratorModal: React.FC<AIExerciseGeneratorModalProps> =
   };
 
   const toggleSelectAll = () => {
-    const allSelected = generatedList.every(g => g.selected);
-    setGeneratedList(prev => prev.map(p => ({ ...p, selected: !allSelected })));
+    const allSelected = generatedList.every(i => i.selected);
+    setGeneratedList(prev => prev.map(i => ({ ...i, selected: !allSelected })));
   };
 
-  const handleImport = async () => {
-    const toImport = generatedList.filter(g => g.selected);
+  const handleImportSelected = async () => {
+    const toImport = generatedList.filter(i => i.selected);
     if (toImport.length === 0) {
-      showError('Seleziona almeno un esercizio da importare.');
+      showError('Nessun esercizio selezionato', 'Seleziona almeno un esercizio da importare.');
       return;
     }
 
     setIsImporting(true);
+    let successCount = 0;
+
     try {
-      const result = await createExercisesBatch(toImport.map(ex => ({
-        name: ex.name,
-        category: ex.category,
-        equipment: ex.equipment as ExerciseEquipment,
-        instructions: ex.instructions || null
-      })));
+      for (const ex of toImport) {
+        await createExercise({
+          name: ex.name,
+          category: ex.category as ExerciseCategory,
+          equipment: ex.equipment as ExerciseEquipment,
+          instructions: ex.description || '',
+          video_url: '',
+          tipo: ex.type,
+          bilateralita: ex.bilaterality,
+          piano_movimento: ex.movement_plane,
+          catena_cinetica: ex.kinetic_chain,
+          gradi_liberta: ex.degrees_of_freedom,
+          parametri_chiave: ex.key_parameters,
+          muscoli_coinvolti: ex.muscles,
+          esecuzione: ex.execution,
+          sicurezza: ex.safety
+        });
+        successCount++;
+      }
 
-      if (!result.success) throw new Error(result.error);
-
-      showSuccess(`${result.count} nuovi esercizi aggiunti alla libreria!`);
+      showSuccess('Importazione Completata!', `${successCount} esercizi sono stati aggiunti alla tua libreria.`);
       onClose();
     } catch (err: any) {
-      console.error(err);
-      showError('Errore durante l\'importazione', err.message || '');
+      showError('Errore Importazione', err.message || 'Si è verificato un errore durante il salvataggio.');
     } finally {
       setIsImporting(false);
     }
   };
 
-  const selectedCount = generatedList.filter(g => g.selected).length;
+  const selectedCount = generatedList.filter(i => i.selected).length;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
@@ -150,6 +164,7 @@ export const AIExerciseGeneratorModal: React.FC<AIExerciseGeneratorModalProps> =
 
         {/* Body Content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
+          <AIDiagnosticPanel compact={false} />
           
           {/* Form Filtri Generazione */}
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-5">
@@ -158,15 +173,15 @@ export const AIExerciseGeneratorModal: React.FC<AIExerciseGeneratorModalProps> =
               {/* Categoria */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Gruppo Muscolare / Categoria
+                  Categoria Muscolare
                 </label>
                 <select
                   value={selectedCategory}
-                  onChange={e => setSelectedCategory(e.target.value as any)}
+                  onChange={e => setSelectedCategory(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-amber-500"
                 >
-                  {CATEGORIES.map(c => (
-                    <option key={c} value={c}>{c === 'Tutti' ? '🌐 Tutte le Categorie (Bilanciato)' : c}</option>
+                  {CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
               </div>
@@ -181,7 +196,7 @@ export const AIExerciseGeneratorModal: React.FC<AIExerciseGeneratorModalProps> =
                   onChange={e => setSelectedEquipment(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-amber-500"
                 >
-                  {EQUIPMENT_LIST.map(eq => (
+                  {EQUIPMENTS.map(eq => (
                     <option key={eq} value={eq}>{eq}</option>
                   ))}
                 </select>
@@ -313,7 +328,7 @@ export const AIExerciseGeneratorModal: React.FC<AIExerciseGeneratorModalProps> =
             </span>
 
             <button
-              onClick={handleImport}
+              onClick={handleImportSelected}
               disabled={selectedCount === 0 || isImporting}
               className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center gap-2"
             >

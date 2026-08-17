@@ -552,7 +552,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
           <button
             type="submit"
             disabled={(!newMessage.trim() && !attachment) || isSending}
-            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-amber-500 text-slate-950 font-bold flex items-center justify-center shrink-0 shadow-lg shadow-[var(--color-primary)]/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none cursor-pointer"
+            className="w-11 h-11 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-bold flex items-center justify-center shrink-0 shadow-lg shadow-[var(--color-primary)]/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none cursor-pointer"
             title={editingMessageId ? "Salva modifica" : "Invia messaggio"}
           >
             {isSending ? (

@@ -22,6 +22,12 @@ export interface WorkoutTemplate {
   updated_at: string;
 }
 
+export type ExerciseProgressionMode = 
+  | 'none' 
+  | 'linked_template' 
+  | 'custom_rule' 
+  | 'ai_suggested_pending';
+
 export interface WorkoutExercise {
   id: string;
   workout_id: string;
@@ -39,6 +45,13 @@ export interface WorkoutExercise {
   is_time_based?: boolean;
   duration_seconds?: number;
   alternative_exercise?: string;
+  
+  // Progression Builder Embedded fields
+  progression_rule_id?: string;
+  progression_mode?: ExerciseProgressionMode;
+  progression_summary?: string;
+  last_progression_result?: string;
+  next_progression_action?: string;
 }
 
 export interface AthleteAssignedWorkout {
