@@ -241,6 +241,13 @@ export function safeParseWorkoutJSON(rawText: string): GeneratedWorkoutResponse 
       return parsed as GeneratedWorkoutResponse;
     }
 
+    // Funzione helper per estrarre in modo affidabile il nome dell'esercizio da qualsiasi chiave LLM
+    function getExerciseName(item: any): string {
+      if (!item || typeof item !== 'object') return '';
+      const raw = item.name || item.nome || item.esercizio || item.nome_esercizio || item.exercise || item.exercise_name || item.titolo || item.title || item.label || '';
+      return typeof raw === 'string' ? raw.trim() : String(raw || '');
+    }
+
     // Normalizzazione array esercizi (supporta array piatti o strutture annidate giorni/settimane)
     function extractFlat(input: any, currentWeek = 1, currentDay = 'Giorno A'): any[] {
       if (!input) return [];
@@ -270,13 +277,17 @@ export function safeParseWorkoutJSON(rawText: string): GeneratedWorkoutResponse 
           }
 
           // Altrimenti è un singolo esercizio
-          const isActualExercise = item.sets || item.serie || item.reps_target || item.ripetizioni || item.reps || item.exercise || item.exercise_name || (item.nome && !item.esercizi && !item.giorni);
+          const exName = getExerciseName(item);
+          const hasSetsOrReps = item.sets || item.serie || item.reps_target || item.ripetizioni || item.reps || item.carico || item.intensita;
+          const isActualExercise = hasSetsOrReps || (Boolean(exName) && !item.esercizi && !item.giorni);
+          
           if (isActualExercise) {
             const rawDay = item.day_name || item.day || item.giorno || currentDay;
             flat.push({
               week_number: item.week_number || item.week || item.settimana || currentWeek,
               day_name: normalizeDayName(rawDay, 0, 7),
-              ...item
+              ...item,
+              name: exName || item.name,
             });
           }
         }
@@ -319,18 +330,24 @@ export function safeParseWorkoutJSON(rawText: string): GeneratedWorkoutResponse 
       || parsed
     );
 
-    const normalizedExercises: AIWorkoutExercise[] = rawExercises.map((ex: any, idx: number) => ({
-      week_number: Number(ex.week_number || ex.week || ex.settimana || 1),
-      day_name: normalizeDayName(ex.day_name, idx, 5),
-      name: String(ex.name || ex.nome || ex.exercise || ex.exercise_name || 'Esercizio'),
-      sets: Number(ex.sets || ex.serie || 3) || 3,
-      reps_target: String(ex.reps_target || ex.reps || ex.ripetizioni || '8-10'),
-      rest_seconds: Number(ex.rest_seconds || ex.rest || ex.recupero || 90) || 90,
-      target_weight: ex.target_weight || ex.carico || ex.load || undefined,
-      rir_target: ex.rir_target || ex.rir || ex.rpe || undefined,
-      tut: ex.tut || undefined,
-      notes: ex.notes || ex.note || undefined,
-    }));
+    const normalizedExercises: AIWorkoutExercise[] = rawExercises.map((ex: any, idx: number) => {
+      const exName = getExerciseName(ex) || 'Esercizio Base';
+      const setsRaw = parseInt(String(ex.sets || ex.serie || 3).replace(/\D+/g, ''), 10);
+      const restRaw = parseInt(String(ex.rest_seconds || ex.rest || ex.recupero || 90).replace(/\D+/g, ''), 10);
+
+      return {
+        week_number: Number(ex.week_number || ex.week || ex.settimana || 1),
+        day_name: normalizeDayName(ex.day_name, idx, 5),
+        name: exName,
+        sets: isNaN(setsRaw) || setsRaw <= 0 ? 3 : setsRaw,
+        reps_target: String(ex.reps_target || ex.reps || ex.ripetizioni || ex.rip || '8-10'),
+        rest_seconds: isNaN(restRaw) || restRaw <= 0 ? 90 : restRaw,
+        target_weight: ex.target_weight || ex.carico || ex.load || ex.intensita || undefined,
+        rir_target: ex.rir_target || ex.rir || ex.rpe || (typeof ex.intensita === 'string' && ex.intensita.includes('RIR') ? ex.intensita : undefined),
+        tut: ex.tut || undefined,
+        notes: ex.notes || ex.note || ex.note_tecniche || undefined,
+      };
+    });
 
     if (normalizedExercises.length > 0) {
       return {

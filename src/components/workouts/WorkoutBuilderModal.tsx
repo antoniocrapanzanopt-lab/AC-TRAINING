@@ -101,9 +101,11 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       const mapped: Partial<WorkoutExercise>[] = result.programma_giorno_per_giorno.map((ex, idx) => {
         const cleanDay = normalizeDayName(ex.day_name, idx);
 
+        const exName = ex.name || (ex as { nome?: string; esercizio?: string; exercise?: string }).nome || (ex as { nome?: string; esercizio?: string; exercise?: string }).esercizio || (ex as { nome?: string; esercizio?: string; exercise?: string }).exercise || 'Esercizio Base';
+
         return {
           id: `ai-gen-${Date.now()}-${idx}`,
-          name: ex.name || 'Esercizio',
+          name: exName,
           sets: Number(ex.sets) || 3,
           reps_target: String(ex.reps_target || '10'),
           rest_seconds: Number(ex.rest_seconds) || 60,
