@@ -25,6 +25,35 @@ const WorkoutCard: React.FC<{
     }
   });
 
+  const [days, setDays] = React.useState<string[]>(['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E']);
+
+  // Carica dinamicamente tutti i giorni reali presenti negli esercizi della scheda assegnata
+  React.useEffect(() => {
+    const fetchWorkoutDays = async () => {
+      if (!assigned.workout_id) return;
+      try {
+        const { data: exData } = await supabase
+          .from('workout_exercises')
+          .select('day_name')
+          .eq('workout_id', assigned.workout_id);
+
+        if (exData && exData.length > 0) {
+          const uniqueDays = Array.from(new Set(exData.map(e => e.day_name || 'Giorno A')))
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+          if (uniqueDays.length > 0) {
+            setDays(uniqueDays);
+          }
+        }
+      } catch (err) {
+        console.warn('Errore lettura giorni scheda atleta:', err);
+      }
+    };
+
+    fetchWorkoutDays();
+  }, [assigned.workout_id]);
+
   // Carica i progressi da Supabase se l'utente ha fatto il relogin
   React.useEffect(() => {
     const syncProgressFromDb = async () => {
@@ -56,7 +85,7 @@ const WorkoutCard: React.FC<{
           .not('end_time', 'is', null);
 
         if (data && data.length > 0) {
-          const daysList = ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D'];
+          const daysList = days.length > 0 ? days : ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
           data.forEach((sess: any, idx: number) => {
             let matched = false;
             if (Array.isArray(sess.exercise_logs) && sess.exercise_logs.length > 0) {
@@ -84,11 +113,10 @@ const WorkoutCard: React.FC<{
     };
 
     syncProgressFromDb();
-  }, [assigned.athlete_id, assigned.workout_id, progressKey]);
+  }, [assigned.athlete_id, assigned.workout_id, progressKey, days]);
 
   // Trova il primo giorno non completato
-  const days = ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D'];
-  const totalWeeks = assigned.workout.total_weeks || 1;
+  const totalWeeks = assigned.workout?.total_weeks || 1;
 
   const firstAvailable = React.useMemo(() => {
     for (let w = 1; w <= totalWeeks; w++) {
@@ -98,7 +126,7 @@ const WorkoutCard: React.FC<{
         }
       }
     }
-    return { week: 1, day: 'Giorno A' }; // Se tutto completato, torna al primo
+    return { week: 1, day: days[0] || 'Giorno A' }; // Se tutto completato, torna al primo
   }, [completedMap, totalWeeks, days]);
 
   const [selectedWeek, setSelectedWeek] = React.useState<number>(firstAvailable.week);
