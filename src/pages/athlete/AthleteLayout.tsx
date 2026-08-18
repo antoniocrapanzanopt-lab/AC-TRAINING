@@ -81,8 +81,14 @@ export const AthleteLayout: React.FC = () => {
         </button>
       </header>
 
-      {/* ─── MAIN CONTENT AREA (OTTIMIZZATA TOUCH E SCROLL MOBILE) ─── */}
-      <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 pb-6 max-w-5xl w-full mx-auto space-y-4">
+      {/* ─── MAIN CONTENT AREA ─── */}
+      <main
+        className={`flex-1 w-full mx-auto ${
+          activeTab === 'messages'
+            ? 'flex flex-col min-h-0 overflow-hidden'
+            : 'overflow-y-auto p-3.5 sm:p-6 pb-6 max-w-5xl space-y-4'
+        }`}
+      >
         {activeTab === 'home' && (
           <AthleteDashboard
             onStartWorkout={(workout, exercises, targetAthleteId) =>

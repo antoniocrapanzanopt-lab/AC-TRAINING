@@ -48,6 +48,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   const [isCoachTyping, setIsCoachTyping] = useState(false);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ID dell'utente atleta (sia sessionUser.id che athleteId)
@@ -131,12 +132,19 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
     };
   }, [coachId]);
 
-  // Scroll automatico in fondo
-  useEffect(() => {
+  // Scroll automatico in fondo solido
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto') => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [athleteMessages, isCoachTyping]);
+    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom('auto');
+    const timer = setTimeout(() => scrollToBottom('auto'), 60);
+    return () => clearTimeout(timer);
+  }, [athleteMessages.length, isCoachTyping, scrollToBottom]);
 
   // Segna come letti i messaggi dal coach
   useEffect(() => {
@@ -472,6 +480,9 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
             <span>Il coach sta scrivendo...</span>
           </div>
         )}
+
+        {/* Anchor di fondo per scroll istantaneo */}
+        <div ref={messagesEndRef} className="h-1 shrink-0" />
       </div>
 
       {/* ANTEPRIMA ALLEGATO SELEZIONATO */}
