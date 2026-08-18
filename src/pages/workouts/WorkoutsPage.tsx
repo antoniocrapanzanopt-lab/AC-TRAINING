@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle, Folder, FolderPlus, ChevronRight, FolderOpen, MoveRight, X, Save, Clock, Users, User, ExternalLink, TrendingUp } from 'lucide-react';
+import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle, Folder, FolderPlus, ChevronRight, FolderOpen, MoveRight, X, Save, Clock, Users, User, ExternalLink, TrendingUp, Copy } from 'lucide-react';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useApp } from '../../context/AppContext';
@@ -18,7 +18,8 @@ export const WorkoutsPage: React.FC = () => {
     updateFolder, 
     deleteFolder, 
     moveWorkoutToFolder, 
-    deleteWorkoutTemplate 
+    deleteWorkoutTemplate,
+    duplicateWorkoutTemplate,
   } = useWorkouts();
   const { athletes, setSelectedAthleteId } = useAthletes();
   const { setActiveTab } = useApp();
@@ -53,6 +54,7 @@ export const WorkoutsPage: React.FC = () => {
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSavingFolder, setIsSavingFolder] = useState(false);
+  const [duplicatingWorkoutId, setDuplicatingWorkoutId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   // 1. Costruisci il percorso dei Breadcrumbs per la navigazione
@@ -159,6 +161,21 @@ export const WorkoutsPage: React.FC = () => {
       setMovingWorkout(null);
     } catch (err: any) {
       showError('Errore durante lo spostamento: ' + (err.message || ''));
+    }
+  };
+
+  // Gestione Duplicazione Scheda
+  const handleDuplicateWorkout = async (template: WorkoutTemplate) => {
+    setDuplicatingWorkoutId(template.id);
+    try {
+      const res = await duplicateWorkoutTemplate(template.id);
+      if (!res.success) throw new Error(res.error);
+      showSuccess(`Scheda "${template.title}" duplicata con successo!`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore durante la duplicazione';
+      showError(msg);
+    } finally {
+      setDuplicatingWorkoutId(null);
     }
   };
 
@@ -406,22 +423,35 @@ export const WorkoutsPage: React.FC = () => {
                        <div className="flex items-center gap-1">
                          <button 
                            onClick={() => setEditingWorkout(template)}
-                           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
+                           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
                            title="Modifica scheda"
                          >
                            <Pencil className="w-3.5 h-3.5 text-slate-400" />
                            <span>Modifica</span>
                          </button>
                          <button 
+                           onClick={() => handleDuplicateWorkout(template)}
+                           disabled={duplicatingWorkoutId === template.id}
+                           className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold disabled:opacity-50 cursor-pointer"
+                           title="Duplica scheda di allenamento"
+                         >
+                           {duplicatingWorkoutId === template.id ? (
+                             <div className="w-3.5 h-3.5 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+                           ) : (
+                             <Copy className="w-3.5 h-3.5 text-amber-400" />
+                           )}
+                           <span>Duplica</span>
+                         </button>
+                         <button 
                            onClick={() => setMovingWorkout(template)}
-                           className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
+                           className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                            title="Sposta in cartella"
                          >
                            <MoveRight className="w-3.5 h-3.5" />
                          </button>
                          <button 
                            onClick={() => setDeletingWorkout(template)}
-                           className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
+                           className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                            title="Elimina scheda"
                          >
                            <Trash2 className="w-3.5 h-3.5" />
@@ -725,11 +755,33 @@ export const WorkoutsPage: React.FC = () => {
                           workout: ath.isCustomized ? ath.customWorkout : viewingAssignedWorkout.template 
                         });
                       }}
-                      className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold rounded-lg border border-amber-500/20 transition-colors flex items-center gap-1.5"
+                      className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold rounded-lg border border-amber-500/20 transition-colors flex items-center gap-1.5 cursor-pointer"
                       title="Personalizza scheda (stacca dal template globale)"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                       <span>Modifica</span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const workoutToDup = ath.isCustomized ? ath.customWorkout : viewingAssignedWorkout.template;
+                        const customTitle = `${viewingAssignedWorkout.template.title} (Copia - ${ath.name})`;
+                        setDuplicatingWorkoutId(workoutToDup.id);
+                        try {
+                          const res = await duplicateWorkoutTemplate(workoutToDup.id, customTitle);
+                          if (!res.success) throw new Error(res.error);
+                          showSuccess(`Scheda duplicata come "${customTitle}"`);
+                        } catch (err: unknown) {
+                          const msg = err instanceof Error ? err.message : 'Errore duplicazione';
+                          showError(msg);
+                        } finally {
+                          setDuplicatingWorkoutId(null);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                      title="Duplica come nuovo template autonomo"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Duplica</span>
                     </button>
                     <button
                       onClick={async () => {

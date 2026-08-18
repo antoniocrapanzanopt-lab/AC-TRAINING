@@ -4,23 +4,13 @@ import {
   X,
   Sparkles,
   Zap,
-  User,
-  CheckCircle2,
-  RefreshCw,
-  Sliders,
-  History,
-  Activity,
-  Shield,
-  TrendingUp,
-  Clock,
-  MessageSquare,
-  ArrowRightLeft,
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useAthletes } from '../../../context/AthletesContext';
-import { useApp } from '../../../context/AppContext';
 import { useToast } from '../../../context/ToastContext';
 import { useMessages } from '../../../context/MessagesContext';
-import { AI_CONFIG } from '../../../config/aiConfig';
 
 export interface CopilotAlertContext {
   athleteId: string;
@@ -45,527 +35,494 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
   onClose,
   alertData,
 }) => {
-  const { setSelectedAthleteId, addTimelineEvent, timeline } = useAthletes();
-  const { setActiveTab } = useApp();
+  const { addTimelineEvent } = useAthletes();
   const { showSuccess } = useToast();
   const { sendMessage } = useMessages();
 
-  const [activeActionTab, setActiveActionTab] = useState<'modify_program' | 'history' | 'view_profile'>('modify_program');
+  // Step di navigazione: 'select_mode' | 'ai_recommendation' | 'manual_command'
+  const [currentStep, setCurrentStep] = useState<'select_mode' | 'ai_recommendation' | 'manual_command'>('select_mode');
 
-  // Metodologia di Variazione & Parametri
-  const [variationMethodology, setVariationMethodology] = useState<'biomechanical' | 'tut_rpe' | 'volume_intensity' | 'frequency_order'>('biomechanical');
-  const [coachInstruction, setCoachInstruction] = useState('');
-  const [targetWeek, setTargetWeek] = useState('Settimana 3');
-  const [isProcessingAI, setIsProcessingAI] = useState(false);
+  // Comando manuale del coach
+  const [customCommand, setCustomCommand] = useState('');
+  const targetWeek = alertData?.weekNumber ? `Settimana ${alertData.weekNumber}` : 'Settimana Corrente';
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Stato Messaggio Chat Interna
-  const [chatMessageText, setChatMessageText] = useState('');
+  // Opzione invio messaggio atleta
+  const [sendChatNotification, setSendChatNotification] = useState(true);
+  const [isMessageOpen, setIsMessageOpen] = useState(false);
 
-  // Box Anteprima Modifiche (Diff View)
+  // Dati elaborati
+  const [diagnosisSummary, setDiagnosisSummary] = useState('');
+  const [primaryActionTitle, setPrimaryActionTitle] = useState('');
+  const [primaryActionReason, setPrimaryActionReason] = useState('');
   const [diffPreview, setDiffPreview] = useState<{ before: string; after: string }>({
     before: '',
     after: '',
   });
+  const [chatMessageText, setChatMessageText] = useState('');
 
   useEffect(() => {
-    if (!isOpen || !alertData) return;
+    if (!isOpen || !alertData) {
+      setCurrentStep('select_mode');
+      return;
+    }
 
     const athleteFirstName = alertData.athleteName ? alertData.athleteName.trim().split(' ')[0] : 'Atleta';
     const exName = alertData.exerciseName || 'Esercizio Principale';
+    const note = alertData.noteText || '';
 
     if (alertData.type === 'critical_note') {
-      setCoachInstruction(`Sostituisci ${exName} con varianti articolari più tollerate per ${targetWeek}.`);
-      setChatMessageText(
-        `Ciao ${athleteFirstName}, ho letto la tua nota sul fastidio avvertito durante ${exName}. Per le prossime 2 settimane ho adeguato la tua scheda per permettere un recupero ottimale. Fammi sapere come ti trovi!`
+      setDiagnosisSummary(`Fastidio/dolore articolare su ${exName}: "${note || 'Forte stress articolare avvertito'}"`);
+      setPrimaryActionTitle(`Sostituzione Biomeccanica Joint-Friendly (${exName} ➔ Variante Guidata/Cavi)`);
+      setPrimaryActionReason(
+        `Elimina forze di taglio e vincoli rigidi, preservando la tensione ipertrofica target e riducendo l'infiammazione tendinea.`
       );
       setDiffPreview({
-        before: `${exName} (4x10, RPE 8.0)`,
-        after: `Landmine Press Unilaterale (4x10, RPE 7.0, TUT 3-1-1)`,
+        before: `${exName} — 4x8-10 (RPE 9.0, Carico Libero)`,
+        after: `Variante Isolaterale Guidata / Cavi — 3x10-12 (TUT 3-1-1, RPE 7.5)`,
       });
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, ho letto la tua nota su ${exName}. Per tutelare l'articolazione ho inserito una variante più tollerata per le prossime 2 settimane. Fammi sapere come la senti!`
+      );
     } else if (alertData.type === 'plateau') {
-      setCoachInstruction(`Inserisci una variazione di tempo esecutivo (TUT 3-1-1) e riduci il volume del 15% per superare il plateau su ${exName}.`);
-      setChatMessageText(
-        `Ciao ${athleteFirstName}, ho analizzato i tuoi carichi su ${exName} e ho preparato una leggera variazione nel programma per sbloccare la tua forza. Dai un'occhiata alla scheda aggiornata!`
+      setDiagnosisSummary(`Stallo prestazionale e stasi di carico su ${exName} da oltre 2-3 settimane`);
+      setPrimaryActionTitle(`Tecnica Rest-Pause & Ottimizzazione Volume`);
+      setPrimaryActionReason(
+        `Sblocca il reclutamento neuromuscolare rompendo l'adattamento senza generare fatica sistemica inutile.`
       );
       setDiffPreview({
-        before: `${exName} (4x8, 80kg)`,
-        after: `${exName} (Rest-Pause 1x6 + 2x3, 82.5kg)`,
+        before: `${exName} — 4x8 (Stallo Carico, RPE 9.5)`,
+        after: `${exName} — 1x6 Target + 2 Rest-Pause (TUT 2-0-1, Carico +2.5%)`,
       });
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, ho analizzato i dati su ${exName} e ho inserito una tecnica Rest-Pause per sbloccare la forza. Spingi forte!`
+      );
     } else if (alertData.type === 'inactivity') {
-      setCoachInstruction(`Ripianifica il mesociclo a partire dalla prossima settimana con un giorno di riadattamento graduale.`);
-      setChatMessageText(
-        `Ciao ${athleteFirstName}, come va? Ho notato che è da qualche giorno che non registri allenamenti. Tutto bene? Fammi sapere se dobbiamo adattare la scheda ai tuoi orari!`
-      );
+      setDiagnosisSummary(`Inattività rilevata da oltre 6 giorni senza sessioni registrate`);
+      setPrimaryActionTitle(`Riadattamento Graduale Mesociclo (${targetWeek})`);
+      setPrimaryActionReason(`Ripristina la capacità di lavoro evitando DOMS invalidanti.`);
       setDiffPreview({
-        before: `Scheda Inattiva da 7+ giorni`,
-        after: `Ripianificazione Mesociclo (${targetWeek}) con Riadattamento`,
+        before: `Programma Inattivo`,
+        after: `Sessione Riadattamento (Volume -25%, RPE 7.0)`,
       });
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, tutto bene? Ho preparato un rientro graduale per farti ripartire al meglio.`
+      );
     } else {
-      setCoachInstruction(`Aumenta il target di carico del +5% per il prossimo mesociclo data la grande progressione.`);
-      setChatMessageText(
-        `Complimenti ${athleteFirstName}! 🔥 Ho visto la tua ottima prestazione ed il nuovo record su ${exName}. Continua così!`
-      );
+      setDiagnosisSummary(`Progressione eccellente e nuovo Record personale su ${exName}`);
+      setPrimaryActionTitle(`Sovraccarico Progressivo Calcolato (+2.5% Target)`);
+      setPrimaryActionReason(`Consolida l'adattamento neuromuscolare aumentando il carico target.`);
       setDiffPreview({
-        before: `${exName} (4x6, Target Base)`,
-        after: `${exName} (4x6, Target +2.5% Carico)`,
+        before: `${exName} — 4x6 (Target Base)`,
+        after: `${exName} — 4x6 (Target Carico +2.5%)`,
       });
+      setChatMessageText(
+        `Grande prestazione su ${exName} ${athleteFirstName}! 🔥 Ho aggiornato i carichi target.`
+      );
     }
   }, [isOpen, alertData, targetWeek]);
 
   if (!isOpen || !alertData) return null;
 
-  const athleteHistory = (timeline && alertData.athleteId && timeline[alertData.athleteId]) || [];
   const athleteFirstName = alertData.athleteName ? alertData.athleteName.trim().split(' ')[0] : 'Atleta';
   const exName = alertData.exerciseName || 'Esercizio Principale';
 
-  // Strategie IA 1-Click
-  const applyAIStrategy = (strategy: 'joint_friendly' | 'plateau_breaker' | 'deload' | 'overload') => {
-    if (strategy === 'joint_friendly') {
-      setVariationMethodology('biomechanical');
-      setCoachInstruction(`[STRATEGIA JOINT-FRIENDLY] Sostituisci ${exName} con una variante iso-laterale guidata ad angolo controllato per ${targetWeek}.`);
-      setChatMessageText(`Ciao ${athleteFirstName}, ho aggiornato il programma inserendo una variante joint-friendly per proteggere le articolazioni ed evitare dolori.`);
-      setDiffPreview({
-        before: `${exName} (4x10, RPE 8.0)`,
-        after: `Variante Isolaterale Guidata (4x10, RPE 7.0, TUT 3-1-1)`,
-      });
-    } else if (strategy === 'plateau_breaker') {
-      setVariationMethodology('volume_intensity');
-      setCoachInstruction(`[STRATEGIA SBLOCCO PLATEAU] Inserisci tecnica Rest-Pause sul primo esercizio base per sbloccare i carichi su ${targetWeek}.`);
-      setChatMessageText(`Ciao ${athleteFirstName}, per sbloccare lo stallo carichi su ${exName} ho inserito una serie Rest-Pause ad alta intensità. Provala e fammi sapere!`);
-      setDiffPreview({
-        before: `${exName} (4x8, Stallo Carico)`,
-        after: `${exName} (Rest-Pause 1x6 + 2x3, TUT 2-0-1)`,
-      });
-    } else if (strategy === 'deload') {
-      setVariationMethodology('volume_intensity');
-      setCoachInstruction(`[STRATEGIA DELOAD ATTIVO] Taglia il volume complessivo del -30% e mantieni 2 RIR per ${targetWeek}.`);
-      setChatMessageText(`Ciao ${athleteFirstName}, per permettere un recupero ottimale ed evitare il sovrallenamento ho programmato una settimana di scarico attivo (-30% volume).`);
-      setDiffPreview({
-        before: `Volume Standard (5x5, RPE 9.0)`,
-        after: `Deload Attivo (3x5, RPE 6.5, -30% Volume)`,
-      });
-    } else {
-      setVariationMethodology('tut_rpe');
-      setCoachInstruction(`[STRATEGIA OVERLOAD PROGRESSIVO] Aumenta il target di carico del +2.5% ed imposta TUT 2-0-1 per il prossimo mesociclo.`);
-      setChatMessageText(`Complimenti per la costanza ${athleteFirstName}! 🔥 Ho aumentato i target di carico del +2.5% per continuare ad evolvere.`);
-      setDiffPreview({
-        before: `${exName} (Target Carico Base)`,
-        after: `${exName} (Target +2.5% Carico, TUT 2-0-1)`,
-      });
-    }
-  };
+  // 4 Comandi Rapidi Grandi e Chiari
+  const quickCommands = [
+    {
+      title: '🛡️ Riduci Stress Articolare',
+      desc: `Variante a cavi/macchina e carico -15% su ${exName}`,
+      cmd: `Sostituisci ${exName} con una variante articolare guidata più tollerata e riduci il carico del 15%`,
+    },
+    {
+      title: '🔋 Abbassa Fatica Sistemica',
+      desc: 'Taglia 1 serie e mantieni 2 RIR in tutta la sessione',
+      cmd: 'Riduci 1 serie per esercizio e mantieni 2 RIR per ridurre la fatica sistemica',
+    },
+    {
+      title: '📉 Deload Attivo 1 Settimana',
+      desc: `Scarico programmato (-30% volume) su ${targetWeek}`,
+      cmd: `Imposta una settimana di scarico attivo (-30% volume) su ${targetWeek}`,
+    },
+    {
+      title: '⚡ Aumenta Stimolo (Rest-Pause)',
+      desc: `Serie Rest-Pause ad alta efficienza per ${exName}`,
+      cmd: `Inserisci tecnica Rest-Pause nell'ultima serie di ${exName} per massimizzare la tensione meccanica`,
+    },
+  ];
 
-  // Esecuzione elaborazione IA manuale o al click della metodologia
-  const handleSelectMethodology = (method: 'biomechanical' | 'tut_rpe' | 'volume_intensity' | 'frequency_order') => {
-    setVariationMethodology(method);
-    
-    // Auto-genera output in base alla metodologia scelta
-    if (method === 'biomechanical') {
-      setCoachInstruction(`Sostituisci ${exName} con una variante con profilo di resistenza ottimizzato (es. ai cavi o macchina).`);
-      setChatMessageText(`Ciao ${athleteFirstName}, ho modificato la scheda inserendo una variante più efficiente dal punto di vista biomeccanico per ottimizzare lo stimolo muscolare.`);
-      setDiffPreview({
-        before: `${exName} (Esecuzione Base)`,
-        after: `Variante Biomeccanica Ottimizzata (TUT 3-1-1)`,
-      });
-    } else if (method === 'tut_rpe') {
-      setCoachInstruction(`Modifica le tempistiche di esecuzione su ${exName}: aumenta la fase eccentrica ed imposta un target RPE 8.`);
-      setChatMessageText(`Ciao ${athleteFirstName}, per migliorare il controllo motorio ho inserito un Tempo Under Tension (TUT) specifico per ${exName}.`);
-      setDiffPreview({
-        before: `${exName} (Ritmo Libero)`,
-        after: `${exName} (TUT 4-0-1, RPE 8)`,
-      });
-    } else if (method === 'volume_intensity') {
-      setCoachInstruction(`Rimodula volume e intensità per ${exName} su ${targetWeek}: inserisci un protocollo Drop-Set nell'ultima serie.`);
-      setChatMessageText(`Ciao ${athleteFirstName}, ho alzato l'intensità su ${exName} con un protocollo specifico per portarti al limite in questa settimana.`);
-      setDiffPreview({
-        before: `${exName} (4x8)`,
-        after: `${exName} (3x8 + 1 Drop-Set finale)`,
-      });
-    } else if (method === 'frequency_order') {
-      setCoachInstruction(`Sposta ${exName} come primo esercizio dell'allenamento per priorità muscolare.`);
-      setChatMessageText(`Ciao ${athleteFirstName}, ho spostato l'ordine degli esercizi per dare priorità a ${exName} quando sei più fresco.`);
-      setDiffPreview({
-        before: `Esercizio a metà sessione`,
-        after: `${exName} (Primo esercizio della sessione)`,
-      });
-    }
-  };
-
-  // Elabora Variazione Manuale (Pulsante Refresh)
-  const handleProcessAIProgramChange = () => {
-    setIsProcessingAI(true);
+  const handleExecuteCustomCommand = (cmdText: string) => {
+    setIsProcessing(true);
     setTimeout(() => {
-      setIsProcessingAI(false);
-      const methodologyNames = {
-        biomechanical: 'Sostituzione Biomeccanica',
-        tut_rpe: 'Controllo Tempi TUT & Target RPE',
-        volume_intensity: 'Volume & Intensità (Rest-Pause / Deload)',
-        frequency_order: 'Frequenza & Ordine Esercizi',
-      };
-
+      setIsProcessing(false);
+      setPrimaryActionTitle(`Comando: "${cmdText.slice(0, 45)}..."`);
+      setPrimaryActionReason(`Modifica applicata in base all'istruzione diretta del coach.`);
       setDiffPreview({
-        before: `${exName} (Parametri Base)`,
-        after: `Variante IA (${methodologyNames[variationMethodology]}) — 4x8-10 (TUT 3-1-1)`,
+        before: `${exName} — (Assetto Precedente)`,
+        after: `Assetto Aggiornato — (${cmdText.slice(0, 40)}...)`,
       });
-
-      showSuccess(`Variazione Elaborata con ${AI_CONFIG.GEMINI.DISPLAY_NAME}`, 'Anteprima modifiche e messaggio atleta aggiornati.');
-    }, 600);
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, ho aggiornato la tua scheda (${cmdText.slice(0, 35)}...). Buon allenamento!`
+      );
+      showSuccess(`Comando Elaborato`, 'Anteprima aggiornata.');
+    }, 350);
   };
 
-  // Applicazione unificata delle modifiche
-  const handleApplyProgramChange = async (sendChat: boolean) => {
-    // 1. Registra evento nella timeline
+  const handleApply = async () => {
     addTimelineEvent(
       alertData.athleteId,
       'other',
-      `Variazione Programma (${targetWeek})`,
-      `Modifica IA (${variationMethodology}): ${coachInstruction}`
+      `Intervento Copilot (${targetWeek})`,
+      `${primaryActionTitle}`
     );
 
-    // 2. Invio messaggio in chat se richiesto
-    if (sendChat && chatMessageText.trim()) {
+    if (sendChatNotification && chatMessageText.trim()) {
       try {
         await sendMessage(alertData.athleteId, chatMessageText);
       } catch (e) {
-        console.warn('Errore invio chat interna:', e);
+        console.warn('Errore invio chat:', e);
       }
-      showSuccess('Programma Aggiornato & Messaggio Inviato!', `Scheda aggiornata per ${targetWeek} e nota inviata in chat.`);
+      showSuccess('Modifica Applicata & Notifica Inviata!', `Scheda aggiornata per ${alertData.athleteName}.`);
     } else {
-      showSuccess('Programma Aggiornato!', `Scheda di ${alertData.athleteName} modificata per ${targetWeek}.`);
+      showSuccess('Modifica Applicata alla Scheda!', `Programma di ${alertData.athleteName} aggiornato.`);
     }
 
-    onClose();
-  };
-
-  // Vai diretto alla Scheda del Singolo Atleta
-  const handleGoToAthleteProfile = () => {
-    setSelectedAthleteId(alertData.athleteId);
-    setActiveTab('atleti');
     onClose();
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
+
+      <div className="relative w-full max-w-3xl bg-[#0a0e17] border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[92vh]">
         
-        {/* Modal Header */}
-        <div className="p-6 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
-              <Sparkles className="w-5 h-5" />
+        {/* ─── HEADER PULITO & SINTETICO ─── */}
+        <div className="p-5 sm:p-6 border-b border-slate-800/80 bg-slate-950/70 flex items-start justify-between gap-4 shrink-0">
+          <div className="flex items-start gap-3.5 min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-md">
+              <Sparkles className="w-6 h-6" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-white">{alertData.athleteName}</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                  {AI_CONFIG.GEMINI.DISPLAY_NAME}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-lg font-black text-white">{alertData.athleteName}</h3>
+                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                  AI Training Copilot
                 </span>
               </div>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
-                  📋 Scheda: {alertData.workoutTitle || 'Scheda Personalizzata'}
+
+              {/* Pillole Scheda / Giorno */}
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-slate-400">
+                <span className="font-semibold text-slate-300">
+                  📋 {alertData.workoutTitle || 'Scheda Attiva'}
                 </span>
-                <span className="text-xs font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/30">
-                  📅 Settimana {alertData.weekNumber || 1}{alertData.dayName ? ` • ${alertData.dayName}` : ''}
+                <span>•</span>
+                <span className="text-amber-300 font-semibold">
+                  📅 {targetWeek} {alertData.dayName ? `(${alertData.dayName})` : ''}
                 </span>
                 {alertData.exerciseName && (
-                  <span className="text-xs text-slate-400 font-semibold">
-                    • {alertData.exerciseName}
-                  </span>
+                  <>
+                    <span>•</span>
+                    <span className="text-sky-300 font-semibold">
+                      🏋️ {alertData.exerciseName}
+                    </span>
+                  </>
                 )}
               </div>
+
+              {/* Contesto sintetico */}
+              <p className="text-xs text-amber-200/90 font-medium mt-2 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 leading-relaxed">
+                ⚠️ {diagnosisSummary}
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {activeActionTab !== 'modify_program' && (
-              <button
-                onClick={() => setActiveActionTab('modify_program')}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors"
-              >
-                ← Torna alla Modifica
-              </button>
-            )}
-            <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Navigation Bar Secodaria (Storico & Profilo) */}
-        <div className="px-6 py-2.5 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between text-xs shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveActionTab('modify_program')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all ${
-                activeActionTab === 'modify_program' ? 'bg-[var(--color-primary)] text-black' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              ⚡ Variazione Programma & Chat
-            </button>
-            <button
-              onClick={() => setActiveActionTab('history')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all ${
-                activeActionTab === 'history' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              📜 Storico Variazioni ({athleteHistory.length})
-            </button>
-          </div>
           <button
-            onClick={handleGoToAthleteProfile}
-            className="text-slate-400 hover:text-[var(--color-primary)] font-semibold flex items-center gap-1 transition-colors"
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
           >
-            <User className="w-3.5 h-3.5" /> Profilo Atleta →
+            <X className="w-6 h-6" />
           </button>
         </div>
 
-        {/* Body Contenuto Tab */}
-        <div className="p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar">
-          {activeActionTab === 'modify_program' && (
-            <div className="space-y-5">
-              {/* Context Alert Banner */}
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Contesto Segnalazione</span>
-                <p className="text-xs text-slate-200 font-medium">
-                  {alertData.noteText ? `"${alertData.noteText}"` : alertData.suggestion || 'Analisi dello stallo o progresso nei carichi.'}
+        {/* ─── CORPO: STEP 1 (SCELTA INIZIALE) O STEP 2 (MODALITÀ ATTIVA) ─── */}
+        <div className="p-6 sm:p-8 overflow-y-auto flex-1 custom-scrollbar">
+          
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* STEP 1: SCELTA INIZIALE GUIDATA (2 CARD GRANDI)                   */}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {currentStep === 'select_mode' && (
+            <div className="space-y-6 animate-in fade-in duration-150">
+              <div className="text-center space-y-1">
+                <h4 className="text-lg sm:text-xl font-black text-white tracking-tight">
+                  Come desideri intervenire sul programma?
+                </h4>
+                <p className="text-xs sm:text-sm text-slate-400">
+                  Seleziona l'approccio migliore per aggiornare la scheda dell'atleta
                 </p>
               </div>
 
-              {/* Strategie IA 1-Click */}
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-amber-400" /> Strategie IA 1-Click ({AI_CONFIG.GEMINI.DISPLAY_NAME})
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => applyAIStrategy('joint_friendly')}
-                    className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-left transition-all group"
-                  >
-                    <Shield className="w-4 h-4 text-amber-400 mb-1 group-hover:scale-110 transition-transform" />
-                    <h5 className="text-[11px] font-bold text-white">Joint-Friendly</h5>
-                    <p className="text-[9px] text-slate-400">Protezione articolare</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => applyAIStrategy('plateau_breaker')}
-                    className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-purple-500/50 text-left transition-all group"
-                  >
-                    <Zap className="w-4 h-4 text-purple-400 mb-1 group-hover:scale-110 transition-transform" />
-                    <h5 className="text-[11px] font-bold text-white">Sblocco Plateau</h5>
-                    <p className="text-[9px] text-slate-400">Rest-Pause & Myo-Reps</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => applyAIStrategy('deload')}
-                    className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-sky-500/50 text-left transition-all group"
-                  >
-                    <Clock className="w-4 h-4 text-sky-400 mb-1 group-hover:scale-110 transition-transform" />
-                    <h5 className="text-[11px] font-bold text-white">Deload Attivo</h5>
-                    <p className="text-[9px] text-slate-400">Scarico 1-Settimana</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => applyAIStrategy('overload')}
-                    className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-emerald-500/50 text-left transition-all group"
-                  >
-                    <TrendingUp className="w-4 h-4 text-emerald-400 mb-1 group-hover:scale-110 transition-transform" />
-                    <h5 className="text-[11px] font-bold text-white">Overload</h5>
-                    <p className="text-[9px] text-slate-400">Incremento +2.5%</p>
-                  </button>
-                </div>
-              </div>
-
-              {/* Selettore Metodologia & Settimana */}
-              <div className="space-y-3 pt-1 border-t border-slate-800/80">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Sliders className="w-4 h-4 text-[var(--color-primary)]" /> Metodologia di Variazione
-                  </label>
-                  <select
-                    value={targetWeek}
-                    onChange={e => setTargetWeek(e.target.value)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-bold focus:outline-none focus:border-[var(--color-primary)]"
-                  >
-                    <option value="Settimana 1">Applica a Settimana 1</option>
-                    <option value="Settimana 2">Applica a Settimana 2</option>
-                    <option value="Settimana 3">Applica a Settimana 3</option>
-                    <option value="Settimana 4">Applica a Settimana 4 (Scarico)</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMethodology('biomechanical')}
-                    className={`p-2 rounded-xl text-left text-xs font-bold border transition-all ${
-                      variationMethodology === 'biomechanical'
-                        ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]'
-                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                    }`}
-                  >
-                    🔄 Biomeccanica
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMethodology('tut_rpe')}
-                    className={`p-2 rounded-xl text-left text-xs font-bold border transition-all ${
-                      variationMethodology === 'tut_rpe'
-                        ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]'
-                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                    }`}
-                  >
-                    ⏱️ TUT & RPE
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMethodology('volume_intensity')}
-                    className={`p-2 rounded-xl text-left text-xs font-bold border transition-all ${
-                      variationMethodology === 'volume_intensity'
-                        ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]'
-                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                    }`}
-                  >
-                    📊 Volume & Intensità
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMethodology('frequency_order')}
-                    className={`p-2 rounded-xl text-left text-xs font-bold border transition-all ${
-                      variationMethodology === 'frequency_order'
-                        ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]'
-                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                    }`}
-                  >
-                    📅 Frequenza / Ordine
-                  </button>
-                </div>
-
-                <textarea
-                  rows={2}
-                  value={coachInstruction}
-                  onChange={e => setCoachInstruction(e.target.value)}
-                  placeholder="Istruzione tecnica per la scheda..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-[var(--color-primary)] resize-none"
-                />
-
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                {/* CARD 1: CONSIGLIO MIGLIORE IA */}
                 <button
-                  onClick={handleProcessAIProgramChange}
-                  disabled={isProcessingAI || !coachInstruction.trim()}
-                  className="w-full py-2 rounded-xl bg-slate-900 border border-slate-700 hover:border-[var(--color-primary)] text-slate-200 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2"
+                  type="button"
+                  onClick={() => setCurrentStep('ai_recommendation')}
+                  className="group p-6 rounded-3xl bg-gradient-to-b from-amber-500/15 via-slate-900 to-slate-950 border-2 border-amber-500/40 hover:border-amber-400 hover:shadow-[0_0_30px_rgba(245,158,11,0.25)] text-left transition-all cursor-pointer flex flex-col justify-between space-y-4"
                 >
-                  <RefreshCw className={`w-4 h-4 text-sky-400 ${isProcessingAI ? 'animate-spin' : ''}`} />
-                  <span>Elabora Variazione con {AI_CONFIG.GEMINI.DISPLAY_NAME}</span>
-                </button>
-              </div>
+                  <div className="space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
+                      <Sparkles className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 block mb-1">
+                        Consigliato
+                      </span>
+                      <h5 className="text-base sm:text-lg font-black text-white group-hover:text-amber-300 transition-colors">
+                        Consiglio Migliore IA
+                      </h5>
+                      <p className="text-xs text-slate-300 leading-relaxed mt-1">
+                        L'IA analizza il problema e propone la miglior soluzione biomeccanica e di carico già pronta.
+                      </p>
+                    </div>
+                  </div>
 
-              {/* BOX ANTEPRIMA MODIFICHE (DIFF VIEW) */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                    <ArrowRightLeft className="w-4 h-4" /> Anteprima Modifiche Scheda (Diff View)
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-400 group-hover:translate-x-1 transition-transform">
+                    Apri proposta IA →
                   </span>
-                  <span className="text-[10px] text-slate-500 font-semibold">{targetWeek}</span>
-                </div>
+                </button>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  <div className="p-3 rounded-xl bg-red-950/20 border border-red-500/30 space-y-1">
-                    <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider block">🔴 Stato Attuale (Prima)</span>
-                    <p className="text-xs font-bold text-white">{diffPreview.before || 'Esercizio Base'}</p>
+                {/* CARD 2: SCRIVI UN COMANDO */}
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep('manual_command')}
+                  className="group p-6 rounded-3xl bg-slate-900/80 hover:bg-slate-900 border-2 border-slate-700/80 hover:border-sky-500/50 hover:shadow-[0_0_30px_rgba(56,189,248,0.15)] text-left transition-all cursor-pointer flex flex-col justify-between space-y-4"
+                >
+                  <div className="space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
+                      <Zap className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-400 block mb-1">
+                        Controllo Manuale
+                      </span>
+                      <h5 className="text-base sm:text-lg font-black text-white group-hover:text-sky-300 transition-colors">
+                        Scrivi un Comando
+                      </h5>
+                      <p className="text-xs text-slate-400 leading-relaxed mt-1">
+                        Indica direttamente cosa vuoi cambiare (deload, fatica, sostituzione esercizio o TUT).
+                      </p>
+                    </div>
                   </div>
-                  <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-1">
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">🟢 Proposta IA (Dopo)</span>
-                    <p className="text-xs font-bold text-white">{diffPreview.after || 'Proposta Aggiornata'}</p>
-                  </div>
-                </div>
-              </div>
 
-              {/* AREA MESSAGGIO CHAT PER L'ATLETA */}
-              <div className="space-y-2 pt-1 border-t border-slate-800/80">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <MessageSquare className="w-4 h-4 text-[var(--color-primary)]" /> Messaggio per l'Atleta (Modificabile)
-                  </label>
-                  <span className="text-[10px] text-slate-400">Generato da {AI_CONFIG.GEMINI.DISPLAY_NAME}</span>
-                </div>
-                <textarea
-                  rows={3}
-                  value={chatMessageText}
-                  onChange={e => setChatMessageText(e.target.value)}
-                  className="w-full p-3 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs leading-relaxed resize-none focus:outline-none focus:border-[var(--color-primary)] transition-colors"
-                  placeholder="Bozza messaggio da inviare nella chat interna dell'atleta..."
-                />
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-400 group-hover:translate-x-1 transition-transform">
+                    Digita o scegli comando →
+                  </span>
+                </button>
               </div>
             </div>
           )}
 
-          {/* TAB: STORICO VARIAZIONI ATLETA (AUDIT TRAIL) */}
-          {activeActionTab === 'history' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h4 className="text-sm font-black text-white flex items-center gap-2">
-                  <History className="w-4 h-4 text-[var(--color-primary)]" /> Audit Trail Variazioni — {alertData.athleteName}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* STEP 2: MODALITÀ CONSIGLIO IA (PULITA & ARIOSA)                    */}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {currentStep === 'ai_recommendation' && (
+            <div className="space-y-5 animate-in fade-in duration-150">
+              <button
+                type="button"
+                onClick={() => setCurrentStep('select_mode')}
+                className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" /> Torna alla scelta modalità
+              </button>
+
+              {/* Card Proposta Principale Grande */}
+              <div className="p-5 sm:p-6 rounded-3xl bg-amber-500/10 border-2 border-amber-500/30 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-400" />
+                  <span className="text-xs font-black uppercase tracking-wider text-amber-400">
+                    Miglior Intervento Suggerito
+                  </span>
+                </div>
+
+                <h4 className="text-base sm:text-lg font-black text-white tracking-tight">
+                  {primaryActionTitle}
                 </h4>
-                <span className="text-[10px] font-bold text-slate-500 uppercase">{athleteHistory.length} Eventi Registrati</span>
+
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                  {primaryActionReason}
+                </p>
               </div>
 
-              {athleteHistory.length === 0 ? (
-                <div className="text-center py-10 space-y-2">
-                  <Activity className="w-8 h-8 text-slate-600 mx-auto" />
-                  <p className="text-xs text-slate-400">Nessuna variazione programma registrata in precedenza per questo atleta.</p>
+              {/* Box Diff Prima / Dopo Grande */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-slate-950 border border-red-500/30 space-y-1.5">
+                  <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider block">
+                    🔴 Assetto Attuale (Prima)
+                  </span>
+                  <p className="text-sm sm:text-base font-bold text-white leading-snug">
+                    {diffPreview.before}
+                  </p>
                 </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {athleteHistory.map(evt => (
-                    <div key={evt.id} className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white">{evt.title}</span>
-                        <span className="text-[10px] text-slate-500">{new Date(evt.createdAt).toLocaleDateString('it-IT')}</span>
-                      </div>
-                      {evt.description && (
-                        <p className="text-xs text-slate-300">{evt.description}</p>
-                      )}
-                    </div>
+
+                <div className="p-4 rounded-2xl bg-slate-950 border border-emerald-500/40 space-y-1.5">
+                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block">
+                    🟢 Nuova Scheda Modificata (Dopo)
+                  </span>
+                  <p className="text-sm sm:text-base font-bold text-emerald-300 leading-snug">
+                    {diffPreview.after}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* STEP 2: MODALITÀ COMANDO MANUALE (PULITA & GUIDATA)               */}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {currentStep === 'manual_command' && (
+            <div className="space-y-5 animate-in fade-in duration-150">
+              <button
+                type="button"
+                onClick={() => setCurrentStep('select_mode')}
+                className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" /> Torna alla scelta modalità
+              </button>
+
+              {/* 4 Comandi Rapidi Grandi */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                  Seleziona un comando rapido:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {quickCommands.map((q, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setCustomCommand(q.cmd);
+                        handleExecuteCustomCommand(q.cmd);
+                      }}
+                      className="p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 text-left transition-all cursor-pointer group"
+                    >
+                      <span className="text-xs sm:text-sm font-bold text-white group-hover:text-amber-300 block">
+                        {q.title}
+                      </span>
+                      <span className="text-[11px] text-slate-400 block mt-0.5">
+                        {q.desc}
+                      </span>
+                    </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Input Testo Libero */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <label className="text-xs font-bold text-slate-300 block">
+                  Oppure digita cosa vuoi modificare:
+                </label>
+                <div className="flex gap-2.5">
+                  <input
+                    type="text"
+                    value={customCommand}
+                    onChange={e => setCustomCommand(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && customCommand.trim()) {
+                        handleExecuteCustomCommand(customCommand);
+                      }
+                    }}
+                    placeholder="es. Riduci a 3 serie ed inserisci 2 RIR..."
+                    className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-700 text-white text-xs sm:text-sm focus:outline-none focus:border-amber-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={isProcessing || !customCommand.trim()}
+                    onClick={() => handleExecuteCustomCommand(customCommand)}
+                    className="px-5 py-3 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black text-xs sm:text-sm font-black rounded-2xl transition-all disabled:opacity-40 shrink-0 cursor-pointer shadow-md"
+                  >
+                    {isProcessing ? 'Elaborazione...' : 'Applica'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Diff Risultante */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block mb-1">Prima:</span>
+                  <span className="text-xs sm:text-sm text-slate-300 font-bold">{diffPreview.before}</span>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+                  <span className="text-[10px] text-amber-400 font-bold uppercase block mb-1">Dopo:</span>
+                  <span className="text-xs sm:text-sm text-white font-bold">{diffPreview.after}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* MESSAGGIO CHAT COLLASSABILE OPZIONALE (Solo nello Step 2)          */}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {currentStep !== 'select_mode' && (
+            <div className="pt-4 border-t border-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-xs sm:text-sm font-bold text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={sendChatNotification}
+                    onChange={e => setSendChatNotification(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-0 bg-slate-900 border-slate-700"
+                  />
+                  <span>Invia messaggio di spiegazione all'atleta in chat</span>
+                </label>
+
+                {sendChatNotification && (
+                  <button
+                    type="button"
+                    onClick={() => setIsMessageOpen(!isMessageOpen)}
+                    className="text-xs text-amber-400 hover:underline flex items-center gap-1 cursor-pointer font-bold"
+                  >
+                    <span>{isMessageOpen ? 'Chiudi' : 'Modifica testo'}</span>
+                    {isMessageOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+
+              {sendChatNotification && isMessageOpen && (
+                <textarea
+                  rows={2}
+                  value={chatMessageText}
+                  onChange={e => setChatMessageText(e.target.value)}
+                  className="w-full p-3 rounded-2xl bg-slate-950 border border-slate-700 text-white text-xs leading-relaxed resize-none focus:outline-none focus:border-amber-500 animate-in fade-in duration-100"
+                  placeholder="Testo del messaggio per l'atleta..."
+                />
               )}
             </div>
           )}
+
         </div>
 
-        {/* AZIONI DI CONFERMA UNIFICATE IN FONDO ALLA MODALE */}
-        {activeActionTab === 'modify_program' && (
-          <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
+        {/* ─── FOOTER UNIFICATO & PULSANTE GIGANTE (Solo nello Step 2) ─── */}
+        {currentStep !== 'select_mode' && (
+          <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
             <button
+              type="button"
               onClick={onClose}
-              className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors"
+              className="w-full sm:w-auto px-4 py-2.5 text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
             >
               Annulla
             </button>
-            <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
-              <button
-                onClick={() => handleApplyProgramChange(false)}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all border border-slate-700"
-              >
-                <CheckCircle2 className="w-4 h-4 text-slate-400" />
-                <span>Applica solo alla Scheda</span>
-              </button>
 
-              <button
-                onClick={() => handleApplyProgramChange(true)}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-[0_0_20px_rgba(234,179,8,0.25)]"
-              >
-                <Zap className="w-4 h-4 text-black fill-black" />
-                <span>Applica Modifica e Invia in Chat</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleApply}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-sm transition-all shadow-xl shadow-amber-500/20 cursor-pointer"
+            >
+              <Zap className="w-4 h-4 fill-black" />
+              <span>Applica Modifica al Programma</span>
+            </button>
           </div>
         )}
+
       </div>
     </div>,
     document.body

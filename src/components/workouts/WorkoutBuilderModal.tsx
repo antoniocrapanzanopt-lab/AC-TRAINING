@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity } from 'lucide-react';
 import { generateAISmartSuggestions, CoPilotActionableSuggestion } from '../../lib/ai/workoutGenerator';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
@@ -12,6 +12,10 @@ import { AICoPilotModal } from './AICoPilotModal';
 import { GeneratedWorkoutResponse, normalizeDayName } from '../../lib/ai/workoutGenerator';
 import { ExerciseProgressionControl } from './progression/ExerciseProgressionControl';
 import { generateWeeklyBlockProjection } from '../../lib/progression/progressionEngine';
+import { MuscleVolumeSummary } from './MuscleVolumeSummary';
+import { AIVolumeCoach } from './AIVolumeCoach';
+import { calculateMuscleVolumeSummary } from '../../utils/muscleVolumeCalculator';
+import { analyzeVolumeWithAI, ActionPayload } from '../../utils/aiVolumeCoach';
 
 interface WorkoutBuilderModalProps {
   athleteId?: string;
@@ -31,6 +35,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
   const [title, setTitle] = useState(initialWorkout?.title || '');
   const [description, setDescription] = useState(initialWorkout?.description || '');
+  const [isDescriptionModalOpen, setIsDescriptionModalOpen] = useState(false);
   const [folderId, setFolderId] = useState<string | null>(initialWorkout?.folder_id || null);
   const [totalWeeks, setTotalWeeks] = useState<number>(initialWorkout?.total_weeks || 1);
   const [activeWeek, setActiveWeek] = useState<number>(1);
@@ -42,6 +47,33 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   ]);
   const [expandedExerciseIndex, setExpandedExerciseIndex] = useState<number | null>(0);
   const [isSaving, setIsSaving] = useState(false);
+  const handleApplyVolumeAction = (action: ActionPayload) => {
+    if (action.type === 'reduce_sets' && action.exerciseNames && action.setsDelta) {
+      let remainingToReduce = Math.abs(action.setsDelta);
+      setExercises(prev => prev.map(ex => {
+        if (remainingToReduce > 0 && action.exerciseNames?.some(name => (ex.name || '').toLowerCase().includes(name.toLowerCase()))) {
+          const currentSets = Number(ex.sets) || 3;
+          const reduceBy = Math.min(remainingToReduce, Math.max(1, currentSets - 2));
+          remainingToReduce -= reduceBy;
+          return { ...ex, sets: Math.max(1, currentSets - reduceBy) };
+        }
+        return ex;
+      }));
+      showSuccess('Modifica Volume Applicata!', `Ridotte le serie per ${action.targetMuscle}.`);
+    } else if (action.type === 'increase_sets' && action.setsDelta) {
+      let remainingToAdd = action.setsDelta;
+      setExercises(prev => prev.map(ex => {
+        if (remainingToAdd > 0 && (!action.exerciseNames?.length || action.exerciseNames.some(name => (ex.name || '').toLowerCase().includes(name.toLowerCase())))) {
+          const currentSets = Number(ex.sets) || 3;
+          const addBy = Math.min(remainingToAdd, 2);
+          remainingToAdd -= addBy;
+          return { ...ex, sets: currentSets + addBy };
+        }
+        return ex;
+      }));
+      showSuccess('Modifica Volume Applicata!', `Incrementate le serie per ${action.targetMuscle}.`);
+    }
+  };
   const [isCoPilotOpen, setIsCoPilotOpen] = useState(false);
   const [showTemplateUpdatePrompt, setShowTemplateUpdatePrompt] = useState(false);
   const [confirmGlobalOverwrite, setConfirmGlobalOverwrite] = useState(false);
@@ -53,6 +85,31 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   // Day Renaming State
   const [isRenamingDay, setIsRenamingDay] = useState(false);
   const [dayNameInput, setDayNameInput] = useState('');
+
+  // Tab di navigazione modulare per eliminare lo scroll monolitico
+  const [activeBuilderTab, setActiveBuilderTab] = useState<'exercises' | 'volume' | 'ai_coach' | 'info'>('exercises');
+
+  // Calcolo centralizzato del volume e delle raccomandazioni AI
+  const volumeData = useMemo(() => {
+    return calculateMuscleVolumeSummary({
+      exercises,
+      libraryExercises,
+      scope: 'week',
+      activeWeek,
+      activeDay,
+      totalWeeks,
+    });
+  }, [exercises, libraryExercises, activeWeek, activeDay, totalWeeks]);
+
+  const aiAnalysis = useMemo(() => {
+    return analyzeVolumeWithAI({
+      volumeData,
+      exercises,
+      libraryExercises,
+      scope: 'week',
+      totalWeeks,
+    });
+  }, [volumeData, exercises, libraryExercises, totalWeeks]);
 
   // AI Suggestions
   const [isAiSuggestionsOpen, setIsAiSuggestionsOpen] = useState(false);
@@ -743,11 +800,11 @@ ${result.regole_adattamento || '-'}
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-5xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl shadow-2xl flex flex-col h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4">
+      <div className="w-full max-w-[1520px] bg-[#090d14] border border-slate-800 rounded-3xl shadow-2xl flex flex-col h-[95vh] overflow-hidden">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[var(--color-panel-border)]">
+        <div className="flex items-center justify-between p-5 sm:p-6 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-[#0d121c] to-[#090d14]">
           <div className="flex items-center gap-3">
             {onBack && (
               <button 
@@ -758,14 +815,14 @@ ${result.regole_adattamento || '-'}
                 <ArrowLeft className="w-5 h-5" />
               </button>
             )}
-            <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 flex items-center justify-center">
-              <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" />
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+              <Dumbbell className="w-5 h-5 text-amber-400" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white flex flex-col sm:flex-row sm:items-center gap-2">
+              <h2 className="text-xl font-black text-white flex flex-col sm:flex-row sm:items-center gap-2 tracking-tight">
                 {athleteId ? (
                   <>
-                    <span className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wide">
+                    <span className="text-sm font-bold text-amber-400 uppercase tracking-wide">
                       Stai modificando la scheda di:
                     </span>
                     <span>{currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : 'Atleta'}</span>
@@ -779,7 +836,7 @@ ${result.regole_adattamento || '-'}
                   </>
                 )}
               </h2>
-              <p className="text-sm text-slate-400">
+              <p className="text-xs text-slate-400">
                 {athleteId ? (
                   `Le modifiche apportate influenzeranno solo ed esclusivamente la scheda di questo atleta.`
                 ) : (
@@ -802,63 +859,231 @@ ${result.regole_adattamento || '-'}
           </div>
         </div>
 
-        {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Scrollable Body (Senza Barre di Scorrimento Visibili) */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 no-scrollbar">
           
-          {/* Info Generali Scheda */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-800/30 p-5 rounded-xl border border-slate-700/50">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Titolo del Programma</label>
-              <input
-                type="text"
-                placeholder="es. Ipertrofia & Forza - Mesociclo 1"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Cartella di Archiviazione</label>
-              <select
-                value={folderId || ''}
-                onChange={e => setFolderId(e.target.value || null)}
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] font-bold text-xs"
-              >
-                <option value="">Nessuna Cartella (Principale)</option>
-                {folders.map(f => (
-                  <option key={f.id} value={f.id}>📁 {f.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Durata (Settimane)</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={totalWeeks}
-                  onChange={e => setTotalWeeks(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-center font-bold focus:outline-none focus:border-[var(--color-primary)]"
-                />
-                <span className="text-xs text-slate-400 font-semibold">sett.</span>
-              </div>
-            </div>
-            <div className="sm:col-span-3">
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">Descrizione & Obiettivi</label>
-              <textarea
-                placeholder="Note generali sul mesociclo, focus e indicazioni generali per l'atleta..."
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                rows={8}
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 text-sm leading-relaxed focus:outline-none focus:border-[var(--color-primary)] transition-colors min-h-[200px] resize-y custom-scrollbar"
-              />
-            </div>
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* SEGMENTED NAVIGATION BAR PRINCIPALE A 4 MODULI                     */}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          <div className="flex items-center gap-1.5 p-1.5 bg-slate-950/90 rounded-2xl border border-slate-800 shadow-xl overflow-x-auto no-scrollbar shrink-0 sticky top-0 z-30 backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => setActiveBuilderTab('exercises')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
+                activeBuilderTab === 'exercises'
+                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Dumbbell className="w-4 h-4" />
+              <span>Esercizi & Scheda</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
+                {exercises.filter(e => (e.name || '').trim()).length} es.
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveBuilderTab('volume')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
+                activeBuilderTab === 'volume'
+                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Activity className="w-4 h-4" />
+              <span>Analisi Volume</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
+                {volumeData.totalSetsAllMuscles} set
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveBuilderTab('ai_coach')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
+                activeBuilderTab === 'ai_coach'
+                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>AI Volume Coach</span>
+              {aiAnalysis.criticalCount > 0 ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-rose-500 text-white font-black animate-pulse">
+                  {aiAnalysis.criticalCount} criticità
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
+                  {aiAnalysis.overallScore}/100
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveBuilderTab('info')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
+                activeBuilderTab === 'info'
+                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Dati & Note</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
+                {totalWeeks} sett.
+              </span>
+            </button>
           </div>
 
           {/* ══════════════════════════════════════════════════════════════════ */}
-          {/* LIVELLO A: STRUTTURA PROGRAMMA (Settimane & Giorni)            */}
+          {/* TAB 4: DATI GENERALI, CARTELLA & NOTE PROGRAMMA                    */}
           {/* ══════════════════════════════════════════════════════════════════ */}
+          {activeBuilderTab === 'info' && (
+            <div className="bg-slate-800/40 p-5 rounded-3xl border border-slate-700/60 space-y-4 animate-in fade-in duration-150">
+              <h3 className="text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
+                <FileText className="w-5 h-5 text-amber-400" />
+                <span>Impostazioni & Note del Programma</span>
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end pt-1">
+                {/* Titolo Programma */}
+                <div className="md:col-span-6">
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1 uppercase tracking-wider">
+                    Titolo del Programma
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="es. Ipertrofia & Forza - Mesociclo 1"
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white font-semibold text-sm focus:outline-none focus:border-amber-500 transition-colors"
+                  />
+                </div>
+
+                {/* Cartella di Archiviazione */}
+                <div className="md:col-span-4">
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1 uppercase tracking-wider">
+                    Cartella di Archiviazione
+                  </label>
+                  <select
+                    value={folderId || ''}
+                    onChange={e => setFolderId(e.target.value || null)}
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500 font-bold text-xs cursor-pointer"
+                  >
+                    <option value="">Nessuna Cartella (Principale)</option>
+                    {folders.map(f => (
+                      <option key={f.id} value={f.id}>📁 {f.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Durata Settimane */}
+                <div className="md:col-span-2">
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1 uppercase tracking-wider text-center">
+                    Durata
+                  </label>
+                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      value={totalWeeks}
+                      onChange={e => setTotalWeeks(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full bg-transparent text-white text-center font-extrabold text-sm focus:outline-none"
+                    />
+                    <span className="text-xs text-slate-400 font-semibold shrink-0">sett.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Barra Descrizione & Obiettivi */}
+              <div className="pt-3 border-t border-slate-700/40">
+                <button
+                  type="button"
+                  onClick={() => setIsDescriptionModalOpen(true)}
+                  className="w-full flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all text-left group cursor-pointer"
+                  title="Clicca per aprire la finestra dedicata"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors block">
+                        Descrizione & Obiettivi del Programma
+                      </span>
+                      {description.trim() ? (
+                        <p className="text-xs text-slate-400 truncate italic mt-0.5">
+                          "{description.replace(/\n+/g, ' ')}"
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-500 italic mt-0.5">
+                          Nessuna nota inserita • Clicca per compilare la descrizione dettagliata
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <span className="text-xs font-bold text-amber-400 group-hover:text-amber-300 shrink-0 pl-2">
+                    Apri Finestra Note →
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* TAB 2: ANALISI VOLUME (Radar Chart + Tabella Benchmark)            */}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {activeBuilderTab === 'volume' && (
+            <div className="animate-in fade-in duration-150">
+              <MuscleVolumeSummary
+                exercises={exercises}
+                libraryExercises={libraryExercises}
+                activeWeek={activeWeek}
+                activeDay={activeDay}
+                totalWeeks={totalWeeks}
+              />
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* TAB 3: AI VOLUME COACH (Sistema Decisionale Compatto)             */}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {activeBuilderTab === 'ai_coach' && (
+            <div className="animate-in fade-in duration-150">
+              <AIVolumeCoach
+                analysis={aiAnalysis}
+                onApplyAction={handleApplyVolumeAction}
+              />
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* TAB 1: COSTRUTTORE OPERATIVO (Settimane, Giorni, Esercizi)         */}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {activeBuilderTab === 'exercises' && (
+            <div className="space-y-5 animate-in fade-in duration-150">
+              {/* Header Rapido Scheda */}
+              <div className="flex items-center justify-between gap-3 px-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-black text-white truncate">
+                    {title || 'Programma Senza Titolo'}
+                  </span>
+                  <span className="text-xs text-slate-400 font-semibold shrink-0">
+                    • {totalWeeks} sett.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveBuilderTab('info')}
+                  className="text-xs font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer shrink-0"
+                >
+                  Modifica Dati & Note
+                </button>
+              </div>
 
           {/* BARRA SETTIMANE */}
           <div className="p-3.5 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-3">
@@ -922,7 +1147,7 @@ ${result.regole_adattamento || '-'}
             </div>
 
             {/* Pillole Settimane */}
-            <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pt-1">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-1">
               {Array.from({ length: totalWeeks }).map((_, wIdx) => {
                 const wNum = wIdx + 1;
                 const isCurrent = activeWeek === wNum;
@@ -965,7 +1190,7 @@ ${result.regole_adattamento || '-'}
           {/* BARRA GIORNI */}
           <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2 overflow-x-auto">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
                 <span className="text-[11px] font-bold text-slate-400 mr-1">Giorni:</span>
                 {daysList.map(dName => {
                   const isCurrentDay = activeDay === dName;
@@ -1506,8 +1731,10 @@ ${result.regole_adattamento || '-'}
               </div>
             )}
           </div>
-
         </div>
+      )}
+
+    </div>
 
         {/* Footer */}
         <div className="p-4 border-t border-[var(--color-panel-border)] bg-slate-900/50 flex justify-end gap-3 rounded-b-2xl">
@@ -1626,6 +1853,52 @@ ${result.regole_adattamento || '-'}
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Finestra Dedicata per Descrizione & Obiettivi */}
+      {isDescriptionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-2xl bg-[#090d14] border border-slate-700/80 rounded-3xl p-6 shadow-2xl space-y-4 relative flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Descrizione, Focus & Obiettivi</h3>
+                  <p className="text-xs text-slate-400">Note generali visibili all'atleta per questo programma</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDescriptionModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-[300px] flex flex-col">
+              <textarea
+                placeholder="Scrivi qui gli obiettivi del mesociclo, indicazioni su carichi, recupero, alimentazione o focus specifici..."
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                rows={12}
+                autoFocus
+                className="w-full flex-1 p-4 bg-slate-900/90 border border-slate-700/70 rounded-2xl text-slate-200 text-sm leading-relaxed focus:outline-none focus:border-[var(--color-primary)] transition-colors resize-none no-scrollbar"
+              />
+            </div>
+
+            <div className="flex items-center justify-end pt-2 border-t border-slate-800/80">
+              <button
+                type="button"
+                onClick={() => setIsDescriptionModalOpen(false)}
+                className="px-5 py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black text-xs font-black rounded-xl transition-all shadow-md cursor-pointer"
+              >
+                Salva & Chiudi Note
+              </button>
+            </div>
           </div>
         </div>
       )}

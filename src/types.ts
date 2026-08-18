@@ -16,6 +16,7 @@ export type NavigationTab =
   | 'atleta_portale'
   | 'schede'
   | 'progressioni'
+  | 'cronologia_allenamenti'
   | 'esercizi'
   | 'messaggi';
 
@@ -80,6 +81,12 @@ export interface AppSettings {
 }
 
 // ─── Tipi per la gestione degli Atleti ────────────────────────────────────────
+
+export type AthleteGender =
+  | 'male'              // Uomo
+  | 'female'            // Donna
+  | 'other'             // Altro
+  | 'prefer_not_to_say'; // Preferisce non indicare
 
 export type AthleteStatus =
   | 'active'      // Abbonamento attivo
@@ -178,6 +185,7 @@ export interface Athlete {
   email: string;
   phone: string;
   dateOfBirth?: string;
+  gender?: AthleteGender;
   fiscalCode?: string;
   address?: string;
   city?: string;
@@ -212,6 +220,7 @@ export interface AthleteFormData {
   email: string;
   phone: string;
   dateOfBirth?: string;
+  gender?: AthleteGender;
   fiscalCode?: string;
   address?: string;
   city?: string;

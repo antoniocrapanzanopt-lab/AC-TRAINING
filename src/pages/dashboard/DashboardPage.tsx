@@ -289,7 +289,7 @@ export const DashboardPage: React.FC = () => {
         formatPrice={formatPrice}
       />
 
-      {/* SEZIONE SPECIALE: KPI & PERFORMANCE RICORRENTI (MRR / ARR / CHURN / ARPU) */}
+      {/* SEZIONE SPECIALE: KPI & FINANCIAL PERFORMANCE (MRR / ARR / CHURN / ARPU) */}
       <div className="p-6 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative group/kpi">
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
           <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-purple-500/5 rounded-full blur-[80px] group-hover/kpi:bg-purple-500/10 transition-all duration-700" />
@@ -297,7 +297,7 @@ export const DashboardPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3 relative z-10">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-[var(--color-primary)]" />
-            <h3 className="text-base font-bold text-white">KPI & Financial Performance (Ricorrenti)</h3>
+            <h3 className="text-base font-bold text-white">KPI & Financial Performance</h3>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -309,168 +309,93 @@ export const DashboardPage: React.FC = () => {
               <HelpCircle className="w-3.5 h-3.5 text-[var(--color-primary)]" />
               <span>Guida Formule</span>
             </button>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg">
-              Algoritmo Puro
-            </span>
           </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 relative z-10 pt-2">
           {/* MRR */}
-          {(() => {
-            const info = getKPIFormulaTooltip('mrr');
-            return (
-              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
-                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-[var(--color-primary)]/5 rounded-full blur-xl group-hover:bg-[var(--color-primary)]/20 transition-colors duration-500"></div>
-                </div>
-                <div className="flex items-center justify-between gap-1 relative z-10">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">MRR</span>
-                  <div className="relative group/tip shrink-0">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute left-0 bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-3 after:border-[5px] after:border-transparent after:border-t-slate-700">
-                      <p className="font-bold text-white">{info.formula}</p>
-                      <p className="text-slate-400">{info.description}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 relative z-10">
-                  <span className="text-lg font-black text-[var(--color-primary)]">{formatPrice(metrics.mrr)}</span>
-                  <span className="text-[9px] text-slate-500 block">Ricavo Mensile Ricorrente</span>
-                </div>
-              </div>
-            );
-          })()}
+          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
+            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-[var(--color-primary)]/5 rounded-full blur-xl group-hover:bg-[var(--color-primary)]/20 transition-colors duration-500"></div>
+            </div>
+            <div className="flex items-center justify-between gap-1 relative z-10">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">MRR</span>
+            </div>
+            <div className="mt-2 relative z-10">
+              <span className="text-lg font-black text-[var(--color-primary)]">{formatPrice(metrics.mrr)}</span>
+              <span className="text-[9px] text-slate-500 block">Ricavo Mensile Ricorrente</span>
+            </div>
+          </div>
 
           {/* ARR */}
-          {(() => {
-            const info = getKPIFormulaTooltip('arr');
-            return (
-              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
-                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-white/5 rounded-full blur-xl group-hover:bg-[var(--color-primary)]/20 transition-colors duration-500"></div>
-                </div>
-                <div className="flex items-center justify-between gap-1 relative z-10">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">ARR</span>
-                  <div className="relative group/tip shrink-0">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:right-3 sm:after:right-auto sm:after:left-1/2 sm:after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
-                      <p className="font-bold text-white">{info.formula}</p>
-                      <p className="text-slate-400">{info.description}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 relative z-10">
-                  <span className="text-lg font-black text-white">{formatPrice(metrics.arr)}</span>
-                  <span className="text-[9px] text-slate-500 block">Proiezione Annuale (MRR×12)</span>
-                </div>
-              </div>
-            );
-          })()}
+          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
+            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-white/5 rounded-full blur-xl group-hover:bg-[var(--color-primary)]/20 transition-colors duration-500"></div>
+            </div>
+            <div className="flex items-center justify-between gap-1 relative z-10">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">ARR</span>
+            </div>
+            <div className="mt-2 relative z-10">
+              <span className="text-lg font-black text-white">{formatPrice(metrics.arr)}</span>
+              <span className="text-[9px] text-slate-500 block">Proiezione Annuale (MRR×12)</span>
+            </div>
+          </div>
 
           {/* Tasso di Incasso */}
-          {(() => {
-            const info = getKPIFormulaTooltip('collectionRate');
-            return (
-              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)] transition-all duration-300">
-                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/20 transition-colors duration-500"></div>
-                </div>
-                <div className="flex items-center justify-between gap-1 relative z-10">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Incasso</span>
-                  <div className="relative group/tip shrink-0">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute left-0 sm:left-1/2 sm:-translate-x-1/2 bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-3 sm:after:left-1/2 sm:after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
-                      <p className="font-bold text-white">{info.formula}</p>
-                      <p className="text-slate-400">{info.description}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 relative z-10">
-                  <span className="text-lg font-black text-emerald-400">{metrics.collectionRate}%</span>
-                  <span className="text-[9px] text-slate-500 block">Saldo su Entrate Previste</span>
-                </div>
-              </div>
-            );
-          })()}
+          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)] transition-all duration-300">
+            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/20 transition-colors duration-500"></div>
+            </div>
+            <div className="flex items-center justify-between gap-1 relative z-10">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Incasso</span>
+            </div>
+            <div className="mt-2 relative z-10">
+              <span className="text-lg font-black text-emerald-400">{metrics.collectionRate}%</span>
+              <span className="text-[9px] text-slate-500 block">Saldo su Entrate Previste</span>
+            </div>
+          </div>
 
           {/* Valore Medio Atleta (ARPU) */}
-          {(() => {
-            const info = getKPIFormulaTooltip('averageValuePerAthlete');
-            return (
-              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-blue-500/50 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)] transition-all duration-300">
-                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-blue-500/5 rounded-full blur-xl group-hover:bg-blue-500/20 transition-colors duration-500"></div>
-                </div>
-                <div className="flex items-center justify-between gap-1 relative z-10">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Valore/Atleta (ARPU)">Valore/Atleta</span>
-                  <div className="relative group/tip shrink-0">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 sm:left-1/2 sm:-translate-x-1/2 sm:right-auto bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:right-3 sm:after:right-auto sm:after:left-1/2 sm:after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
-                      <p className="font-bold text-white">{info.formula}</p>
-                      <p className="text-slate-400">{info.description}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 relative z-10">
-                  <span className="text-lg font-black text-blue-400">{formatPrice(metrics.averageValuePerAthlete)}</span>
-                  <span className="text-[9px] text-slate-500 block">ARPU Mensile Stimato</span>
-                </div>
-              </div>
-            );
-          })()}
+          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-blue-500/50 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)] transition-all duration-300">
+            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-blue-500/5 rounded-full blur-xl group-hover:bg-blue-500/20 transition-colors duration-500"></div>
+            </div>
+            <div className="flex items-center justify-between gap-1 relative z-10">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Valore/Atleta (ARPU)">Valore/Atleta</span>
+            </div>
+            <div className="mt-2 relative z-10">
+              <span className="text-lg font-black text-blue-400">{formatPrice(metrics.averageValuePerAthlete)}</span>
+              <span className="text-[9px] text-slate-500 block">ARPU Mensile Stimato</span>
+            </div>
+          </div>
 
           {/* Tasso di Rinnovo */}
-          {(() => {
-            const info = getKPIFormulaTooltip('renewalRate');
-            return (
-              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-yellow-500/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
-                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-yellow-500/5 rounded-full blur-xl group-hover:bg-yellow-500/20 transition-colors duration-500"></div>
-                </div>
-                <div className="flex items-center justify-between gap-1 relative z-10">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Rinnovo</span>
-                  <div className="relative group/tip shrink-0">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute left-0 sm:left-1/2 sm:-translate-x-1/2 bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:left-3 sm:after:left-1/2 sm:after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-slate-700">
-                      <p className="font-bold text-white">{info.formula}</p>
-                      <p className="text-slate-400">{info.description}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 relative z-10">
-                  <span className="text-lg font-black text-yellow-400">{metrics.renewalRate}%</span>
-                  <span className="text-[9px] text-slate-500 block">Fidelizzazione Contratti</span>
-                </div>
-              </div>
-            );
-          })()}
+          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-yellow-500/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
+            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-yellow-500/5 rounded-full blur-xl group-hover:bg-yellow-500/20 transition-colors duration-500"></div>
+            </div>
+            <div className="flex items-center justify-between gap-1 relative z-10">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Rinnovo</span>
+            </div>
+            <div className="mt-2 relative z-10">
+              <span className="text-lg font-black text-yellow-400">{metrics.renewalRate}%</span>
+              <span className="text-[9px] text-slate-500 block">Fidelizzazione Contratti</span>
+            </div>
+          </div>
 
           {/* Churn Stimato */}
-          {(() => {
-            const info = getKPIFormulaTooltip('estimatedChurn');
-            return (
-              <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-rose-500/50 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)] transition-all duration-300">
-                <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-                  <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-rose-500/5 rounded-full blur-xl group-hover:bg-rose-500/20 transition-colors duration-500"></div>
-                </div>
-                <div className="flex items-center justify-between gap-1 relative z-10">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Churn Rate</span>
-                  <div className="relative group/tip shrink-0">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 cursor-help" />
-                    <div className="absolute right-0 bottom-[calc(100%+8px)] hidden group-hover/tip:block z-[100] w-48 sm:w-56 p-3 rounded-xl bg-slate-950/95 backdrop-blur-md border border-slate-700 text-[10px] text-slate-300 shadow-2xl flex flex-col gap-1 pointer-events-none after:content-[''] after:absolute after:top-full after:right-3 after:border-[5px] after:border-transparent after:border-t-slate-700">
-                      <p className="font-bold text-white">{info.formula}</p>
-                      <p className="text-slate-400">{info.description}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 relative z-10">
-                  <span className="text-lg font-black text-rose-400">{metrics.estimatedChurn}%</span>
-                  <span className="text-[9px] text-slate-500 block">Abbandono Stimato</span>
-                </div>
-              </div>
-            );
-          })()}
+          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-rose-500/50 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)] transition-all duration-300">
+            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-rose-500/5 rounded-full blur-xl group-hover:bg-rose-500/20 transition-colors duration-500"></div>
+            </div>
+            <div className="flex items-center justify-between gap-1 relative z-10">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Churn Rate</span>
+            </div>
+            <div className="mt-2 relative z-10">
+              <span className="text-lg font-black text-rose-400">{metrics.estimatedChurn}%</span>
+              <span className="text-[9px] text-slate-500 block">Abbandono Stimato</span>
+            </div>
+          </div>
         </div>
       </div>
 

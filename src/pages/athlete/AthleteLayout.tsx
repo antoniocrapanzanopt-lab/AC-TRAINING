@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Home, User, Scale } from 'lucide-react';
+import {
+  LogOut,
+  Dumbbell,
+  User,
+  Scale,
+  MessageCircle,
+} from 'lucide-react';
 import { AthleteDashboard } from './AthleteDashboard';
 import { WorkoutPlayer } from './WorkoutPlayer';
 import { AthleteChat } from './AthleteChat';
@@ -11,88 +17,109 @@ import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 export const AthleteLayout: React.FC = () => {
   const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'home' | 'progress' | 'messages' | 'profile'>('home');
-  const [activeWorkout, setActiveWorkout] = useState<{ workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string } | null>(null);
+  const [activeWorkout, setActiveWorkout] = useState<{
+    workout: WorkoutTemplate;
+    exercises: WorkoutExercise[];
+    targetAthleteId?: string;
+  } | null>(null);
 
   if (activeWorkout) {
     return (
-      <WorkoutPlayer 
-        workout={activeWorkout.workout} 
-        exercises={activeWorkout.exercises} 
+      <WorkoutPlayer
+        workout={activeWorkout.workout}
+        exercises={activeWorkout.exercises}
         targetAthleteId={activeWorkout.targetAthleteId}
-        onClose={() => setActiveWorkout(null)} 
+        onClose={() => setActiveWorkout(null)}
       />
     );
   }
 
+  const navItems: {
+    id: 'home' | 'progress' | 'messages' | 'profile';
+    label: string;
+    icon: React.FC<{ className?: string }>;
+  }[] = [
+    { id: 'home', label: 'Oggi', icon: Dumbbell },
+    { id: 'progress', label: 'Progressi', icon: Scale },
+    { id: 'messages', label: 'Messaggi', icon: MessageCircle },
+    { id: 'profile', label: 'Profilo', icon: User },
+  ];
+
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col font-sans">
-      {/* Header */}
-      <header className="bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-[var(--color-primary)] rounded-full flex items-center justify-center text-black font-bold text-sm shadow-md">
-            {user?.name.charAt(0).toUpperCase()}
+    <div className="min-h-[100dvh] bg-[#07090e] text-white flex flex-col font-sans relative overflow-x-hidden select-none touch-manipulation">
+      {/* Glow Ambientale di Sfondo */}
+      <div className="absolute top-0 right-1/4 w-96 h-40 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+
+      {/* ─── HEADER SUPERIORE COMPATTO MOBILE-FIRST ─── */}
+      <header className="bg-slate-950/85 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-30 shadow-md">
+        {/* Profilo / Avatar */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-amber-400 to-amber-500 rounded-xl sm:rounded-2xl flex items-center justify-center text-black font-black text-xs sm:text-sm shadow-md shadow-amber-500/20">
+            {user?.name ? user.name.charAt(0).toUpperCase() : 'A'}
           </div>
           <div>
-            <h1 className="text-sm font-bold leading-tight">Ciao, {user?.name}</h1>
-            <p className="text-[10px] text-[var(--color-primary)] font-medium">Area Atleta</p>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="text-xs sm:text-sm font-black text-white leading-tight tracking-tight">
+                {user?.name || 'Atleta'}
+              </h1>
+              <span className="text-[8px] sm:text-[9px] font-black uppercase px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                Area Atleta
+              </span>
+            </div>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium">Portale di Allenamento</p>
           </div>
         </div>
-        <button 
+
+        {/* Logout Button */}
+        <button
+          type="button"
           onClick={logout}
-          className="p-2 text-slate-400 hover:text-red-400 transition-colors bg-slate-800 rounded-full"
+          className="p-2 text-slate-400 hover:text-rose-400 active:scale-95 transition-all bg-slate-900 hover:bg-slate-800 rounded-xl sm:rounded-2xl border border-slate-800 cursor-pointer shadow-sm"
+          title="Esci dall'account"
         >
           <LogOut className="w-4 h-4" />
         </button>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto p-4 pb-24">
+      {/* ─── MAIN CONTENT AREA (OTTIMIZZATA TOUCH E SCROLL MOBILE) ─── */}
+      <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 pb-6 max-w-5xl w-full mx-auto space-y-4">
         {activeTab === 'home' && (
-          <AthleteDashboard onStartWorkout={(workout, exercises, targetAthleteId) => setActiveWorkout({ workout, exercises, targetAthleteId })} />
+          <AthleteDashboard
+            onStartWorkout={(workout, exercises, targetAthleteId) =>
+              setActiveWorkout({ workout, exercises, targetAthleteId })
+            }
+          />
         )}
-        {activeTab === 'progress' && (
-          <AthleteProgressView />
-        )}
-        {activeTab === 'messages' && (
-          <AthleteChat />
-        )}
-        {activeTab === 'profile' && (
-          <AthleteProfileView />
-        )}
+        {activeTab === 'progress' && <AthleteProgressView />}
+        {activeTab === 'messages' && <AthleteChat />}
+        {activeTab === 'profile' && <AthleteProfileView />}
       </main>
 
-      {/* Bottom Navigation */}
-      <nav className="bg-slate-900/90 backdrop-blur-md border-t border-slate-800 p-2 pb-safe fixed bottom-0 w-full flex justify-around z-20">
-        <button 
-          onClick={() => setActiveTab('home')}
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl min-w-[64px] transition-all ${activeTab === 'home' ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'text-slate-400'}`}
-        >
-          <Home className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Oggi</span>
-        </button>
-        <button 
-          onClick={() => setActiveTab('progress')}
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl min-w-[64px] transition-all ${activeTab === 'progress' ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'text-slate-400'}`}
-        >
-          <Scale className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Progressi</span>
-        </button>
-        <button 
-          onClick={() => setActiveTab('messages')}
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl min-w-[64px] transition-all ${activeTab === 'messages' ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'text-slate-400'}`}
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>
-          <span className="text-[10px] font-medium">Messaggi</span>
-        </button>
-        <button 
-          onClick={() => setActiveTab('profile')}
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl min-w-[64px] transition-all ${activeTab === 'profile' ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'text-slate-400'}`}
-        >
-          <User className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Profilo</span>
-        </button>
-      </nav>
+      {/* ─── FOOTER BAR DI NAVIGAZIONE MOBILE-FIRST (NON SOVRAPPOSTA) ─── */}
+      <footer className="sticky bottom-0 z-30 bg-slate-950/95 backdrop-blur-2xl border-t border-slate-800/80 px-3 py-2 sm:py-2.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-center justify-center shadow-[0_-10px_30px_rgba(0,0,0,0.6)]">
+        <nav className="w-full sm:w-auto max-w-md bg-slate-900/90 border border-slate-800/90 p-1 sm:p-1.5 rounded-2xl flex items-center justify-around sm:justify-center sm:gap-2 shadow-inner">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                className={`flex-1 sm:flex-initial flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-1.5 sm:py-2 px-2 sm:px-5 rounded-xl text-[10px] sm:text-xs font-bold transition-all cursor-pointer select-none active:scale-95 min-h-[44px] ${
+                  isActive
+                    ? 'bg-amber-500 text-black font-black shadow-md shadow-amber-500/25 scale-[1.02]'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Icon className={`w-4 h-4 sm:w-4 sm:h-4 ${isActive ? 'stroke-[2.5]' : ''}`} />
+                <span className={isActive ? 'font-black' : 'font-semibold'}>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </footer>
     </div>
   );
 };
-

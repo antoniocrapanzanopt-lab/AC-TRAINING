@@ -1,54 +1,109 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Activity,
   Dumbbell,
-  Flame,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Calendar,
+  Filter,
+  ShieldAlert,
+  Sparkles,
+  TrendingUp,
+  Clock,
+  Layers,
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { useWorkouts } from '../../context/WorkoutsContext';
+import { useApp } from '../../context/AppContext';
 
 interface ActivityTabProps {
   athleteId: string;
   athleteName: string;
 }
 
-interface WorkoutSessionDemo {
+export interface WorkoutExerciseSetLog {
+  setNumber: number;
+  reps: number;
+  weightKg: number;
+  rpe?: number;
+}
+
+export interface WorkoutExerciseLogGroup {
+  name: string;
+  sets: WorkoutExerciseSetLog[];
+  notes?: string;
+  totalVolumeKg: number;
+}
+
+export interface DetailedWorkoutSession {
   id: string;
+  workoutId?: string;
   workoutTitle: string;
-  weekNumber?: number;
-  dayName?: string;
-  date: string;
+  weekNumber: number;
+  totalWeeks: number;
+  dayName: string;
+  startTime: string;
+  endTime: string;
+  dateFormatted: string;
   durationMinutes: number;
   rpe: number;
   notes?: string;
-  exercises: {
-    name: string;
-    sets: { setNumber: number; reps: number; weightKg: number }[];
-    notes?: string;
-  }[];
+  totalVolumeKg: number;
+  hasPainAlert: boolean;
+  painAlertReason?: string;
+  isHighRpe: boolean;
+  exercises: WorkoutExerciseLogGroup[];
 }
 
-import { supabase } from '../../lib/supabase';
-
 export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName }) => {
-  const [completedSessions, setCompletedSessions] = useState<WorkoutSessionDemo[]>([]);
+  const { allAssignedWorkouts } = useWorkouts();
+  const { setActiveTab: setAppActiveTab } = useApp();
+
+  const [completedSessions, setCompletedSessions] = useState<DetailedWorkoutSession[]>([]);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeWorkoutDaysCount, setActiveWorkoutDaysCount] = useState<number>(3);
 
-  React.useEffect(() => {
+  // Filtri
+  const [periodFilter, setPeriodFilter] = useState<'all' | '30d' | '90d'>('all');
+  const [programFilter, setProgramFilter] = useState<string>('all');
+  const [alertFilter, setAlertFilter] = useState<'all' | 'pain_only' | 'high_rpe'>('all');
+
+  const isPainText = (text: string): boolean => {
+    return /dolore|fastidio|male|schiena|lombare|spalla|ginocchio|gomito|anca|collo|polso|caviglia|pizzico|infortunio|strappo|infiammazione|tendine|contrattura|bloccato|dolor|articolare|rpe 10/i.test(
+      text || ''
+    );
+  };
+
+  // Scheda Attiva Assegnata
+  const assignedWorkout = useMemo(() => {
+    return allAssignedWorkouts.find((a) => a.athlete_id === athleteId && a.is_active);
+  }, [allAssignedWorkouts, athleteId]);
+
+  const activeWorkoutTitle = assignedWorkout?.workout?.title || 'Scheda Personalizzata';
+  const totalWeeks = assignedWorkout?.workout?.total_weeks || 4;
+
+  useEffect(() => {
     const fetchSessions = async () => {
       setLoading(true);
       try {
-        // Fetch scheda attiva per l'atleta come fallback se il titolo è placeholder (es: "aaaa")
-        const { data: activeAssignments } = await supabase
-          .from('athlete_assigned_workouts')
-          .select('workout_id, workouts ( title )')
-          .eq('athlete_id', athleteId)
-          .eq('is_active', true);
+        // 1. Recupera giorni unici del programma attivo se presente
+        if (assignedWorkout?.workout_id) {
+          const { data: exData } = await supabase
+            .from('workout_exercises')
+            .select('day_name')
+            .eq('workout_id', assignedWorkout.workout_id);
 
-        const activeWorkoutTitle = (activeAssignments?.[0]?.workouts as unknown as {title: string} | null)?.title;
+          if (exData && exData.length > 0) {
+            const uniqueDays = new Set(exData.map((e: any) => e.day_name).filter(Boolean));
+            if (uniqueDays.size > 0) {
+              setActiveWorkoutDaysCount(uniqueDays.size);
+            }
+          }
+        }
 
+        // 2. Recupera sessioni dell'atleta
         const { data, error } = await supabase
           .from('workout_sessions')
           .select(`
@@ -58,7 +113,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
             rpe,
             notes,
             workout_id,
-            workouts ( title ),
+            workouts ( id, title, total_weeks ),
             exercise_logs (
               set_number,
               reps_completed,
@@ -74,24 +129,38 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
         if (error) throw error;
 
         if (data) {
-          const mapped: WorkoutSessionDemo[] = data.map((session: any) => {
-            // Calcolo durata
-            const start = new Date(session.start_time);
+          // Ordiniamo prima in ordine crescente per stimare settimana/giorno se non registrati
+          const chronoSorted = [...data].sort(
+            (a, b) => new Date(a.end_time).getTime() - new Date(b.end_time).getTime()
+          );
+
+          const daysPerWeek = activeWorkoutDaysCount || 3;
+
+          const mapped: DetailedWorkoutSession[] = chronoSorted.map((session: any, idx: number) => {
+            const start = new Date(session.start_time || session.end_time);
             const end = new Date(session.end_time);
             const diffMs = end.getTime() - start.getTime();
             const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
 
-            // Titolo Scheda con fallback se placeholder
             const rawTitle = session.workouts?.title;
-            const isPlaceholder = !rawTitle || rawTitle.trim() === '' || rawTitle.toLowerCase() === 'aaaa' || rawTitle.toLowerCase() === 'allenamento' || rawTitle.toLowerCase() === 'allenamento senza nome';
-            const finalTitle = isPlaceholder ? (activeWorkoutTitle || 'Scheda Personalizzata') : rawTitle;
+            const isPlaceholder =
+              !rawTitle ||
+              rawTitle.trim() === '' ||
+              rawTitle.toLowerCase() === 'aaaa' ||
+              rawTitle.toLowerCase() === 'allenamento' ||
+              rawTitle.toLowerCase() === 'allenamento senza nome';
+            const finalTitle = isPlaceholder ? activeWorkoutTitle : rawTitle;
+            const sessionTotalWeeks = session.workouts?.total_weeks || totalWeeks;
 
-            // Raggruppiamo i log per nome esercizio e troviamo settimana/giorno
-            const exMap = new Map<string, { sets: any[]; notesSet: Set<string> }>();
+            // Raggruppiamo i log per nome esercizio e calcoliamo il volume
+            const exMap = new Map<string, { sets: WorkoutExerciseSetLog[]; notesSet: Set<string> }>();
             const logs = session.exercise_logs || [];
             let detectedWeek: number | undefined = undefined;
             let detectedDay: string | undefined = undefined;
-            
+            let sessionVolumeKg = 0;
+            let hasPainInLogs = false;
+            const painNotesList: string[] = [];
+
             logs.forEach((log: any) => {
               if (log.workout_exercises?.week_number && !detectedWeek) {
                 detectedWeek = log.workout_exercises.week_number;
@@ -100,40 +169,82 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
                 detectedDay = log.workout_exercises.day_name;
               }
 
-              const exName = log.workout_exercises?.name || 'Esercizio Sconosciuto';
+              const exName = log.workout_exercises?.name || 'Esercizio';
               if (!exMap.has(exName)) {
                 exMap.set(exName, { sets: [], notesSet: new Set<string>() });
               }
               const entry = exMap.get(exName)!;
+
+              const reps = log.reps_completed || 0;
+              const weight = log.weight_kg || 0;
+              sessionVolumeKg += reps * weight;
+
               entry.sets.push({
-                setNumber: log.set_number,
-                reps: log.reps_completed || 0,
-                weightKg: log.weight_kg || 0
+                setNumber: log.set_number || entry.sets.length + 1,
+                reps,
+                weightKg: weight,
               });
+
               if (log.notes) {
                 entry.notesSet.add(log.notes);
+                if (isPainText(log.notes)) {
+                  hasPainInLogs = true;
+                  painNotesList.push(`${exName}: "${log.notes}"`);
+                }
               }
             });
 
-            const exercises = Array.from(exMap.entries()).map(([name, { sets, notesSet }]) => {
-              sets.sort((a, b) => a.setNumber - b.setNumber);
-              const notes = Array.from(notesSet).join(' | ');
-              return { name, sets, notes };
-            });
+            // Se week/day non erano presenti nel log esercizio, li calcoliamo dalla cronologia
+            const computedWeek = detectedWeek || Math.min(sessionTotalWeeks, Math.floor(idx / daysPerWeek) + 1);
+            const dayLetters = ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
+            const computedDay = detectedDay || dayLetters[idx % daysPerWeek] || `Seduta ${(idx % daysPerWeek) + 1}`;
+
+            const exercises: WorkoutExerciseLogGroup[] = Array.from(exMap.entries()).map(
+              ([name, { sets, notesSet }]) => {
+                sets.sort((a, b) => a.setNumber - b.setNumber);
+                const notes = Array.from(notesSet).join(' | ');
+                const totalVolumeKg = sets.reduce((sum, s) => sum + s.reps * s.weightKg, 0);
+                return { name, sets, notes, totalVolumeKg };
+              }
+            );
+
+            // Controllo alert su questionario di fine workout
+            const hasPainInSessionNotes = isPainText(session.notes || '');
+            if (hasPainInSessionNotes && session.notes) {
+              painNotesList.push(`Questionario: "${session.notes}"`);
+            }
+
+            const hasPainAlert = hasPainInLogs || hasPainInSessionNotes;
+            const rpeVal = Number(session.rpe) || 0;
+            const isHighRpe = rpeVal >= 8.5;
 
             return {
               id: session.id,
+              workoutId: session.workout_id || session.workouts?.id,
               workoutTitle: finalTitle,
-              weekNumber: detectedWeek || 1,
-              dayName: detectedDay || 'Giorno A',
-              date: session.end_time.slice(0, 10),
+              weekNumber: computedWeek,
+              totalWeeks: sessionTotalWeeks,
+              dayName: computedDay,
+              startTime: session.start_time,
+              endTime: session.end_time,
+              dateFormatted: new Date(session.end_time).toLocaleDateString('it-IT', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+              }),
               durationMinutes,
-              rpe: session.rpe || 0,
+              rpe: rpeVal,
               notes: session.notes,
-              exercises
+              totalVolumeKg: sessionVolumeKg,
+              hasPainAlert,
+              painAlertReason: painNotesList.join(' • '),
+              isHighRpe,
+              exercises,
             };
           });
-          
+
+          // Riordiniamo dalla più recente alla più vecchia per il feed
+          mapped.reverse();
           setCompletedSessions(mapped);
           if (mapped.length > 0) {
             setExpandedSessionId(mapped[0].id);
@@ -149,13 +260,92 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
     if (athleteId) {
       fetchSessions();
     }
-  }, [athleteId]);
+  }, [athleteId, allAssignedWorkouts, assignedWorkout, activeWorkoutTitle, totalWeeks, activeWorkoutDaysCount]);
 
-  // Calcolo KPI di Rendimento
+  // Calcolo avanzamento Programma Attivo (Schede fatte vs rimanenti)
+  const activeProgramProgress = useMemo(() => {
+    if (!assignedWorkout) return null;
+
+    const daysPerWeek = activeWorkoutDaysCount || 3;
+    const totalPlannedSessions = totalWeeks * daysPerWeek;
+
+    // Sessioni completate per questa scheda attiva
+    const completedForThisWorkout = completedSessions.filter(
+      (s) => s.workoutId === assignedWorkout.workout_id || s.workoutTitle === activeWorkoutTitle
+    ).length;
+
+    const remainingSessions = Math.max(0, totalPlannedSessions - completedForThisWorkout);
+    const progressPercent = Math.min(
+      100,
+      Math.round((completedForThisWorkout / Math.max(1, totalPlannedSessions)) * 100)
+    );
+    const currentWeekEstimated = Math.min(
+      totalWeeks,
+      Math.floor(completedForThisWorkout / daysPerWeek) + 1
+    );
+
+    return {
+      title: activeWorkoutTitle,
+      totalWeeks,
+      daysPerWeek,
+      totalPlannedSessions,
+      completedSessionsCount: completedForThisWorkout,
+      remainingSessions,
+      progressPercent,
+      currentWeekEstimated,
+    };
+  }, [assignedWorkout, activeWorkoutTitle, totalWeeks, activeWorkoutDaysCount, completedSessions]);
+
+  // Lista Programmi disponibili per il filtro
+  const availablePrograms = useMemo(() => {
+    const set = new Set<string>();
+    completedSessions.forEach((s) => {
+      if (s.workoutTitle) set.add(s.workoutTitle);
+    });
+    return Array.from(set);
+  }, [completedSessions]);
+
+  // Filtraggio delle Sessioni
+  const filteredSessions = useMemo(() => {
+    const now = new Date().getTime();
+
+    return completedSessions.filter((s) => {
+      // 1. Filtro Periodo
+      if (periodFilter === '30d') {
+        const diffMs = now - new Date(s.endTime).getTime();
+        if (diffMs > 30 * 24 * 60 * 60 * 1000) return false;
+      } else if (periodFilter === '90d') {
+        const diffMs = now - new Date(s.endTime).getTime();
+        if (diffMs > 90 * 24 * 60 * 60 * 1000) return false;
+      }
+
+      // 2. Filtro Programma
+      if (programFilter !== 'all' && s.workoutTitle !== programFilter) {
+        return false;
+      }
+
+      // 3. Filtro Alert
+      if (alertFilter === 'pain_only' && !s.hasPainAlert) {
+        return false;
+      }
+      if (alertFilter === 'high_rpe' && !s.isHighRpe) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [completedSessions, periodFilter, programFilter, alertFilter]);
+
+  // Metriche Riassuntive Calcolate
   const metrics = useMemo(() => {
-    const totalSessions = completedSessions.length;
-    const totalMinutes = completedSessions.reduce((acc, s) => acc + s.durationMinutes, 0);
-    const avgRpe = totalSessions > 0 ? (completedSessions.reduce((acc, s) => acc + s.rpe, 0) / totalSessions).toFixed(1) : '0.0';
+    const totalSessions = filteredSessions.length;
+    const totalMinutes = filteredSessions.reduce((acc, s) => acc + s.durationMinutes, 0);
+    const totalTonnageKg = filteredSessions.reduce((acc, s) => acc + s.totalVolumeKg, 0);
+    const avgRpe =
+      totalSessions > 0
+        ? (filteredSessions.reduce((acc, s) => acc + s.rpe, 0) / totalSessions).toFixed(1)
+        : '0.0';
+    const totalPainAlerts = filteredSessions.filter((s) => s.hasPainAlert).length;
 
     const hours = Math.floor(totalMinutes / 60);
     const mins = totalMinutes % 60;
@@ -163,166 +353,416 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
     return {
       totalSessions,
       totalDurationFormatted: `${hours}h ${mins}m`,
+      totalTonnageFormatted: `${(totalTonnageKg / 1000).toFixed(1)} t`,
+      totalTonnageExactKg: totalTonnageKg,
       avgRpe,
-      streakWeeks: totalSessions > 0 ? 1 : 0, // Placeholder logico
+      totalPainAlerts,
     };
-  }, [completedSessions]);
+  }, [filteredSessions]);
+
+  const toggleExpand = (id: string) => {
+    setExpandedSessionId((prev) => (prev === id ? null : id));
+  };
 
   if (loading) {
     return (
-      <div className="flex justify-center p-10 text-[var(--color-primary)]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div>
+      <div className="flex justify-center p-12 text-[var(--color-primary)]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header Sezione */}
+      {/* ─── 1. HEADER SEZIONE ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-black text-white flex items-center gap-2">
-            <Activity className="w-5 h-5 text-[var(--color-primary)]" /> Registro Attività & Allenamenti Svolti
+            <Activity className="w-5 h-5 text-[var(--color-primary)]" /> Cronologia Allenamenti Svolti
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Monitora le sessioni eseguite, la frequenza ed i carichi sollevati per {athleteName}.
+            Registro storico delle sessioni, carichi sollevati, intensità e avanzamento per {athleteName}.
           </p>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setAppActiveTab('schede')}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-slate-300 hover:text-white border border-slate-800 transition-colors cursor-pointer self-start sm:self-auto"
+        >
+          <Dumbbell className="w-4 h-4 text-amber-400" />
+          <span>Gestisci Schede</span>
+        </button>
       </div>
 
-      {/* KPI Cards di Rendimento */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ─── 2. HERO BOX AVANZAMENTO PROGRAMMA ATTIVO (SCHEDE FATTE / RIMANGONO / SETTIMANA) ─── */}
+      {activeProgramProgress && (
+        <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-950 to-[#0c1018] border border-amber-500/30 shadow-2xl space-y-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+
+          {/* Testata Scheda Attiva */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-md shrink-0">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Avanzamento Programma Attivo
+                </span>
+                <h4 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-2">
+                  <span>{activeProgramProgress.title}</span>
+                  <span className="text-xs font-bold text-amber-400 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                    Settimana {activeProgramProgress.currentWeekEstimated} di {activeProgramProgress.totalWeeks}
+                  </span>
+                </h4>
+              </div>
+            </div>
+
+            {/* Indicatori Schede Fatte / Rimangono */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="px-3.5 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-baseline gap-1.5">
+                <span className="text-xs text-slate-400 font-bold">Eseguite:</span>
+                <span className="text-sm font-black text-emerald-400 font-mono">
+                  {activeProgramProgress.completedSessionsCount}
+                </span>
+                <span className="text-xs text-slate-500">/ {activeProgramProgress.totalPlannedSessions}</span>
+              </div>
+
+              <div className="px-3.5 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-baseline gap-1.5">
+                <span className="text-xs text-slate-400 font-bold">Rimangono:</span>
+                <span className="text-sm font-black text-amber-400 font-mono">
+                  {activeProgramProgress.remainingSessions}
+                </span>
+                <span className="text-xs text-slate-500">sedute</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Barra di Avanzamento del Mesociclo */}
+          <div className="space-y-1.5 relative z-10">
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className="text-slate-300 flex items-center gap-1.5">
+                <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+                <span>Progresso Mesociclo ({activeProgramProgress.daysPerWeek} sedute/settimana)</span>
+              </span>
+              <span className="text-amber-400 font-mono">{activeProgramProgress.progressPercent}% completato</span>
+            </div>
+
+            <div className="w-full h-2.5 rounded-full bg-slate-800/80 overflow-hidden p-0.5 border border-slate-700/50">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400 shadow-[0_0_12px_rgba(245,158,11,0.5)] transition-all duration-700"
+                style={{ width: `${Math.max(4, activeProgramProgress.progressPercent)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 3. KPI METRICHE RIASSUNTIVE ─── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* 1. Sessioni Completate */}
-        <div className="p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Sessioni Mese</span>
+        <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 shadow-xl space-y-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+            Sessioni Eseguite
+          </span>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-white">{metrics.totalSessions}</span>
+            <span className="text-2xl font-black text-white font-mono">{metrics.totalSessions}</span>
             <span className="text-xs text-emerald-400 font-bold flex items-center gap-0.5">
               <CheckCircle2 className="w-3.5 h-3.5" /> completate
             </span>
           </div>
         </div>
 
-        {/* 2. Tempo Totale in Allenamento */}
-        <div className="p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tempo Allenato</span>
+        {/* 2. Tonnellaggio Totale */}
+        <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 shadow-xl space-y-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+            Volume Totale Sollevato
+          </span>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-amber-400">{metrics.totalDurationFormatted}</span>
-            <span className="text-xs text-slate-500 font-semibold">totali</span>
+            <span className="text-2xl font-black text-amber-400 font-mono">
+              {metrics.totalTonnageExactKg > 0 ? metrics.totalTonnageFormatted : '0 kg'}
+            </span>
+            <span className="text-xs text-slate-500 font-semibold">
+              ({metrics.totalTonnageExactKg.toLocaleString()} kg)
+            </span>
           </div>
         </div>
 
         {/* 3. Intensità RPE Media */}
-        <div className="p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Intensità RPE Media</span>
+        <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 shadow-xl space-y-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+            RPE Medio Percepito
+          </span>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-sky-400">{metrics.avgRpe}</span>
+            <span className="text-2xl font-black text-sky-400 font-mono">{metrics.avgRpe}</span>
             <span className="text-xs text-slate-500 font-semibold">su 10</span>
           </div>
         </div>
 
-        {/* 4. Streak Costanza */}
-        <div className="p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Costanza / Streak</span>
+        {/* 4. Segnalazioni Fastidi */}
+        <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 shadow-xl space-y-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+            Segnalazioni Dolori
+          </span>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-orange-400 flex items-center gap-1">
-              <Flame className="w-5 h-5 text-orange-500" /> {metrics.streakWeeks} sett.
+            <span
+              className={`text-2xl font-black font-mono ${
+                metrics.totalPainAlerts > 0 ? 'text-rose-400' : 'text-slate-400'
+              }`}
+            >
+              {metrics.totalPainAlerts}
             </span>
+            <span className="text-xs text-slate-500 font-semibold">sessioni con alert</span>
           </div>
         </div>
       </div>
 
-      {/* Registro Sessioni & Carichi */}
-      <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div>
-            <h4 className="text-sm font-bold text-white flex items-center gap-2">
-              <Dumbbell className="w-4 h-4 text-[var(--color-primary)]" /> Cronologia Schede Eseguite dall'Atleta
-            </h4>
-            <p className="text-xs text-slate-400">Dettaglio per esercizio con serie, ripetizioni e kg reali sollevati</p>
-          </div>
-          <span className="text-xs font-bold text-slate-400 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-            {completedSessions.length} sessioni registrate
+      {/* ─── 4. FILTRI INTERATTIVI ─── */}
+      <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="font-bold text-slate-400 flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5 text-amber-400" /> Periodo:
           </span>
+          <button
+            type="button"
+            onClick={() => setPeriodFilter('all')}
+            className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              periodFilter === 'all'
+                ? 'bg-amber-500 text-black shadow-md'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            Tutto lo Storico
+          </button>
+          <button
+            type="button"
+            onClick={() => setPeriodFilter('30d')}
+            className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              periodFilter === '30d'
+                ? 'bg-amber-500 text-black shadow-md'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            Ultimi 30 Giorni
+          </button>
+          <button
+            type="button"
+            onClick={() => setPeriodFilter('90d')}
+            className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+              periodFilter === '90d'
+                ? 'bg-amber-500 text-black shadow-md'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            Ultimi 90 Giorni
+          </button>
         </div>
 
-        <div className="space-y-3">
-          {completedSessions.map(session => {
+        {/* Filtro Programma & Alert */}
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          {availablePrograms.length > 1 && (
+            <select
+              value={programFilter}
+              onChange={(e) => setProgramFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-xs font-bold focus:outline-none focus:border-amber-500"
+            >
+              <option value="all">Tutti i Programmi</option>
+              {availablePrograms.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <select
+            value={alertFilter}
+            onChange={(e) => setAlertFilter(e.target.value as any)}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-xs font-bold focus:outline-none focus:border-amber-500"
+          >
+            <option value="all">Tutte le Sessioni</option>
+            <option value="pain_only">⚠️ Solo con Segnalazioni Dolori</option>
+            <option value="high_rpe">🔥 Solo RPE Elevato (≥ 8.5)</option>
+          </select>
+        </div>
+      </div>
+
+      {/* ─── 5. TIMELINE CRONOLOGICA DELLE SEDUTE CON GIORNO & SETTIMANA ─── */}
+      <div className="space-y-4">
+        {filteredSessions.length === 0 ? (
+          /* EMPTY STATE DEDICATO */
+          <div className="p-12 rounded-3xl bg-slate-950/60 border border-dashed border-slate-800 text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto shadow-sm">
+              <Dumbbell className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-base font-black text-white">Nessuna sessione registrata</h4>
+              <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
+                L'atleta non ha ancora registrato allenamenti per i filtri selezionati. Le sessioni eseguite dal portale appariranno qui con serie e carichi reali.
+              </p>
+            </div>
+          </div>
+        ) : (
+          filteredSessions.map((session) => {
             const isExpanded = expandedSessionId === session.id;
 
             return (
               <div
                 key={session.id}
-                className="p-4 rounded-xl bg-slate-900 border border-slate-800 transition-all space-y-3"
+                className={`rounded-3xl border transition-all overflow-hidden ${
+                  session.hasPainAlert
+                    ? 'bg-slate-950/90 border-rose-500/40 shadow-lg shadow-rose-500/5'
+                    : 'bg-slate-950/90 border-slate-800 hover:border-slate-700 shadow-xl'
+                }`}
               >
+                {/* Header Seduta Cliccabile */}
                 <div
-                  onClick={() => setExpandedSessionId(isExpanded ? null : session.id)}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer select-none"
+                  onClick={() => toggleExpand(session.id)}
+                  className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer select-none group"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0">
+                  <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                        session.hasPainAlert
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                          : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                      }`}
+                    >
                       <Dumbbell className="w-5 h-5" />
                     </div>
-                    <div>
+
+                    <div className="space-y-1.5 min-w-0">
+                      {/* Riga 1: Giorno + Badge Settimana + Nome Scheda + Alert */}
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h5 className="text-sm font-black text-white">{session.workoutTitle}</h5>
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30">
-                          Settimana {session.weekNumber || 1}{session.dayName ? ` • ${session.dayName}` : ''}
+                        <h4 className="text-sm sm:text-base font-black text-white group-hover:text-amber-300 transition-colors">
+                          {session.dayName}
+                        </h4>
+
+                        {/* BADGE SETTIMANA ESPLICITO */}
+                        <span className="text-xs font-black text-amber-400 bg-amber-500/15 px-2.5 py-0.5 rounded-lg border border-amber-500/30 flex items-center gap-1 font-mono">
+                          <Calendar className="w-3 h-3 text-amber-400" />
+                          Settimana {session.weekNumber} di {session.totalWeeks}
                         </span>
+
+                        <span className="text-[11px] font-bold text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                          {session.workoutTitle}
+                        </span>
+
+                        {session.hasPainAlert && (
+                          <span className="text-[10px] font-black text-rose-300 bg-rose-500/20 px-2 py-0.5 rounded-full border border-rose-500/40 flex items-center gap-1">
+                            <ShieldAlert className="w-3 h-3 text-rose-400" /> Fastidio Segnalato
+                          </span>
+                        )}
                       </div>
-                      <span className="text-xs text-slate-400">
-                        Eseguito il {new Date(session.date).toLocaleDateString('it-IT')} • Durata: {session.durationMinutes} min
-                      </span>
+
+                      {/* Riga 2: Data, Durata, Volume e RPE */}
+                      <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap font-medium">
+                        <span className="text-slate-300 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          {session.dateFormatted}
+                        </span>
+                        <span>•</span>
+                        <span className="text-emerald-400 font-bold">
+                          ✓ {session.durationMinutes} min
+                        </span>
+                        {session.totalVolumeKg > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="text-slate-200 font-mono font-bold">
+                              {session.totalVolumeKg.toLocaleString()} kg sollevati
+                            </span>
+                          </>
+                        )}
+                        {session.rpe ? (
+                          <>
+                            <span>•</span>
+                            <span className="text-sky-300 font-bold bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
+                              RPE {session.rpe}/10
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400">
-                      RPE: {session.rpe}/10
+                  <div className="flex items-center gap-3 self-end md:self-center shrink-0">
+                    <span className="text-xs text-slate-400 font-bold">
+                      {session.exercises.length} esercizi svolti
                     </span>
-                    <button className="p-1 text-slate-400 hover:text-white">
-                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
+                    <div className="p-1 text-slate-400 group-hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
+                      {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    </div>
                   </div>
                 </div>
 
-                {/* Dettaglio Esercizi (Espandibile) */}
+                {/* Dettagli Espansi Seduta */}
                 {isExpanded && (
-                  <div className="pt-3 border-t border-slate-800/80 space-y-3">
+                  <div className="px-5 pb-5 pt-1 border-t border-slate-800/80 space-y-4 animate-in fade-in duration-150">
+                    {/* Alert / Questionario Note */}
                     {session.notes && (
-                      <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-xs text-slate-300">
-                        <strong className="text-amber-400">Note Atleta:</strong> "{session.notes}"
+                      <div
+                        className={`p-3.5 rounded-2xl border text-xs space-y-1 ${
+                          session.hasPainAlert
+                            ? 'bg-rose-950/20 border-rose-500/30 text-rose-200'
+                            : 'bg-slate-900 border border-slate-800 text-slate-200'
+                        }`}
+                      >
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" /> Questionario / Note Sessione:
+                        </span>
+                        <p className="leading-relaxed font-medium italic">
+                          "{session.notes}"
+                        </p>
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {session.exercises.map((ex, i) => (
-                        <div key={i} className="p-3 rounded-lg bg-slate-950/40 border border-slate-800 space-y-2">
-                          <span className="text-xs font-bold text-white block">{ex.name}</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {ex.sets.map((set, setIdx) => (
-                              <span
-                                key={setIdx}
-                                className="text-[11px] font-semibold px-2 py-1 rounded bg-slate-900 border border-slate-800 text-slate-300"
-                              >
-                                Set {set.setNumber}: <strong className="text-amber-400">{set.reps} reps</strong> @ {set.weightKg}kg
+                    {/* Tabella Dettaglio Esercizi */}
+                    <div className="space-y-3">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                        Dettaglio Esercizi & Carichi:
+                      </span>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {session.exercises.map((ex, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-xs font-black text-white">{ex.name}</h5>
+                              <span className="text-[10px] font-mono text-slate-400">
+                                {ex.totalVolumeKg > 0 ? `${ex.totalVolumeKg.toLocaleString()} kg tot` : ''}
                               </span>
-                            ))}
-                          </div>
-                          {ex.notes && (
-                            <div className="mt-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 font-medium leading-relaxed">
-                              💬 <strong>Feedback / Note:</strong> {ex.notes}
                             </div>
-                          )}
-                        </div>
-                      ))}
+
+                            {/* Serie */}
+                            <div className="flex flex-wrap gap-1.5">
+                              {ex.sets.map((s, sIdx) => (
+                                <span
+                                  key={sIdx}
+                                  className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-bold text-slate-200 font-mono"
+                                >
+                                  S{s.setNumber}: {s.reps}r @ {s.weightKg}kg
+                                </span>
+                              ))}
+                            </div>
+
+                            {ex.notes && (
+                              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/60 italic">
+                                Nota: "{ex.notes}"
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
             );
-          })}
-        </div>
+          })
+        )}
       </div>
     </div>
   );

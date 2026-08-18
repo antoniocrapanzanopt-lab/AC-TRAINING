@@ -28,8 +28,27 @@ interface ExerciseModalProps {
   onClose: () => void;
 }
 
-const CATEGORIES: ExerciseCategory[] = ['Petto', 'Dorso', 'Gambe', 'Spalle', 'Bicipiti', 'Tricipiti', 'Addominali', 'Full Body', 'Cardio', 'Altro'];
-const EQUIPMENTS: ExerciseEquipment[] = ['Bilanciere', 'Manubri', 'Macchina', 'Cavi', 'Corpo Libero', 'Kettlebell', 'Elastici', 'Altro'];
+const CATEGORIES: ExerciseCategory[] = [
+  'Petto',
+  'Dorso',
+  'Spalle',
+  'Quadricipiti',
+  'Femorali',
+  'Glutei',
+  'Polpacci',
+  'Bicipiti',
+  'Tricipiti',
+  'Avambracci',
+  'Addome',
+  'Core',
+  'Lombari',
+  'Full Body',
+  'Conditioning',
+  'Altro',
+];
+const EQUIPMENTS: ExerciseEquipment[] = [
+  'Bilanciere', 'Manubri', 'Macchina', 'Cavi', 'Corpo Libero', 'Multipower', 'Kettlebell', 'Elastici', 'Trap Bar', 'Slitta', 'Cardio Machine', 'Altro',
+];
 const EXERCISE_TYPES: ExerciseType[] = ['Ipertrofia', 'Forza', 'Resistenza', 'Potenza', 'Mobilità'];
 const BILATERALITIES: Bilaterality[] = ['Bilaterale', 'Unilaterale'];
 const MOVEMENT_PLANES: MovementPlane[] = ['Sagittale', 'Frontale (scapolare)', 'Frontale', 'Trasverso', 'Multi-piano'];
@@ -62,6 +81,19 @@ const selectClass = "w-full px-3.5 py-2.5 bg-[#0f141c] border border-slate-700/6
 const inputClass = "w-full px-3.5 py-2.5 bg-[#0f141c] border border-slate-700/60 rounded-xl text-white text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all placeholder:text-slate-600 font-medium";
 const textareaClass = "w-full px-3.5 py-2.5 bg-[#0f141c] border border-slate-700/60 rounded-xl text-white text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all resize-none placeholder:text-slate-600 font-medium";
 
+const toArray = (val: unknown): string[] => {
+  if (Array.isArray(val)) {
+    const filtered = val.filter((x): x is string => typeof x === 'string');
+    return filtered.length > 0 ? filtered : [''];
+  }
+  if (typeof val === 'string' && val.trim() !== '') return [val.trim()];
+  return [''];
+};
+
+const safeSome = (arr: unknown): boolean => {
+  return Array.isArray(arr) && arr.some(c => typeof c === 'string' && c.trim() !== '');
+};
+
 export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, onClose }) => {
   const { createExercise, updateExercise } = useExercises();
   const { showSuccess, showError } = useToast();
@@ -86,20 +118,28 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
   const [gradiLiberta, setGradiLiberta] = useState<number | ''>(initialExercise?.gradi_liberta || '');
 
   // ── Tab 1: Muscoli ───────────────────────────────────────────────────────
-  const [muscoli, setMuscoli] = useState<MuscleInvolvement[]>(initialExercise?.muscoli_coinvolti || []);
+  const [muscoli, setMuscoli] = useState<MuscleInvolvement[]>(
+    Array.isArray(initialExercise?.muscoli_coinvolti) ? initialExercise.muscoli_coinvolti : []
+  );
   const [newMuscoloName, setNewMuscoloName] = useState('');
   const [newMuscoloRuolo, setNewMuscoloRuolo] = useState<MuscleRole>('Target');
   const [newMuscoloPerc, setNewMuscoloPerc] = useState<number>(30);
 
   // ── Tab 2: Esecuzione ────────────────────────────────────────────────────
-  const [setupCues, setSetupCues] = useState<string[]>(initialExercise?.esecuzione?.setup || ['']);
+  const [setupCues, setSetupCues] = useState<string[]>(
+    toArray(initialExercise?.esecuzione?.setup)
+  );
   const [concDesc, setConcDesc] = useState(initialExercise?.esecuzione?.concentrica?.descrizione || '');
   const [concVettore, setConcVettore] = useState(initialExercise?.esecuzione?.concentrica?.vettore_movimento || '');
   const [concTraiettoria, setConcTraiettoria] = useState(initialExercise?.esecuzione?.concentrica?.traiettoria || '');
-  const [concCues, setConcCues] = useState<string[]>(initialExercise?.esecuzione?.concentrica?.cues || ['']);
+  const [concCues, setConcCues] = useState<string[]>(
+    toArray(initialExercise?.esecuzione?.concentrica?.cues)
+  );
   const [eccDesc, setEccDesc] = useState(initialExercise?.esecuzione?.eccentrica?.descrizione || '');
   const [eccVettore, setEccVettore] = useState(initialExercise?.esecuzione?.eccentrica?.vettore_resistenza || '');
-  const [eccCues, setEccCues] = useState<string[]>(initialExercise?.esecuzione?.eccentrica?.cues || ['']);
+  const [eccCues, setEccCues] = useState<string[]>(
+    toArray(initialExercise?.esecuzione?.eccentrica?.cues)
+  );
 
   const [rom, setRom] = useState(initialExercise?.parametri_chiave?.rom || '');
   const [curvaResistenza, setCurvaResistenza] = useState<ResistanceCurve | ''>(initialExercise?.parametri_chiave?.curva_resistenza || '');
@@ -111,9 +151,15 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
   const [recuperoMax, setRecuperoMax] = useState<number | ''>(initialExercise?.parametri_chiave?.recupero?.max || '');
 
   // ── Tab 3: Sicurezza ─────────────────────────────────────────────────────
-  const [compensi, setCompensi] = useState<string[]>(initialExercise?.sicurezza?.compensi_da_evitare || ['']);
-  const [criteri, setCriteri] = useState<string[]>(initialExercise?.sicurezza?.criteri_arresto || ['']);
-  const [controindicazioni, setControindicazioni] = useState<string[]>(initialExercise?.sicurezza?.controindicazioni || ['']);
+  const [compensi, setCompensi] = useState<string[]>(
+    toArray(initialExercise?.sicurezza?.compensi_da_evitare)
+  );
+  const [criteri, setCriteri] = useState<string[]>(
+    toArray(initialExercise?.sicurezza?.criteri_arresto)
+  );
+  const [controindicazioni, setControindicazioni] = useState<string[]>(
+    toArray(initialExercise?.sicurezza?.controindicazioni)
+  );
   const [tolleranze, setTolleranze] = useState(initialExercise?.sicurezza?.tolleranze || '');
 
   // ── AI Autocompilazione Magica con Gemini 3.7 Flash ────────────────────────
@@ -133,41 +179,43 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
       if (result.bilateralita) setBilateralita(result.bilateralita);
       if (result.piano_movimento) setPianoMovimento(result.piano_movimento);
       if (result.catena_cinetica) setCatenaCinetica(result.catena_cinetica);
-      if (result.gradi_liberta) setGradiLiberta(result.gradi_liberta);
+      if (result.gradi_liberta !== undefined && result.gradi_liberta !== null) setGradiLiberta(result.gradi_liberta);
 
       if (result.parametri_chiave) {
-        setRom(result.parametri_chiave.rom || '');
-        setCurvaResistenza(result.parametri_chiave.curva_resistenza || '');
-        setPuntoPicco(result.parametri_chiave.punto_picco || '');
-        setTipoStimolo(result.parametri_chiave.tipo_stimolo || '');
-        setTutMin(result.parametri_chiave.tut?.min || '');
-        setTutMax(result.parametri_chiave.tut?.max || '');
-        setRecuperoMin(result.parametri_chiave.recupero?.min || '');
-        setRecuperoMax(result.parametri_chiave.recupero?.max || '');
+        setRom(result.parametri_chiave.rom || 'Completo');
+        setCurvaResistenza(result.parametri_chiave.curva_resistenza || 'Gravità (costante)');
+        setPuntoPicco(result.parametri_chiave.punto_picco || 'In massimo allungamento');
+        setTipoStimolo(result.parametri_chiave.tipo_stimolo || result.tipo || 'Ipertrofia');
+        setTutMin(result.parametri_chiave.tut?.min ?? 30);
+        setTutMax(result.parametri_chiave.tut?.max ?? 45);
+        setRecuperoMin(result.parametri_chiave.recupero?.min ?? 60);
+        setRecuperoMax(result.parametri_chiave.recupero?.max ?? 90);
       }
 
-      if (result.muscoli_coinvolti?.length) setMuscoli(result.muscoli_coinvolti);
+      if (result.muscoli_coinvolti && result.muscoli_coinvolti.length > 0) {
+        setMuscoli(result.muscoli_coinvolti);
+      }
 
       if (result.esecuzione) {
-        setSetupCues(result.esecuzione.setup?.length ? result.esecuzione.setup : ['']);
-        setConcDesc(result.esecuzione.concentrica?.descrizione || '');
+        setSetupCues(result.esecuzione.setup?.length ? result.esecuzione.setup : ['Posizionati garantendo stabilità e setting scapolare']);
+        setConcDesc(result.esecuzione.concentrica?.descrizione || 'Esegui la fase concentrica in modo fluido e controllato');
         setConcVettore(result.esecuzione.concentrica?.vettore_movimento || '');
         setConcTraiettoria(result.esecuzione.concentrica?.traiettoria || '');
-        setConcCues(result.esecuzione.concentrica?.cues?.length ? result.esecuzione.concentrica.cues : ['']);
-        setEccDesc(result.esecuzione.eccentrica?.descrizione || '');
+        setConcCues(result.esecuzione.concentrica?.cues?.length ? result.esecuzione.concentrica.cues : ['Espira durante la massima contrazione']);
+        setEccDesc(result.esecuzione.eccentrica?.descrizione || 'Controlla la discesa eccentrica in 2-3 secondi');
         setEccVettore(result.esecuzione.eccentrica?.vettore_resistenza || '');
-        setEccCues(result.esecuzione.eccentrica?.cues?.length ? result.esecuzione.eccentrica.cues : ['']);
+        setEccCues(result.esecuzione.eccentrica?.cues?.length ? result.esecuzione.eccentrica.cues : ['Inspira e mantieni tensione costante']);
       }
 
       if (result.sicurezza) {
-        setCompensi(result.sicurezza.compensi_da_evitare?.length ? result.sicurezza.compensi_da_evitare : ['']);
-        setCriteri(result.sicurezza.criteri_arresto?.length ? result.sicurezza.criteri_arresto : ['']);
-        setControindicazioni(result.sicurezza.controindicazioni?.length ? result.sicurezza.controindicazioni : ['']);
-        setTolleranze(result.sicurezza.tolleranze || '');
+        setCompensi(result.sicurezza.compensi_da_evitare?.length ? result.sicurezza.compensi_da_evitare : ['Evitare compensi lombari o slanci']);
+        setCriteri(result.sicurezza.criteri_arresto?.length ? result.sicurezza.criteri_arresto : ['Dolore articolare acuto o perdita di assetto']);
+        setControindicazioni(result.sicurezza.controindicazioni?.length ? result.sicurezza.controindicazioni : ['Infiammazioni acute']);
+        setTolleranze(result.sicurezza.tolleranze || 'Adattare il carico e l\'escursione alla mobilità individuale.');
       }
 
       setAiSuggested(true);
-      showSuccess(`✨ Scheda compilata al 100% con ${AI_CONFIG.GEMINI.DISPLAY_NAME}!`, 'I dati biomeccanici e clinici sono stati inseriti in tutti i tab.');
+      showSuccess(`✨ Scheda compilata al 100% con ${AI_CONFIG.GEMINI.DISPLAY_NAME}!`, 'I dati biomeccanici, clinici e istruzioni sono stati inseriti in tutti i tab.');
     } catch (err: unknown) {
       showError('Errore IA', err instanceof Error ? err.message : 'Impossibile completare la richiesta.');
     } finally {
@@ -175,9 +223,43 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
     }
   };
 
-  const addQuickMuscle = (muscleName: string) => {
-    if (muscoli.some(m => m.muscolo.toLowerCase() === muscleName.toLowerCase())) return;
-    setMuscoli(prev => [...prev, { muscolo: muscleName, ruolo: 'Target', percentuale: 40 }]);
+  const normalizeMuscleKey = (name: string): string => {
+    const s = name.toLowerCase().trim();
+    if (s.includes('pettor')) return 'petto';
+    if (s.includes('deltoide ant') || (s.includes('spall') && s.includes('ant'))) return 'delt_ant';
+    if (s.includes('deltoide post') || (s.includes('spall') && s.includes('post'))) return 'delt_post';
+    if (s.includes('deltoide med') || s.includes('deltoide lat') || s.includes('deltoide') || s.includes('spall')) return 'delt_med';
+    if (s.includes('dorsal') || s.includes('gran dorsale') || s.includes('latissimus')) return 'dorso';
+    if (s.includes('trapez')) return 'trapezio';
+    if (s.includes('tricipit')) return 'tricipiti';
+    if (s.includes('bicipit') || s.includes('brachial')) return 'bicipiti';
+    if (s.includes('quadricipit') || s.includes('vasto') || s.includes('retto femorale')) return 'quads';
+    if (s.includes('ischiocrural') || s.includes('femorali') || s.includes('bicipite femorale') || s.includes('semitendinoso') || s.includes('semimembranoso')) return 'femorali';
+    if (s.includes('glute')) return 'glutei';
+    if (s.includes('erettor') || s.includes('lombar') || s.includes('paravertebral')) return 'lombari';
+    if (s.includes('addom') || s.includes('retto dell\'addome') || s.includes('retto addominale') || s.includes('core') || s.includes('obliqu')) return 'addome';
+    if (s.includes('polpacc') || s.includes('gastrocnem') || s.includes('soleo')) return 'polpacci';
+    return s;
+  };
+
+  const isMuscleMatched = (targetTag: string, muscleItemName: string) => {
+    const t = targetTag.toLowerCase().trim();
+    const m = muscleItemName.toLowerCase().trim();
+    if (t === m) return true;
+    const keyT = normalizeMuscleKey(t);
+    const keyM = normalizeMuscleKey(m);
+    return keyT === keyM;
+  };
+
+  const toggleQuickMuscle = (muscleName: string) => {
+    const existingIdx = muscoli.findIndex(m => isMuscleMatched(muscleName, m.muscolo));
+    if (existingIdx >= 0) {
+      // DESELEZIONA: rimuove il distretto
+      setMuscoli(prev => prev.filter((_, idx) => idx !== existingIdx));
+    } else {
+      // SELEZIONA: aggiunge il distretto
+      setMuscoli(prev => [...prev, { muscolo: muscleName, ruolo: 'Target', percentuale: 40 }]);
+    }
   };
 
   // ── Helpers per liste dinamiche ──────────────────────────────────────────
@@ -213,11 +295,22 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
         tipo: (tipo as ExerciseType) || null, bilateralita: (bilateralita as Bilaterality) || null,
         piano_movimento: (pianoMovimento as MovementPlane) || null, catena_cinetica: (catenaСinetica as KineticChain) || null,
         gradi_liberta: gradiLiberta !== '' ? Number(gradiLiberta) : null,
-        muscoli_coinvolti: muscoli.filter(m => m.muscolo.trim()).length > 0 ? muscoli.filter(m => m.muscolo.trim()) : null,
-        esecuzione: (setupCues.some(c => c.trim()) || concDesc || eccDesc) ? {
-          setup: setupCues.filter(c => c.trim()),
-          concentrica: { descrizione: concDesc, vettore_movimento: concVettore || undefined, traiettoria: concTraiettoria || undefined, cues: concCues.filter(c => c.trim()) },
-          eccentrica: { descrizione: eccDesc, vettore_resistenza: eccVettore || undefined, cues: eccCues.filter(c => c.trim()) },
+        muscoli_coinvolti: Array.isArray(muscoli) && muscoli.filter(m => m && m.muscolo && m.muscolo.trim()).length > 0 
+          ? muscoli.filter(m => m && m.muscolo && m.muscolo.trim()) 
+          : null,
+        esecuzione: (safeSome(setupCues) || concDesc || eccDesc) ? {
+          setup: Array.isArray(setupCues) ? setupCues.filter(c => typeof c === 'string' && c.trim()) : [],
+          concentrica: { 
+            descrizione: concDesc, 
+            vettore_movimento: concVettore || undefined, 
+            traiettoria: concTraiettoria || undefined, 
+            cues: Array.isArray(concCues) ? concCues.filter(c => typeof c === 'string' && c.trim()) : [] 
+          },
+          eccentrica: { 
+            descrizione: eccDesc, 
+            vettore_resistenza: eccVettore || undefined, 
+            cues: Array.isArray(eccCues) ? eccCues.filter(c => typeof c === 'string' && c.trim()) : [] 
+          },
         } : null,
         parametri_chiave: (rom || curvaResistenza || puntoPicco) ? {
           rom, curva_resistenza: (curvaResistenza as ResistanceCurve) || 'Gravità (costante)',
@@ -225,11 +318,11 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
           tut: { min: Number(tutMin) || 30, max: Number(tutMax) || 40 },
           recupero: { min: Number(recuperoMin) || 60, max: Number(recuperoMax) || 90 },
         } : null,
-        sicurezza: (compensi.some(c => c.trim()) || criteri.some(c => c.trim()) || controindicazioni.some(c => c.trim())) ? {
-          compensi_da_evitare: compensi.filter(c => c.trim()),
-          criteri_arresto: criteri.filter(c => c.trim()),
-          controindicazioni: controindicazioni.filter(c => c.trim()),
-          tolleranze: tolleranze.trim(),
+        sicurezza: (safeSome(compensi) || safeSome(criteri) || safeSome(controindicazioni)) ? {
+          compensi_da_evitare: Array.isArray(compensi) ? compensi.filter(c => typeof c === 'string' && c.trim()) : [],
+          criteri_arresto: Array.isArray(criteri) ? criteri.filter(c => typeof c === 'string' && c.trim()) : [],
+          controindicazioni: Array.isArray(controindicazioni) ? controindicazioni.filter(c => typeof c === 'string' && c.trim()) : [],
+          tolleranze: tolleranze ? tolleranze.trim() : '',
         } : null,
       };
 
@@ -248,27 +341,30 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
     } finally { setIsSaving(false); }
   };
 
-  const StringListEditor: React.FC<{ list: string[]; setList: React.Dispatch<React.SetStateAction<string[]>>; placeholder: string; addLabel?: string }> = ({ list, setList, placeholder, addLabel = '+ Aggiungi riga' }) => (
-    <div className="space-y-2">
-      {list.map((item, i) => (
-        <div key={i} className="flex gap-2">
-          <input type="text" value={item} onChange={e => updateListItem(list, setList, i, e.target.value)} placeholder={placeholder} className={inputClass + ' flex-1'} />
-          <button type="button" onClick={() => removeListItem(list, setList, i)} className="p-2.5 bg-slate-900/60 hover:bg-red-500/20 text-slate-500 hover:text-red-400 rounded-xl border border-slate-700/50 transition-colors">
-            <Minus className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ))}
-      <button type="button" onClick={() => addListItem(list, setList)} className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1.5 transition-colors pt-1">
-        <Plus className="w-3.5 h-3.5" /> {addLabel}
-      </button>
-    </div>
-  );
+  const StringListEditor: React.FC<{ list: string[]; setList: React.Dispatch<React.SetStateAction<string[]>>; placeholder: string; addLabel?: string }> = ({ list, setList, placeholder, addLabel = '+ Aggiungi riga' }) => {
+    const safeList = Array.isArray(list) ? list : [''];
+    return (
+      <div className="space-y-2">
+        {safeList.map((item, i) => (
+          <div key={i} className="flex gap-2">
+            <input type="text" value={item} onChange={e => updateListItem(safeList, setList, i, e.target.value)} placeholder={placeholder} className={inputClass + ' flex-1'} />
+            <button type="button" onClick={() => removeListItem(safeList, setList, i)} className="p-2.5 bg-slate-900/60 hover:bg-red-500/20 text-slate-500 hover:text-red-400 rounded-xl border border-slate-700/50 transition-colors">
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+        <button type="button" onClick={() => addListItem(safeList, setList)} className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1.5 transition-colors pt-1">
+          <Plus className="w-3.5 h-3.5" /> {addLabel}
+        </button>
+      </div>
+    );
+  };
 
   const tabCompleteness = [
     name.trim() !== '',
-    muscoli.length > 0,
-    (setupCues.some(c => c.trim()) || concDesc !== ''),
-    (compensi.some(c => c.trim()) || criteri.some(c => c.trim())),
+    Array.isArray(muscoli) && muscoli.length > 0,
+    (safeSome(setupCues) || concDesc.trim() !== ''),
+    (safeSome(compensi) || safeSome(criteri)),
   ];
 
   return (
@@ -471,29 +567,41 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
             </div>
           )}
 
-          {/* ── STEP 2: Muscoli Coinvolti ─────────────────────────────────── */}
+          {/* ── STEP 2: Muscoli Coinvolti (Layout Pulito a Tutta Larghezza) ── */}
           {activeTab === 1 && (
             <div className="space-y-5">
+              {/* Suggerimenti veloci con 1-Click Toggle (Attiva / Disattiva) */}
+              <div className="bg-[#0f141c] border border-slate-800 rounded-2xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <FieldLabel>Selezione Rapida Distretti (1-Click per Aggiungere / Rimuovere)</FieldLabel>
+                  {muscoli.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setMuscoli([])}
+                      className="text-[10px] font-bold text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                    >
+                      Deseleziona tutti
+                    </button>
+                  )}
+                </div>
 
-              {/* Suggerimenti veloci con 1-Click */}
-              <div>
-                <FieldLabel>Selezione Rapida Muscoli (1-Click Add)</FieldLabel>
-                <div className="flex flex-wrap gap-1.5 pt-1">
+                <div className="flex flex-wrap gap-2 pt-1">
                   {QUICK_MUSCLE_TAGS.map(tag => {
-                    const isAdded = muscoli.some(m => m.muscolo.toLowerCase() === tag.toLowerCase());
+                    const isAdded = muscoli.some(m => isMuscleMatched(tag, m.muscolo));
                     return (
                       <button
                         key={tag}
                         type="button"
-                        onClick={() => addQuickMuscle(tag)}
-                        disabled={isAdded}
-                        className={`text-xs px-2.5 py-1 rounded-lg font-semibold transition-all border ${
+                        onClick={() => toggleQuickMuscle(tag)}
+                        className={`text-xs px-3 py-1.5 rounded-xl font-bold transition-all border cursor-pointer flex items-center gap-1.5 ${
                           isAdded
-                            ? 'bg-amber-500/15 border-amber-500/30 text-amber-400 opacity-60 cursor-default'
-                            : 'bg-slate-800/80 border-slate-700/60 text-slate-300 hover:bg-amber-500/10 hover:border-amber-500/40 hover:text-amber-400'
+                            ? 'bg-amber-500 text-black border-amber-400 font-black shadow-[0_0_12px_rgba(245,158,11,0.35)]'
+                            : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-600'
                         }`}
+                        title={isAdded ? `Clicca per rimuovere ${tag}` : `Clicca per aggiungere ${tag}`}
                       >
-                        {isAdded ? `✓ ${tag}` : `+ ${tag}`}
+                        <span className="text-xs">{isAdded ? '✓' : '+'}</span>
+                        <span>{tag}</span>
                       </button>
                     );
                   })}
@@ -501,20 +609,24 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
               </div>
 
               {/* Form aggiunta manuale */}
-              <div className="bg-[#0f141c] border border-slate-800 rounded-xl p-4 space-y-3">
-                <p className="text-xs font-bold text-slate-300 uppercase tracking-wider">Oppure Inserisci Muscolo Personalizzato</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    placeholder="Nome muscolo (es. Gran Dentato)..."
-                    value={newMuscoloName}
-                    onChange={e => setNewMuscoloName(e.target.value)}
-                    className={inputClass}
-                  />
-                  <select value={newMuscoloRuolo} onChange={e => setNewMuscoloRuolo(e.target.value as MuscleRole)} className={selectClass}>
-                    {MUSCLE_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                  <div className="flex gap-2">
+              <div className="bg-[#0f141c] border border-slate-800 rounded-2xl p-4 space-y-3">
+                <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Aggiungi Muscolo Specifico</p>
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  <div className="sm:col-span-5">
+                    <input
+                      type="text"
+                      placeholder="es. Gran Dentato, Brachioradiale..."
+                      value={newMuscoloName}
+                      onChange={e => setNewMuscoloName(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="sm:col-span-4">
+                    <select value={newMuscoloRuolo} onChange={e => setNewMuscoloRuolo(e.target.value as MuscleRole)} className={selectClass}>
+                      {MUSCLE_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-3 flex gap-2">
                     <input
                       type="number"
                       min={1}
@@ -522,7 +634,7 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
                       value={newMuscoloPerc}
                       onChange={e => setNewMuscoloPerc(Number(e.target.value))}
                       className={inputClass}
-                      placeholder="Attivazione %"
+                      placeholder="%"
                     />
                     <button
                       type="button"
@@ -532,9 +644,9 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
                         setMuscoli(prev => [...prev, { muscolo: newMuscoloName.trim(), ruolo: newMuscoloRuolo, percentuale: newMuscoloPerc }]);
                         setNewMuscoloName('');
                       }}
-                      className="px-4 py-2.5 bg-[var(--color-primary)] text-black text-xs font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-40 shrink-0 cursor-pointer"
+                      className="px-4 py-2 bg-[var(--color-primary)] text-black text-xs font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-40 shrink-0 cursor-pointer"
                     >
-                      Aggiungi
+                      + Aggiungi
                     </button>
                   </div>
                 </div>
@@ -542,35 +654,45 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
 
               {/* Mappa muscoli selezionati */}
               {muscoli.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Mappa Attivazione Selezionata ({muscoli.length} muscoli)</p>
-                  {muscoli.map((m, i) => {
-                    const roleColor = m.ruolo === 'Target' ? 'bg-amber-500' : m.ruolo === 'Sinergico' ? 'bg-sky-400' : m.ruolo === 'Stabilizzatore' ? 'bg-emerald-400' : 'bg-violet-400';
-                    return (
-                      <div key={i} className="flex items-center gap-3 bg-[#0f141c] border border-slate-800 rounded-xl px-4 py-3">
-                        <div className={`w-2.5 h-2.5 rounded-full ${roleColor}`} />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm font-bold text-white block truncate">{m.muscolo}</span>
-                          <span className="text-[10px] font-semibold text-slate-400">{m.ruolo}</span>
+                <div className="space-y-3 bg-[#0f141c]/60 border border-slate-800 rounded-2xl p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black text-white uppercase tracking-wider">
+                      Attivazione Mappata ({muscoli.length} muscoli coinvolti)
+                    </p>
+                    <span className="text-[10px] text-slate-400">Clicca sul cestino o sul tag rapido per rimuovere</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1">
+                    {muscoli.map((m, i) => {
+                      const roleColor = m.ruolo === 'Target' ? 'bg-amber-500' : m.ruolo === 'Sinergico' ? 'bg-sky-400' : m.ruolo === 'Stabilizzatore' ? 'bg-emerald-400' : 'bg-violet-400';
+                      return (
+                        <div key={i} className="flex items-center gap-2.5 bg-slate-900/90 border border-slate-800/90 rounded-xl px-3.5 py-2.5 hover:border-slate-700 transition-colors">
+                          <div className={`w-2.5 h-2.5 rounded-full ${roleColor} shrink-0`} />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs font-bold text-white block truncate">{m.muscolo}</span>
+                            <span className="text-[10px] font-semibold text-slate-400">{m.ruolo}</span>
+                          </div>
+                          <div className="w-16 sm:w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden shrink-0">
+                            <div className={`h-full rounded-full ${roleColor}`} style={{ width: `${m.percentuale}%` }} />
+                          </div>
+                          <span className="text-xs font-mono font-bold text-slate-300 w-8 text-right shrink-0">{m.percentuale}%</span>
+                          <button
+                            type="button"
+                            onClick={() => setMuscoli(muscoli.filter((_, idx) => idx !== i))}
+                            className="p-1 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                            title="Rimuovi muscolo"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <div className="w-32 h-2 bg-slate-800 rounded-full overflow-hidden shrink-0">
-                          <div className={`h-full rounded-full ${roleColor}`} style={{ width: `${m.percentuale}%` }} />
-                        </div>
-                        <span className="text-xs font-bold text-slate-300 w-10 text-right shrink-0">{m.percentuale}%</span>
-                        <button
-                          type="button"
-                          onClick={() => setMuscoli(muscoli.filter((_, idx) => idx !== i))}
-                          className="p-1.5 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-800 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               ) : (
-                <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl text-slate-500 text-xs">
-                  Nessun muscolo mappato. Clicca sui tag in alto o su "⚡ Auto-Compila con IA".
+                <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl text-slate-500 text-xs space-y-1">
+                  <p className="font-bold text-slate-400">Nessun distretto muscolare selezionato</p>
+                  <p>Clicca sui pulsanti della selezione rapida o usa "⚡ Auto-Compila con IA" in alto.</p>
                 </div>
               )}
             </div>

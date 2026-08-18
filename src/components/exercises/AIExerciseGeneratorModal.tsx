@@ -22,13 +22,19 @@ const CATEGORIES: ('Tutti' | ExerciseCategory)[] = [
   'Tutti',
   'Petto',
   'Dorso',
-  'Gambe',
   'Spalle',
+  'Quadricipiti',
+  'Femorali',
+  'Glutei',
+  'Polpacci',
   'Bicipiti',
   'Tricipiti',
-  'Addominali',
+  'Avambracci',
+  'Addome',
+  'Core',
+  'Lombari',
   'Full Body',
-  'Cardio',
+  'Conditioning',
   'Altro'
 ];
 

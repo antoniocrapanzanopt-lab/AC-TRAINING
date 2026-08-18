@@ -16,6 +16,7 @@ interface WorkoutsContextType {
   moveWorkoutToFolder: (workoutId: string, folderId: string | null) => Promise<{ success: boolean; error?: string }>;
   createWorkoutTemplate: (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string; workoutId?: string }>;
   updateWorkoutTemplate: (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
+  duplicateWorkoutTemplate: (workoutId: string, customTitle?: string) => Promise<{ success: boolean; newWorkoutId?: string; error?: string }>;
   deleteWorkoutTemplate: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
   assignWorkoutToAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
   unassignWorkoutFromAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
@@ -62,7 +63,15 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .order('assigned_date', { ascending: false });
 
     if (!error && data) {
-      setAllAssignedWorkouts(data as AthleteAssignedWorkout[]);
+      // Filtra via record con workout orfano/cancellato
+      const valid = (data as AthleteAssignedWorkout[]).filter(a => a.workout != null);
+      setAllAssignedWorkouts(valid);
+
+      // Pulizia asincrona delle righe orfane nel DB se presenti
+      const orphanIds = (data as AthleteAssignedWorkout[]).filter(a => a.workout == null).map(a => a.id);
+      if (orphanIds.length > 0) {
+        supabase.from('athlete_assigned_workouts').delete().in('id', orphanIds).then();
+      }
     }
   }, [user]);
 
@@ -317,6 +326,32 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
 
     try {
+      // 1. Elimina le assegnazioni attive della scheda
+      await supabase
+        .from('athlete_assigned_workouts')
+        .delete()
+        .eq('workout_id', workoutId);
+
+      // 2. Trova e rimuovi eventuali schede forked/personalizzate collegate e relative assegnazioni
+      const { data: forkedWorkouts } = await supabase
+        .from('workouts')
+        .select('id')
+        .eq('parent_template_id', workoutId);
+
+      if (forkedWorkouts && forkedWorkouts.length > 0) {
+        const forkedIds = forkedWorkouts.map(f => f.id);
+        await supabase
+          .from('athlete_assigned_workouts')
+          .delete()
+          .in('workout_id', forkedIds);
+
+        await supabase
+          .from('workouts')
+          .delete()
+          .in('id', forkedIds);
+      }
+
+      // 3. Elimina il workout principale
       const { error } = await supabase
         .from('workouts')
         .delete()
@@ -324,11 +359,59 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       if (error) throw error;
 
-      await loadCoachTemplates();
+      // 4. Ricarica sia i template coach che le assegnazioni atleti
+      await Promise.all([
+        loadCoachTemplates(),
+        loadAssignedWorkouts(),
+      ]);
       return { success: true };
     } catch (error: unknown) {
       console.error("Error deleting workout:", error);
       const msg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: msg };
+    }
+  };
+
+  const duplicateWorkoutTemplate = async (workoutId: string, customTitle?: string) => {
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
+
+    try {
+      // 1. Carica il template originale
+      const { data: original, error: origError } = await supabase
+        .from('workouts')
+        .select('*')
+        .eq('id', workoutId)
+        .single();
+
+      if (origError || !original) {
+        throw new Error(origError?.message || 'Scheda originale non trovata');
+      }
+
+      // 2. Carica gli esercizi originali
+      const origExercises = await getExercisesForWorkout(workoutId);
+
+      // 3. Clona tramite createWorkoutTemplate
+      const newTitle = customTitle || `${original.title} (Copia)`;
+      const result = await createWorkoutTemplate(
+        {
+          title: newTitle,
+          description: original.description || '',
+          folder_id: original.folder_id || null,
+          is_template: true,
+          total_weeks: original.total_weeks || 1,
+          estimated_duration_minutes: original.estimated_duration_minutes || null,
+        },
+        origExercises || []
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Errore durante la creazione della copia');
+      }
+
+      return { success: true, newWorkoutId: result.workoutId };
+    } catch (error: unknown) {
+      console.error("Error duplicating workout:", error);
+      const msg = error instanceof Error ? error.message : (typeof error === 'object' && error !== null && 'message' in error ? String((error as { message?: unknown }).message) : 'Errore sconosciuto');
       return { success: false, error: msg };
     }
   };
@@ -356,6 +439,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const unassignWorkoutFromAthlete = async (athleteId: string, workoutId: string) => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
+      // 1. Elimina l'assegnazione
       const { error } = await supabase
         .from('athlete_assigned_workouts')
         .delete()
@@ -363,6 +447,18 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('workout_id', workoutId);
 
       if (error) throw error;
+
+      // 2. Se era una copia privata personalizzata dell'atleta (is_template = false), rimuovila
+      const { data: wk } = await supabase
+        .from('workouts')
+        .select('is_template')
+        .eq('id', workoutId)
+        .maybeSingle();
+
+      if (wk && !wk.is_template) {
+        await supabase.from('workouts').delete().eq('id', workoutId);
+      }
+
       await loadAssignedWorkouts();
       return { success: true };
     } catch (error: unknown) {
@@ -743,6 +839,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           moveWorkoutToFolder,
           createWorkoutTemplate,
           updateWorkoutTemplate,
+          duplicateWorkoutTemplate,
           deleteWorkoutTemplate,
           assignWorkoutToAthlete,
           unassignWorkoutFromAthlete,

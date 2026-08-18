@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   User,
@@ -27,6 +27,7 @@ import {
   Link as LinkIcon,
   Dumbbell,
   Sparkles,
+  MoreVertical,
 } from 'lucide-react';
 import { AthleteModal, ModalSection } from '../../components/athletes/AthleteModal';
 import { AIProgressionAssistantModal } from '../../components/progressions/AIProgressionAssistantModal';
@@ -294,8 +295,21 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
 
   const [activeTab, setActiveTab] = useState<DetailTab>('panoramica');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editModalSection, setEditModalSection] = useState<ModalSection>('all');
+  const [editModalSection, setEditModalSection] = useState<ModalSection>('anagrafica');
   const [isAiProgressionOpen, setIsAiProgressionOpen] = useState(false);
+  const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
+
+  // Chiudi overflow menu cliccando fuori
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (overflowMenuRef.current && !overflowMenuRef.current.contains(e.target as Node)) {
+        setIsOverflowMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const athlete = getAthleteById(athleteId);
   const athleteNotes = notes?.[athleteId] ?? [];
@@ -304,8 +318,12 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   const athleteComms = communications.filter(c => c.athleteId === athleteId);
 
   const athleteAssignedWorkouts = useMemo(() => {
-    return allAssignedWorkouts.filter(a => a.athlete_id === athleteId && a.is_active);
-  }, [allAssignedWorkouts, athleteId]);
+    return allAssignedWorkouts.filter(a => 
+      a.athlete_id === athleteId && 
+      a.is_active && 
+      (a.workout != null || coachTemplates.some(t => t.id === a.workout_id))
+    );
+  }, [allAssignedWorkouts, athleteId, coachTemplates]);
 
   // Caricamento metriche fisiche
   React.useEffect(() => {
@@ -453,7 +471,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
     { id: 'abbonamenti', label: 'Abbonamenti', icon: <BookOpen className="w-4 h-4" /> },
     { id: 'pagamenti', label: 'Pagamenti', icon: <CreditCard className="w-4 h-4" /> },
     { id: 'documenti', label: 'Documenti', icon: <FileText className="w-4 h-4" />, count: athleteDocs.length },
-    { id: 'attivita', label: 'Attività', icon: <Activity className="w-4 h-4" /> },
+    { id: 'attivita', label: 'Cronologia Allenamenti', icon: <Activity className="w-4 h-4" /> },
     { id: 'comunicazioni', label: 'Comunicazioni', icon: <MessageSquare className="w-4 h-4" />, count: athleteComms.length },
     { id: 'timeline', label: 'Timeline', icon: <Clock className="w-4 h-4" />, count: athleteTimeline.length },
   ];
@@ -465,11 +483,12 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
       case 'panoramica':
         return (
           <div className="space-y-4">
-            {/* Programma / Scheda di Allenamento In Uso */}
+
+            {/* ── 1. SCHEDA ALLENAMENTO ATTIVA ── */}
             <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-black text-white flex items-center gap-2">
-                  <Dumbbell className="w-4 h-4 text-[var(--color-primary)]" /> Programma / Scheda di Allenamento Attiva
+                  <Dumbbell className="w-4 h-4 text-[var(--color-primary)]" /> Scheda di Allenamento Attiva
                 </h3>
                 <button
                   onClick={() => setAppActiveTab('schede')}
@@ -496,45 +515,11 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                             </p>
                           </div>
                         </div>
-
                         <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => setAppActiveTab('schede')}
-                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors"
-                          >
-                            Vedi Programma
-                          </button>
-                          <button
-                            onClick={() => setAppActiveTab('progressioni')}
-                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-[var(--color-primary)] text-xs font-bold rounded-lg border border-[var(--color-primary)]/30 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <TrendingUp className="w-3.5 h-3.5" />
-                            Progressioni
-                          </button>
-                          <button
-                            onClick={() => setIsAiProgressionOpen(true)}
-                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer shadow-sm shadow-purple-600/20"
-                            title="Genera progressioni su misura con l'Assistente IA per questo atleta"
-                          >
-                            <Sparkles className="w-3.5 h-3.5 text-purple-200" />
-                            <span>IA Progressioni</span>
-                          </button>
-                          <button
-                            onClick={async () => {
-                              if (confirm(`Vuoi rimuovere il programma "${tmpl?.title || 'Scheda'}" da questo atleta?`)) {
-                                const res = await unassignWorkoutFromAthlete(athlete.id, assignment.workout_id);
-                                if (res.success) {
-                                  showSuccess('Scheda rimossa', 'La scheda non è più attiva per questo atleta.');
-                                } else {
-                                  showError('Errore durante la rimozione', res.error || '');
-                                }
-                              }
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
-                            title="Rimuovi scheda"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <button onClick={() => setAppActiveTab('schede')} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors">Vedi</button>
+                          <button onClick={() => setAppActiveTab('progressioni')} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-[var(--color-primary)] text-xs font-bold rounded-lg border border-[var(--color-primary)]/30 transition-colors flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5" />Progressioni</button>
+                          <button onClick={() => setIsAiProgressionOpen(true)} className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 text-purple-200" />IA</button>
+                          <button onClick={async () => { if (confirm(`Rimuovere "${tmpl?.title || 'Scheda'}" da questo atleta?`)) { const res = await unassignWorkoutFromAthlete(athlete.id, assignment.workout_id); if (res.success) showSuccess('Scheda rimossa', ''); else showError('Errore', res.error || ''); }}} className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </div>
                     );
@@ -542,319 +527,183 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 </div>
               ) : (
                 <div className="p-4 bg-slate-900/40 border border-slate-800/80 rounded-xl text-center space-y-2">
-                  <p className="text-xs text-slate-400">Nessuna scheda di allenamento attualmente attiva per questo atleta.</p>
-                  <button
-                    onClick={() => setAppActiveTab('schede')}
-                    className="px-3 py-1.5 bg-[var(--color-primary)] text-black font-bold text-xs rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors inline-flex items-center gap-1.5"
-                  >
-                    <Dumbbell className="w-3.5 h-3.5" /> Assegna una Scheda ora
-                  </button>
+                  <p className="text-xs text-slate-400">Nessuna scheda attiva.</p>
+                  <button onClick={() => setAppActiveTab('schede')} className="px-3 py-1.5 bg-[var(--color-primary)] text-black font-bold text-xs rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors inline-flex items-center gap-1.5"><Dumbbell className="w-3.5 h-3.5" /> Assegna una Scheda</button>
                 </div>
               )}
             </div>
 
-            {/* 1. Dati Anagrafici */}
-            <CollapsibleSection title="Dati Anagrafici" icon={<User className="w-4 h-4" />} onEdit={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}>
-              <InfoRow label="Nome completo" value={safeFullName} />
-              <InfoRow label="Data di nascita" value={
-                athlete.dateOfBirth ? (
-                  <div className="flex items-center gap-2">
-                    <span>{formatDate(athlete.dateOfBirth)}</span>
-                    {athleteAge !== null && (
-                      <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-[var(--color-primary)] border border-slate-700">
-                        {athleteAge} anni
+            {/* ── 2. OBIETTIVI ATLETA — sezione hero ── */}
+            <div className="rounded-2xl border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 shadow-[0_0_30px_rgba(234,179,8,0.06)] overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 bg-[var(--color-primary)]/8 border-b border-[var(--color-primary)]/20">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center">
+                    <Target className="w-4 h-4 text-[var(--color-primary)]" />
+                  </div>
+                  <span className="text-sm font-black text-white tracking-tight">🎯 Obiettivi dell'Atleta</span>
+                </div>
+                <button
+                  onClick={() => { setEditModalSection('obiettivi'); setIsEditModalOpen(true); }}
+                  className="flex items-center gap-1 text-[11px] font-bold text-[var(--color-primary)] hover:text-white px-2.5 py-1 rounded-lg hover:bg-[var(--color-primary)]/15 transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>Modifica</span>
+                </button>
+              </div>
+              <div className="px-5 py-5 space-y-4">
+                {/* Tag discipline */}
+                {safeTags.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {safeTags.map(tag => (
+                      <span key={tag} className="px-3 py-1 rounded-full text-xs font-bold bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 text-[var(--color-primary)]">
+                        {tag}
                       </span>
-                    )}
+                    ))}
                   </div>
-                ) : '—'
-              } />
-              <InfoRow label="Codice Fiscale" value={athlete.fiscalCode} missing="Non fornito" />
-              <InfoRow label="Indirizzo" value={athlete.address} missing="Non fornito" />
-              <InfoRow label="Città" value={athlete.city ? `${athlete.city}${athlete.province ? ` (${athlete.province})` : ''}` : undefined} />
-            </CollapsibleSection>
-
-            {/* 2. Contatti & Canali Direct */}
-            <CollapsibleSection title="Contatti & Canali Direct" icon={<Phone className="w-4 h-4" />} onEdit={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}>
-              <InfoRow label="Telefono"
-                value={athlete.phone ? (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <a href={`tel:${athlete.phone}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1 font-semibold">
-                      <Phone className="w-3.5 h-3.5" />{athlete.phone}
-                    </a>
+                )}
+                {/* Testo obiettivi */}
+                {athlete.goals ? (
+                  <p className="text-base text-slate-100 leading-relaxed whitespace-pre-wrap">{athlete.goals}</p>
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-slate-500 mb-2">Nessun obiettivo definito per questo atleta.</p>
                     <button
-                      onClick={() => {
-                        const msg = `Ciao ${athlete.firstName || safeFullName}, ti contatto da Builder Athlete Manager.`;
-                        window.open(`https://wa.me/${athlete.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
-                      }}
-                      className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold hover:bg-emerald-500/20 transition-colors"
+                      onClick={() => { setEditModalSection('obiettivi'); setIsEditModalOpen(true); }}
+                      className="px-3 py-1.5 bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 text-[var(--color-primary)] text-xs font-bold rounded-xl hover:bg-[var(--color-primary)]/25 transition-colors"
                     >
-                      WhatsApp
+                      + Definisci obiettivi
                     </button>
                   </div>
-                ) : undefined}
-              />
-              <InfoRow label="Telegram"
-                value={athlete.telegramUsername || athlete.phone ? (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-slate-200 font-semibold">{athlete.telegramUsername || athlete.phone}</span>
-                    <button
-                      onClick={() => {
-                        const tgUser = athlete.telegramUsername?.trim();
-                        if (tgUser) {
-                          const cleanUser = tgUser.startsWith('@') ? tgUser.slice(1) : tgUser;
-                          window.open(`https://t.me/${cleanUser}`, '_blank');
-                        } else if (athlete.phone) {
-                          window.open(`https://t.me/+${athlete.phone.replace(/[^0-9]/g, '')}`, '_blank');
-                        }
-                      }}
-                      className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/30 text-[11px] font-bold hover:bg-sky-500/20 transition-colors"
-                    >
-                      Telegram
-                    </button>
+                )}
+                {/* Note interne - compatte */}
+                {athlete.notes && (
+                  <div className="pt-3 border-t border-[var(--color-primary)]/15">
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">🔒 Note interne</p>
+                    <p className="text-sm text-slate-400 leading-relaxed">{athlete.notes}</p>
                   </div>
-                ) : undefined}
-                missing="Non specificato"
-              />
-              <InfoRow label="Email"
-                value={athlete.email ? (
-                  <a href={`mailto:${athlete.email}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1 font-semibold">
-                    <Mail className="w-3.5 h-3.5" />{athlete.email}
-                  </a>
-                ) : undefined}
-                missing="Non fornita"
-              />
-              <InfoRow label="Canale preferito" value={athlete.contactChannel ? (contactChannelLabel[athlete.contactChannel] || athlete.contactChannel) : undefined} />
-              <InfoRow label="Fonte acquisizione" value={athlete.acquisitionSource ? (acquisitionSourceLabel[athlete.acquisitionSource] || athlete.acquisitionSource) : undefined} />
-            </CollapsibleSection>
+                )}
+              </div>
+            </div>
 
-            {/* 3. Parametri Fisici & Circonferenze Chiave */}
-            <CollapsibleSection title="Parametri Fisici & Circonferenze Chiave" icon={<Scale className="w-4 h-4" />} defaultOpen={true} onEdit={() => setActiveTab('metriche')}>
+            {/* ── 3. PARAMETRI FISICI ── */}
+            <CollapsibleSection title="Parametri Fisici & Misure" icon={<Scale className="w-4 h-4" />} defaultOpen={true} onEdit={() => setActiveTab('metriche')}>
               <div className="space-y-3 pt-1">
                 {latestMetric ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                    {/* Peso */}
                     <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Peso Attuale</span>
                       <div className="flex items-center justify-between">
                         <span className="text-base font-black text-white">{latestMetric.weight_kg ? `${latestMetric.weight_kg} kg` : '—'}</span>
-                        {weightDelta !== null && (
-                          <span className={`text-[10px] font-bold flex items-center gap-0.5 ${weightDelta < 0 ? 'text-emerald-400' : weightDelta > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-                            {weightDelta < 0 ? <TrendingDown className="w-3 h-3" /> : weightDelta > 0 ? <TrendingUp className="w-3 h-3" /> : null}
-                            {weightDelta > 0 ? `+${weightDelta}` : weightDelta} kg
-                          </span>
-                        )}
+                        {weightDelta !== null && (<span className={`text-[10px] font-bold flex items-center gap-0.5 ${weightDelta < 0 ? 'text-emerald-400' : weightDelta > 0 ? 'text-amber-400' : 'text-slate-400'}`}>{weightDelta < 0 ? <TrendingDown className="w-3 h-3" /> : weightDelta > 0 ? <TrendingUp className="w-3 h-3" /> : null}{weightDelta > 0 ? `+${weightDelta}` : weightDelta} kg</span>)}
                       </div>
                     </div>
-
-                    {/* Altezza & IMC */}
                     <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Altezza & IMC</span>
                       <span className="text-base font-black text-white">{latestMetric.height_cm ? `${latestMetric.height_cm} cm` : '—'}</span>
                       {bmi !== null && <span className="text-[10px] font-bold text-amber-400 block">IMC: {bmi}</span>}
                     </div>
-
-                    {/* % Massa Grassa */}
                     <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Massa Grassa (BF)</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Massa Grassa</span>
                       <span className="text-base font-black text-white">{latestMetric.body_fat_percentage ? `${latestMetric.body_fat_percentage}%` : '—'}</span>
                     </div>
-
-                    {/* Circonferenza Braccio */}
                     <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Circ. Braccio</span>
-                      <span className="text-xs font-bold text-white block">
-                        {latestMetric.bicep_right_cm || latestMetric.bicep_left_cm
-                          ? `Dx: ${latestMetric.bicep_right_cm ?? '—'} | Sx: ${latestMetric.bicep_left_cm ?? '—'}`
-                          : '—'}
-                      </span>
+                      <span className="text-xs font-bold text-white block">{latestMetric.bicep_right_cm || latestMetric.bicep_left_cm ? `Dx: ${latestMetric.bicep_right_cm ?? '—'} | Sx: ${latestMetric.bicep_left_cm ?? '—'}` : '—'}</span>
                     </div>
-
-                    {/* Circonferenza Vita */}
                     <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Circ. Vita</span>
                       <span className="text-base font-black text-white">{latestMetric.waist_cm ? `${latestMetric.waist_cm} cm` : '—'}</span>
                     </div>
-
-                    {/* Circonferenza Coscia */}
                     <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Circ. Coscia</span>
-                      <span className="text-xs font-bold text-white block">
-                        {latestMetric.thigh_right_cm || latestMetric.thigh_left_cm
-                          ? `Dx: ${latestMetric.thigh_right_cm ?? '—'} | Sx: ${latestMetric.thigh_left_cm ?? '—'}`
-                          : '—'}
-                      </span>
+                      <span className="text-xs font-bold text-white block">{latestMetric.thigh_right_cm || latestMetric.thigh_left_cm ? `Dx: ${latestMetric.thigh_right_cm ?? '—'} | Sx: ${latestMetric.thigh_left_cm ?? '—'}` : '—'}</span>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500 py-2">Nessun parametro fisico o misurazione ancora inserito per questo atleta.</p>
+                  <p className="text-xs text-slate-500 py-2">Nessun parametro fisico ancora inserito.</p>
                 )}
-
                 <div className="flex justify-end pt-1">
-                  <button
-                    onClick={() => setActiveTab('metriche')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 text-xs font-bold hover:bg-[var(--color-primary)]/20 transition-colors"
-                  >
-                    <Scale className="w-3.5 h-3.5" />
-                    <span>+ Registra / Storico Completo Misure</span>
+                  <button onClick={() => setActiveTab('metriche')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 text-xs font-bold hover:bg-[var(--color-primary)]/20 transition-colors">
+                    <Scale className="w-3.5 h-3.5" /><span>Storico Completo Misure</span>
                   </button>
                 </div>
               </div>
             </CollapsibleSection>
 
-            {/* 4. Abbonamento & Rinnovi */}
-            <CollapsibleSection title="Abbonamento & Rinnovi Coaching" icon={<BookOpen className="w-4 h-4" />} defaultOpen={true} onEdit={() => setActiveTab('abbonamenti')}>
+            {/* ── 4. DATI ANAGRAFICI ── */}
+            <CollapsibleSection title="Dati Anagrafici" icon={<User className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}>
+              <InfoRow label="Nome completo" value={safeFullName} />
+              <InfoRow label="Data di nascita" value={athlete.dateOfBirth ? (<div className="flex items-center gap-2"><span>{formatDate(athlete.dateOfBirth)}</span>{athleteAge !== null && (<span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-[var(--color-primary)] border border-slate-700">{athleteAge} anni</span>)}</div>) : '—'} />
+              <InfoRow label="Genere" value={athlete.gender ? ({ male: 'Uomo', female: 'Donna', other: 'Altro', prefer_not_to_say: 'Preferisce non indicare' }[athlete.gender]) : undefined} missing="Non specificato" />
+              <InfoRow label="Città" value={athlete.city ? `${athlete.city}${athlete.province ? ` (${athlete.province})` : ''}` : undefined} />
+            </CollapsibleSection>
+
+            {/* ── 5. CONTATTI ── */}
+            <CollapsibleSection title="Contatti & Canali" icon={<Phone className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}>
+              <InfoRow label="Telefono" value={athlete.phone ? (<div className="flex items-center gap-2 flex-wrap"><a href={`tel:${athlete.phone}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1 font-semibold"><Phone className="w-3.5 h-3.5" />{athlete.phone}</a><button onClick={() => { const msg = `Ciao ${athlete.firstName || safeFullName}, ti contatto da Builder Athlete Manager.`; window.open(`https://wa.me/${athlete.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank'); }} className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold hover:bg-emerald-500/20 transition-colors">WhatsApp</button></div>) : undefined} />
+              <InfoRow label="Telegram" value={athlete.telegramUsername || athlete.phone ? (<div className="flex items-center gap-2 flex-wrap"><span className="text-slate-200 font-semibold">{athlete.telegramUsername || athlete.phone}</span><button onClick={() => { const tgUser = athlete.telegramUsername?.trim(); if (tgUser) { window.open(`https://t.me/${tgUser.startsWith('@') ? tgUser.slice(1) : tgUser}`, '_blank'); } else if (athlete.phone) { window.open(`https://t.me/+${athlete.phone.replace(/[^0-9]/g, '')}`, '_blank'); }}} className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/30 text-[11px] font-bold hover:bg-sky-500/20 transition-colors">Telegram</button></div>) : undefined} missing="Non specificato" />
+              <InfoRow label="Email" value={athlete.email ? (<a href={`mailto:${athlete.email}`} className="text-[var(--color-primary)] hover:underline flex items-center gap-1 font-semibold"><Mail className="w-3.5 h-3.5" />{athlete.email}</a>) : undefined} missing="Non fornita" />
+              <InfoRow label="Canale preferito" value={athlete.contactChannel ? (contactChannelLabel[athlete.contactChannel] || athlete.contactChannel) : undefined} />
+            </CollapsibleSection>
+
+            {/* ── 6. ABBONAMENTO ── */}
+            <CollapsibleSection title="Abbonamento & Rinnovi" icon={<BookOpen className="w-4 h-4" />} defaultOpen={false} onEdit={() => setActiveTab('abbonamenti')}>
               <div className="space-y-3 pt-1">
-                <InfoRow label="Data Inizio Coaching" value={
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">{formatDate(athlete.createdAt)}</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-800 text-amber-400 border border-slate-700">
-                      Atleta da {coachingTenure}
-                    </span>
-                  </div>
-                } />
-                <InfoRow label="Pacchetto Scelto" value={
-                  activeSub ? (
-                    <span className="font-black text-amber-400">{activeSub.packageName}</span>
-                  ) : (
-                    <span className="text-slate-500 italic">Nessun pacchetto attivo</span>
-                  )
-                } />
-                <InfoRow label="Prossimo Rinnovo" value={
-                  activeSub?.endDate ? (
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-white">{formatDate(activeSub.endDate)}</span>
-                      {daysToRenewal !== null && (
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                          daysToRenewal <= 7 ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        }`}>
-                          {daysToRenewal > 0 ? `Tra ${daysToRenewal} giorni` : daysToRenewal === 0 ? 'Oggi' : 'Scaduto'}
-                        </span>
-                      )}
-                    </div>
-                  ) : 'Nessuna data di rinnovo fissata'
-                } />
+                <InfoRow label="Data Inizio" value={<div className="flex items-center gap-2"><span className="font-semibold">{formatDate(athlete.createdAt)}</span><span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-800 text-amber-400 border border-slate-700">da {coachingTenure}</span></div>} />
+                <InfoRow label="Pacchetto" value={activeSub ? <span className="font-black text-amber-400">{activeSub.packageName}</span> : <span className="text-slate-500 italic">Nessun pacchetto attivo</span>} />
+                <InfoRow label="Prossimo Rinnovo" value={activeSub?.endDate ? (<div className="flex items-center gap-2"><span className="font-bold text-white">{formatDate(activeSub.endDate)}</span>{daysToRenewal !== null && (<span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${daysToRenewal <= 7 ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}`}>{daysToRenewal > 0 ? `Tra ${daysToRenewal} gg` : daysToRenewal === 0 ? 'Oggi' : 'Scaduto'}</span>)}</div>) : 'Nessuna data fissata'} />
               </div>
             </CollapsibleSection>
 
-            {/* 5. Certificato Medico (CON SOLLECITI 1-CLICK) */}
-            <CollapsibleSection title="Storico Medico & Certificato" icon={<FileText className="w-4 h-4" />} defaultOpen={true} onEdit={() => { setEditModalSection('certificato'); setIsEditModalOpen(true); }}>
-              <div className="py-2 space-y-3">
+            {/* ── 7. CERTIFICATO MEDICO ── */}
+            <CollapsibleSection title="Certificato Medico" icon={<FileText className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('avanzato'); setIsEditModalOpen(true); }}>
+              <div className="py-1 space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-400 font-semibold uppercase">Tipologia:</span>
-                    <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs font-black text-amber-400 uppercase tracking-wider">
-                      {athlete.medicalCertificateType === 'non_agonistico' ? 'Non Agonistico' : 'Agonistico'}
-                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs font-black text-amber-400 uppercase tracking-wider">{athlete.medicalCertificateType === 'non_agonistico' ? 'Non Agonistico' : 'Agonistico'}</span>
                   </div>
-
-                  <span className={`text-xs font-black ${medicalStatus.color}`}>
-                    {medicalStatus.label}
-                  </span>
+                  <span className={`text-xs font-black ${medicalStatus.color}`}>{medicalStatus.label}</span>
                 </div>
-
-                <InfoRow label="Scadenza certificato" value={formatDate(athlete.medicalCertificateExpiryDate)} missing="Nessuna data impostata" />
-                <InfoRow label="Note medico" value={athlete.medicalNotes} missing="Nessuna nota" />
-
-                {/* Tasti Sollecito Rapido via WhatsApp / Telegram */}
+                <InfoRow label="Scadenza" value={formatDate(athlete.medicalCertificateExpiryDate)} missing="Nessuna data" />
+                <InfoRow label="Note" value={athlete.medicalNotes} missing="Nessuna nota" />
                 <div className="flex items-center gap-2 pt-2 flex-wrap">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Sollecito Rapido:</span>
-                  <button
-                    onClick={handleSendCertReminderWhatsApp}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-bold hover:bg-emerald-500/20 transition-all"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Invia Sollecito WhatsApp</span>
-                  </button>
-                  <button
-                    onClick={handleSendCertReminderTelegram}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/30 text-xs font-bold hover:bg-sky-500/20 transition-all"
-                  >
-                    <Send className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Invia Sollecito Telegram</span>
-                  </button>
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Sollecito:</span>
+                  <button onClick={handleSendCertReminderWhatsApp} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-bold hover:bg-emerald-500/20 transition-all"><MessageCircle className="w-3.5 h-3.5" />WhatsApp</button>
+                  <button onClick={handleSendCertReminderTelegram} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/30 text-xs font-bold hover:bg-sky-500/20 transition-all"><Send className="w-3.5 h-3.5 text-sky-400" />Telegram</button>
                 </div>
-
-                {/* Allegato File Certificato */}
-                {athlete.medicalCertificateUrl && (
-                  <div className="mt-3 flex items-center justify-between bg-slate-900 border border-slate-800 p-3 rounded-xl">
-                    <div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400">
-                      <FileText className="w-4 h-4" />
-                      <span>Certificato Medico Allegato</span>
-                    </div>
-                    <a
-                      href={athlete.medicalCertificateUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] text-xs font-bold rounded-lg transition-colors shadow-md"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Visualizza Documento</span>
-                    </a>
-                  </div>
-                )}
+                {athlete.medicalCertificateUrl && (<div className="mt-2 flex items-center justify-between bg-slate-900 border border-slate-800 p-3 rounded-xl"><div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400"><FileText className="w-4 h-4" /><span>Certificato Allegato</span></div><a href={athlete.medicalCertificateUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] text-xs font-bold rounded-lg transition-colors"><Eye className="w-3.5 h-3.5" />Visualizza</a></div>)}
               </div>
             </CollapsibleSection>
 
-            {/* Contatto di Emergenza */}
-            <CollapsibleSection title="Contatto di Emergenza" icon={<Shield className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('emergenza'); setIsEditModalOpen(true); }}>
+            {/* ── 8. AMMINISTRAZIONE ── */}
+            <CollapsibleSection title="Amministrazione" icon={<Activity className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('profilo'); setIsEditModalOpen(true); }}>
+              <div className="flex flex-col gap-3 pt-1">
+                <div className="flex items-center justify-between"><span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stato Atleta</span><AthleteStatusBadge status={athlete.status} /></div>
+                <div className="flex items-center justify-between"><span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pagamenti</span><PaymentStatusBadge status={athlete.paymentStatus} /></div>
+                <div className="flex items-center justify-between"><span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Coach</span><span className="text-sm text-slate-200 font-bold">{athlete.assignedCoachName || '—'}</span></div>
+                <InfoRow label="Fonte acquisizione" value={athlete.acquisitionSource ? (acquisitionSourceLabel[athlete.acquisitionSource] || athlete.acquisitionSource) : undefined} />
+                <InfoRow label="Codice Fiscale" value={athlete.fiscalCode} missing="Non fornito" />
+                <InfoRow label="Indirizzo" value={athlete.address} missing="Non fornito" />
+              </div>
+            </CollapsibleSection>
+
+            {/* ── 9. CONTATTO DI EMERGENZA ── */}
+            <CollapsibleSection title="Contatto di Emergenza" icon={<Shield className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('avanzato'); setIsEditModalOpen(true); }}>
               <InfoRow label="Nome" value={(athlete.emergencyContact as any)?.name} missing="Non specificato" />
               <InfoRow label="Telefono" value={(athlete.emergencyContact as any)?.phone} missing="Non specificato" />
               <InfoRow label="Relazione" value={(athlete.emergencyContact as any)?.relationship} missing="Non specificato" />
             </CollapsibleSection>
 
-            {/* Stato e Pagamenti */}
-            <CollapsibleSection title="Stato e Situazione" icon={<Activity className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('stato'); setIsEditModalOpen(true); }}>
-              <div className="flex flex-col gap-3 pt-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Stato Atleta</span>
-                  <AthleteStatusBadge status={athlete.status} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pagamenti</span>
-                  <PaymentStatusBadge status={athlete.paymentStatus} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Coach assegnato</span>
-                  <span className="text-sm text-slate-200 font-bold">{athlete.assignedCoachName || '—'}</span>
-                </div>
-                <InfoRow label="Iscrizione" value={formatDate(athlete.createdAt)} />
-              </div>
+            {/* ── 10. CONSENSI ── */}
+            <CollapsibleSection title="Consensi" icon={<Shield className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('avanzato'); setIsEditModalOpen(true); }}>
+              <InfoRow label="Privacy" value={athlete.privacyConsent ? (<span className="text-emerald-400 font-semibold">✓ Acquisito{athlete.privacyConsentDate && formatDate(athlete.privacyConsentDate) !== '—' ? ` il ${formatDate(athlete.privacyConsentDate)}` : ''}</span>) : (<span className="text-red-400 font-semibold">✗ Non acquisito</span>)} />
+              <InfoRow label="Newsletter" value={athlete.newsletterConsent ? (<span className="text-emerald-400 font-semibold">✓ Consenso dato</span>) : (<span className="text-slate-500">Nessun consenso</span>)} />
             </CollapsibleSection>
 
-            {/* Obiettivi e Disciplina */}
-            <CollapsibleSection title="Obiettivi e Disciplina" icon={<Target className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('obiettivi'); setIsEditModalOpen(true); }}>
-              {safeTags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {safeTags.map(tag => (
-                    <span key={tag} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 text-[var(--color-primary)]">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <InfoRow label="Obiettivi" value={athlete.goals} missing="Non specificati" />
-              <InfoRow label="Note interne" value={athlete.notes} missing="Nessuna nota" />
-            </CollapsibleSection>
-
-            {/* Consensi */}
-            <CollapsibleSection title="Consensi" icon={<Shield className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('certificato'); setIsEditModalOpen(true); }}>
-              <InfoRow label="Privacy"
-                value={athlete.privacyConsent ? (
-                  <span className="text-emerald-400 font-semibold">✓ Acquisito{athlete.privacyConsentDate && formatDate(athlete.privacyConsentDate) !== '—' ? ` il ${formatDate(athlete.privacyConsentDate)}` : ''}</span>
-                ) : (
-                  <span className="text-red-400 font-semibold">✗ Non acquisito</span>
-                )}
-              />
-              <InfoRow label="Newsletter"
-                value={athlete.newsletterConsent ? (
-                  <span className="text-emerald-400 font-semibold">✓ Consenso dato</span>
-                ) : (
-                  <span className="text-slate-500">Nessun consenso</span>
-                )}
-              />
-            </CollapsibleSection>
           </div>
         );
+
 
       case 'note':
         return <NotesTab athleteId={athleteId} notes={athleteNotes} />;
@@ -910,30 +759,28 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
 
   return (
     <div className="space-y-6">
-      {/* HERO HEADER CARD (ULTRA PREMIUM UI) */}
+      {/* HERO HEADER CARD */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-[var(--color-panel)] to-[var(--color-panel)] border border-[var(--color-panel-border)] p-6 shadow-2xl space-y-6">
         {/* Glow accento dorato di sfondo */}
         <div className="absolute -top-24 -right-24 w-72 h-72 bg-[var(--color-primary)]/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Intestazione + Actions Bar */}
-        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        {/* Intestazione + Actions Bar — SEMPLIFICATA */}
+        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div className="flex items-start gap-4">
             <button
               onClick={onBack}
               className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-bold text-slate-300 bg-slate-900/80 border border-slate-800 hover:bg-slate-800 hover:text-white transition-all shrink-0 shadow-lg"
             >
               <ArrowLeft className="w-4 h-4 text-[var(--color-primary)]" />
-              <span className="hidden sm:inline">Tutti gli atleti</span>
+              <span className="hidden sm:inline">Atleti</span>
             </button>
 
-            {/* Avatar Atleta con Anello di Stato Dinamico */}
+            {/* Avatar con anello di stato */}
             <div className="flex items-center gap-4">
               <div className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border-2 flex items-center justify-center font-black text-lg text-white shadow-xl shrink-0 ${
-                athlete.status === 'active'
-                  ? 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
-                  : athlete.status === 'suspended'
-                  ? 'border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
-                  : 'border-red-500'
+                athlete.status === 'active' ? 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
+                : athlete.status === 'suspended' ? 'border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
+                : 'border-red-500'
               }`}>
                 {initials}
                 <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900 ${
@@ -945,65 +792,89 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h2 className="text-2xl font-black text-white tracking-tight">{safeFullName}</h2>
                   <AthleteStatusBadge status={athlete.status} />
-                  <PaymentStatusBadge status={athlete.paymentStatus} />
                 </div>
-
-                <div className="flex items-center gap-4 text-xs text-slate-400 mt-1 flex-wrap font-medium">
-                  {athlete.email && (
-                    <a href={`mailto:${athlete.email}`} className="hover:text-white transition-colors flex items-center gap-1">
-                      <Mail className="w-3.5 h-3.5 text-sky-400" /> {athlete.email}
-                    </a>
-                  )}
+                <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap font-medium">
                   {athlete.phone && (
                     <a href={`tel:${athlete.phone}`} className="hover:text-white transition-colors flex items-center gap-1">
                       <Phone className="w-3.5 h-3.5 text-emerald-400" /> {athlete.phone}
                     </a>
                   )}
-                  <span>• Coach: <strong className="text-slate-200">{athlete.assignedCoachName || 'Nessuno'}</strong></span>
+                  {athlete.email && (
+                    <a href={`mailto:${athlete.email}`} className="hover:text-white transition-colors flex items-center gap-1">
+                      <Mail className="w-3.5 h-3.5 text-sky-400" /> {athlete.email}
+                    </a>
+                  )}
+                  {athlete.assignedCoachName && (
+                    <span className="text-slate-500">Coach: <strong className="text-slate-300">{athlete.assignedCoachName}</strong></span>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Quick Action Buttons */}
-          <div className="flex items-center gap-2.5 flex-wrap shrink-0">
-            {athlete.phone && (
-              <button
-                onClick={() => {
-                  const msg = `Ciao ${athlete.firstName || safeFullName}, ti contatto dal centro sportivo.`;
-                  window.open(`https://wa.me/${athlete.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 text-xs font-bold transition-all shadow-md"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>WhatsApp</span>
-              </button>
-            )}
-
+          {/* CTA — solo 2 primarie + overflow menu */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* CTA Primaria: Modifica */}
             <button
-              onClick={() => { setEditModalSection('all'); setIsEditModalOpen(true); }}
+              onClick={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}
               className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white hover:bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold transition-all shadow-lg"
             >
               <Pencil className="w-4 h-4 text-[var(--color-primary)]" />
-              <span>Modifica Atleta</span>
+              <span>Modifica</span>
             </button>
 
-            <button
-              onClick={handleCopyInviteLink}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-primary)] text-black font-black hover:bg-[var(--color-primary-hover)] rounded-xl text-xs transition-all shadow-[0_0_15px_rgba(234,179,8,0.2)]"
-            >
-              <LinkIcon className="w-4 h-4" />
-              <span>Genera Invito</span>
-            </button>
+            {/* Overflow Menu */}
+            <div className="relative" ref={overflowMenuRef}>
+              <button
+                onClick={() => setIsOverflowMenuOpen(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-lg ${
+                  isOverflowMenuOpen
+                    ? 'bg-slate-700 text-white border-slate-600'
+                    : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800 border-slate-700'
+                }`}
+                aria-label="Altre azioni"
+                title="Altre azioni"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
 
-            <button
-              onClick={handleDeleteAthlete}
-              className="flex items-center gap-2 px-4 py-2.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 rounded-xl text-xs font-bold transition-all shadow-md"
-              title="Elimina definitivamente questo atleta"
-            >
-              <Trash2 className="w-4 h-4 text-rose-400" />
-              <span>Elimina Profilo</span>
-            </button>
+              {isOverflowMenuOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-52 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-20 py-1 overflow-hidden">
+                  {/* WhatsApp */}
+                  {athlete.phone && (
+                    <button
+                      onClick={() => {
+                        setIsOverflowMenuOpen(false);
+                        const msg = `Ciao ${athlete.firstName || safeFullName}, ti contatto dal centro.`;
+                        window.open(`https://wa.me/${athlete.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-emerald-400 hover:bg-slate-800 transition-colors text-left"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      Apri su WhatsApp
+                    </button>
+                  )}
+                  {/* Genera Invito */}
+                  <button
+                    onClick={() => { setIsOverflowMenuOpen(false); handleCopyInviteLink(); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors text-left"
+                  >
+                    <LinkIcon className="w-4 h-4 text-[var(--color-primary)]" />
+                    Copia link invito
+                  </button>
+                  {/* Separatore */}
+                  <div className="border-t border-slate-800 my-1" />
+                  {/* Elimina */}
+                  <button
+                    onClick={() => { setIsOverflowMenuOpen(false); handleDeleteAthlete(); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition-colors text-left"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Elimina profilo
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

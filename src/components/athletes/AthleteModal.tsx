@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Shield, Activity, Target, FileText, Check, Upload, Trash2 } from 'lucide-react';
+import { X, User, Activity, Target, Settings, Check, Upload, Trash2 } from 'lucide-react';
 import {
   AthleteFormData,
+  AthleteGender,
   Athlete,
   AthleteStatus,
   AthletePaymentStatus,
@@ -18,7 +19,7 @@ import { LOCAL_OWNER_ID, getLocalOwnerProfile } from '../../lib/ownerProfile';
 import { compressImageFile } from '../../utils/fileCompressor';
 import { uploadMedicalCertificateToStorage } from '../../lib/storage';
 
-export type ModalSection = 'all' | 'anagrafica' | 'stato' | 'emergenza' | 'obiettivi' | 'certificato';
+export type ModalSection = 'anagrafica' | 'profilo' | 'obiettivi' | 'avanzato';
 
 interface AthleteModalProps {
   isOpen: boolean;
@@ -28,12 +29,20 @@ interface AthleteModalProps {
   initialSection?: ModalSection;
 }
 
+const genderLabel: Record<AthleteGender, string> = {
+  male: 'Uomo',
+  female: 'Donna',
+  other: 'Altro',
+  prefer_not_to_say: 'Preferisco non indicare',
+};
+
 const emptyForm = (ownerProfile: ReturnType<typeof getLocalOwnerProfile>): AthleteFormData => ({
   firstName: '',
   lastName: '',
   email: '',
   phone: '',
   dateOfBirth: '',
+  gender: undefined,
   city: '',
   province: '',
   address: '',
@@ -65,14 +74,14 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
   onClose,
   onSave,
   editingAthlete,
-  initialSection = 'all',
+  initialSection = 'anagrafica',
 }) => {
   const ownerProfile = getLocalOwnerProfile();
   const [form, setForm] = useState<AthleteFormData>(emptyForm(ownerProfile));
   const [errors, setErrors] = useState<Partial<Record<keyof AthleteFormData, string>>>({});
   const [tagInput, setTagInput] = useState('');
   const [activeTab, setActiveTab] = useState<ModalSection>(initialSection);
-  
+
   // State per la compressione
   const [isCompressing, setIsCompressing] = useState(false);
   const [compressionStats, setCompressionStats] = useState<{ originalKB: number; compressedKB: number; reduction: number } | null>(null);
@@ -88,6 +97,7 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
         email: editingAthlete.email || '',
         phone: editingAthlete.phone || '',
         dateOfBirth: editingAthlete.dateOfBirth || '',
+        gender: editingAthlete.gender,
         fiscalCode: editingAthlete.fiscalCode || '',
         address: editingAthlete.address || '',
         city: editingAthlete.city || '',
@@ -148,7 +158,6 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
     setCompressionStats(null);
 
     try {
-      // 1. Compressione lato client (Image/PDF)
       const compressed = await compressImageFile(file, 1600, 1600, 0.75);
 
       setCompressionStats({
@@ -157,14 +166,14 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
         reduction: compressed.reductionPercentage,
       });
 
-      // 2. Upload su Storage Supabase (Bucket Privato 'medical-certificates')
       const targetAthleteId = editingAthlete?.id || 'temp';
       const uploadRes = await uploadMedicalCertificateToStorage(targetAthleteId, compressed.file, compressed.dataUrl);
 
       set('medicalCertificateUrl', uploadRes.url);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Errore sconosciuto';
       console.error('Errore durante la compressione o upload:', err);
-      alert('Errore durante l\'elaborazione del file: ' + err.message);
+      alert('Errore durante l\'elaborazione del file: ' + message);
     } finally {
       setIsCompressing(false);
     }
@@ -208,27 +217,38 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
   const removeTag = (tag: string) =>
     set('tags', (form.tags ?? []).filter(t => t !== tag));
 
-  const selectClass = (hasError?: string) =>
-    `w-full px-3 py-2 rounded-xl bg-slate-900 border ${hasError ? 'border-red-500' : 'border-[var(--color-panel-border)]'} text-white text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors`;
+  const inputClass = (hasError?: string) =>
+    `w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border ${hasError ? 'border-red-500' : 'border-[var(--color-panel-border)]'} text-white text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors placeholder-slate-600`;
 
-  const inputClass = (hasError?: string) => selectClass(hasError);
+  const selectClass = (hasError?: string) =>
+    `w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border ${hasError ? 'border-red-500' : 'border-[var(--color-panel-border)]'} text-white text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors`;
+
+  const labelClass = 'block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wide';
 
   const modalTabs: { id: ModalSection; label: string; icon: React.ReactNode }[] = [
-    { id: 'all', label: 'Tutto', icon: <Check className="w-3.5 h-3.5" /> },
-    { id: 'anagrafica', label: 'Anagrafica & Contatti', icon: <User className="w-3.5 h-3.5" /> },
-    { id: 'stato', label: 'Stato', icon: <Activity className="w-3.5 h-3.5" /> },
-    { id: 'emergenza', label: 'Emergenza', icon: <Shield className="w-3.5 h-3.5" /> },
-    { id: 'obiettivi', label: 'Obiettivi', icon: <Target className="w-3.5 h-3.5" /> },
-    { id: 'certificato', label: 'Certificato & Consensi', icon: <FileText className="w-3.5 h-3.5" /> },
+    { id: 'anagrafica', label: 'Anagrafica', icon: <User className="w-3.5 h-3.5" /> },
+    { id: 'profilo', label: 'Profilo Atleta', icon: <Activity className="w-3.5 h-3.5" /> },
+    { id: 'obiettivi', label: 'Obiettivi & Note', icon: <Target className="w-3.5 h-3.5" /> },
+    { id: 'avanzato', label: 'Avanzato', icon: <Settings className="w-3.5 h-3.5" /> },
   ];
 
-  const showAll = activeTab === 'all';
+  const SectionTitle: React.FC<{ icon: React.ReactNode; title: string; subtitle?: string }> = ({ icon, title, subtitle }) => (
+    <div className="flex items-center gap-3 mb-5">
+      <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 flex items-center justify-center text-[var(--color-primary)] shrink-0">
+        {icon}
+      </div>
+      <div>
+        <h4 className="text-sm font-bold text-white">{title}</h4>
+        {subtitle && <p className="text-[11px] text-slate-500 mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl w-full max-w-2xl shadow-2xl z-10 flex flex-col max-h-[92vh]">
-        
+
         {/* Header Modale */}
         <div className="px-5 py-4 border-b border-[var(--color-panel-border)] shrink-0 space-y-3">
           <div className="flex items-center justify-between">
@@ -240,7 +260,9 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                 <h3 className="text-base font-bold text-white">
                   {editingAthlete ? `Modifica: ${editingAthlete.fullName || editingAthlete.firstName}` : 'Nuovo Atleta'}
                 </h3>
-                <p className="text-[11px] text-slate-400">Seleziona la sezione che desideri aggiornare</p>
+                <p className="text-[11px] text-slate-500">
+                  {editingAthlete ? 'Modifica i dati per sezione' : 'Inserisci i dati del nuovo atleta'}
+                </p>
               </div>
             </div>
             <button
@@ -252,39 +274,41 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
             </button>
           </div>
 
-          {/* Sub-tab Navigation */}
-          {editingAthlete && (
-            <div className="flex overflow-x-auto gap-1 bg-slate-900/60 p-1 rounded-xl border border-slate-800 no-scrollbar">
-              {modalTabs.map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${activeTab === tab.id
-                    ? 'bg-[var(--color-primary)] text-black'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  {tab.icon}
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Tab Navigation */}
+          <div className="flex overflow-x-auto gap-1 bg-slate-900/60 p-1 rounded-xl border border-slate-800 no-scrollbar">
+            {modalTabs.map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${activeTab === tab.id
+                  ? 'bg-[var(--color-primary)] text-black shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Body Form */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-5 space-y-6">
-          
-          {/* 1. Dati Anagrafici e Contatti */}
-          {(showAll || activeTab === 'anagrafica') && (
-            <section className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1.5">
-                <User className="w-4 h-4" /> Dati Anagrafici & Contatti
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-6">
+
+          {/* ─── TAB: ANAGRAFICA ─── */}
+          {activeTab === 'anagrafica' && (
+            <div className="space-y-5">
+              <SectionTitle
+                icon={<User className="w-4 h-4" />}
+                title="Anagrafica"
+                subtitle="Dati identificativi principali dell'atleta"
+              />
+
+              {/* Campi principali */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="athlete-firstName" className="block text-xs font-semibold text-slate-300 mb-1">Nome *</label>
+                  <label htmlFor="athlete-firstName" className={labelClass}>Nome *</label>
                   <input
                     id="athlete-firstName"
                     value={form.firstName}
@@ -295,7 +319,7 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                   {errors.firstName && <p className="text-[11px] text-red-400 mt-1">{errors.firstName}</p>}
                 </div>
                 <div>
-                  <label htmlFor="athlete-lastName" className="block text-xs font-semibold text-slate-300 mb-1">Cognome *</label>
+                  <label htmlFor="athlete-lastName" className={labelClass}>Cognome *</label>
                   <input
                     id="athlete-lastName"
                     value={form.lastName}
@@ -306,7 +330,18 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                   {errors.lastName && <p className="text-[11px] text-red-400 mt-1">{errors.lastName}</p>}
                 </div>
                 <div>
-                  <label htmlFor="athlete-email" className="block text-xs font-semibold text-slate-300 mb-1">Email</label>
+                  <label htmlFor="athlete-phone" className={labelClass}>Telefono *</label>
+                  <input
+                    id="athlete-phone"
+                    value={form.phone}
+                    onChange={e => set('phone', e.target.value)}
+                    className={inputClass(errors.phone)}
+                    placeholder="+39 333 0000000"
+                  />
+                  {errors.phone && <p className="text-[11px] text-red-400 mt-1">{errors.phone}</p>}
+                </div>
+                <div>
+                  <label htmlFor="athlete-email" className={labelClass}>Email</label>
                   <input
                     id="athlete-email"
                     type="email"
@@ -318,28 +353,7 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                   {errors.email && <p className="text-[11px] text-red-400 mt-1">{errors.email}</p>}
                 </div>
                 <div>
-                  <label htmlFor="athlete-phone" className="block text-xs font-semibold text-slate-300 mb-1">Telefono *</label>
-                  <input
-                    id="athlete-phone"
-                    value={form.phone}
-                    onChange={e => set('phone', e.target.value)}
-                    className={inputClass(errors.phone)}
-                    placeholder="+39 333 0000000"
-                  />
-                  {errors.phone && <p className="text-[11px] text-red-400 mt-1">{errors.phone}</p>}
-                </div>
-                <div>
-                  <label htmlFor="athlete-telegram" className="block text-xs font-semibold text-slate-300 mb-1">Contatto Telegram</label>
-                  <input
-                    id="athlete-telegram"
-                    value={form.telegramUsername ?? ''}
-                    onChange={e => set('telegramUsername', e.target.value)}
-                    className={inputClass()}
-                    placeholder="es. @username o +393330000000"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="athlete-dateOfBirth" className="block text-xs font-semibold text-slate-300 mb-1">Data di Nascita</label>
+                  <label htmlFor="athlete-dateOfBirth" className={labelClass}>Data di Nascita</label>
                   <input
                     id="athlete-dateOfBirth"
                     type="date"
@@ -349,48 +363,62 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label htmlFor="athlete-fiscalCode" className="block text-xs font-semibold text-slate-300 mb-1">Codice Fiscale</label>
-                  <input
-                    id="athlete-fiscalCode"
-                    value={form.fiscalCode ?? ''}
-                    onChange={e => set('fiscalCode', e.target.value)}
-                    className={inputClass()}
-                    placeholder="es. BNCMRC80A01H501U"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="athlete-city" className="block text-xs font-semibold text-slate-300 mb-1">Città</label>
-                  <input
-                    id="athlete-city"
-                    value={form.city ?? ''}
-                    onChange={e => set('city', e.target.value)}
-                    className={inputClass()}
-                    placeholder="es. Milano"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="athlete-address" className="block text-xs font-semibold text-slate-300 mb-1">Indirizzo</label>
-                  <input
-                    id="athlete-address"
-                    value={form.address ?? ''}
-                    onChange={e => set('address', e.target.value)}
-                    className={inputClass()}
-                    placeholder="es. Via Roma 10"
-                  />
+                  <label htmlFor="athlete-gender" className={labelClass}>Genere</label>
+                  <select
+                    id="athlete-gender"
+                    value={form.gender ?? ''}
+                    onChange={e => set('gender', e.target.value as AthleteGender || undefined)}
+                    className={selectClass()}
+                  >
+                    <option value="">— Non specificato —</option>
+                    {(Object.keys(genderLabel) as AthleteGender[]).map(g => (
+                      <option key={g} value={g}>{genderLabel[g]}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
-            </section>
+
+              {/* Separatore campi secondari */}
+              <div className="border-t border-slate-800 pt-4">
+                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-3">Contatti aggiuntivi</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="athlete-telegram" className={labelClass}>Telegram</label>
+                    <input
+                      id="athlete-telegram"
+                      value={form.telegramUsername ?? ''}
+                      onChange={e => set('telegramUsername', e.target.value)}
+                      className={inputClass()}
+                      placeholder="@username o +393330000000"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="athlete-city" className={labelClass}>Città</label>
+                    <input
+                      id="athlete-city"
+                      value={form.city ?? ''}
+                      onChange={e => set('city', e.target.value)}
+                      className={inputClass()}
+                      placeholder="es. Milano"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
-          {/* 2. Stato e Gestione */}
-          {(showAll || activeTab === 'stato') && (
-            <section className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1.5">
-                <Activity className="w-4 h-4" /> Stato e Situazione
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* ─── TAB: PROFILO ATLETA ─── */}
+          {activeTab === 'profilo' && (
+            <div className="space-y-5">
+              <SectionTitle
+                icon={<Activity className="w-4 h-4" />}
+                title="Profilo Atleta"
+                subtitle="Stato operativo e gestione coaching"
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="athlete-status" className="block text-xs font-semibold text-slate-300 mb-1">Stato *</label>
+                  <label htmlFor="athlete-status" className={labelClass}>Stato Atleta *</label>
                   <select
                     id="athlete-status"
                     value={form.status}
@@ -403,238 +431,323 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label htmlFor="athlete-paymentStatus" className="block text-xs font-semibold text-slate-300 mb-1">Situazione Pagamenti</label>
+                  <label className={labelClass}>Canale Contatto Preferito</label>
                   <select
-                    id="athlete-paymentStatus"
-                    value={form.paymentStatus}
-                    onChange={e => set('paymentStatus', e.target.value as AthletePaymentStatus)}
+                    value={form.contactChannel}
+                    onChange={e => set('contactChannel', e.target.value as ContactChannel)}
                     className={selectClass()}
                   >
-                    {(Object.keys(paymentStatusLabel) as AthletePaymentStatus[]).map(s => (
-                      <option key={s} value={s}>{paymentStatusLabel[s]}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Canale Contatto</label>
-                  <select value={form.contactChannel} onChange={e => set('contactChannel', e.target.value as ContactChannel)} className={selectClass()}>
                     {(Object.keys(contactChannelLabel) as ContactChannel[]).map(c => (
                       <option key={c} value={c}>{contactChannelLabel[c]}</option>
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Fonte Acquisizione</label>
-                  <select value={form.acquisitionSource} onChange={e => set('acquisitionSource', e.target.value as AcquisitionSource)} className={selectClass()}>
-                    {(Object.keys(acquisitionSourceLabel) as AcquisitionSource[]).map(s => (
-                      <option key={s} value={s}>{acquisitionSourceLabel[s]}</option>
-                    ))}
-                  </select>
+                <div className="sm:col-span-2">
+                  <label className={labelClass}>Coach Assegnato</label>
+                  <input
+                    value={form.assignedCoachName}
+                    onChange={e => set('assignedCoachName', e.target.value)}
+                    className={inputClass()}
+                    placeholder="Nome del coach responsabile"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">Coach principale responsabile di questo atleta</p>
                 </div>
               </div>
-            </section>
+            </div>
           )}
 
-          {/* 3. Contatto di Emergenza */}
-          {(showAll || activeTab === 'emergenza') && (
-            <section className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1.5">
-                <Shield className="w-4 h-4" /> Contatto di Emergenza
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Nome Referente</label>
-                  <input
-                    value={form.emergencyContact?.name || ''}
-                    onChange={e => set('emergencyContact', { ...form.emergencyContact, name: e.target.value, phone: form.emergencyContact?.phone || '', relationship: form.emergencyContact?.relationship || '' })}
-                    className={inputClass()}
-                    placeholder="es. Mario Rossi"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Telefono</label>
-                  <input
-                    value={form.emergencyContact?.phone || ''}
-                    onChange={e => set('emergencyContact', { ...form.emergencyContact, phone: e.target.value, name: form.emergencyContact?.name || '', relationship: form.emergencyContact?.relationship || '' })}
-                    className={inputClass()}
-                    placeholder="+39 333 1112233"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Relazione / Parentela</label>
-                  <input
-                    value={form.emergencyContact?.relationship || ''}
-                    onChange={e => set('emergencyContact', { ...form.emergencyContact, relationship: e.target.value, name: form.emergencyContact?.name || '', phone: form.emergencyContact?.phone || '' })}
-                    className={inputClass()}
-                    placeholder="es. Padre, Coniuge..."
-                  />
-                </div>
-              </div>
-            </section>
-          )}
+          {/* ─── TAB: OBIETTIVI & NOTE ─── */}
+          {activeTab === 'obiettivi' && (
+            <div className="space-y-5">
+              <SectionTitle
+                icon={<Target className="w-4 h-4" />}
+                title="Obiettivi & Note"
+                subtitle="Definisci il percorso e le priorità dell'atleta"
+              />
 
-          {/* 4. Obiettivi e Note */}
-          {(showAll || activeTab === 'obiettivi') && (
-            <section className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1.5">
-                <Target className="w-4 h-4" /> Obiettivi, Disciplina & Note
-              </h4>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Obiettivi dell'atleta</label>
-                  <textarea value={form.goals ?? ''} onChange={e => set('goals', e.target.value)} rows={2}
-                    className={`${inputClass()} resize-none`} placeholder="Descrivi gli obiettivi dell'atleta..." />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Note interne riservate</label>
-                  <textarea value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} rows={2}
-                    className={`${inputClass()} resize-none`} placeholder="Note visibili solo ai coach..." />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Tag / Discipline</label>
-                  <div className="flex gap-2">
-                    <input value={tagInput} onChange={e => setTagInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
-                      className={`${inputClass()} flex-1`} placeholder="es. forza, running..." />
-                    <button type="button" onClick={addTag}
-                      className="px-3 py-2 rounded-xl bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/40 text-[var(--color-primary)] text-xs font-bold hover:bg-[var(--color-primary)]/30 transition-colors">
-                      Aggiungi
-                    </button>
-                  </div>
-                  {(form.tags ?? []).length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {(form.tags ?? []).map(tag => (
-                        <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 text-[var(--color-primary)] text-[11px] font-semibold">
-                          {tag}
-                          <button type="button" onClick={() => removeTag(tag)} className="hover:text-white ml-0.5">×</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* 5. Certificato Medico e Consensi */}
-          {(showAll || activeTab === 'certificato') && (
-            <section className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1.5">
-                <FileText className="w-4 h-4" /> Certificato Medico & Consensi
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Tipologia Certificato</label>
-                  <select
-                    value={form.medicalCertificateType ?? 'agonistico'}
-                    onChange={e => set('medicalCertificateType', e.target.value as 'agonistico' | 'non_agonistico')}
-                    className={selectClass()}
-                  >
-                    <option value="agonistico">Agonistico</option>
-                    <option value="non_agonistico">Non Agonistico</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Scadenza Certificato Medico</label>
-                  <input
-                    type="date"
-                    value={form.medicalCertificateExpiryDate ?? ''}
-                    onChange={e => set('medicalCertificateExpiryDate', e.target.value)}
-                    className={inputClass()}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Note Certificato / Idoneità</label>
-                  <input
-                    value={form.medicalNotes ?? ''}
-                    onChange={e => set('medicalNotes', e.target.value)}
-                    className={inputClass()}
-                    placeholder="es. Visita agonistica idonea..."
-                  />
-                </div>
-              </div>
-
-              {/* Upload File Certificato */}
-              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2">
-                <label className="block text-xs font-semibold text-slate-300">
-                  Documento Certificato Medico (PDF o Immagine)
+              {/* Sezione Obiettivi — Hero */}
+              <div className="bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20 rounded-2xl p-5 space-y-3">
+                <label className="block text-sm font-bold text-[var(--color-primary)]">
+                  🎯 Obiettivi dell'atleta
                 </label>
+                <textarea
+                  value={form.goals ?? ''}
+                  onChange={e => set('goals', e.target.value)}
+                  rows={6}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900/80 border border-[var(--color-primary)]/20 text-slate-100 text-base leading-relaxed resize-none focus:outline-none focus:border-[var(--color-primary)] transition-colors placeholder-slate-600"
+                  placeholder="Descrivi gli obiettivi dell'atleta: performance, composizione corporea, competizioni, benessere…"
+                />
+                <p className="text-[11px] text-slate-500">Visibile nel profilo e usato per personalizzare il coaching</p>
+              </div>
 
-                {isCompressing ? (
-                  <div className="flex items-center gap-2 p-3 bg-slate-950 rounded-xl border border-amber-500/30 text-amber-400 text-xs font-bold">
-                    <div className="w-4 h-4 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
-                    <span>Comprimendo e ottimizzando file lato client...</span>
-                  </div>
-                ) : form.medicalCertificateUrl ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-emerald-500/30">
-                      <div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400">
-                        <FileText className="w-4 h-4" />
-                        <span>Certificato Medico Allegato</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={form.medicalCertificateUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-white rounded-lg font-bold transition-colors"
-                        >
-                          Visualizza
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => { set('medicalCertificateUrl', ''); setCompressionStats(null); }}
-                          className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs rounded-lg font-bold transition-colors"
-                          title="Rimuovi allegato"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {compressionStats && compressionStats.reduction > 0 && (
-                      <div className="text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center justify-between">
-                        <span>⚡ Compressione riuscita: {compressionStats.originalKB} KB ➔ {compressionStats.compressedKB} KB</span>
-                        <span className="bg-emerald-500 text-black text-[10px] px-1.5 py-0.5 rounded font-black">-{compressionStats.reduction}%</span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-1">
-                    <input
-                      type="file"
-                      id="cert-file-upload"
-                      accept="image/*,application/pdf"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    <label
-                      htmlFor="cert-file-upload"
-                      className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors"
-                    >
-                      <Upload className="w-4 h-4 text-[var(--color-primary)]" />
-                      <span>Carica Certificato (PDF / Foto)</span>
-                    </label>
-                    <span className="text-[11px] text-slate-500">Compressione automatica &lt; 500 KB (PDF, PNG, JPG)</span>
+              {/* Tag / Discipline */}
+              <div className="space-y-2">
+                <label className={labelClass}>Discipline & Tag</label>
+                <div className="flex gap-2">
+                  <input
+                    value={tagInput}
+                    onChange={e => setTagInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+                    className={`${inputClass()} flex-1`}
+                    placeholder="es. forza, running, powerlifting…"
+                  />
+                  <button
+                    type="button"
+                    onClick={addTag}
+                    className="px-4 py-2.5 rounded-xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 text-[var(--color-primary)] text-xs font-bold hover:bg-[var(--color-primary)]/25 transition-colors whitespace-nowrap"
+                  >
+                    + Aggiungi
+                  </button>
+                </div>
+                {(form.tags ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {(form.tags ?? []).map(tag => (
+                      <span key={tag} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 text-[var(--color-primary)] text-xs font-semibold">
+                        {tag}
+                        <button type="button" onClick={() => removeTag(tag)} className="hover:text-white opacity-60 hover:opacity-100 transition-opacity">×</button>
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>
 
-              <div className="space-y-2 pt-2 border-t border-slate-800">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input type="checkbox" checked={form.privacyConsent}
-                    onChange={e => set('privacyConsent', e.target.checked)}
-                    className="accent-[var(--color-primary)]" />
-                  <span className="text-xs text-slate-300 font-semibold">Consenso Privacy acquisito</span>
-                </label>
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input type="checkbox" checked={form.newsletterConsent}
-                    onChange={e => set('newsletterConsent', e.target.checked)}
-                    className="accent-[var(--color-primary)]" />
-                  <span className="text-xs text-slate-300">Consenso all'invio di comunicazioni e newsletter</span>
-                </label>
+              {/* Note interne */}
+              <div className="border-t border-slate-800 pt-4 space-y-2">
+                <label className={labelClass}>Note interne riservate</label>
+                <textarea
+                  value={form.notes ?? ''}
+                  onChange={e => set('notes', e.target.value)}
+                  rows={4}
+                  className={`${inputClass()} resize-none`}
+                  placeholder="Note visibili solo ai coach — comportamento, limitazioni, contesto personale…"
+                />
+                <p className="text-[11px] text-slate-500">🔒 Non visibili all'atleta</p>
               </div>
-            </section>
+            </div>
+          )}
+
+          {/* ─── TAB: AVANZATO ─── */}
+          {activeTab === 'avanzato' && (
+            <div className="space-y-6">
+              <SectionTitle
+                icon={<Settings className="w-4 h-4" />}
+                title="Dati Avanzati"
+                subtitle="Dati opzionali — compila solo se disponibili"
+              />
+
+              {/* Contatto di Emergenza */}
+              <div className="space-y-3">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-5 h-5 rounded bg-slate-800 flex items-center justify-center text-[10px]">🚨</span>
+                  Contatto di Emergenza
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className={labelClass}>Nome Referente</label>
+                    <input
+                      value={form.emergencyContact?.name || ''}
+                      onChange={e => set('emergencyContact', { ...form.emergencyContact, name: e.target.value, phone: form.emergencyContact?.phone || '', relationship: form.emergencyContact?.relationship || '' })}
+                      className={inputClass()}
+                      placeholder="es. Mario Rossi"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Telefono</label>
+                    <input
+                      value={form.emergencyContact?.phone || ''}
+                      onChange={e => set('emergencyContact', { ...form.emergencyContact, phone: e.target.value, name: form.emergencyContact?.name || '', relationship: form.emergencyContact?.relationship || '' })}
+                      className={inputClass()}
+                      placeholder="+39 333 1112233"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Relazione</label>
+                    <input
+                      value={form.emergencyContact?.relationship || ''}
+                      onChange={e => set('emergencyContact', { ...form.emergencyContact, relationship: e.target.value, name: form.emergencyContact?.name || '', phone: form.emergencyContact?.phone || '' })}
+                      className={inputClass()}
+                      placeholder="es. Padre, Coniuge"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Dati Amministrativi */}
+              <div className="border-t border-slate-800 pt-4 space-y-3">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-5 h-5 rounded bg-slate-800 flex items-center justify-center text-[10px]">📋</span>
+                  Dati Amministrativi
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="athlete-fiscalCode" className={labelClass}>Codice Fiscale</label>
+                    <input
+                      id="athlete-fiscalCode"
+                      value={form.fiscalCode ?? ''}
+                      onChange={e => set('fiscalCode', e.target.value)}
+                      className={inputClass()}
+                      placeholder="es. BNCMRC80A01H501U"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="athlete-address" className={labelClass}>Indirizzo</label>
+                    <input
+                      id="athlete-address"
+                      value={form.address ?? ''}
+                      onChange={e => set('address', e.target.value)}
+                      className={inputClass()}
+                      placeholder="es. Via Roma 10"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Fonte Acquisizione</label>
+                    <select
+                      value={form.acquisitionSource}
+                      onChange={e => set('acquisitionSource', e.target.value as AcquisitionSource)}
+                      className={selectClass()}
+                    >
+                      {(Object.keys(acquisitionSourceLabel) as AcquisitionSource[]).map(s => (
+                        <option key={s} value={s}>{acquisitionSourceLabel[s]}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="athlete-paymentStatus" className={labelClass}>Situazione Pagamenti</label>
+                    <select
+                      id="athlete-paymentStatus"
+                      value={form.paymentStatus}
+                      onChange={e => set('paymentStatus', e.target.value as AthletePaymentStatus)}
+                      className={selectClass()}
+                    >
+                      {(Object.keys(paymentStatusLabel) as AthletePaymentStatus[]).map(s => (
+                        <option key={s} value={s}>{paymentStatusLabel[s]}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Certificato Medico */}
+              <div className="border-t border-slate-800 pt-4 space-y-3">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-5 h-5 rounded bg-slate-800 flex items-center justify-center text-[10px]">🏥</span>
+                  Certificato Medico & Consensi
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className={labelClass}>Tipologia Certificato</label>
+                    <select
+                      value={form.medicalCertificateType ?? 'agonistico'}
+                      onChange={e => set('medicalCertificateType', e.target.value as 'agonistico' | 'non_agonistico')}
+                      className={selectClass()}
+                    >
+                      <option value="agonistico">Agonistico</option>
+                      <option value="non_agonistico">Non Agonistico</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Scadenza Certificato</label>
+                    <input
+                      type="date"
+                      value={form.medicalCertificateExpiryDate ?? ''}
+                      onChange={e => set('medicalCertificateExpiryDate', e.target.value)}
+                      className={inputClass()}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Note Certificato</label>
+                    <input
+                      value={form.medicalNotes ?? ''}
+                      onChange={e => set('medicalNotes', e.target.value)}
+                      className={inputClass()}
+                      placeholder="es. Visita agonistica idonea"
+                    />
+                  </div>
+                </div>
+
+                {/* Upload File Certificato */}
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2">
+                  <label className="block text-xs font-semibold text-slate-400">
+                    Documento Certificato Medico (PDF o Immagine)
+                  </label>
+
+                  {isCompressing ? (
+                    <div className="flex items-center gap-2 p-3 bg-slate-950 rounded-xl border border-amber-500/30 text-amber-400 text-xs font-bold">
+                      <div className="w-4 h-4 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+                      <span>Comprimendo e ottimizzando file lato client...</span>
+                    </div>
+                  ) : form.medicalCertificateUrl ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-emerald-500/30">
+                        <div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400">
+                          <Check className="w-4 h-4" />
+                          <span>Certificato Medico Allegato</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={form.medicalCertificateUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-white rounded-lg font-bold transition-colors"
+                          >
+                            Visualizza
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => { set('medicalCertificateUrl', ''); setCompressionStats(null); }}
+                            className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs rounded-lg font-bold transition-colors"
+                            title="Rimuovi allegato"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {compressionStats && compressionStats.reduction > 0 && (
+                        <div className="text-[11px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center justify-between">
+                          <span>⚡ Compressione: {compressionStats.originalKB} KB → {compressionStats.compressedKB} KB</span>
+                          <span className="bg-emerald-500 text-black text-[10px] px-1.5 py-0.5 rounded font-black">-{compressionStats.reduction}%</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-1">
+                      <input
+                        type="file"
+                        id="cert-file-upload"
+                        accept="image/*,application/pdf"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="cert-file-upload"
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-bold rounded-xl cursor-pointer transition-colors"
+                      >
+                        <Upload className="w-4 h-4 text-[var(--color-primary)]" />
+                        <span>Carica Certificato (PDF / Foto)</span>
+                      </label>
+                      <span className="text-[11px] text-slate-500">Compressione automatica &lt; 500 KB</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Consensi */}
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={form.privacyConsent}
+                      onChange={e => set('privacyConsent', e.target.checked)}
+                      className="accent-[var(--color-primary)]" />
+                    <span className="text-xs text-slate-300 font-semibold">Consenso Privacy acquisito</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={form.newsletterConsent}
+                      onChange={e => set('newsletterConsent', e.target.checked)}
+                      className="accent-[var(--color-primary)]" />
+                    <span className="text-xs text-slate-300">Consenso all'invio di comunicazioni e newsletter</span>
+                  </label>
+                </div>
+              </div>
+            </div>
           )}
         </form>
 

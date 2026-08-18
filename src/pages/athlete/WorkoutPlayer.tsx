@@ -1,5 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { X, Check, Clock, MessageSquare, Activity, ShieldAlert, Flame, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  X,
+  Check,
+  Clock,
+  ShieldAlert,
+  Sparkles,
+  WifiOff,
+} from 'lucide-react';
 
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
@@ -7,10 +14,16 @@ import { useToast } from '../../context/ToastContext';
 import { useMetrics } from '../../context/MetricsContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
-import { supabase } from '../../lib/supabase';
-
-
 import { ExerciseCard } from '../../components/workouts/ExerciseCard';
+import {
+  saveActiveWorkoutDraft,
+  getActiveWorkoutDraft,
+  clearActiveWorkoutDraft,
+  queueCompletedWorkoutForSync,
+  syncPendingWorkoutsWithServer,
+  ActiveWorkoutDraft,
+  PendingCompletedWorkout,
+} from '../../lib/offline/offlineWorkoutStorage';
 
 interface WorkoutPlayerProps {
   workout: WorkoutTemplate;
@@ -19,16 +32,27 @@ interface WorkoutPlayerProps {
   onClose: () => void;
 }
 
-export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises, targetAthleteId, onClose }) => {
+export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
+  workout,
+  exercises,
+  targetAthleteId,
+  onClose,
+}) => {
   const { startWorkoutSession, endWorkoutSession, saveExerciseLogs } = useWorkouts();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess } = useToast();
   const { checkAndUpdateAutoPR } = useMetrics();
   const { user } = useAuth();
   const { athletes } = useAthletes();
 
   // Atleta Corrente
-  const currentAthlete = user ? athletes.find(a => a.email && a.email.toLowerCase() === user.email.toLowerCase()) : null;
-  const athleteId = targetAthleteId || currentAthlete?.id || user?.athleteId || user?.id;
+  const currentAthlete = user
+    ? athletes.find((a) => a.email && a.email.toLowerCase() === user.email.toLowerCase())
+    : null;
+  const athleteId = targetAthleteId || currentAthlete?.id || user?.athleteId || user?.id || 'ath-local';
+
+  // Stato Connessione Realtime
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [lastSavedText, setLastSavedText] = useState<string>('Salvato');
 
   const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -37,9 +61,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // LOGS: Salviamo i dati immessi per ogni set
-  const [logs, setLogs] = useState<Record<string, { reps: string, weight: string, rpe: string }[]>>({});
-  // SERIE COMPLETATE: Tracciamento booleano immutabile per ogni esercizio/set
+  // LOGS: Dati immessi per ogni set
+  const [logs, setLogs] = useState<Record<string, { reps: string; weight: string; rpe: string }[]>>({});
+  // SERIE COMPLETATE: Tracciamento booleano per ogni esercizio/set
   const [completedSets, setCompletedSets] = useState<Record<string, boolean[]>>({});
   // NOTE FEEDBACK: Note dell'atleta per singolo esercizio
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
@@ -51,41 +75,127 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
   const [pump, setPump] = useState<number>(3);
   const [jointPainNotes, setJointPainNotes] = useState<string>('');
 
-  // Inizializza i logs vuoti
-  useEffect(() => {
-    const initialLogs: any = {};
-    exercises.forEach(ex => {
-      initialLogs[ex.id] = Array(ex.sets).fill({ reps: '', weight: '', rpe: '' });
-    });
-    setLogs(initialLogs);
-  }, [exercises]);
+  const startTimestampRef = useRef<number>(Date.now());
+  const restEndTimestampRef = useRef<number | null>(null);
+  const hasInitializedRef = useRef<boolean>(false);
 
-  // Avvia la sessione reale su DB o locale
+  // ── 1. GESTIONE STATO ONLINE/OFFLINE & AUTO-SYNC ──
   useEffect(() => {
-    const initSession = async () => {
-      if (athleteId && workout.id) {
-        const { session } = await startWorkoutSession(workout.id, athleteId);
-        if (session) setSessionId(session.id);
+    const handleOnline = async () => {
+      setIsOnline(true);
+      const res = await syncPendingWorkoutsWithServer();
+      if (res.syncedCount > 0) {
+        showSuccess('Sincronizzazione completata', `${res.syncedCount} allenamento/i offline sincronizzato/i col server.`);
       }
     };
-    initSession();
-  }, [athleteId, workout.id, startWorkoutSession]);
 
-  const startTimestampRef = React.useRef<number>(Date.now());
-  const restEndTimestampRef = React.useRef<number | null>(null);
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [showSuccess]);
+
+  // ── 2. INIZIALIZZAZIONE & RECUPERO BOZZA LOCALE ANTI-PERDITA DATI ──
+  useEffect(() => {
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+
+    // Controlla se esiste una bozza locale per questo atleta e workout
+    const savedDraft = getActiveWorkoutDraft(athleteId);
+
+    if (savedDraft && (savedDraft.workout?.id === workout.id || savedDraft.workout?.title === workout.title)) {
+      // Ripristina lo stato precedente
+      setLogs(savedDraft.logs || {});
+      setCompletedSets(savedDraft.completedSets || {});
+      setExerciseNotes(savedDraft.exerciseNotes || {});
+      setActiveExerciseIdx(savedDraft.activeExerciseIdx || 0);
+      setSessionId(savedDraft.sessionId || null);
+
+      if (savedDraft.startTimestamp) {
+        startTimestampRef.current = savedDraft.startTimestamp;
+        const diffSec = Math.floor((Date.now() - savedDraft.startTimestamp) / 1000);
+        setElapsedTime(Math.max(savedDraft.elapsedSeconds || 0, diffSec));
+      }
+
+      setLastSavedText(`Ripristinato alle ${new Date(savedDraft.lastSavedTimestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`);
+    } else {
+      // Inizializza log vuoti per gli esercizi
+      const initialLogs: Record<string, { reps: string; weight: string; rpe: string }[]> = {};
+      exercises.forEach((ex) => {
+        initialLogs[ex.id] = Array(ex.sets).fill({ reps: '', weight: '', rpe: '' });
+      });
+      setLogs(initialLogs);
+
+      // Avvia la sessione reale su Supabase se online
+      if (navigator.onLine && workout.id) {
+        startWorkoutSession(workout.id, athleteId).then(({ session }) => {
+          if (session) {
+            setSessionId(session.id);
+          }
+        });
+      }
+    }
+  }, [athleteId, workout, exercises, startWorkoutSession]);
+
+  // ── 3. AUTOSAVE LOCALE CONTINUO AD OGNI MODIFICA ──
+  const triggerLocalAutosave = useCallback(
+    (
+      currentLogs: Record<string, { reps: string; weight: string; rpe: string }[]>,
+      currentSets: Record<string, boolean[]>,
+      currentNotes: Record<string, string>,
+      curExIdx: number
+    ) => {
+      if (!athleteId) return;
+
+      const draft: ActiveWorkoutDraft = {
+        draftId: `draft-${athleteId}-${workout.id}`,
+        sessionId,
+        athleteId,
+        workout,
+        exercises,
+        targetAthleteId,
+        startTimestamp: startTimestampRef.current,
+        lastSavedTimestamp: Date.now(),
+        elapsedSeconds: elapsedTime,
+        activeExerciseIdx: curExIdx,
+        logs: currentLogs,
+        completedSets: currentSets,
+        exerciseNotes: currentNotes,
+        difficulty,
+        jointPain,
+        pump,
+        jointPainNotes,
+        syncStatus: navigator.onLine ? 'local_saved' : 'pending_sync',
+      };
+
+      saveActiveWorkoutDraft(draft);
+      const timeStr = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setLastSavedText(`Salvato alle ${timeStr}`);
+    },
+    [athleteId, workout, exercises, targetAthleteId, sessionId, elapsedTime, difficulty, jointPain, pump, jointPainNotes]
+  );
 
   // Cronometro Allenamento Globale
   useEffect(() => {
-    let interval: any = null;
+    let interval: NodeJS.Timeout | null = null;
     if (isTimerRunning) {
       interval = setInterval(() => {
         setElapsedTime(Math.floor((Date.now() - startTimestampRef.current) / 1000));
       }, 1000);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [isTimerRunning]);
 
-  // Cronometro Recupero Tra Serie (timestamp-based contro il throttling in background)
+  // Cronometro Recupero Tra Serie
   useEffect(() => {
     if (restTimer === null || restTimer <= 0) {
       restEndTimestampRef.current = null;
@@ -126,15 +236,17 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
   };
 
   const handleLogChange = (exerciseId: string, setIndex: number, field: 'reps' | 'weight' | 'rpe', value: string) => {
-    setLogs(prev => {
+    setLogs((prev) => {
       const updatedSets = [...(prev[exerciseId] || [])];
       updatedSets[setIndex] = { ...updatedSets[setIndex], [field]: value };
-      return { ...prev, [exerciseId]: updatedSets };
+      const nextLogs = { ...prev, [exerciseId]: updatedSets };
+      triggerLocalAutosave(nextLogs, completedSets, exerciseNotes, activeExerciseIdx);
+      return nextLogs;
     });
   };
 
   const handleToggleSetComplete = (exerciseId: string, setIdx: number, restSeconds: number) => {
-    setCompletedSets(prev => {
+    setCompletedSets((prev) => {
       const currentList = prev[exerciseId] ? [...prev[exerciseId]] : [];
       const isNowCompleted = !currentList[setIdx];
       currentList[setIdx] = isNowCompleted;
@@ -145,26 +257,31 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
         if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
       }
 
-      return { ...prev, [exerciseId]: currentList };
+      const nextSets = { ...prev, [exerciseId]: currentList };
+      triggerLocalAutosave(logs, nextSets, exerciseNotes, activeExerciseIdx);
+      return nextSets;
+    });
+  };
+
+  const handleNoteChange = (exerciseId: string, val: string) => {
+    setExerciseNotes((prev) => {
+      const nextNotes = { ...prev, [exerciseId]: val };
+      triggerLocalAutosave(logs, completedSets, nextNotes, activeExerciseIdx);
+      return nextNotes;
     });
   };
 
   const handleOpenFinishFlow = () => {
-    if (!sessionId) {
-      showError('Nessuna sessione attiva trovata');
-      onClose();
-      return;
-    }
     setShowQuestionnaireModal(true);
   };
 
+  // ── 4. SALVATAGGIO RESILIENTE CON FALLBACK OFFLINE ──
   const executeWorkoutSave = async () => {
     setIsTimerRunning(false);
     setIsSaving(true);
     setShowQuestionnaireModal(false);
 
     try {
-      // 1. Prepara i log
       const logsToSave: any[] = [];
       const prResults: string[] = [];
 
@@ -172,48 +289,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
         const exLogs = logs[ex.id] || [];
         const userFeedback = exerciseNotes[ex.id]?.trim();
 
-        if (userFeedback) {
-          try {
-            const existingAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]');
-            const isHighSeverity = /dolore|fastidio|male|pizzico|infortunio|strappo/i.test(userFeedback);
-            const newAlert = {
-              id: `cn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              athleteId: athleteId || 'ath-local',
-              athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : (user?.name || 'Atleta'),
-              workoutTitle: workout.title,
-              weekNumber: ex.week_number || 1,
-              dayName: ex.day_name || 'Giorno A',
-              exerciseName: ex.name,
-              noteText: userFeedback,
-              severity: isHighSeverity ? 'high' : 'medium',
-              date: 'Oggi'
-            };
-            localStorage.setItem('builder_copilot_critical_notes', JSON.stringify([newAlert, ...existingAlerts]));
-            window.dispatchEvent(new Event('copilot_notes_updated'));
-
-            // Notifica Supabase al coach (pain_reported)
-            if (isHighSeverity) {
-              try {
-                const athleteRec = currentAthlete;
-                if (athleteRec?.assignedCoachId) {
-                  const athleteName = `${athleteRec.firstName} ${athleteRec.lastName}`.trim();
-                  await supabase.from('coach_notifications').insert({
-                    coach_id: athleteRec.assignedCoachId,
-                    type: 'pain_reported',
-                    title: `⚠️ Fastidio segnalato da ${athleteName}`,
-                    body: `Esercizio: ${ex.name} — "${userFeedback}"`,
-                    athlete_id: athleteRec.id,
-                    athlete_name: athleteName,
-                  });
-                }
-              } catch (_) {}
-            }
-          } catch (e) {}
-        }
-
         for (let idx = 0; idx < exLogs.length; idx++) {
           const setLog = exLogs[idx];
-          const repsNum = setLog.reps ? parseInt(setLog.reps) : 0;
+          const repsNum = setLog.reps ? parseInt(setLog.reps, 10) : 0;
           const weightNum = setLog.weight ? parseFloat(setLog.weight) : 0;
 
           if (repsNum || weightNum || setLog.rpe) {
@@ -224,89 +302,123 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
             logsToSave.push({
               session_id: sessionId,
               exercise_id: ex.id,
+              exercise_name: ex.name,
               set_number: idx + 1,
               reps_completed: repsNum || null,
               weight_kg: weightNum || null,
               notes: noteParts.length > 0 ? noteParts.join(' | ') : null,
             });
 
-            // Controllo PR automatico se c'è un atleta connesso
-            if (athleteId && weightNum > 0 && repsNum > 0) {
-              const prRes = await checkAndUpdateAutoPR(athleteId, ex.id, ex.name, weightNum, repsNum);
-              if (prRes.isNewPR) {
-                prResults.push(`${ex.name}: ${prRes.calculated1RM} kg 1RM!`);
-              }
+            // Calcolo PR
+            if (athleteId && weightNum > 0 && repsNum > 0 && navigator.onLine) {
+              try {
+                const prRes = await checkAndUpdateAutoPR(athleteId, ex.id, ex.name, weightNum, repsNum);
+                if (prRes.isNewPR) {
+                  prResults.push(`${ex.name}: ${prRes.calculated1RM} kg 1RM!`);
+                }
+              } catch (_) {}
             }
           }
         }
       }
 
-      // Integratore Questionario nel Copilot dell'IA
-      if (jointPain >= 3 || jointPainNotes.trim() !== '' || difficulty >= 4) {
+      const questionnaireNotes = `Questionario: Fatica ${difficulty}/5, Dolore Articolare ${jointPain}/5, Pump ${pump}/5${
+        jointPainNotes ? ` — Note: ${jointPainNotes}` : ''
+      }`;
+      const nowIso = new Date().toISOString();
+      const startIso = new Date(startTimestampRef.current).toISOString();
+      const weekNum = (exercises[0] as any)?.week_number || 1;
+      const dayName = (exercises[0] as any)?.day_name || 'Giorno A';
+
+      // SE OFFLINE o ERRORE SERVER: Salva in coda di sincronizzazione
+      if (!navigator.onLine) {
+        const pendingItem: PendingCompletedWorkout = {
+          id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          sessionId,
+          athleteId,
+          athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
+          workoutId: workout.id,
+          workoutTitle: workout.title,
+          weekNumber: weekNum,
+          dayName,
+          startTime: startIso,
+          endTime: nowIso,
+          durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
+          rpe: difficulty * 2,
+          notes: questionnaireNotes,
+          difficulty,
+          jointPain,
+          pump,
+          jointPainNotes,
+          logsToSave,
+          createdAt: Date.now(),
+        };
+
+        queueCompletedWorkoutForSync(pendingItem);
+        clearActiveWorkoutDraft(athleteId);
+
+        // Aggiorna progresso locale
         try {
-          const existingAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]');
-          const isHighSeverity = jointPain >= 4 || /dolore|pizzico|infortunio|male|strappo/i.test(jointPainNotes);
-          
-          const questionnaireSummary = `Questionario Fine Workout — Fatica: ${difficulty}/5 | Dolori Articolari: ${jointPain}/5 | Pump: ${pump}/5${jointPainNotes.trim() ? ` | Dettagli: "${jointPainNotes.trim()}"` : ''}`;
+          const progressKey = `builder_progress_${athleteId}_${workout.id}`;
+          const existing = JSON.parse(localStorage.getItem(progressKey) || '{}');
+          existing[`${weekNum}-${dayName}`] = true;
+          localStorage.setItem(progressKey, JSON.stringify(existing));
+        } catch (_) {}
 
-          const firstEx = exercises[0];
-          const questionnaireAlert = {
-            id: `cn-q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            athleteId: athleteId || 'ath-local',
-            athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : (user?.name || 'Atleta'),
-            workoutTitle: workout.title,
-            weekNumber: firstEx?.week_number || 1,
-            dayName: firstEx?.day_name || 'Giorno A',
-            exerciseName: 'Questionario Fine Workout (Dolori Articolari)',
-            noteText: questionnaireSummary,
-            severity: isHighSeverity ? 'high' : 'medium',
-            date: 'Oggi'
-          };
-          localStorage.setItem('builder_copilot_critical_notes', JSON.stringify([questionnaireAlert, ...existingAlerts]));
-          window.dispatchEvent(new Event('copilot_notes_updated'));
+        showSuccess(
+          'Allenamento salvato sul dispositivo! 💾',
+          'Sei offline: i dati sono al sicuro e verranno sincronizzati automaticamente col coach appena tornerà la connessione.'
+        );
 
-          // Notifica Supabase al coach (questionnaire_submitted)
-          try {
-            const athleteRec = currentAthlete;
-            if (athleteRec?.assignedCoachId) {
-              const athleteName = `${athleteRec.firstName} ${athleteRec.lastName}`.trim();
-              await supabase.from('coach_notifications').insert({
-                coach_id: athleteRec.assignedCoachId,
-                type: 'questionnaire_submitted',
-                title: `📝 Questionario post-workout da ${athleteName}`,
-                body: `Fatica: ${difficulty}/5 | Dolori: ${jointPain}/5 | Pump: ${pump}/5${jointPainNotes.trim() ? ` | "${jointPainNotes.trim()}"` : ''}`,
-                athlete_id: athleteRec.id,
-                athlete_name: athleteName,
-              });
-            }
-          } catch (_) {}
-        } catch (e) {
-          console.warn('Errore salvataggio alert questionario copilot:', e);
-        }
+        setIsSaving(false);
+        onClose();
+        return;
       }
 
-      // 2. Salva i log su supabase
+      // SE ONLINE: Procedi con il salvataggio normale su Supabase
       if (logsToSave.length > 0) {
         const { error: logsError } = await saveExerciseLogs(logsToSave);
         if (logsError) throw new Error(`Errore salvataggio esercizi: ${logsError}`);
       }
 
-      // 3. Chiudi la sessione con RPE complessivo del questionario
-      const questionnaireNotes = `Questionario: Fatica ${difficulty}/5, Dolore Articolare ${jointPain}/5, Pump ${pump}/5${jointPainNotes ? ` — Note: ${jointPainNotes}` : ''}`;
       const { error: sessionError } = await endWorkoutSession(sessionId!, questionnaireNotes, difficulty * 2);
       if (sessionError) throw new Error(`Errore chiusura sessione: ${sessionError}`);
 
-      // 4. Aggiorna il progresso locale per nascondere il giorno appena completato
+      // Alert questionario per il coach
+      if (jointPain >= 3 || jointPainNotes.trim() !== '' || difficulty >= 4) {
+        try {
+          const existingAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]');
+          const isHighSeverity = jointPain >= 4 || /dolore|pizzico|infortunio|male|strappo/i.test(jointPainNotes);
+          const questionnaireSummary = `Questionario Fine Workout — Fatica: ${difficulty}/5 | Dolori Articolari: ${jointPain}/5 | Pump: ${pump}/5${
+            jointPainNotes.trim() ? ` | Dettagli: "${jointPainNotes.trim()}"` : ''
+          }`;
+
+          const questionnaireAlert = {
+            id: `cn-q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            athleteId,
+            athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
+            workoutTitle: workout.title,
+            weekNumber: weekNum,
+            dayName,
+            exerciseName: 'Questionario Fine Workout',
+            noteText: questionnaireSummary,
+            severity: isHighSeverity ? 'high' : 'medium',
+            date: 'Oggi',
+          };
+          localStorage.setItem('builder_copilot_critical_notes', JSON.stringify([questionnaireAlert, ...existingAlerts]));
+          window.dispatchEvent(new Event('copilot_notes_updated'));
+        } catch (_) {}
+      }
+
+      // Aggiorna progresso locale e rimuovi bozza attiva
       try {
-        const week = (exercises[0] as any)?.week_number || 1;
-        const day = (exercises[0] as any)?.day_name || 'Giorno A';
         const progressKey = `builder_progress_${athleteId}_${workout.id}`;
         const existing = JSON.parse(localStorage.getItem(progressKey) || '{}');
-        existing[`${week}-${day}`] = true;
+        existing[`${weekNum}-${dayName}`] = true;
         localStorage.setItem(progressKey, JSON.stringify(existing));
-      } catch (e) {
-        console.warn('Impossibile salvare il progresso locale', e);
-      }
+      } catch (_) {}
+
+      clearActiveWorkoutDraft(athleteId);
 
       if (prResults.length > 0) {
         showSuccess('Nuovo Record Personale (PR)! 🎉', prResults.join(' | '));
@@ -317,40 +429,104 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
       setIsSaving(false);
       onClose();
     } catch (err: any) {
-      console.error('Errore durante il salvataggio dell\'allenamento:', err);
-      showError('Errore di Salvataggio', err.message || 'Impossibile salvare i dati della sessione sul server. Riprova.');
+      console.warn('Errore salvataggio server, salvataggio in fallback offline:', err);
+
+      // Fallback offline anche in caso di eccezione network
+      const nowIso = new Date().toISOString();
+      const startIso = new Date(startTimestampRef.current).toISOString();
+      const weekNum = (exercises[0] as any)?.week_number || 1;
+      const dayName = (exercises[0] as any)?.day_name || 'Giorno A';
+      const questionnaireNotes = `Questionario: Fatica ${difficulty}/5, Dolore Articolare ${jointPain}/5, Pump ${pump}/5${
+        jointPainNotes ? ` — Note: ${jointPainNotes}` : ''
+      }`;
+
+      const pendingItem: PendingCompletedWorkout = {
+        id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        sessionId,
+        athleteId,
+        athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
+        workoutId: workout.id,
+        workoutTitle: workout.title,
+        weekNumber: weekNum,
+        dayName,
+        startTime: startIso,
+        endTime: nowIso,
+        durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
+        rpe: difficulty * 2,
+        notes: questionnaireNotes,
+        difficulty,
+        jointPain,
+        pump,
+        jointPainNotes,
+        logsToSave: [],
+        createdAt: Date.now(),
+      };
+
+      queueCompletedWorkoutForSync(pendingItem);
+      clearActiveWorkoutDraft(athleteId);
+
+      showSuccess(
+        'Allenamento salvato in locale 💾',
+        'Impossibile raggiungere il server. I dati sono salvati sul telefono e verranno sincronizzati appena tornerà internet.'
+      );
+
       setIsSaving(false);
+      onClose();
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col font-sans overflow-hidden">
-      
-      {/* HEADER LIVE */}
-      <div className="bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between shadow-lg relative z-20">
+      {/* ── HEADER LIVE CON STATO OFFLINE & SYNC DISCRETO ── */}
+      <div className="bg-slate-900 border-b border-slate-800 p-3.5 sm:p-4 flex items-center justify-between shadow-lg relative z-20">
         <div className="flex items-center gap-3">
-          <button onClick={onClose} className="p-2 -ml-2 text-slate-400 hover:text-white rounded-full bg-slate-800/50">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 -ml-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800/50 cursor-pointer"
+            title="Chiudi sessione"
+          >
             <X className="w-5 h-5" />
           </button>
           <div>
             <h1 className="text-sm font-bold text-white line-clamp-1 leading-tight">{workout.title}</h1>
-            <div className="flex items-center gap-1.5 text-xs font-mono text-[var(--color-primary)]">
-              <Clock className="w-3 h-3" />
-              {formatTime(elapsedTime)}
+            <div className="flex items-center gap-2 text-xs font-mono text-[var(--color-primary)]">
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {formatTime(elapsedTime)}
+              </span>
+
+              {/* STATO SYNC / OFFLINE DISCRETO */}
+              <span className="text-[10px] text-slate-400 font-sans flex items-center gap-1 border-l border-slate-800 pl-2">
+                {isOnline ? (
+                  <span className="flex items-center gap-1 text-emerald-400" title={lastSavedText}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="hidden sm:inline">{lastSavedText}</span>
+                    <span className="sm:hidden">Salvato</span>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-amber-400 font-bold">
+                    <WifiOff className="w-3 h-3 text-amber-400" />
+                    <span>Offline (Dati al sicuro)</span>
+                  </span>
+                )}
+              </span>
             </div>
           </div>
         </div>
-        <button 
+
+        <button
+          type="button"
           onClick={handleOpenFinishFlow}
           disabled={isSaving}
-          className="bg-[var(--color-primary)] text-black px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md active:scale-95 transition-transform disabled:opacity-50"
+          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer shrink-0"
         >
           {isSaving ? (
-             <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
           ) : (
-             <Check className="w-4 h-4" />
+            <Check className="w-4 h-4 stroke-[3]" />
           )}
-          {isSaving ? 'Salvataggio...' : 'Fine'}
+          <span>{isSaving ? 'Salvataggio...' : 'Fine'}</span>
         </button>
       </div>
 
@@ -366,9 +542,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
               <p className="text-xl font-bold font-mono text-white">{formatTime(restTimer)}</p>
             </div>
           </div>
-          <button 
+          <button
+            type="button"
             onClick={() => setRestTimer(0)}
-            className="px-4 py-2 bg-blue-500/20 text-blue-300 rounded-xl text-xs font-bold"
+            className="px-4 py-2 bg-blue-500/20 text-blue-300 rounded-xl text-xs font-bold cursor-pointer"
           >
             Salta
           </button>
@@ -391,26 +568,30 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
                 logs={logs[ex.id] || []}
                 completedSetsMap={completedSets[ex.id] || []}
                 noteFeedback={exerciseNotes[ex.id] || ''}
-                onToggleActive={() => setActiveExerciseIdx(isActive ? -1 : idx)}
+                onToggleActive={() => {
+                  const nextIdx = isActive ? -1 : idx;
+                  setActiveExerciseIdx(nextIdx);
+                  triggerLocalAutosave(logs, completedSets, exerciseNotes, nextIdx);
+                }}
                 onLogChange={(setIdx, field, val) => handleLogChange(ex.id, setIdx, field, val)}
-                onNoteFeedbackChange={(val) => setExerciseNotes(prev => ({ ...prev, [ex.id]: val }))}
+                onNoteFeedbackChange={(val) => handleNoteChange(ex.id, val)}
                 onToggleSetComplete={(setIdx) => handleToggleSetComplete(ex.id, setIdx, ex.rest_seconds)}
               />
 
               {isActive && (
-                <div className="flex justify-end pt-1">
-                  <button 
-                    onClick={() => {
-                      if (idx < exercises.length - 1) {
-                        setActiveExerciseIdx(idx + 1);
-                      } else {
-                        handleOpenFinishFlow();
-                      }
-                    }}
-                    className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md cursor-pointer"
-                  >
-                    {idx < exercises.length - 1 ? 'Esercizio Successivo →' : 'Fine Allenamento'}
-                  </button>
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Note Esercizio / Feedback al Coach:
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={exerciseNotes[ex.id] || ''}
+                    onChange={(e) => handleNoteChange(ex.id, e.target.value)}
+                    placeholder="Es: Ottimo feeling, fastidio spalla a serie 3, aumentato carico..."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                  />
                 </div>
               )}
             </React.Fragment>
@@ -418,172 +599,136 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({ workout, exercises
         })}
       </div>
 
-      {/* MODALE QUESTIONARIO POST-ALLENAMENTO */}
+      {/* ── QUESTIONARIO POST-ALLENAMENTO MODAL ── */}
       {showQuestionnaireModal && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl space-y-5 p-6 animate-in fade-in zoom-in duration-200">
-            {/* Header Modal */}
-            <div className="flex items-start justify-between border-b border-slate-800 pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
-                    <Sparkles className="w-5 h-5" />
-                  </div>
-                  <h3 className="text-lg font-black text-white">Questionario Fine Allenamento</h3>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Rispondi a 3 veloci domande per aggiornare l'<strong>AI Athlete Training Copilot</strong>.
-                </p>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="text-center space-y-1">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto shadow-md">
+                <Sparkles className="w-6 h-6" />
               </div>
-              <button 
-                onClick={() => setShowQuestionnaireModal(false)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800/50"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <h3 className="text-lg font-black text-white">Com'è andato l'allenamento?</h3>
+              <p className="text-xs text-slate-400">
+                Aiuta il coach e l'IA a regolare i carichi e il recupero per la prossima sessione.
+              </p>
             </div>
 
-            <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
-              {/* Domanda 1: Fatica & Difficoltà */}
-              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-amber-400" />
-                    1. Quanto è stato difficile e faticoso l'allenamento?
-                  </label>
-                  <span className="text-xs font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/30">
-                    {difficulty}/5
-                  </span>
-                </div>
-                <div className="grid grid-cols-5 gap-2">
-                  {[1, 2, 3, 4, 5].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setDifficulty(val)}
-                      className={`py-2 rounded-xl font-extrabold text-xs transition-all border ${
-                        difficulty === val
-                          ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/20 scale-105'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {val}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-between text-[10px] text-slate-500 px-1 font-medium">
-                  <span>🟢 Molto Leggero</span>
-                  <span>🔴 Sfinimento</span>
-                </div>
+            {/* Fatica Percepita */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-slate-300">Fatica complessiva (RPE):</span>
+                <span className="text-amber-400 font-mono">{difficulty} / 5</span>
               </div>
-
-              {/* Domanda 2: Dolori Articolari */}
-              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-rose-400" />
-                    2. Dolori articolari o fastidi?
-                  </label>
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-lg border ${
-                    jointPain >= 4 ? 'text-rose-400 bg-rose-500/10 border-rose-500/30' : jointPain === 3 ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                  }`}>
-                    {jointPain}/5
-                  </span>
-                </div>
-                <div className="grid grid-cols-5 gap-2">
-                  {[1, 2, 3, 4, 5].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setJointPain(val)}
-                      className={`py-2 rounded-xl font-extrabold text-xs transition-all border ${
-                        jointPain === val
-                          ? val >= 4
-                            ? 'bg-rose-500 text-white border-rose-400 shadow-md shadow-rose-500/20 scale-105'
-                            : val === 3
-                            ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/20 scale-105'
-                            : 'bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/20 scale-105'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {val}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-between text-[10px] text-slate-500 px-1 font-medium">
-                  <span>🟢 Nessun dolore (1)</span>
-                  <span>🔴 Dolore Forte (5)</span>
-                </div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {[1, 2, 3, 4, 5].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setDifficulty(val)}
+                    className={`py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                      difficulty === val
+                        ? 'bg-amber-500 text-black border-amber-400 shadow-md scale-105'
+                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {val}
+                  </button>
+                ))}
               </div>
+            </div>
 
-              {/* Domanda 3: Pump Post Allenamento */}
-              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                    <Flame className="w-4 h-4 text-emerald-400" />
-                    3. Pump muscolare post allenamento?
-                  </label>
-                  <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/30">
-                    {pump}/5
-                  </span>
-                </div>
-                <div className="grid grid-cols-5 gap-2">
-                  {[1, 2, 3, 4, 5].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setPump(val)}
-                      className={`py-2 rounded-xl font-extrabold text-xs transition-all border ${
-                        pump === val
-                          ? 'bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/20 scale-105'
-                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {val}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-between text-[10px] text-slate-500 px-1 font-medium">
-                  <span>🔴 Scarso (1)</span>
-                  <span>🔥 Massimo Pump (5)</span>
-                </div>
+            {/* Dolori Articolari / Fastidi */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-slate-300 flex items-center gap-1">
+                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                  Dolori o fastidi articolari:
+                </span>
+                <span className={`font-mono ${jointPain >= 3 ? 'text-rose-400' : 'text-slate-400'}`}>
+                  {jointPain} / 5
+                </span>
               </div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {[1, 2, 3, 4, 5].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setJointPain(val)}
+                    className={`py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                      jointPain === val
+                        ? val >= 3
+                          ? 'bg-rose-500 text-white border-rose-400 shadow-md scale-105'
+                          : 'bg-emerald-500 text-black border-emerald-400 shadow-md scale-105'
+                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {val}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-              {/* Note Dolori Articolari */}
-              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-2">
-                <label className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-[var(--color-primary)]" />
-                  Note Dolori Articolari & Dettagli per l'AI Copilot
+            {/* Dettaglio Dolore */}
+            {jointPain >= 2 && (
+              <div className="space-y-1 animate-in fade-in duration-150">
+                <label className="text-[11px] font-bold text-rose-300 block">
+                  Specifica dove hai sentito fastidio:
                 </label>
-                <textarea
-                  rows={2}
+                <input
+                  type="text"
                   value={jointPainNotes}
                   onChange={(e) => setJointPainNotes(e.target.value)}
-                  placeholder="Es. Pizzico alla spalla destra durante la panca o fastidio al ginocchio..."
-                  className="w-full px-3 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-[var(--color-primary)] transition-colors resize-none"
+                  placeholder="Es: lombare su stacco, spalla destra su panca..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-rose-500/40 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-rose-400"
                 />
+              </div>
+            )}
+
+            {/* Pump Muscolare */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-slate-300">Pump muscolare & attivazione:</span>
+                <span className="text-sky-400 font-mono">{pump} / 5</span>
+              </div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {[1, 2, 3, 4, 5].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setPump(val)}
+                    className={`py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                      pump === val
+                        ? 'bg-sky-500 text-black border-sky-400 shadow-md scale-105'
+                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {val}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Footer Modal Actions */}
-            <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+            {/* Pulsanti Azione Modale */}
+            <div className="flex gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setShowQuestionnaireModal(false)}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white border border-slate-800 hover:bg-slate-800 transition-colors"
+                className="flex-1 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
               >
-                Torna al Workout
+                Torna alla scheda
               </button>
               <button
+                type="button"
                 onClick={executeWorkoutSave}
                 disabled={isSaving}
-                className="flex-1 py-3 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="flex-1 py-3 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs transition-all shadow-lg cursor-pointer flex items-center justify-center gap-2"
               >
                 {isSaving ? (
                   <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
                 ) : (
-                  <Check className="w-4 h-4" />
+                  <Check className="w-4 h-4 stroke-[3]" />
                 )}
-                <span>{isSaving ? 'Salvataggio...' : 'Conferma & Salva Allenamento'}</span>
+                <span>Salva ed Esci</span>
               </button>
             </div>
           </div>

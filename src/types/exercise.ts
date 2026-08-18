@@ -3,13 +3,19 @@
 export type ExerciseCategory =
   | 'Petto'
   | 'Dorso'
-  | 'Gambe'
   | 'Spalle'
+  | 'Quadricipiti'
+  | 'Femorali'
+  | 'Glutei'
+  | 'Polpacci'
   | 'Bicipiti'
   | 'Tricipiti'
-  | 'Addominali'
+  | 'Avambracci'
+  | 'Addome'
+  | 'Core'
+  | 'Lombari'
   | 'Full Body'
-  | 'Cardio'
+  | 'Conditioning'
   | 'Altro';
 
 export type ExerciseEquipment =
@@ -18,8 +24,12 @@ export type ExerciseEquipment =
   | 'Macchina'
   | 'Cavi'
   | 'Corpo Libero'
+  | 'Multipower'
   | 'Kettlebell'
   | 'Elastici'
+  | 'Trap Bar'
+  | 'Slitta'
+  | 'Cardio Machine'
   | 'Altro';
 
 /** Tipo di stimolo allenante principale */
@@ -28,12 +38,36 @@ export type ExerciseType =
   | 'Ipertrofia'
   | 'Resistenza'
   | 'Potenza'
-  | 'Mobilità';
+  | 'Mobilità'
+  | 'Condizionamento';
+
+/** Ruolo funzionale dell'esercizio nella programmazione */
+export type ExerciseRole =
+  | 'Fondamentale'
+  | 'Complementare'
+  | 'Isolamento'
+  | 'Tecnico'
+  | 'Prehab / Riabilitativo';
+
+/** Costo sistemico / affaticamento sul SNC */
+export type SystemicCost =
+  | 'Molto Basso'
+  | 'Basso'
+  | 'Medio'
+  | 'Alto'
+  | 'Molto Alto';
+
+/** Livello di difficoltà tecnica */
+export type ExerciseDifficulty =
+  | 'Principiante'
+  | 'Intermedio'
+  | 'Avanzato';
 
 /** Modalità di esecuzione rispetto alla simmetria corporea */
 export type Bilaterality =
   | 'Bilaterale'
-  | 'Unilaterale';
+  | 'Unilaterale'
+  | 'Alternato';
 
 /** Piano anatomico di esecuzione del gesto motorio */
 export type MovementPlane =
@@ -104,17 +138,28 @@ export interface ExerciseExecution {
 /** Parametri biomeccanici e di programmazione chiave */
 export interface ExerciseKeyParams {
   /** Range of motion descrittivo (es. "0°–90° abduzione spalla") */
-  rom: string;
+  rom?: string;
   /** Profilo della curva di resistenza */
-  curva_resistenza: ResistanceCurve;
+  curva_resistenza?: ResistanceCurve;
   /** Punto di picco tensione nel ROM (es. "Metà ROM ~45–60°") */
-  punto_picco: string;
+  punto_picco?: string;
   /** Tipo di stimolo allenante principale */
-  tipo_stimolo: ExerciseType;
+  tipo_stimolo?: ExerciseType;
   /** Range Time Under Tension in secondi */
-  tut: { min: number; max: number };
+  tut?: { min: number; max: number };
   /** Range di recupero in secondi */
-  recupero: { min: number; max: number };
+  recupero?: { min: number; max: number };
+
+  // Metadati estesi salvati nel blocco JSONB per retrocompatibilità
+  target_specifico?: string | null;
+  pattern_movimento?: string | null;
+  ruolo_esercizio?: ExerciseRole | null;
+  costo_sistemico?: SystemicCost | null;
+  livello_difficolta?: ExerciseDifficulty | null;
+  progression_friendly?: boolean;
+  varianti?: string[] | null;
+  regressioni?: string[] | null;
+  progressioni?: string[] | null;
 }
 
 /** Dati di sicurezza, controindicazioni e criteri di arresto */
@@ -133,30 +178,37 @@ export interface ExerciseSafety {
 
 /**
  * Rappresenta un esercizio nella libreria del coach.
- * I campi strutturati (a partire da `tipo`) sono opzionali per retrocompatibilità
- * con gli esercizi già presenti nel database prima della v2 dello schema.
  */
 export interface ExerciseItem {
   id: string;
   coach_id?: string | null;
   name: string;
   category: ExerciseCategory;
+  target_specifico?: string | null;
+  pattern_movimento?: string | null;
   equipment: ExerciseEquipment;
   video_url?: string | null;
   instructions?: string | null;
 
-  // ── Informazioni Chiave (opzionali, v2 schema) ──────────────────────────
+  // ── Metadati di Programmazione e Biomeccanica ────────────────────────────
   tipo?: ExerciseType | null;
+  ruolo_esercizio?: ExerciseRole | null;
+  costo_sistemico?: SystemicCost | null;
+  livello_difficolta?: ExerciseDifficulty | null;
+  progression_friendly?: boolean;
   bilateralita?: Bilaterality | null;
   piano_movimento?: MovementPlane | null;
   catena_cinetica?: KineticChain | null;
   gradi_liberta?: number | null;
 
-  // ── Blocchi JSONB Strutturati (opzionali, v2 schema) ────────────────────
+  // ── Blocchi JSONB Strutturati ───────────────────────────────────────────
   parametri_chiave?: ExerciseKeyParams | null;
   muscoli_coinvolti?: MuscleInvolvement[] | null;
   esecuzione?: ExerciseExecution | null;
   sicurezza?: ExerciseSafety | null;
+  varianti?: string[] | null;
+  regressioni?: string[] | null;
+  progressioni?: string[] | null;
 
   created_at?: string;
   updated_at?: string;

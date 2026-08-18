@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ExerciseItem, MuscleRole } from '../../types/exercise';
 import { AI_CONFIG } from '../../config/aiConfig';
+import { AnatomicalMuscleMap } from './AnatomicalMuscleMap';
 
 interface ExerciseDetailModalProps {
   exercise: ExerciseItem;
@@ -156,14 +157,18 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                 <InfoChip label="Curva di Resistenza" value={exercise.parametri_chiave.curva_resistenza} />
                 <InfoChip label="Punto di Picco Tensione" value={exercise.parametri_chiave.punto_picco} />
                 <InfoChip label="Tipo Stimolo" value={exercise.parametri_chiave.tipo_stimolo} />
-                <InfoChip
-                  label="TUT (sec)"
-                  value={`${exercise.parametri_chiave.tut.min}–${exercise.parametri_chiave.tut.max} s`}
-                />
-                <InfoChip
-                  label="Recupero (sec)"
-                  value={`${exercise.parametri_chiave.recupero.min}–${exercise.parametri_chiave.recupero.max} s`}
-                />
+                {exercise.parametri_chiave.tut && (
+                  <InfoChip
+                    label="TUT (sec)"
+                    value={`${exercise.parametri_chiave.tut.min}–${exercise.parametri_chiave.tut.max} s`}
+                  />
+                )}
+                {exercise.parametri_chiave.recupero && (
+                  <InfoChip
+                    label="Recupero (sec)"
+                    value={`${exercise.parametri_chiave.recupero.min}–${exercise.parametri_chiave.recupero.max} s`}
+                  />
+                )}
               </div>
             </section>
           )}
@@ -173,47 +178,60 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
             <section>
               <SectionTitle icon={<Dumbbell className="w-4 h-4" />} title="Mappa Attivazione Muscolare" />
 
-              {/* Legenda ruoli */}
-              <div className="flex flex-wrap gap-3 mb-3.5">
-                {(Object.keys(MUSCLE_ROLE_COLORS) as MuscleRole[]).map(role => {
-                  const hasRole = exercise.muscoli_coinvolti!.some(m => m.ruolo === role);
-                  if (!hasRole) return null;
-                  return (
-                    <div key={role} className="flex items-center gap-1.5">
-                      <div className={`w-2.5 h-2.5 rounded-full ${MUSCLE_ROLE_COLORS[role].dot}`} />
-                      <span className="text-xs text-slate-300 font-bold">{role}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                {/* Modello Anatomico 3D */}
+                <div className="lg:col-span-5 flex flex-col">
+                  <AnatomicalMuscleMap
+                    muscles={exercise.muscoli_coinvolti}
+                    interactive={false}
+                  />
+                </div>
 
-              {/* Muscle bars */}
-              <div className="space-y-2">
-                {exercise.muscoli_coinvolti
-                  .sort((a, b) => b.percentuale - a.percentuale)
-                  .map((m, i) => {
-                    const colors = MUSCLE_ROLE_COLORS[m.ruolo] ?? MUSCLE_ROLE_COLORS['Stabilizzatore'];
-                    return (
-                      <div key={i} className="flex items-center gap-3 bg-[#0d121c] border border-slate-800 rounded-xl px-4 py-2.5">
-                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${colors.dot}`} />
-                        <div className="w-44 shrink-0">
-                          <span className="text-sm text-white font-extrabold block truncate">{m.muscolo}</span>
+                {/* Dettaglio Muscoli e Percentuali */}
+                <div className="lg:col-span-7 space-y-3">
+                  {/* Legenda ruoli */}
+                  <div className="flex flex-wrap gap-3 p-3 bg-[#0d121c] border border-slate-800 rounded-xl">
+                    {(Object.keys(MUSCLE_ROLE_COLORS) as MuscleRole[]).map(role => {
+                      const hasRole = exercise.muscoli_coinvolti!.some(m => m.ruolo === role);
+                      if (!hasRole) return null;
+                      return (
+                        <div key={role} className="flex items-center gap-1.5">
+                          <div className={`w-2.5 h-2.5 rounded-full ${MUSCLE_ROLE_COLORS[role].dot}`} />
+                          <span className="text-xs text-slate-300 font-bold">{role}</span>
                         </div>
-                        <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${colors.bar}`}
-                            style={{ width: `${m.percentuale}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-black text-slate-300 w-10 text-right shrink-0">
-                          {m.percentuale}%
-                        </span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${colors.badge}`}>
-                          {m.ruolo}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+
+                  {/* Muscle bars */}
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {exercise.muscoli_coinvolti
+                      .sort((a, b) => b.percentuale - a.percentuale)
+                      .map((m, i) => {
+                        const colors = MUSCLE_ROLE_COLORS[m.ruolo] ?? MUSCLE_ROLE_COLORS['Stabilizzatore'];
+                        return (
+                          <div key={i} className="flex items-center gap-3 bg-[#0d121c] border border-slate-800 rounded-xl px-4 py-2.5">
+                            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${colors.dot}`} />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm text-white font-extrabold block truncate">{m.muscolo}</span>
+                            </div>
+                            <div className="w-24 sm:w-36 h-2 bg-slate-800 rounded-full overflow-hidden shrink-0">
+                              <div
+                                className={`h-full rounded-full transition-all ${colors.bar}`}
+                                style={{ width: `${m.percentuale}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-black text-slate-300 w-10 text-right shrink-0">
+                              {m.percentuale}%
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${colors.badge}`}>
+                              {m.ruolo}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
               </div>
             </section>
           )}

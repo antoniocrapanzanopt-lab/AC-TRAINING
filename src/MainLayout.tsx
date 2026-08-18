@@ -23,6 +23,7 @@ import { AtletaPortalePage } from './pages/athlete-portal/AtletaPortalePage';
 import { WorkoutsPage } from './pages/workouts/WorkoutsPage';
 import { ExercisesPage } from './pages/exercises/ExercisesPage';
 import { ProgressionsPage } from './pages/progressions/ProgressionsPage';
+import { WorkoutHistoryPage } from './pages/workouts/WorkoutHistoryPage';
 import { MessagesPage } from './pages/messages/MessagesPage';
 import { useApp } from './context/AppContext';
 import { NavigationTab } from './types';
@@ -45,6 +46,7 @@ const tabTitles: Record<NavigationTab, string> = {
   atleta_portale: 'Portale riservato Atleta',
   schede: 'Schede di Allenamento',
   progressioni: 'Progressioni & Sovraccarico',
+  cronologia_allenamenti: 'Cronologia Allenamenti',
   esercizi: 'Libreria Esercizi',
   messaggi: 'Chat / Messaggi',
 };
@@ -83,6 +85,8 @@ const renderPage = (tab: NavigationTab): React.ReactNode => {
       return <WorkoutsPage />;
     case 'progressioni':
       return <ProgressionsPage />;
+    case 'cronologia_allenamenti':
+      return <WorkoutHistoryPage />;
     case 'esercizi':
       return <ExercisesPage />;
     case 'atleta_portale':
