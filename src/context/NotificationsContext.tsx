@@ -21,6 +21,9 @@ interface NotificationsContextType {
   loading: boolean;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  clearReadNotifications: () => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
   insertNotification: (
     coachId: string,
     payload: Omit<CoachNotification, 'id' | 'coach_id' | 'read_at' | 'created_at'>
@@ -50,7 +53,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       .select('*')
       .eq('coach_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(60);
 
     if (!error && data) {
       setNotifications(data as CoachNotification[]);
@@ -93,6 +96,21 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
           );
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'coach_notifications',
+          filter: `coach_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const deletedId = (payload.old as { id?: string })?.id;
+          if (deletedId) {
+            setNotifications((prev) => prev.filter((n) => n.id !== deletedId));
+          }
+        }
+      )
       .subscribe();
 
     return () => {
@@ -124,6 +142,35 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       .is('read_at', null);
   }, [user?.id]);
 
+  const deleteNotification = useCallback(async (id: string) => {
+    if (!user?.id) return;
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    await supabase
+      .from('coach_notifications')
+      .delete()
+      .eq('id', id)
+      .eq('coach_id', user.id);
+  }, [user?.id]);
+
+  const clearReadNotifications = useCallback(async () => {
+    if (!user?.id) return;
+    setNotifications((prev) => prev.filter((n) => !n.read_at));
+    await supabase
+      .from('coach_notifications')
+      .delete()
+      .eq('coach_id', user.id)
+      .not('read_at', 'is', null);
+  }, [user?.id]);
+
+  const clearAllNotifications = useCallback(async () => {
+    if (!user?.id) return;
+    setNotifications([]);
+    await supabase
+      .from('coach_notifications')
+      .delete()
+      .eq('coach_id', user.id);
+  }, [user?.id]);
+
   const insertNotification = useCallback(
     async (
       coachId: string,
@@ -142,7 +189,17 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <NotificationsContext.Provider
-      value={{ notifications, unreadCount, loading, markAsRead, markAllAsRead, insertNotification }}
+      value={{
+        notifications,
+        unreadCount,
+        loading,
+        markAsRead,
+        markAllAsRead,
+        deleteNotification,
+        clearReadNotifications,
+        clearAllNotifications,
+        insertNotification,
+      }}
     >
       {children}
     </NotificationsContext.Provider>

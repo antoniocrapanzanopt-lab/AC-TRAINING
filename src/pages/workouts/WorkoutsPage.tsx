@@ -1,12 +1,36 @@
-import React, { useState } from 'react';
-import { Plus, Search, Dumbbell, Pencil, Trash2, AlertTriangle, Folder, FolderPlus, ChevronRight, FolderOpen, MoveRight, X, Save, Clock, Users, User, ExternalLink, TrendingUp, Copy } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import {
+  Plus,
+  Search,
+  Dumbbell,
+  Pencil,
+  Trash2,
+  AlertTriangle,
+  Folder,
+  FolderPlus,
+  ChevronRight,
+  FolderOpen,
+  MoveRight,
+  X,
+  Save,
+  Clock,
+  Users,
+  TrendingUp,
+  Copy,
+  Sparkles,
+  ArrowLeft,
+  Calendar,
+  Layers,
+  UserX,
+  AlertCircle
+} from 'lucide-react';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useApp } from '../../context/AppContext';
 import { useToast } from '../../context/ToastContext';
 import { WorkoutBuilderModal } from '../../components/workouts/WorkoutBuilderModal';
 import { AssignWorkoutModal } from '../../components/workouts/AssignWorkoutModal';
-import { WorkoutTemplate, WorkoutFolder } from '../../types/workout';
+import { WorkoutTemplate, WorkoutFolder, AthleteAssignedWorkout } from '../../types/workout';
 
 export const WorkoutsPage: React.FC = () => {
   const { 
@@ -21,32 +45,30 @@ export const WorkoutsPage: React.FC = () => {
     deleteWorkoutTemplate,
     duplicateWorkoutTemplate,
   } = useWorkouts();
-  const { athletes, setSelectedAthleteId } = useAthletes();
+  const { athletes } = useAthletes();
   const { setActiveTab } = useApp();
   const { showSuccess, showError } = useToast();
 
+  // ─── TAB PRINCIPALE: RACCOGLITORE ATLETI vs TEMPLATE MASTER ───
+  const [mainViewTab, setMainViewTab] = useState<'athletes' | 'templates'>('athletes');
+
+  // ─── STATO RACCOGLITORE ATLETI ───
+  const [selectedAthleteFolderId, setSelectedAthleteFolderId] = useState<string | null>(null);
+  const [athleteSearchTerm, setAthleteSearchTerm] = useState('');
+  const [athleteFilterStatus, setAthleteFilterStatus] = useState<'all' | 'active_workout' | 'no_workout'>('all');
+  const [athleteLayoutMode, setAthleteLayoutMode] = useState<'list' | 'grid'>('list');
+
+  // ─── STATO LIBRERIA TEMPLATE MASTER ───
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [builderTargetAthleteId, setBuilderTargetAthleteId] = useState<string | undefined>(undefined);
   const [editingWorkout, setEditingWorkout] = useState<WorkoutTemplate | null>(null);
   const [deletingWorkout, setDeletingWorkout] = useState<WorkoutTemplate | null>(null);
   const [assigningWorkout, setAssigningWorkout] = useState<WorkoutTemplate | null>(null);
   const [movingWorkout, setMovingWorkout] = useState<WorkoutTemplate | null>(null);
-  const [viewingAssignedWorkout, setViewingAssignedWorkout] = useState<{
-    template: WorkoutTemplate;
-    assignedAthletes: {
-      assignmentId: string;
-      athleteId: string;
-      name: string;
-      status: string;
-      assignedDate: string;
-      email: string;
-      isCustomized?: boolean;
-      customWorkout?: any; // any o WorkoutTemplate se importato correttamente
-    }[];
-  } | null>(null);
   const [editingAthleteWorkout, setEditingAthleteWorkout] = useState<{ athleteId: string, workout: WorkoutTemplate } | null>(null);
   
-  // State per Cartelle
+  // State per Cartelle Master
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<WorkoutFolder | null>(null);
   const [folderNameInput, setFolderNameInput] = useState('');
@@ -57,9 +79,62 @@ export const WorkoutsPage: React.FC = () => {
   const [duplicatingWorkoutId, setDuplicatingWorkoutId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // 1. Costruisci il percorso dei Breadcrumbs per la navigazione
+  // ─── COMPUTED: MAPPA ASSEGNAZIONI PER ATLETA ───
+  const athleteWorkoutsMap = useMemo(() => {
+    const map = new Map<string, AthleteAssignedWorkout[]>();
+    allAssignedWorkouts.forEach(assignment => {
+      const list = map.get(assignment.athlete_id) || [];
+      list.push(assignment);
+      map.set(assignment.athlete_id, list);
+    });
+    return map;
+  }, [allAssignedWorkouts]);
+
+  // Lista atleti con statistiche schede
+  const athleteFoldersData = useMemo(() => {
+    return athletes.map(ath => {
+      const assignments = athleteWorkoutsMap.get(ath.id) || [];
+      // Trova scheda attiva
+      const activeAssignment = assignments.find(a => a.is_active);
+      const activeWorkout = activeAssignment?.workout;
+      const totalWorkouts = assignments.length;
+
+      return {
+        athlete: ath,
+        activeAssignment,
+        activeWorkout,
+        totalWorkouts,
+        hasActiveWorkout: Boolean(activeWorkout),
+        allAssignments: assignments,
+      };
+    });
+  }, [athletes, athleteWorkoutsMap]);
+
+  // Filtro Atleti
+  const filteredAthleteFolders = useMemo(() => {
+    return athleteFoldersData.filter(item => {
+      const nameMatch = `${item.athlete.firstName} ${item.athlete.lastName} ${item.athlete.email || ''}`
+        .toLowerCase()
+        .includes(athleteSearchTerm.toLowerCase()) ||
+        (item.activeWorkout?.title?.toLowerCase().includes(athleteSearchTerm.toLowerCase()));
+
+      if (!nameMatch) return false;
+
+      if (athleteFilterStatus === 'active_workout') return item.hasActiveWorkout;
+      if (athleteFilterStatus === 'no_workout') return !item.hasActiveWorkout;
+      return true;
+    });
+  }, [athleteFoldersData, athleteSearchTerm, athleteFilterStatus]);
+
+  // Atleta attualmente selezionato nel raccoglitore
+  const selectedAthleteData = useMemo(() => {
+    if (!selectedAthleteFolderId) return null;
+    return athleteFoldersData.find(item => item.athlete.id === selectedAthleteFolderId) || null;
+  }, [selectedAthleteFolderId, athleteFoldersData]);
+
+  // ─── BREADCRUMBS TEMPLATE MASTER ───
   const getBreadcrumbs = () => {
-    const crumbs: { id: string | null; name: string }[] = [{ id: null, name: 'Tutti i Programmi' }];
+    const crumbs: { id: string | null; name: string }[] = [{ id: null, name: 'Tutti i Template Master' }];
     let curr = folders.find(f => f.id === currentFolderId);
     const path: WorkoutFolder[] = [];
     while (curr) {
@@ -70,7 +145,6 @@ export const WorkoutsPage: React.FC = () => {
     return crumbs;
   };
 
-  // 2. Filtra le cartelle del livello corrente
   const currentFolders = folders.filter(f => {
     if (searchTerm.trim()) {
       return f.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -78,13 +152,11 @@ export const WorkoutsPage: React.FC = () => {
     return currentFolderId ? f.parent_id === currentFolderId : !f.parent_id;
   });
 
-  // 3. Filtra le schede del livello corrente (o per ricerca globale)
   const currentTemplates = coachTemplates.filter(template => {
     const matchesSearch = template.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       template.description?.toLowerCase().includes(searchTerm.toLowerCase());
     
     if (searchTerm.trim()) return matchesSearch;
-    
     return currentFolderId ? template.folder_id === currentFolderId : !template.folder_id;
   });
 
@@ -97,9 +169,9 @@ export const WorkoutsPage: React.FC = () => {
       if (!success) throw new Error(error);
       showSuccess('Scheda eliminata con successo!');
       setDeletingWorkout(null);
-    } catch (err: any) {
-      console.error(err);
-      showError('Errore durante l\'eliminazione della scheda: ' + (err.message || ''));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore eliminazione';
+      showError('Errore durante l\'eliminazione della scheda: ' + msg);
     } finally {
       setIsDeleting(false);
     }
@@ -125,8 +197,9 @@ export const WorkoutsPage: React.FC = () => {
       setIsFolderModalOpen(false);
       setEditingFolder(null);
       setFolderNameInput('');
-    } catch (err: any) {
-      showError('Errore durante il salvataggio della cartella: ' + (err.message || ''));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore';
+      showError('Errore durante il salvataggio della cartella: ' + msg);
     } finally {
       setIsSavingFolder(false);
     }
@@ -144,8 +217,9 @@ export const WorkoutsPage: React.FC = () => {
       if (currentFolderId === deletingFolder.id) {
         setCurrentFolderId(deletingFolder.parent_id || null);
       }
-    } catch (err: any) {
-      showError('Errore durante l\'eliminazione: ' + (err.message || ''));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore';
+      showError('Errore durante l\'eliminazione: ' + msg);
     } finally {
       setIsDeleting(false);
     }
@@ -159,8 +233,9 @@ export const WorkoutsPage: React.FC = () => {
       if (!success) throw new Error(error);
       showSuccess('Scheda spostata con successo!');
       setMovingWorkout(null);
-    } catch (err: any) {
-      showError('Errore durante lo spostamento: ' + (err.message || ''));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore';
+      showError('Errore durante lo spostamento: ' + msg);
     }
   };
 
@@ -181,333 +256,836 @@ export const WorkoutsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header Pagina */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      {/* ─── TESTATA PRINCIPALE CON TAB DI NAVIGAZIONE ─── */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Schede di Allenamento</h1>
-          <p className="text-sm text-slate-400">Organizza i tuoi programmi in cartelle ed archivi</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-black text-white tracking-tight">Schede di Allenamento</h1>
+            <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] font-black text-[10px] uppercase tracking-wider border border-[var(--color-primary)]/30">
+              Training Hub
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Organizza i programmi dei tuoi atleti in cartelle dedicate e gestisci i tuoi template master.
+          </p>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
           <button 
             onClick={() => setActiveTab('progressioni')}
-            className="flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-[var(--color-primary)] text-sm font-bold rounded-xl border border-[var(--color-primary)]/40 transition-all shadow-sm cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-850 text-[var(--color-primary)] text-xs font-bold rounded-xl border border-[var(--color-primary)]/40 transition-all shadow-sm cursor-pointer"
           >
             <TrendingUp className="w-4 h-4 text-[var(--color-primary)]" />
-            Progressioni & Sovraccarico
+            <span>Progressioni & Sovraccarico</span>
           </button>
 
-          <button 
-            onClick={() => {
-              setEditingFolder(null);
-              setFolderNameInput('');
-              setIsFolderModalOpen(true);
-            }}
-            className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold rounded-xl border border-slate-700 transition-all"
-          >
-            <FolderPlus className="w-4 h-4 text-[var(--color-primary)]" />
-            Nuova Cartella
-          </button>
+          {mainViewTab === 'templates' && (
+            <button 
+              onClick={() => {
+                setEditingFolder(null);
+                setFolderNameInput('');
+                setIsFolderModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition-all cursor-pointer"
+            >
+              <FolderPlus className="w-4 h-4 text-[var(--color-primary)]" />
+              <span>Nuova Cartella Master</span>
+            </button>
+          )}
           
           <button 
-            onClick={() => setIsBuilderOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-black text-sm font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-all shadow-lg"
+            onClick={() => {
+              setBuilderTargetAthleteId(selectedAthleteFolderId || undefined);
+              setEditingWorkout(null);
+              setIsBuilderOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-slate-950 text-xs font-black rounded-xl hover:bg-[var(--color-primary-hover)] active:scale-95 transition-all shadow-lg shadow-[var(--color-primary)]/20 cursor-pointer ml-auto lg:ml-0"
           >
-            <Plus className="w-4 h-4" />
-            Nuova Scheda
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>{selectedAthleteData ? `Nuova Scheda per ${selectedAthleteData.athlete.firstName}` : 'Nuova Scheda'}</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl p-4 sm:p-6 space-y-6">
-        
-        {/* Breadcrumb Navigation & Search Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-          
-          {/* Breadcrumbs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto text-sm font-bold custom-scrollbar py-1">
-            {getBreadcrumbs().map((crumb, idx, arr) => {
-              const isLast = idx === arr.length - 1;
-              return (
-                <React.Fragment key={crumb.id || 'root'}>
+      {/* ─── SWITCHER VISTE: RACCOGLITORE PER ATLETA vs TEMPLATE MASTER ─── */}
+      <div className="flex items-center gap-2 p-1 bg-slate-950 border border-slate-800 rounded-2xl max-w-md shadow-inner">
+        <button
+          type="button"
+          onClick={() => {
+            setMainViewTab('athletes');
+            setSelectedAthleteFolderId(null);
+          }}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-black transition-all cursor-pointer select-none ${
+            mainViewTab === 'athletes'
+              ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Cartelle per Atleta ({athletes.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainViewTab('templates')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-black transition-all cursor-pointer select-none ${
+            mainViewTab === 'templates'
+              ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Libreria Template Master ({coachTemplates.length})</span>
+        </button>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* VISTA 1: RACCOGLITORE ATLETI (CARTELLE INDIVIDUALI AUTOMATICHE)     */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {mainViewTab === 'athletes' && (
+        <div className="space-y-5">
+          {/* Se un atleta è aperto, mostra la vista cartella interna */}
+          {selectedAthleteData ? (
+            <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-5 sm:p-6 space-y-6 shadow-xl animate-in fade-in duration-200">
+              {/* Header Cartella Atleta */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                <div className="flex items-center gap-3.5">
                   <button
-                    onClick={() => setCurrentFolderId(crumb.id)}
-                    className={`flex items-center gap-1.5 transition-colors whitespace-nowrap ${isLast ? 'text-[var(--color-primary)] font-bold' : 'text-slate-400 hover:text-white'}`}
+                    type="button"
+                    onClick={() => setSelectedAthleteFolderId(null)}
+                    className="p-2.5 rounded-2xl bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-white border border-slate-800 transition-all cursor-pointer shadow-sm"
+                    title="Torna a tutte le cartelle atleti"
                   >
-                    {idx === 0 ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
-                    <span>{crumb.name}</span>
+                    <ArrowLeft className="w-5 h-5" />
                   </button>
-                  {!isLast && <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />}
-                </React.Fragment>
-              );
-            })}
-          </div>
+                  <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)] text-slate-950 font-black text-lg flex items-center justify-center shadow-md shadow-[var(--color-primary)]/20">
+                    {selectedAthleteData.athlete.firstName.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg sm:text-xl font-black text-white">
+                        {selectedAthleteData.athlete.firstName} {selectedAthleteData.athlete.lastName}
+                      </h2>
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 capitalize">
+                        {selectedAthleteData.athlete.status || 'Attivo'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+                      <span>{selectedAthleteData.athlete.email || 'Nessuna email'}</span>
+                      <span>•</span>
+                      <span>{selectedAthleteData.totalWorkouts} programmi storici</span>
+                    </p>
+                  </div>
+                </div>
 
-          {/* Search Box */}
-          <div className="relative min-w-[240px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Cerca schede o cartelle..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-900/60 border border-slate-700/60 rounded-xl text-sm text-white focus:outline-none focus:border-[var(--color-primary)]"
-            />
-          </div>
-        </div>
-
-        {/* 1. SEZIONE CARTELLE (Se presenti) */}
-        {currentFolders.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cartelle</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {currentFolders.map(folder => {
-                const subfoldersCount = folders.filter(f => f.parent_id === folder.id).length;
-                const templatesCount = coachTemplates.filter(t => t.folder_id === folder.id).length;
-
-                return (
-                  <div
-                    key={folder.id}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-[var(--color-primary)]/50 transition-all flex items-center justify-between group cursor-pointer"
-                    onClick={() => setCurrentFolderId(folder.id)}
+                <div className="flex items-center gap-2 self-stretch sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBuilderTargetAthleteId(selectedAthleteData.athlete.id);
+                      setEditingWorkout(null);
+                      setIsBuilderOpen(true);
+                    }}
+                    className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-slate-950 font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-md shadow-[var(--color-primary)]/20 cursor-pointer"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-amber-500/10 text-amber-400 rounded-xl">
-                        <Folder className="w-5 h-5 fill-amber-400/20" />
-                      </div>
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                    <span>Crea Nuova Scheda per {selectedAthleteData.athlete.firstName}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* SEZIONE 1: SCHEDA ATTIVA IN CORSO */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
+                    Scheda Attiva in Corso
+                  </h3>
+                </div>
+
+                {selectedAthleteData.activeWorkout ? (
+                  <div className="p-5 sm:p-6 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-[var(--color-primary)]/50 shadow-2xl shadow-[var(--color-primary)]/5 space-y-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                       <div>
-                        <h4 className="text-sm font-bold text-white group-hover:text-[var(--color-primary)] transition-colors">
-                          {folder.name}
-                        </h4>
-                        <p className="text-[10px] text-slate-400">
-                          {templatesCount} schede • {subfoldersCount} sottocartelle
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-base sm:text-lg font-black text-white">
+                            {selectedAthleteData.activeWorkout.title}
+                          </h4>
+                          <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)] text-slate-950 font-black text-[10px] uppercase tracking-wider shadow-sm">
+                            Attiva
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                          {selectedAthleteData.activeWorkout.description || 'Nessuna descrizione specificata.'}
                         </p>
                       </div>
+
+                      <div className="bg-slate-950/80 border border-slate-800 px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold text-[var(--color-primary)] shrink-0 shadow-inner">
+                        {selectedAthleteData.activeWorkout.total_weeks || 4} settimane
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => {
-                          setEditingFolder(folder);
-                          setFolderNameInput(folder.name);
-                          setIsFolderModalOpen(true);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-                        title="Rinomina cartella"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setDeletingFolder(folder)}
-                        className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800"
-                        title="Elimina cartella"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800/80 text-xs">
+                      <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                        Assegnata il {new Date(selectedAthleteData.activeAssignment?.assigned_date || Date.now()).toLocaleDateString('it-IT')}
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedAthleteData.activeWorkout) {
+                              setEditingAthleteWorkout({
+                                athleteId: selectedAthleteData.athlete.id,
+                                workout: selectedAthleteData.activeWorkout
+                              });
+                            }
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                          <span>Modifica Scheda</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedAthleteData.activeWorkout) {
+                              handleDuplicateWorkout(selectedAthleteData.activeWorkout);
+                            }
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-800"
+                        >
+                          <Copy className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Clona per Nuovo Mese</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (selectedAthleteData.activeWorkout && confirm('Vuoi revocare questa scheda dall\'atleta?')) {
+                              await unassignWorkoutFromAthlete(selectedAthleteData.athlete.id, selectedAthleteData.activeWorkout.id);
+                              showSuccess('Scheda revocata con successo.');
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-500/20"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                          <span>Scollega</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                ) : (
+                  <div className="p-8 rounded-3xl bg-slate-900/30 border border-dashed border-amber-500/40 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/30">
+                      <AlertCircle className="w-6 h-6" />
+                    </div>
+                    <h4 className="text-sm font-black text-white">Nessuna Scheda Attiva Assegnata</h4>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      {selectedAthleteData.athlete.firstName} non ha attualmente un programma di allenamento in corso. Crea un nuovo programma su misura oppure assegnane uno dai template master.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBuilderTargetAthleteId(selectedAthleteData.athlete.id);
+                        setEditingWorkout(null);
+                        setIsBuilderOpen(true);
+                      }}
+                      className="px-4 py-2 bg-[var(--color-primary)] text-slate-950 font-black text-xs rounded-xl hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer shadow-md"
+                    >
+                      Crea Scheda per {selectedAthleteData.athlete.firstName}
+                    </button>
+                  </div>
+                )}
+              </div>
 
-        {/* 2. SEZIONE SCHEDE / TEMPLATE */}
-        <div className="space-y-3">
-          {currentFolders.length > 0 && <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Programmi & Schede</h3>}
+              {/* SEZIONE 2: ARCHIVIO & STORICO SCHEDE DELL'ATLETA */}
+              <div className="space-y-3 pt-4 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                    <Folder className="w-4 h-4 text-blue-400" />
+                    Archivio & Programmi Storici ({selectedAthleteData.allAssignments.length})
+                  </h3>
+                </div>
 
-          {currentTemplates.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {currentTemplates.map(template => {
-                const parentFolder = folders.find(f => f.id === template.folder_id);
-                const activeAssignments = allAssignedWorkouts.filter(a => (a.workout_id === template.id || a.workout?.parent_template_id === template.id) && a.is_active);
-                const assignedAthletes = activeAssignments.map(a => {
-                  const ath = athletes.find(athlete => athlete.id === a.athlete_id);
-                  const name = ath ? `${ath.firstName} ${ath.lastName}`.trim() : (a.athlete?.first_name ? `${a.athlete.first_name} ${a.athlete.last_name || ''}`.trim() : 'Atleta Sconosciuto');
-                  return {
-                    assignmentId: a.id,
-                    athleteId: a.athlete_id,
-                    name,
-                    status: ath?.status || a.athlete?.status || 'active',
-                    assignedDate: a.assigned_date,
-                    email: ath?.email || a.athlete?.email || '',
-                    isCustomized: a.workout?.parent_template_id === template.id,
-                    customWorkout: a.workout,
-                  };
-                });
+                {selectedAthleteData.allAssignments.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {selectedAthleteData.allAssignments.map((assignment) => {
+                      const w = assignment.workout;
+                      if (!w) return null;
+                      const isCurrentActive = assignment.is_active;
 
-                return (
-                  <div key={template.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-[var(--color-primary)]/50 transition-colors group flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="p-2 bg-[var(--color-primary)]/10 rounded-lg">
-                          <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {parentFolder && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-500/10 text-amber-400 rounded-md flex items-center gap-1">
-                              <Folder className="w-3 h-3" /> {parentFolder.name}
+                      return (
+                        <div
+                          key={assignment.id}
+                          className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
+                            isCurrentActive
+                              ? 'bg-slate-900/60 border-[var(--color-primary)]/40 shadow-md'
+                              : 'bg-slate-900/30 border-slate-800/80 hover:bg-slate-900/60'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-sm font-black text-white line-clamp-1">{w.title}</h4>
+                                {isCurrentActive && (
+                                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-[var(--color-primary)] text-slate-950">
+                                    Attiva
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                                {w.description || 'Nessuna descrizione'}
+                              </p>
+                            </div>
+                            <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
+                              {w.total_weeks || 4}w
                             </span>
-                          )}
-                          {template.estimated_duration_minutes && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-md flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> {template.estimated_duration_minutes}
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
+                            <span className="text-[10px] text-slate-500">
+                              {assignment.assigned_date ? new Date(assignment.assigned_date).toLocaleDateString('it-IT') : '-'}
                             </span>
-                          )}
-                          <span className="text-xs font-semibold px-2 py-0.5 bg-slate-800 rounded-md text-slate-300">
-                            {new Date(template.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </div>
-
-                      <h3 className="text-white font-bold text-lg mb-1">{template.title}</h3>
-                      <p className="text-sm text-slate-400 line-clamp-2 min-h-[36px]">
-                        {template.description || 'Nessuna descrizione'}
-                      </p>
-
-                      {/* Sezione Atleti Assegnati */}
-                      <div className="mt-3 pt-3 border-t border-slate-800/80">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                            <Users className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                            Atleti in uso ({assignedAthletes.length})
-                          </span>
-                          {assignedAthletes.length > 0 && (
-                            <button
-                              onClick={() => setViewingAssignedWorkout({ template, assignedAthletes })}
-                              className="text-[11px] font-bold text-[var(--color-primary)] hover:underline flex items-center gap-0.5"
-                            >
-                              Gestisci <ChevronRight className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-
-                        {assignedAthletes.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5 items-center">
-                            {assignedAthletes.slice(0, 2).map(ath => (
-                              <span
-                                key={ath.assignmentId}
-                                onClick={() => setViewingAssignedWorkout({ template, assignedAthletes })}
-                                className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:bg-amber-500/20 transition-colors"
-                                title={`Assegnata il ${new Date(ath.assignedDate).toLocaleDateString('it-IT')}`}
-                              >
-                                <User className="w-3 h-3 text-amber-400" />
-                                {ath.name}
-                                {ath.isCustomized && <span className="text-[9px] bg-sky-500/10 text-sky-400 px-1 py-0.5 rounded ml-1">Pers.</span>}
-                              </span>
-                            ))}
-                            {assignedAthletes.length > 2 && (
+                            <div className="flex items-center gap-1.5">
                               <button
-                                onClick={() => setViewingAssignedWorkout({ template, assignedAthletes })}
-                                className="px-2 py-1 bg-slate-800 border border-slate-700 text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors"
+                                type="button"
+                                onClick={() => {
+                                  setEditingAthleteWorkout({
+                                    athleteId: selectedAthleteData.athlete.id,
+                                    workout: w
+                                  });
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-colors cursor-pointer"
                               >
-                                +{assignedAthletes.length - 2} altri
+                                Apri
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateWorkout(w)}
+                                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                title="Duplica"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic py-2">
+                    Nessuna scheda archiviata per questo atleta.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* LISTA DI TUTTE LE CARTELLE ATLETI */
+            <div className="space-y-4">
+              {/* Barra Filtri, Ricerca e Toggle Vista Atleti */}
+              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 rounded-2xl shadow-sm">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Cerca atleta per nome, email o scheda assegnata..."
+                    value={athleteSearchTerm}
+                    onChange={(e) => setAthleteSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-[var(--color-primary)] placeholder:text-slate-500"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {/* Filtri Stato Scheda */}
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setAthleteFilterStatus('all')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        athleteFilterStatus === 'all'
+                          ? 'bg-slate-800 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Tutti ({athletes.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAthleteFilterStatus('active_workout')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        athleteFilterStatus === 'active_workout'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Con Scheda ({athleteFoldersData.filter(a => a.hasActiveWorkout).length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAthleteFilterStatus('no_workout')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        athleteFilterStatus === 'no_workout'
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Senza Scheda ({athleteFoldersData.filter(a => !a.hasActiveWorkout).length})
+                    </button>
+                  </div>
+
+                  {/* Toggle Vista Elenco / Griglia */}
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setAthleteLayoutMode('list')}
+                      className={`p-1.5 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        athleteLayoutMode === 'list'
+                          ? 'bg-[var(--color-primary)] text-slate-950 shadow-sm font-black'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      title="Vista Elenco Orizzontale"
+                    >
+                      <span>Elenco</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAthleteLayoutMode('grid')}
+                      className={`p-1.5 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        athleteLayoutMode === 'grid'
+                          ? 'bg-[var(--color-primary)] text-slate-950 shadow-sm font-black'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      title="Vista a Griglia"
+                    >
+                      <span>Griglia</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── 1. VISTA AD ELENCO ORIZZONTALE (COMPATTA, ALLINEATA & RIGIDA) ── */}
+              {athleteLayoutMode === 'list' && (
+                <div className="space-y-2">
+                  {/* Intestazione Colonne Tabella per un ordine visivo impeccabile */}
+                  <div className="hidden lg:grid grid-cols-12 gap-4 px-5 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800/80">
+                    <div className="col-span-4">Atleta & Contatto</div>
+                    <div className="col-span-5">Programma Attivo in Corso</div>
+                    <div className="col-span-1 text-center">Archivio</div>
+                    <div className="col-span-2 text-right">Azione</div>
+                  </div>
+
+                  {filteredAthleteFolders.map((item) => {
+                    const ath = item.athlete;
+                    const hasActive = item.hasActiveWorkout;
+
+                    return (
+                      <div
+                        key={ath.id}
+                        onClick={() => setSelectedAthleteFolderId(ath.id)}
+                        className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 hover:border-[var(--color-primary)]/60 rounded-2xl p-3.5 sm:p-4 shadow-sm hover:shadow-xl transition-all grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 items-center group cursor-pointer"
+                      >
+                        {/* Col 1-4: Atleta & Contatto */}
+                        <div className="lg:col-span-4 flex items-center gap-3.5 min-w-0">
+                          <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)] text-slate-950 font-black text-sm flex items-center justify-center shadow-md shadow-[var(--color-primary)]/15 shrink-0 group-hover:scale-105 transition-transform">
+                            {ath.firstName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-sm font-black text-white truncate group-hover:text-[var(--color-primary)] transition-colors">
+                                {ath.firstName} {ath.lastName}
+                              </h3>
+                              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 capitalize shrink-0">
+                                {ath.status || 'Attivo'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-400 truncate">
+                              {ath.email || 'Senza email'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Col 5-9: Scheda Attiva (Box allineato a larghezza costante) */}
+                        <div className="lg:col-span-5 min-w-0">
+                          <div className="p-2 px-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Scheda Attiva</span>
+                              <p className="text-xs font-black text-white truncate">
+                                {item.activeWorkout?.title || 'Nessuna scheda attiva'}
+                              </p>
+                            </div>
+                            {hasActive ? (
+                              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 text-[10px] font-black uppercase tracking-wider border border-emerald-500/30 flex items-center gap-1.5 shrink-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                In Corso
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-400 text-[10px] font-black uppercase tracking-wider border border-rose-500/30 flex items-center gap-1.5 shrink-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                                Non Assegnata
+                              </span>
                             )}
                           </div>
-                        ) : (
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-slate-500 italic">Nessun atleta in uso</span>
-                            <button
-                              onClick={() => setAssigningWorkout(template)}
-                              className="text-[11px] font-bold text-slate-400 hover:text-[var(--color-primary)] flex items-center gap-1 transition-colors"
-                            >
-                              <Plus className="w-3 h-3" /> Assegna
-                            </button>
-                          </div>
-                        )}
+                        </div>
+
+                        {/* Col 10: Contatore Archivio */}
+                        <div className="lg:col-span-1 flex items-center lg:justify-center gap-1.5 text-xs text-slate-400 font-medium">
+                          <Folder className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          <span className="truncate">{item.totalWorkouts} prog.</span>
+                        </div>
+
+                        {/* Col 11-12: Pulsante Azione */}
+                        <div className="lg:col-span-2 flex justify-end">
+                          <button
+                            type="button"
+                            className="w-full lg:w-auto px-4 py-2 rounded-xl bg-slate-800 group-hover:bg-[var(--color-primary)] text-slate-300 group-hover:text-slate-950 font-black text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm group-hover:shadow-md cursor-pointer"
+                          >
+                            <span>Apri Cartella</span>
+                            <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })}
+                </div>
+              )}
 
-                    <div className="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center">
-                       <div className="flex items-center gap-1">
-                         <button 
-                           onClick={() => setEditingWorkout(template)}
-                           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
-                           title="Modifica scheda"
-                         >
-                           <Pencil className="w-3.5 h-3.5 text-slate-400" />
-                           <span>Modifica</span>
-                         </button>
-                         <button 
-                           onClick={() => handleDuplicateWorkout(template)}
-                           disabled={duplicatingWorkoutId === template.id}
-                           className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold disabled:opacity-50 cursor-pointer"
-                           title="Duplica scheda di allenamento"
-                         >
-                           {duplicatingWorkoutId === template.id ? (
-                             <div className="w-3.5 h-3.5 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
-                           ) : (
-                             <Copy className="w-3.5 h-3.5 text-amber-400" />
-                           )}
-                           <span>Duplica</span>
-                         </button>
-                         <button 
-                           onClick={() => setMovingWorkout(template)}
-                           className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                           title="Sposta in cartella"
-                         >
-                           <MoveRight className="w-3.5 h-3.5" />
-                         </button>
-                         <button 
-                           onClick={() => setDeletingWorkout(template)}
-                           className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                           title="Elimina scheda"
-                         >
-                           <Trash2 className="w-3.5 h-3.5" />
-                         </button>
-                       </div>
+              {/* ── 2. VISTA A GRIGLIA (SE SCELTA DALL'UTENTE) ── */}
+              {athleteLayoutMode === 'grid' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredAthleteFolders.map((item) => {
+                    const ath = item.athlete;
+                    const hasActive = item.hasActiveWorkout;
 
-                       <button 
-                         onClick={() => setAssigningWorkout(template)}
-                         className="px-3 py-1.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5"
-                       >
-                         Assegna
-                       </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : currentFolders.length === 0 && (
-            <div className="text-center py-16 bg-slate-900/30 rounded-2xl border border-slate-800">
-              <div className="w-16 h-16 rounded-2xl bg-slate-800/50 flex items-center justify-center mx-auto mb-4 border border-slate-700/50">
-                <Dumbbell className="w-8 h-8 text-slate-500" />
-              </div>
-              <h3 className="text-lg font-bold text-white mb-2">Cartella o Sezione Vuota</h3>
-              <p className="text-sm text-slate-400 max-w-sm mx-auto">
-                Non ci sono schede di allenamento in questa posizione. Puoi crearne una nuova o spostarvene una esistente.
-              </p>
+                    return (
+                      <div
+                        key={ath.id}
+                        onClick={() => setSelectedAthleteFolderId(ath.id)}
+                        className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 hover:border-[var(--color-primary)]/60 rounded-3xl p-5 shadow-lg hover:shadow-xl transition-all flex flex-col justify-between group cursor-pointer space-y-4"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-11 h-11 rounded-2xl bg-[var(--color-primary)] text-slate-950 font-black text-sm flex items-center justify-center shadow-md shadow-[var(--color-primary)]/15 shrink-0 group-hover:scale-105 transition-transform">
+                                {ath.firstName.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <h3 className="text-base font-black text-white truncate group-hover:text-[var(--color-primary)] transition-colors">
+                                  {ath.firstName} {ath.lastName}
+                                </h3>
+                                <p className="text-xs text-slate-400 truncate">
+                                  {ath.email || 'Senza email'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="w-8 h-8 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400 group-hover:text-[var(--color-primary)] group-hover:border-[var(--color-primary)]/40 transition-all shrink-0">
+                              <Folder className="w-4 h-4" />
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
+                            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
+                              <span className="text-slate-400">Scheda Attiva</span>
+                              {hasActive ? (
+                                <span className="text-emerald-400 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  In corso
+                                </span>
+                              ) : (
+                                <span className="text-rose-400 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                                  Non assegnata
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs font-black text-white truncate">
+                              {item.activeWorkout?.title || 'Nessuna scheda attiva'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-3 border-t border-slate-800/60">
+                          <span className="text-slate-400 font-medium">
+                            {item.totalWorkouts} programmi archiviati
+                          </span>
+                          <span className="text-[11px] font-black text-[var(--color-primary)] group-hover:translate-x-1 transition-transform flex items-center gap-1">
+                            <span>Apri Cartella</span>
+                            <span>→</span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {filteredAthleteFolders.length === 0 && (
+                <div className="p-12 text-center text-slate-400 bg-slate-900/20 border border-slate-800 rounded-3xl space-y-2">
+                  <Users className="w-8 h-8 mx-auto text-slate-500 opacity-50" />
+                  <p className="text-sm font-bold text-slate-300">Nessun atleta trovato con i filtri selezionati</p>
+                  <p className="text-xs text-slate-500">Prova a modificare i termini di ricerca o i filtri di stato.</p>
+                </div>
+              )}
             </div>
           )}
         </div>
-      </div>
+      )}
 
-      {/* Modal Costruttore Scheda */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* VISTA 2: LIBRERIA TEMPLATE MASTER & CARTELLE GLOBALI               */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {mainViewTab === 'templates' && (
+        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-4 sm:p-6 space-y-6 shadow-xl animate-in fade-in duration-200">
+          {/* Breadcrumb Navigation & Search Bar Master */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            {/* Breadcrumbs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto text-sm font-bold custom-scrollbar py-1">
+              {getBreadcrumbs().map((crumb, idx, arr) => {
+                const isLast = idx === arr.length - 1;
+                return (
+                  <React.Fragment key={crumb.id || 'root'}>
+                    <button
+                      onClick={() => setCurrentFolderId(crumb.id)}
+                      className={`flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${isLast ? 'text-[var(--color-primary)] font-black' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      {idx === 0 ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                      <span>{crumb.name}</span>
+                    </button>
+                    {!isLast && <ChevronRight className="w-4 h-4 text-slate-600 shrink-0" />}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+
+            {/* Search Box */}
+            <div className="relative min-w-[240px]">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Cerca template master..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:outline-none focus:border-[var(--color-primary)]"
+              />
+            </div>
+          </div>
+
+          {/* 1. SEZIONE CARTELLE MASTER */}
+          {currentFolders.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cartelle</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {currentFolders.map(folder => {
+                  const count = coachTemplates.filter(t => t.folder_id === folder.id).length;
+                  const subCount = folders.filter(f => f.parent_id === folder.id).length;
+                  return (
+                    <div
+                      key={folder.id}
+                      onClick={() => setCurrentFolderId(folder.id)}
+                      className="group flex items-center justify-between p-4 bg-slate-900/40 hover:bg-slate-900/80 border border-slate-800/80 hover:border-[var(--color-primary)]/40 rounded-2xl cursor-pointer transition-all shadow-sm"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 flex items-center justify-center text-[var(--color-primary)] shrink-0 group-hover:scale-105 transition-transform">
+                          <Folder className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-bold text-white group-hover:text-[var(--color-primary)] transition-colors truncate">
+                            {folder.name}
+                          </h4>
+                          <span className="text-[11px] text-slate-500 block">
+                            {count} schede • {subCount} sottocartelle
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => {
+                            setEditingFolder(folder);
+                            setFolderNameInput(folder.name);
+                            setIsFolderModalOpen(true);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                          title="Rinomina cartella"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeletingFolder(folder)}
+                          className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800"
+                          title="Elimina cartella"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 2. SEZIONE TEMPLATE & SCHEDE */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Template Master & Programmi</h3>
+              <span className="text-xs text-slate-500">{currentTemplates.length} schede totali</span>
+            </div>
+
+            {currentTemplates.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 bg-slate-900/20 border border-slate-800 rounded-3xl space-y-3">
+                <Dumbbell className="w-10 h-10 mx-auto text-slate-600" />
+                <p className="text-sm font-bold text-slate-300">Nessun template in questa cartella</p>
+                <p className="text-xs text-slate-500">Crea una nuova scheda master per iniziare ad archiviare i tuoi programmi.</p>
+                <button
+                  onClick={() => {
+                    setBuilderTargetAthleteId(undefined);
+                    setEditingWorkout(null);
+                    setIsBuilderOpen(true);
+                  }}
+                  className="px-4 py-2 bg-[var(--color-primary)] text-slate-950 font-black text-xs rounded-xl hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer shadow-md"
+                >
+                  Crea Primo Template
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentTemplates.map(template => {
+                  const assignedList = allAssignedWorkouts.filter(a => a.workout_id === template.id);
+                  const isDuplicating = duplicatingWorkoutId === template.id;
+
+                  return (
+                    <div
+                      key={template.id}
+                      className="p-5 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 hover:border-slate-700/80 transition-all flex flex-col justify-between space-y-4 shadow-lg"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                            <Dumbbell className="w-5 h-5" />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {template.estimated_duration_minutes && (
+                              <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/20">
+                                <Clock className="w-3 h-3" />
+                                {template.estimated_duration_minutes} min
+                              </span>
+                            )}
+                            <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
+                              {new Date(template.created_at).toLocaleDateString('it-IT')}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-base font-black text-white line-clamp-1">{template.title}</h4>
+                          <p className="text-xs text-slate-400 line-clamp-2 mt-1 leading-relaxed">
+                            {template.description || 'Nessuna descrizione.'}
+                          </p>
+                        </div>
+
+                        {/* Atleti che usano questo master */}
+                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 text-slate-400">
+                            <Users className="w-3.5 h-3.5 text-slate-500" />
+                            <span className="text-[11px] font-bold">Atleti in uso: {assignedList.length}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setAssigningWorkout(template)}
+                            className="text-[11px] font-black text-[var(--color-primary)] hover:underline cursor-pointer"
+                          >
+                            + Assegna
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Azioni Card */}
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-xs">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingWorkout(template);
+                              setIsBuilderOpen(true);
+                            }}
+                            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                            title="Modifica template"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateWorkout(template)}
+                            disabled={isDuplicating}
+                            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                            title="Duplica template"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setMovingWorkout(template)}
+                            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                            title="Sposta in cartella"
+                          >
+                            <MoveRight className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setDeletingWorkout(template)}
+                            className="p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                            title="Elimina template"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setAssigningWorkout(template)}
+                          className="px-3.5 py-1.5 rounded-xl bg-[var(--color-primary)] text-slate-950 font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer shadow-sm"
+                        >
+                          Assegna ad Atleta
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── TUTTE LE MODALI INTEGRATE E FUNZIONANTI ─── */}
+
+      {/* Modal Creazione / Modifica Scheda Master o per Atleta */}
       {isBuilderOpen && (
         <WorkoutBuilderModal
-          athleteId=""
-          onClose={() => setIsBuilderOpen(false)}
+          athleteId={builderTargetAthleteId}
+          initialWorkout={editingWorkout || undefined}
+          onClose={() => {
+            setIsBuilderOpen(false);
+            setEditingWorkout(null);
+            setBuilderTargetAthleteId(undefined);
+          }}
         />
       )}
 
-      {/* Modal Modifica Scheda */}
-      {editingWorkout && (
-        <WorkoutBuilderModal
-          initialWorkout={editingWorkout}
-          onClose={() => setEditingWorkout(null)}
-        />
-      )}
-
-      {/* Modal Modifica Scheda (Solo Singolo Atleta / Decoupling) */}
+      {/* Modal Modifica Scheda Specifica Atleta */}
       {editingAthleteWorkout && (
         <WorkoutBuilderModal
           athleteId={editingAthleteWorkout.athleteId}
           initialWorkout={editingAthleteWorkout.workout}
-          onClose={() => {
-            setEditingAthleteWorkout(null);
-            setViewingAssignedWorkout(null);
-          }}
+          onClose={() => setEditingAthleteWorkout(null)}
           onBack={() => setEditingAthleteWorkout(null)}
         />
       )}
@@ -520,16 +1098,16 @@ export const WorkoutsPage: React.FC = () => {
         />
       )}
 
-      {/* MODAL CREAZIONE / MODIFICA CARTELLA */}
+      {/* MODAL CREAZIONE / MODIFICA CARTELLA MASTER */}
       {isFolderModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Folder className="w-5 h-5 text-[var(--color-primary)]" />
-                {editingFolder ? 'Rinomina Cartella' : 'Nuova Cartella'}
+                {editingFolder ? 'Rinomina Cartella' : 'Nuova Cartella Master'}
               </h3>
-              <button onClick={() => setIsFolderModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setIsFolderModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -550,16 +1128,16 @@ export const WorkoutsPage: React.FC = () => {
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setIsFolderModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white"
+                className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white cursor-pointer"
               >
                 Annulla
               </button>
               <button
                 onClick={handleSaveFolder}
                 disabled={isSavingFolder}
-                className="px-5 py-2 bg-[var(--color-primary)] text-black text-xs font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-all flex items-center gap-2 disabled:opacity-50"
+                className="px-5 py-2 bg-[var(--color-primary)] text-slate-950 text-xs font-black rounded-xl hover:bg-[var(--color-primary-hover)] transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer shadow-md"
               >
-                {isSavingFolder ? <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                {isSavingFolder ? <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
                 {isSavingFolder ? 'Salvataggio...' : 'Salva Cartella'}
               </button>
             </div>
@@ -570,13 +1148,13 @@ export const WorkoutsPage: React.FC = () => {
       {/* MODAL SPOSTA SCHEDA IN CARTELLA */}
       {movingWorkout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <MoveRight className="w-5 h-5 text-amber-400" />
+                <MoveRight className="w-5 h-5 text-[var(--color-primary)]" />
                 Sposta Scheda in Cartella
               </h3>
-              <button onClick={() => setMovingWorkout(null)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setMovingWorkout(null)} className="text-slate-400 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -588,13 +1166,13 @@ export const WorkoutsPage: React.FC = () => {
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
               <button
                 onClick={() => handleMoveWorkout(null)}
-                className={`w-full text-left p-3 rounded-xl border flex items-center justify-between text-xs font-bold transition-all ${!movingWorkout.folder_id ? 'bg-[var(--color-primary)]/10 border-[var(--color-primary)] text-[var(--color-primary)]' : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'}`}
+                className={`w-full text-left p-3 rounded-xl border flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${!movingWorkout.folder_id ? 'bg-[var(--color-primary)]/10 border-[var(--color-primary)] text-[var(--color-primary)]' : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'}`}
               >
                 <div className="flex items-center gap-2">
                   <FolderOpen className="w-4 h-4" />
                   <span>Nessuna Cartella (Principale)</span>
                 </div>
-                {!movingWorkout.folder_id && <span className="text-[10px] bg-[var(--color-primary)] text-black px-2 py-0.5 rounded-full font-bold">Attuale</span>}
+                {!movingWorkout.folder_id && <span className="text-[10px] bg-[var(--color-primary)] text-slate-950 px-2 py-0.5 rounded-full font-bold">Attuale</span>}
               </button>
 
               {folders.map(f => {
@@ -603,13 +1181,13 @@ export const WorkoutsPage: React.FC = () => {
                   <button
                     key={f.id}
                     onClick={() => handleMoveWorkout(f.id)}
-                    className={`w-full text-left p-3 rounded-xl border flex items-center justify-between text-xs font-bold transition-all ${isCurrent ? 'bg-[var(--color-primary)]/10 border-[var(--color-primary)] text-[var(--color-primary)]' : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'}`}
+                    className={`w-full text-left p-3 rounded-xl border flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${isCurrent ? 'bg-[var(--color-primary)]/10 border-[var(--color-primary)] text-[var(--color-primary)]' : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'}`}
                   >
                     <div className="flex items-center gap-2">
-                      <Folder className="w-4 h-4 text-amber-400" />
+                      <Folder className="w-4 h-4 text-[var(--color-primary)]" />
                       <span>{f.name}</span>
                     </div>
-                    {isCurrent && <span className="text-[10px] bg-[var(--color-primary)] text-black px-2 py-0.5 rounded-full font-bold">Attuale</span>}
+                    {isCurrent && <span className="text-[10px] bg-[var(--color-primary)] text-slate-950 px-2 py-0.5 rounded-full font-bold">Attuale</span>}
                   </button>
                 );
               })}
@@ -621,9 +1199,9 @@ export const WorkoutsPage: React.FC = () => {
       {/* MODAL ELIMINAZIONE CARTELLA */}
       {deletingFolder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3 text-red-400">
-              <div className="p-3 bg-red-500/10 rounded-xl">
+              <div className="p-3 bg-red-500/10 rounded-2xl">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
@@ -640,16 +1218,15 @@ export const WorkoutsPage: React.FC = () => {
               <button 
                 onClick={() => setDeletingFolder(null)}
                 disabled={isDeleting}
-                className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white"
+                className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white cursor-pointer"
               >
                 Annulla
               </button>
               <button 
                 onClick={handleDeleteFolder}
                 disabled={isDeleting}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               >
-                {isDeleting && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
                 {isDeleting ? 'Eliminazione...' : 'Elimina Cartella'}
               </button>
             </div>
@@ -660,14 +1237,14 @@ export const WorkoutsPage: React.FC = () => {
       {/* MODAL ELIMINAZIONE SCHEDA */}
       {deletingWorkout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3 text-red-400">
-              <div className="p-3 bg-red-500/10 rounded-xl">
+              <div className="p-3 bg-red-500/10 rounded-2xl">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
                 <h3 className="text-lg font-bold text-white">Elimina Scheda</h3>
-                <p className="text-xs text-slate-400">Questa azione non può essere annullata</p>
+                <p className="text-xs text-slate-400">Questa azione è irreversibile</p>
               </div>
             </div>
 
@@ -679,154 +1256,16 @@ export const WorkoutsPage: React.FC = () => {
               <button 
                 onClick={() => setDeletingWorkout(null)}
                 disabled={isDeleting}
-                className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white"
+                className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white cursor-pointer"
               >
                 Annulla
               </button>
               <button 
                 onClick={handleDeleteWorkout}
                 disabled={isDeleting}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               >
-                {isDeleting && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                {isDeleting ? 'Eliminazione...' : 'Elimina Definitivamente'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL DETTAGLIO ATLETI ASSEGNATI */}
-      {viewingAssignedWorkout && !editingAthleteWorkout && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-400">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">Atleti in uso col programma</h3>
-                  <p className="text-xs text-slate-400">{viewingAssignedWorkout.template.title}</p>
-                </div>
-              </div>
-              <button onClick={() => setViewingAssignedWorkout(null)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
-              {viewingAssignedWorkout.assignedAthletes.map(ath => (
-                <div key={ath.assignmentId} className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold text-sm shrink-0">
-                      {ath.name.charAt(0)}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                        {ath.name}
-                        {ath.isCustomized && <span className="text-[10px] bg-fuchsia-500/10 text-fuchsia-400 px-2 py-0.5 rounded font-bold border border-fuchsia-500/20">Personalizzata</span>}
-                        {ath.status === 'active' && <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold border border-emerald-500/20">Attivo</span>}
-                        {ath.status === 'trial' && <span className="text-[10px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded font-bold border border-sky-500/20">In prova</span>}
-                      </h4>
-                      <p className="text-xs text-slate-400">
-                        Assegnata il {new Date(ath.assignedDate).toLocaleDateString('it-IT')} {ath.email ? `• ${ath.email}` : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 shrink-0 self-end sm:self-auto">
-                    <button
-                      onClick={() => {
-                        setSelectedAthleteId(ath.athleteId);
-                        setActiveTab('atleti');
-                        setViewingAssignedWorkout(null);
-                      }}
-                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5"
-                      title="Apri scheda dell'atleta"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                      <span>Apri Atleta</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingAthleteWorkout({ 
-                          athleteId: ath.athleteId, 
-                          workout: ath.isCustomized ? ath.customWorkout : viewingAssignedWorkout.template 
-                        });
-                      }}
-                      className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold rounded-lg border border-amber-500/20 transition-colors flex items-center gap-1.5 cursor-pointer"
-                      title="Personalizza scheda (stacca dal template globale)"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      <span>Modifica</span>
-                    </button>
-                    <button
-                      onClick={async () => {
-                        const workoutToDup = ath.isCustomized ? ath.customWorkout : viewingAssignedWorkout.template;
-                        const customTitle = `${viewingAssignedWorkout.template.title} (Copia - ${ath.name})`;
-                        setDuplicatingWorkoutId(workoutToDup.id);
-                        try {
-                          const res = await duplicateWorkoutTemplate(workoutToDup.id, customTitle);
-                          if (!res.success) throw new Error(res.error);
-                          showSuccess(`Scheda duplicata come "${customTitle}"`);
-                        } catch (err: unknown) {
-                          const msg = err instanceof Error ? err.message : 'Errore duplicazione';
-                          showError(msg);
-                        } finally {
-                          setDuplicatingWorkoutId(null);
-                        }
-                      }}
-                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
-                      title="Duplica come nuovo template autonomo"
-                    >
-                      <Copy className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Duplica</span>
-                    </button>
-                    <button
-                      onClick={async () => {
-                        if (confirm(`Vuoi rimuovere il programma "${viewingAssignedWorkout.template.title}" da ${ath.name}?`)) {
-                          const res = await unassignWorkoutFromAthlete(ath.athleteId, ath.isCustomized ? ath.customWorkout.id : viewingAssignedWorkout.template.id);
-                          if (res.success) {
-                            showSuccess(`Scheda rimossa da ${ath.name}`);
-                            const updated = viewingAssignedWorkout.assignedAthletes.filter(a => a.assignmentId !== ath.assignmentId);
-                            if (updated.length === 0) {
-                              setViewingAssignedWorkout(null);
-                            } else {
-                              setViewingAssignedWorkout({ ...viewingAssignedWorkout, assignedAthletes: updated });
-                            }
-                          } else {
-                            showError('Errore durante la rimozione: ' + (res.error || ''));
-                          }
-                        }
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors"
-                      title="Rimuovi scheda dall'atleta"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-between items-center pt-2 border-t border-slate-800">
-              <button
-                onClick={() => {
-                  const tmpl = viewingAssignedWorkout.template;
-                  setViewingAssignedWorkout(null);
-                  setAssigningWorkout(tmpl);
-                }}
-                className="px-3.5 py-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-bold rounded-xl hover:bg-[var(--color-primary)]/20 transition-colors flex items-center gap-1.5"
-              >
-                <Plus className="w-4 h-4" />
-                Assegna a un altro atleta
-              </button>
-              <button
-                onClick={() => setViewingAssignedWorkout(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white"
-              >
-                Chiudi
+                {isDeleting ? 'Eliminazione...' : 'Elimina Scheda'}
               </button>
             </div>
           </div>

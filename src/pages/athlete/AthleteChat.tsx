@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Send,
-  Clock,
   ArrowLeft,
   CheckCheck,
   Check,
-  Sparkles,
-  MessageSquare,
   Trash2,
   Edit2,
   Paperclip,
   X,
-  FileText,
+  Video,
   Volume2,
-  Download
+  Download,
+  ShieldCheck,
+  Plus,
+  MessageSquare
 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
@@ -32,8 +32,6 @@ interface Attachment {
   type: 'image' | 'video' | 'file';
 }
 
-
-
 export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   const { user } = useAuth();
   const { messages, sendMessage, loading, markAsRead, deleteMessage, editMessage } = useMessages();
@@ -45,7 +43,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   const [attachment, setAttachment] = useState<Attachment | null>(null);
 
   // Typing Indicator State
-  const [isCoachTyping, setIsCoachTyping] = useState(false);
+  const [isCoachTyping] = useState(false);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -98,55 +96,27 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                 .from('messages')
                 .select('sender_id')
                 .neq('sender_id', user.id)
+                .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
-              if (msgData?.sender_id) {
+
+              if (msgData?.sender_id && uuidRegex.test(msgData.sender_id)) {
                 cid = msgData.sender_id;
               }
             }
           }
 
-          if (cid) {
-            setCoachId(cid);
-          }
+          if (cid) setCoachId(cid);
         });
     }
-  }, [athleteMessages, user, myIds]);
+  }, [user, athleteMessages, myIds]);
 
-  // Realtime listener per stato "Il coach sta scrivendo..."
+  // Scroll automatico in basso ai nuovi messaggi
   useEffect(() => {
-    if (!coachId || coachId === 'demo-local') return;
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [athleteMessages, isCoachTyping]);
 
-    const channel = supabase.channel(`typing_channel_${coachId}`);
-    channel
-      .on('broadcast', { event: 'typing' }, (payload) => {
-        if (payload.payload?.userId === coachId) {
-          setIsCoachTyping(true);
-          setTimeout(() => setIsCoachTyping(false), 3500);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [coachId]);
-
-  // Scroll automatico in fondo solido
-  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'auto') => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' });
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom('auto');
-    const timer = setTimeout(() => scrollToBottom('auto'), 60);
-    return () => clearTimeout(timer);
-  }, [athleteMessages.length, isCoachTyping, scrollToBottom]);
-
-  // Segna come letti i messaggi dal coach
+  // Segna come letti i messaggi ricevuti dal coach
   useEffect(() => {
     if (coachId && coachId !== 'demo-local') {
       markAsRead(coachId);
@@ -213,7 +183,6 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
 
       // Caso 2: Invia Nuovo Messaggio con caricamento su Supabase Storage
       if (attachment) {
-        // Carica su Supabase Storage (bucket privato: chat-attachments) o fallback DataURL
         const athleteIdForUpload = (user as unknown as { athleteId?: string })?.athleteId || user?.id;
         const uploadedPath = await uploadChatAttachment(attachment.file, athleteIdForUpload);
         const mediaTag =
@@ -227,7 +196,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
         await sendMessage(coachId, contentWithMedia);
         handleRemoveAttachment();
         setNewMessage('');
-        showSuccess('Messaggio ed allegato caricati con successo!');
+        showSuccess('Messaggio inviato!');
       } else {
         await sendMessage(coachId, textToSend);
         setNewMessage('');
@@ -240,7 +209,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
     }
   };
 
-  // Parser con controllo anti-crash 100% blindato per tutti i tipi di allegato ed Immagine Lightbox
+  // Parser per gli allegati con render pulito
   const renderMessageContent = (content?: string | null, isMineMsg?: boolean) => {
     if (!content) return null;
     const str = String(content);
@@ -319,63 +288,70 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
 
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 font-sans relative overflow-hidden">
-      {/* Header Premium Glassmorphic */}
-      <div className="bg-slate-900/90 backdrop-blur-xl border-b border-slate-800/80 px-4 py-3.5 flex items-center justify-between sticky top-0 z-20 shadow-lg shadow-black/40">
+      
+      {/* ─── HEADER CHAT SATINATO & ELEGANTE ─── */}
+      <div className="bg-slate-950/90 backdrop-blur-2xl border-b border-slate-800/80 px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-md shadow-black/40 shrink-0">
         <div className="flex items-center gap-3">
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-full transition-all active:scale-95 cursor-pointer"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-850 rounded-2xl transition-all active:scale-95 cursor-pointer"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
 
           <div className="relative">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-primary)]/30 to-amber-500/10 border border-[var(--color-primary)]/40 flex items-center justify-center text-[var(--color-primary)] font-black text-sm shadow-inner">
-              C
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/20 to-amber-500/10 border border-[var(--color-primary)]/40 flex items-center justify-center text-[var(--color-primary)] font-black text-sm shadow-inner">
+              AC
             </div>
-            <span className="absolute bottom-0 right-0 flex h-3 w-3">
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-950"></span>
             </span>
           </div>
 
           <div>
-            <h2 className="text-white font-bold text-sm tracking-tight flex items-center gap-1.5">
-              Il Tuo Coach
-              <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-            </h2>
-            <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-white font-black text-sm sm:text-base tracking-tight">
+                Il Tuo Coach
+              </h2>
+              <span className="px-2 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 text-[9px] font-black uppercase tracking-wider">
+                Coach Ufficiale
+              </span>
+            </div>
+            <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Online • Supporto Diretto
             </p>
           </div>
         </div>
 
-        <div className="px-3 py-1 rounded-full bg-slate-800/60 border border-slate-700/50 text-[10px] font-bold text-slate-300 uppercase tracking-wider hidden sm:block">
-          Coach Chat
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-slate-900/80 border border-slate-800 text-[10px] font-bold text-slate-400">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Chat Protetta</span>
         </div>
       </div>
 
-      {/* Area Messaggi */}
+      {/* ─── AREA MESSAGGI (STILE IPHONE / WHATSAPP DARK) ─── */}
       <div
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar bg-gradient-to-b from-slate-950 via-slate-950/90 to-slate-900/30"
+        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 custom-scrollbar bg-slate-950"
       >
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500 text-xs">
-            <div className="w-6 h-6 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"></div>
-            <span>Sincronizzazione chat...</span>
+            <div className="w-7 h-7 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"></div>
+            <span className="font-bold text-slate-400">Caricamento conversazione...</span>
           </div>
         ) : athleteMessages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8 max-w-sm mx-auto space-y-3">
-            <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800/80 flex items-center justify-center text-[var(--color-primary)] shadow-xl shadow-[var(--color-primary)]/5">
-              <MessageSquare className="w-8 h-8" />
+          <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8 max-w-sm mx-auto space-y-3 animate-in fade-in">
+            <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-[var(--color-primary)] shadow-lg">
+              <MessageSquare className="w-7 h-7" />
             </div>
-            <h3 className="text-base font-bold text-white">Chat Diretta con il Coach</h3>
+            <h3 className="text-sm sm:text-base font-black text-white">Canale Diretto con il Coach</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Invia un messaggio o allega una foto per richiedere consigli sul tuo programma, aggiornamenti o chiarimenti.
+              Scrivi un messaggio o allega una foto/video per chiarimenti, consigli o aggiornamenti sulla scheda.
             </p>
           </div>
         ) : (
@@ -385,14 +361,13 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
               idx === 0 ||
               new Date(msg.created_at).toDateString() !== new Date(arr[idx - 1].created_at).toDateString();
 
-            // VINCOLO RIGIDO: Modifica/Eliminazione consentita SOLO per l'ultimo messaggio inviato dall'atleta prima della risposta del Coach
             const isEditableAndDeletable = isLastMessageMine && msg.id === lastMessage?.id;
 
             return (
               <React.Fragment key={msg.id}>
                 {showDate && (
-                  <div className="flex justify-center my-4">
-                    <span className="px-3.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-widest shadow-sm">
+                  <div className="flex justify-center my-3">
+                    <span className="px-3.5 py-1 rounded-full bg-slate-900/90 border border-slate-800/90 text-[10px] font-bold text-slate-400 uppercase tracking-widest shadow-sm">
                       {new Date(msg.created_at).toLocaleDateString('it-IT', {
                         weekday: 'short',
                         day: '2-digit',
@@ -402,15 +377,16 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                   </div>
                 )}
 
-                <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} group`}>
-                  <div className="flex items-center gap-1.5 max-w-[85%] sm:max-w-[75%] group/msg">
-                    {/* Pulsanti Azione (Modifica ed Elimina) visibili SOLO sull'ULTIMO messaggio dell'atleta se non ha risposta */}
+                <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} group animate-in fade-in duration-150`}>
+                  <div className="flex items-end gap-1.5 max-w-[85%] sm:max-w-[72%] group/msg">
+                    
+                    {/* Pulsanti Modifica / Elimina per l'ultimo messaggio dell'atleta */}
                     {isMine && isEditableAndDeletable && (
-                      <div className="opacity-0 group-hover/msg:opacity-100 flex items-center gap-1 transition-all bg-slate-900/90 border border-slate-800 p-1 rounded-xl shadow-lg">
+                      <div className="opacity-0 group-hover/msg:opacity-100 flex items-center gap-1 transition-all bg-slate-900 border border-slate-800 p-1 rounded-2xl shadow-lg mb-1">
                         <button
                           type="button"
                           onClick={() => handleStartEdit(msg.id, msg.content)}
-                          className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-[var(--color-primary)] hover:bg-slate-850 rounded-xl transition-colors cursor-pointer"
                           title="Modifica ultimo messaggio"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -418,7 +394,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                         <button
                           type="button"
                           onClick={() => deleteMessage(msg.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-850 rounded-xl transition-colors cursor-pointer"
                           title="Elimina ultimo messaggio"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -426,42 +402,41 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                       </div>
                     )}
 
-                    {/* Bubble Fumetto: Contrasto Alto & Curvatura Morbida */}
+                    {/* Bolla del Messaggio con Orario & Spunte Integrate all'Interno */}
                     <div
-                      className={`px-4 py-3 rounded-3xl text-sm shadow-md transition-all flex-1 ${
+                      className={`px-4 py-2.5 rounded-2xl text-sm shadow-md transition-all relative flex flex-col ${
                         isMine
-                          ? 'bg-amber-400 text-slate-950 font-bold border border-amber-300 rounded-tr-xs shadow-amber-500/10'
-                          : 'bg-slate-900 text-slate-100 border border-slate-800/90 rounded-tl-xs'
+                          ? 'bg-gradient-to-r from-[var(--color-primary)] to-amber-400 text-slate-950 font-semibold rounded-br-xs shadow-[var(--color-primary)]/15'
+                          : 'bg-slate-900 text-slate-100 border border-slate-800/90 rounded-bl-xs'
                       }`}
                     >
-                      {renderMessageContent(msg.content, isMine)}
-                    </div>
-                  </div>
+                      <div className="leading-relaxed pr-1">
+                        {renderMessageContent(msg.content, isMine)}
+                      </div>
 
-                  {/* Stato Spunte (✓ Inviato, ✓✓ Letto dal coach) */}
-                  <div
-                    className={`flex items-center gap-1 mt-1 text-[10px] font-semibold px-1 ${
-                      isMine ? 'text-slate-400' : 'text-slate-500'
-                    }`}
-                  >
-                    <Clock className="w-3 h-3 text-slate-500" />
-                    <span>
-                      {new Date(msg.created_at).toLocaleTimeString('it-IT', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    {isMine && (
-                      msg.is_read ? (
-                        <span title="Letto dal coach">
-                          <CheckCheck className="w-3.5 h-3.5 text-emerald-400 ml-0.5" />
+                      {/* Footer Bolla: Orario + Spunta integrati */}
+                      <div
+                        className={`flex items-center justify-end gap-1 text-[10px] font-bold mt-1 self-end ${
+                          isMine ? 'text-slate-950/70' : 'text-slate-500'
+                        }`}
+                      >
+                        <span>
+                          {new Date(msg.created_at).toLocaleTimeString('it-IT', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                         </span>
-                      ) : (
-                        <span title="Inviato">
-                          <Check className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
-                        </span>
-                      )
-                    )}
+                        {isMine && (
+                          <span className="flex items-center" title={msg.is_read ? 'Letto dal coach' : 'Inviato'}>
+                            {msg.is_read ? (
+                              <CheckCheck className="w-3.5 h-3.5 text-slate-950" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5 text-slate-950/60" />
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </React.Fragment>
@@ -469,65 +444,75 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
           })
         )}
 
-        {/* Indicatore "Il coach sta scrivendo..." */}
+        {/* Typing Indicator Coach */}
         {isCoachTyping && (
-          <div className="flex items-center gap-2 text-xs text-amber-400 font-semibold italic bg-slate-900/60 border border-slate-800 px-3 py-1.5 rounded-full w-max animate-pulse">
-            <span className="flex gap-1">
-              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce"></span>
-              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
-            </span>
-            <span>Il coach sta scrivendo...</span>
+          <div className="flex items-center gap-2 text-xs text-slate-400 animate-pulse bg-slate-900 px-4 py-2 rounded-2xl w-fit border border-slate-800">
+            <div className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-bounce" />
+            <div className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-bounce [animation-delay:0.2s]" />
+            <div className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-bounce [animation-delay:0.4s]" />
+            <span className="font-bold text-[var(--color-primary)] ml-1">Il coach sta rispondendo...</span>
           </div>
         )}
 
-        {/* Anchor di fondo per scroll istantaneo */}
         <div ref={messagesEndRef} className="h-1 shrink-0" />
       </div>
 
-      {/* ANTEPRIMA ALLEGATO SELEZIONATO */}
+      {/* ─── ANTEPRIMA ALLEGATO IN CODA ─── */}
       {attachment && (
-        <div className="px-4 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="px-4 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-2 shrink-0">
+          <div className="flex items-center gap-3 overflow-hidden">
             {attachment.type === 'image' ? (
-              <img src={attachment.previewUrl} alt="Anteprima" className="w-10 h-10 rounded-lg object-cover border border-slate-700" />
+              <img
+                src={attachment.previewUrl}
+                alt="Anteprima"
+                className="w-10 h-10 object-cover rounded-xl border border-slate-700"
+              />
+            ) : attachment.type === 'video' ? (
+              <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-300">
+                <Video className="w-5 h-5 text-[var(--color-primary)]" />
+              </div>
             ) : (
-              <FileText className="w-6 h-6 text-[var(--color-primary)]" />
+              <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-300">
+                <Paperclip className="w-5 h-5 text-[var(--color-primary)]" />
+              </div>
             )}
-            <span className="text-xs font-semibold text-white truncate max-w-[200px]">
-              {attachment.file.name}
-            </span>
+            <div className="text-xs truncate">
+              <p className="text-white font-medium truncate">{attachment.file.name}</p>
+              <p className="text-slate-400 text-[10px]">
+                {(attachment.file.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={handleRemoveAttachment}
-            className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-rose-400 rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* BANNER MODALITÀ MODIFICA */}
+      {/* ─── BANNER MODALITÀ MODIFICA ─── */}
       {editingMessageId && (
-        <div className="px-4 py-2 bg-amber-500/15 border-t border-amber-500/30 flex items-center justify-between text-xs text-amber-300">
+        <div className="px-4 py-2 bg-[var(--color-primary)]/15 border-t border-[var(--color-primary)]/30 flex items-center justify-between text-xs text-[var(--color-primary)] shrink-0">
           <span className="font-bold flex items-center gap-1.5">
             <Edit2 className="w-3.5 h-3.5" />
-            <span>Modifica ultimo messaggio in corso...</span>
+            <span>Modifica messaggio...</span>
           </span>
           <button
             type="button"
             onClick={handleCancelEdit}
-            className="text-amber-400 hover:text-white font-bold text-xs cursor-pointer"
+            className="text-[var(--color-primary)] hover:text-white font-bold text-xs cursor-pointer"
           >
             Annulla
           </button>
         </div>
       )}
 
-      {/* INPUT BAR FLOATING GLASS */}
-      <div className="p-3 sm:p-4 bg-slate-950/95 backdrop-blur-2xl border-t border-slate-800/80 sticky bottom-0 z-10">
-        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+      {/* ─── INPUT BAR MODERNA A PILLOLA FLUTTUANTE CON PADDING CALIBRATO PER NAVBAR ─── */}
+      <div className="p-3 sm:p-4 pb-24 sm:pb-28 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent shrink-0">
+        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto">
           {/* Input File nascosto */}
           <input
             type="file"
@@ -537,47 +522,48 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
             className="hidden"
           />
 
-          {/* Bottone Graffetta Allegati */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="p-3 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-[var(--color-primary)] hover:border-[var(--color-primary)]/40 transition-all cursor-pointer shrink-0"
-            title="Allega foto o video"
-          >
-            <Paperclip className="w-5 h-5" />
-          </button>
+          <div className="bg-slate-900/90 backdrop-blur-2xl border border-slate-800/90 rounded-full p-1.5 pl-2 sm:pl-3 flex items-center gap-2 shadow-2xl focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary)]/20 transition-all">
+            
+            {/* Bottone Graffetta (+) */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-9 h-9 rounded-full bg-slate-850 hover:bg-slate-800 text-slate-300 hover:text-[var(--color-primary)] border border-slate-750 flex items-center justify-center transition-all cursor-pointer shrink-0 active:scale-95"
+              title="Allega foto, video o documento"
+            >
+              <Plus className="w-5 h-5 stroke-[2.5]" />
+            </button>
 
-          {/* Input Testo Messaggio */}
-          <div className="flex-1 flex items-center bg-slate-900/90 border border-slate-800 rounded-2xl px-4 focus-within:border-[var(--color-primary)] focus-within:ring-1 focus-within:ring-[var(--color-primary)]/40 transition-all shadow-inner">
+            {/* Input Testo Messaggio */}
             <input
               type="text"
               value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
-              placeholder={editingMessageId ? "Modifica il messaggio..." : "Scrivi un messaggio al coach..."}
+              placeholder={editingMessageId ? "Modifica il messaggio..." : "Scrivi un messaggio al tuo coach..."}
               disabled={isSending}
-              className="w-full py-3 bg-transparent text-white text-sm focus:outline-none placeholder:text-slate-500 disabled:opacity-50"
+              className="flex-1 py-2 bg-transparent text-white text-sm focus:outline-none placeholder:text-slate-500 disabled:opacity-50 min-w-0 px-2"
             />
-          </div>
 
-          {/* Bottone Invio / Salva Modifica */}
-          <button
-            type="submit"
-            disabled={(!newMessage.trim() && !attachment) || isSending}
-            className="w-11 h-11 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-bold flex items-center justify-center shrink-0 shadow-lg shadow-[var(--color-primary)]/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none cursor-pointer"
-            title={editingMessageId ? "Salva modifica" : "Invia messaggio"}
-          >
-            {isSending ? (
-              <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
-            ) : editingMessageId ? (
-              <Check className="w-5 h-5 stroke-[2.5]" />
-            ) : (
-              <Send className="w-5 h-5 ml-0.5" />
-            )}
-          </button>
+            {/* Bottone Invio Circolare Dorato */}
+            <button
+              type="submit"
+              disabled={(!newMessage.trim() && !attachment) || isSending}
+              className="w-10 h-10 rounded-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black flex items-center justify-center shrink-0 shadow-lg shadow-[var(--color-primary)]/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-30 disabled:hover:scale-100 disabled:shadow-none cursor-pointer"
+              title={editingMessageId ? "Salva modifica" : "Invia messaggio"}
+            >
+              {isSending ? (
+                <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+              ) : editingMessageId ? (
+                <Check className="w-5 h-5 stroke-[2.5]" />
+              ) : (
+                <Send className="w-4 h-4 ml-0.5" />
+              )}
+            </button>
+          </div>
         </form>
       </div>
 
-      {/* MODAL LIGHTBOX IMMAGINE A TUTTO SCHERMO */}
+      {/* ─── MODAL LIGHTBOX IMMAGINE A TUTTO SCHERMO ─── */}
       {lightboxImage && (
         <div
           className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200 cursor-pointer"

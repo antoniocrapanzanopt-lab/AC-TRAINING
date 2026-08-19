@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Dumbbell, Menu, X, User, ChevronDown, LogOut, Settings as SettingsIcon, Camera, Bell } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Menu, X, User, ChevronDown, LogOut, Settings as SettingsIcon, Camera, Bell } from 'lucide-react';
 import { NavigationTab } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -23,7 +23,10 @@ export const Header: React.FC<HeaderProps> = ({
   const { ownerProfile } = useApp();
   const { user, logout } = useAuth();
   const { showInfo } = useToast();
-  const { unreadCount } = useNotifications();
+  const { unreadCount, notifications } = useNotifications();
+  const hasUrgentAlert = useMemo(() => {
+    return notifications.some((n) => !n.read_at && (n.type === 'pain_reported' || n.type === 'message_received'));
+  }, [notifications]);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -76,13 +79,14 @@ export const Header: React.FC<HeaderProps> = ({
               className="relative group w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 hover:border-[var(--color-primary)] flex items-center justify-center shrink-0 overflow-hidden transition-all shadow-md cursor-pointer"
               title="Clicca per personalizzare il Logo"
             >
-              {customLogo ? (
-                <img src={customLogo} alt="Logo AC COACHING" className="w-full h-full object-contain p-1" />
-              ) : (
-                <div className="w-full h-full bg-[var(--color-primary)]/10 flex items-center justify-center">
-                  <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" />
-                </div>
-              )}
+              <img 
+                src={customLogo || '/ac-logo-transparent.png'} 
+                alt="Logo AC COACHING" 
+                className="w-full h-full object-contain p-1 drop-shadow-[0_0_6px_rgba(255,255,255,0.3)]" 
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
               <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-[9px] font-bold text-white text-center p-0.5">
                 <Camera className="w-4 h-4 text-[var(--color-primary)] animate-pulse" />
               </div>
@@ -116,7 +120,13 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Bell className="w-5 h-5" />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center shadow-lg shadow-red-500/50 animate-pulse">
+                <span
+                  className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-mono font-black flex items-center justify-center shadow-lg ${
+                    hasUrgentAlert
+                      ? 'bg-rose-500 text-white shadow-rose-500/50 animate-pulse'
+                      : 'bg-[var(--color-primary)] text-slate-950 shadow-[var(--color-primary)]/40'
+                  }`}
+                >
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}

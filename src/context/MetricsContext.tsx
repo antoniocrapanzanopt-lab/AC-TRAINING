@@ -353,7 +353,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
           notes: reps === 1 ? 'Nuovo 1RM Reale' : `Nuovo PR stimato (${weightKg}kg x ${reps} reps)`
         });
 
-        // Notifica PR al coach
+        // Notifica PR al coach con deduplicazione intelligente
         try {
           const { data: athData } = await supabase
             .from('athletes')
@@ -362,14 +362,42 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
             .maybeSingle();
           if (athData?.assigned_coach_id) {
             const athleteName = `${athData.first_name} ${athData.last_name}`.trim();
-            await supabase.from('coach_notifications').insert({
-              coach_id: athData.assigned_coach_id,
-              type: 'new_pr',
-              title: `🏆 Nuovo record personale di ${athleteName}!`,
-              body: `${exerciseName}: ${calculated1RM} kg 1RM (${weightKg}kg x ${reps} reps)`,
-              athlete_id: athleteId,
-              athlete_name: athleteName,
-            });
+            const coachId = athData.assigned_coach_id;
+            const newBody = `${exerciseName}: ${calculated1RM} kg 1RM (${weightKg}kg x ${reps} reps)`;
+            const title = `🏆 Nuovo record personale di ${athleteName}!`;
+
+            // Controlla se esiste già una notifica PR oggi per questo atleta ed esercizio
+            const twelveHoursAgo = new Date(Date.now() - 12 * 3600000).toISOString();
+            const { data: existingNotifs } = await supabase
+              .from('coach_notifications')
+              .select('id, body')
+              .eq('coach_id', coachId)
+              .eq('athlete_id', athleteId)
+              .eq('type', 'new_pr')
+              .gte('created_at', twelveHoursAgo)
+              .ilike('body', `%${exerciseName}%`)
+              .limit(1);
+
+            if (existingNotifs && existingNotifs.length > 0) {
+              // Aggiorna la notifica esistente senza crearne un duplicato
+              await supabase
+                .from('coach_notifications')
+                .update({
+                  body: newBody,
+                  read_at: null, // riaccende la notifica col valore aggiornato
+                })
+                .eq('id', existingNotifs[0].id);
+            } else {
+              // Inserisci solo se non esiste già
+              await supabase.from('coach_notifications').insert({
+                coach_id: coachId,
+                type: 'new_pr',
+                title,
+                body: newBody,
+                athlete_id: athleteId,
+                athlete_name: athleteName,
+              });
+            }
           }
         } catch (_) {}
 

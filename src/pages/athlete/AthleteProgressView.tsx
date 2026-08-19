@@ -11,6 +11,7 @@ import { useMetrics } from '../../context/MetricsContext';
 import { useToast } from '../../context/ToastContext';
 import { AthleteMaxLift } from '../../types/metrics';
 import { MaxLiftsSection } from '../../components/metrics/MaxLiftsSection';
+import { AthleteMetricsTrendChart } from '../../components/metrics/AthleteMetricsTrendChart';
 
 interface AthleteProgressViewProps {
   targetAthleteId?: string;
@@ -179,7 +180,7 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
 
       {/* RIEPILOGO RAPIDO CARD */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 p-4 rounded-2xl shadow-lg">
           <div className="flex justify-between items-center text-slate-400 text-xs font-medium mb-1">
             <span>Peso Attuale</span>
             <Scale className="w-4 h-4 text-[var(--color-primary)]" />
@@ -203,10 +204,10 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
           </p>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 p-4 rounded-2xl shadow-lg">
           <div className="flex justify-between items-center text-slate-400 text-xs font-medium mb-1">
             <span>Miglior PR</span>
-            <Award className="w-4 h-4 text-amber-400" />
+            <Award className="w-4 h-4 text-[var(--color-primary)]" />
           </div>
           <span className="text-2xl font-black text-[var(--color-primary)] truncate block">
             {topPRs.length > 0 ? `${topPRs[0].calculated_1rm} kg` : '—'}
@@ -217,24 +218,26 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
         </div>
       </div>
 
-      {/* SOTTO-NAVIGAZIONE TAB MOBILE */}
-      <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+      {/* SOTTO-NAVIGAZIONE TAB SIMMETRICA */}
+      <div className="grid grid-cols-2 gap-1.5 bg-slate-900/80 backdrop-blur-xl p-1.5 rounded-2xl border border-slate-800/80 text-xs font-bold shadow-inner">
         <button
+          type="button"
           onClick={() => setActiveTab('records')}
-          className={`flex-1 py-2.5 rounded-lg text-center transition-all ${
+          className={`py-2.5 px-3 rounded-xl text-center transition-all cursor-pointer select-none ${
             activeTab === 'records'
-              ? 'bg-[var(--color-primary)] text-black shadow-md'
-              : 'text-slate-400 hover:text-white'
+              ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
           }`}
         >
           Massimali ({topPRs.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('checkin')}
-          className={`flex-1 py-2.5 rounded-lg text-center transition-all ${
+          className={`py-2.5 px-3 rounded-xl text-center transition-all cursor-pointer select-none ${
             activeTab === 'checkin'
-              ? 'bg-[var(--color-primary)] text-black shadow-md'
-              : 'text-slate-400 hover:text-white'
+              ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
           }`}
         >
           Check Misure
@@ -249,6 +252,9 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
       {/* ─── TAB 2: CHECK-IN MISURE ───────────────────────────────────── */}
       {activeTab === 'checkin' && (
         <div className="space-y-6">
+          {/* Grafico di Trend & Progressione Corporea */}
+          <AthleteMetricsTrendChart metrics={sortedMetrics} />
+
           <form onSubmit={handleSaveCheckin} className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-4">
             <h3 className="text-sm font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
               <Scale className="w-4 h-4 text-[var(--color-primary)]" />

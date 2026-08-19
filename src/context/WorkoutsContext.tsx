@@ -801,18 +801,27 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const saveExerciseLogs = async (logs: Partial<ExerciseLog>[]) => {
     if (logs.length === 0) return { success: true };
     try {
+      const sanitizedLogs = logs.map((l: any) => ({
+        session_id: l.session_id,
+        exercise_id: l.exercise_id,
+        set_number: Number(l.set_number) || 1,
+        reps_completed: l.reps_completed !== undefined && l.reps_completed !== null ? Number(l.reps_completed) : null,
+        weight_kg: l.weight_kg !== undefined && l.weight_kg !== null ? Number(l.weight_kg) : null,
+        notes: l.notes || null,
+      }));
+
       const { error } = await supabase
         .from('exercise_logs')
-        .insert(logs as Record<string, unknown>[]);
+        .insert(sanitizedLogs);
         
       if (error) {
         console.warn('saveExerciseLogs warning:', error.message);
       }
-      return { success: true };
+      return { success: !error, error: error?.message };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
       console.warn('saveExerciseLogs exception:', msg);
-      return { success: true };
+      return { success: false, error: msg };
     }
   };
 

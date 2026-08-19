@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAthletes } from '../../../context/AthletesContext';
 import { useToast } from '../../../context/ToastContext';
@@ -27,20 +28,22 @@ export interface CopilotAlertContext {
 interface AICopilotActionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onApplied?: (athleteId: string) => void;
   alertData: CopilotAlertContext | null;
 }
 
 export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
   isOpen,
   onClose,
+  onApplied,
   alertData,
 }) => {
   const { addTimelineEvent } = useAthletes();
   const { showSuccess } = useToast();
   const { sendMessage } = useMessages();
 
-  // Step di navigazione: 'select_mode' | 'ai_recommendation' | 'manual_command'
-  const [currentStep, setCurrentStep] = useState<'select_mode' | 'ai_recommendation' | 'manual_command'>('select_mode');
+  // Step di navigazione: 'select_mode' | 'ai_recommendation' | 'manual_command' | 'success'
+  const [currentStep, setCurrentStep] = useState<'select_mode' | 'ai_recommendation' | 'manual_command' | 'success'>('select_mode');
 
   // Comando manuale del coach
   const [customCommand, setCustomCommand] = useState('');
@@ -169,6 +172,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
   };
 
   const handleApply = async () => {
+    setIsProcessing(true);
     addTimelineEvent(
       alertData.athleteId,
       'other',
@@ -182,31 +186,48 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
       } catch (e) {
         console.warn('Errore invio chat:', e);
       }
-      showSuccess('Modifica Applicata & Notifica Inviata!', `Scheda aggiornata per ${alertData.athleteName}.`);
-    } else {
-      showSuccess('Modifica Applicata alla Scheda!', `Programma di ${alertData.athleteName} aggiornato.`);
     }
 
-    onClose();
+    setCurrentStep('success');
+    showSuccess('Modifica Applicata al Programma!', `Scheda aggiornata per ${alertData.athleteName}.`);
+
+    setTimeout(() => {
+      onApplied?.(alertData.athleteId);
+      onClose();
+    }, 1400);
   };
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={currentStep === 'success' ? undefined : onClose} />
 
-      <div className="relative w-full max-w-3xl bg-[#0a0e17] border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[92vh]">
+      <div className={`relative w-full max-w-3xl bg-[#0a0e17] rounded-3xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[92vh] transition-all duration-300 border ${
+        currentStep === 'success'
+          ? 'border-emerald-500 shadow-[0_0_50px_rgba(16,185,129,0.25)] ring-2 ring-emerald-500/40'
+          : 'border-slate-700/80'
+      }`}>
         
         {/* ─── HEADER PULITO & SINTETICO ─── */}
-        <div className="p-5 sm:p-6 border-b border-slate-800/80 bg-slate-950/70 flex items-start justify-between gap-4 shrink-0">
+        <div className={`p-5 sm:p-6 border-b transition-colors flex items-start justify-between gap-4 shrink-0 ${
+          currentStep === 'success' ? 'bg-emerald-950/40 border-emerald-500/30' : 'bg-slate-950/70 border-slate-800/80'
+        }`}>
           <div className="flex items-start gap-3.5 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-md">
-              <Sparkles className="w-6 h-6" />
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-md transition-colors ${
+              currentStep === 'success'
+                ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400'
+                : 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
+            }`}>
+              {currentStep === 'success' ? <CheckCircle2 className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h3 className="text-lg font-black text-white">{alertData.athleteName}</h3>
-                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                  AI Training Copilot
+                <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                  currentStep === 'success'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                }`}>
+                  {currentStep === 'success' ? 'Completato' : 'AI Training Copilot'}
                 </span>
               </div>
 
@@ -230,23 +251,48 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
               </div>
 
               {/* Contesto sintetico */}
-              <p className="text-xs text-amber-200/90 font-medium mt-2 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 leading-relaxed">
-                ⚠️ {diagnosisSummary}
-              </p>
+              {currentStep !== 'success' && (
+                <p className="text-xs text-amber-200/90 font-medium mt-2 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 leading-relaxed">
+                  ⚠️ {diagnosisSummary}
+                </p>
+              )}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          {currentStep !== 'success' && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          )}
         </div>
 
-        {/* ─── CORPO: STEP 1 (SCELTA INIZIALE) O STEP 2 (MODALITÀ ATTIVA) ─── */}
+        {/* ─── CORPO: STEP 1 (SCELTA INIZIALE), STEP 2 (MODALITÀ ATTIVA) O SUCCESS ─── */}
         <div className="p-6 sm:p-8 overflow-y-auto flex-1 custom-scrollbar">
+          
+          {/* STEP SUCCESS: SCHERMATA VERDE SMERALDO CELEBRATIVA */}
+          {currentStep === 'success' && (
+            <div className="py-8 sm:py-12 px-4 text-center space-y-4 animate-in zoom-in-95 duration-200">
+              <div className="w-20 h-20 rounded-3xl bg-emerald-500/20 border-2 border-emerald-500/50 text-emerald-400 flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(16,185,129,0.3)] scale-110 transition-transform">
+                <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
+              </div>
+              <div className="space-y-2">
+                <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-black text-xs uppercase tracking-wider border border-emerald-500/40 inline-block">
+                  ✅ Modifiche Applicate
+                </span>
+                <h4 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  Programma Aggiornato con Successo!
+                </h4>
+                <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+                  L'intervento Copilot per <strong className="text-white">{alertData.athleteName}</strong> è stato registrato.
+                  {sendChatNotification && ' L\'atleta riceverà le istruzioni aggiornate in chat.'}
+                </p>
+              </div>
+            </div>
+          )}
           
           {/* ══════════════════════════════════════════════════════════════════ */}
           {/* STEP 1: SCELTA INIZIALE GUIDATA (2 CARD GRANDI)                   */}
@@ -502,7 +548,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
         </div>
 
         {/* ─── FOOTER UNIFICATO & PULSANTE GIGANTE (Solo nello Step 2) ─── */}
-        {currentStep !== 'select_mode' && (
+        {currentStep !== 'select_mode' && currentStep !== 'success' && (
           <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
             <button
               type="button"

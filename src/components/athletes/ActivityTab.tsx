@@ -26,7 +26,7 @@ export interface WorkoutExerciseSetLog {
   setNumber: number;
   reps: number;
   weightKg: number;
-  rpe?: number;
+  rpe?: string;
 }
 
 export interface WorkoutExerciseLogGroup {
@@ -104,7 +104,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
         }
 
         // 2. Recupera sessioni dell'atleta
-        const { data, error } = await supabase
+        const { data: rawSessions, error } = await supabase
           .from('workout_sessions')
           .select(`
             id,
@@ -113,33 +113,83 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
             rpe,
             notes,
             workout_id,
-            workouts ( id, title, total_weeks ),
-            exercise_logs (
+            workouts ( id, title, total_weeks )
+          `)
+          .eq('athlete_id', athleteId)
+          .order('start_time', { ascending: false });
+
+        if (error) throw error;
+
+        // Recupero logs per queste sessioni
+        const sessionIds = (rawSessions || []).map((s: any) => s.id);
+        const workoutIds = Array.from(new Set((rawSessions || []).map((s: any) => s.workout_id).filter(Boolean)));
+        const logsBySession = new Map<string, any[]>();
+        const exercisesById = new Map<string, { name: string; day_name?: string; week_number?: number }>();
+
+        if (workoutIds.length > 0) {
+          const { data: weData } = await supabase
+            .from('workout_exercises')
+            .select('id, workout_id, name, day_name, week_number')
+            .in('workout_id', workoutIds);
+
+          if (weData) {
+            weData.forEach((we: any) => {
+              exercisesById.set(we.id, {
+                name: we.name,
+                day_name: we.day_name,
+                week_number: we.week_number,
+              });
+            });
+          }
+        }
+
+        if (sessionIds.length > 0) {
+          const { data: logsData } = await supabase
+            .from('exercise_logs')
+            .select(`
+              id,
+              session_id,
+              exercise_id,
               set_number,
               reps_completed,
               weight_kg,
               notes,
-              workout_exercises ( name, week_number, day_name )
-            )
-          `)
-          .eq('athlete_id', athleteId)
-          .not('end_time', 'is', null)
-          .order('end_time', { ascending: false });
+              workout_exercises ( id, name, week_number, day_name )
+            `)
+            .in('session_id', sessionIds);
 
-        if (error) throw error;
+          if (logsData) {
+            logsData.forEach((l: any) => {
+              if (!logsBySession.has(l.session_id)) {
+                logsBySession.set(l.session_id, []);
+              }
+              logsBySession.get(l.session_id)!.push(l);
+            });
+          }
+        }
 
-        if (data) {
+        // Unione backup locale
+        try {
+          const localCompletedLogs = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}');
+          (rawSessions || []).forEach((s: any) => {
+            if ((!logsBySession.has(s.id) || logsBySession.get(s.id)!.length === 0) && localCompletedLogs[s.id]) {
+              logsBySession.set(s.id, localCompletedLogs[s.id]);
+            }
+          });
+        } catch (_) {}
+
+        if (rawSessions) {
           // Ordiniamo prima in ordine crescente per stimare settimana/giorno se non registrati
-          const chronoSorted = [...data].sort(
-            (a, b) => new Date(a.end_time).getTime() - new Date(b.end_time).getTime()
+          const chronoSorted = [...rawSessions].sort(
+            (a, b) => new Date(a.end_time || a.start_time).getTime() - new Date(b.end_time || b.start_time).getTime()
           );
 
           const daysPerWeek = activeWorkoutDaysCount || 3;
 
           const mapped: DetailedWorkoutSession[] = chronoSorted.map((session: any, idx: number) => {
-            const start = new Date(session.start_time || session.end_time);
-            const end = new Date(session.end_time);
-            const diffMs = end.getTime() - start.getTime();
+            const start = new Date(session.start_time || session.end_time || new Date().toISOString());
+            const end = new Date(session.end_time || session.start_time || new Date().toISOString());
+            const diffMs = Math.max(0, end.getTime() - start.getTime());
             const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
 
             const rawTitle = session.workouts?.title;
@@ -154,7 +204,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
 
             // Raggruppiamo i log per nome esercizio e calcoliamo il volume
             const exMap = new Map<string, { sets: WorkoutExerciseSetLog[]; notesSet: Set<string> }>();
-            const logs = session.exercise_logs || [];
+            const logs = logsBySession.get(session.id) || [];
             let detectedWeek: number | undefined = undefined;
             let detectedDay: string | undefined = undefined;
             let sessionVolumeKg = 0;
@@ -175,21 +225,32 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
               }
               const entry = exMap.get(exName)!;
 
-              const reps = log.reps_completed || 0;
-              const weight = log.weight_kg || 0;
+              const reps = Number(log.reps_completed) || 0;
+              const weight = Number(log.weight_kg) || 0;
               sessionVolumeKg += reps * weight;
 
+              // Estrazione RPE se presente
+              let extractedRpe: string | undefined = undefined;
+              if (log.notes && log.notes.includes('RPE:')) {
+                const match = log.notes.match(/RPE:\s*([\d.]+)/i);
+                if (match) extractedRpe = match[1];
+              }
+
               entry.sets.push({
-                setNumber: log.set_number || entry.sets.length + 1,
+                setNumber: Number(log.set_number) || entry.sets.length + 1,
                 reps,
                 weightKg: weight,
+                rpe: extractedRpe,
               });
 
               if (log.notes) {
-                entry.notesSet.add(log.notes);
+                const cleanNote = log.notes.replace(/RPE:\s*[\d.]+\s*\|\s*/i, '').replace(/Feedback:\s*/i, '').trim();
+                if (cleanNote) {
+                  entry.notesSet.add(cleanNote);
+                }
                 if (isPainText(log.notes)) {
                   hasPainInLogs = true;
-                  painNotesList.push(`${exName}: "${log.notes}"`);
+                  painNotesList.push(`${exName}: "${cleanNote || log.notes}"`);
                 }
               }
             });
@@ -719,39 +780,70 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
 
                     {/* Tabella Dettaglio Esercizi */}
                     <div className="space-y-3">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
-                        Dettaglio Esercizi & Carichi:
+                      <span className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                        <Dumbbell className="w-4 h-4 text-amber-400" />
+                        Esercizi Svolti & Carichi Utilizzati ({session.exercises.length}):
                       </span>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                         {session.exercises.map((ex, idx) => (
                           <div
                             key={idx}
-                            className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2"
+                            className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800/90 space-y-3 shadow-md"
                           >
-                            <div className="flex items-center justify-between">
-                              <h5 className="text-xs font-black text-white">{ex.name}</h5>
-                              <span className="text-[10px] font-mono text-slate-400">
-                                {ex.totalVolumeKg > 0 ? `${ex.totalVolumeKg.toLocaleString()} kg tot` : ''}
-                              </span>
+                            {/* Nome Esercizio & Volume Totale */}
+                            <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                              <h5 className="text-sm font-black text-white truncate flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-lg bg-slate-800 flex items-center justify-center text-[10px] text-amber-400 font-mono">
+                                  {idx + 1}
+                                </span>
+                                <span>{ex.name}</span>
+                              </h5>
+
+                              {ex.totalVolumeKg > 0 && (
+                                <span className="text-[11px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 shrink-0">
+                                  {ex.totalVolumeKg.toLocaleString()} kg tot
+                                </span>
+                              )}
                             </div>
 
-                            {/* Serie */}
-                            <div className="flex flex-wrap gap-1.5">
+                            {/* Tabella Serie / Carichi */}
+                            <div className="space-y-1.5">
+                              <div className="grid grid-cols-12 gap-1 text-[10px] font-bold uppercase text-slate-400 px-2">
+                                <span className="col-span-3">SET</span>
+                                <span className="col-span-4 text-center">CARICO</span>
+                                <span className="col-span-5 text-right">REPS EFFETTIVE</span>
+                              </div>
+
                               {ex.sets.map((s, sIdx) => (
-                                <span
+                                <div
                                   key={sIdx}
-                                  className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-bold text-slate-200 font-mono"
+                                  className="grid grid-cols-12 gap-1 items-center p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono"
                                 >
-                                  S{s.setNumber}: {s.reps}r @ {s.weightKg}kg
-                                </span>
+                                  <span className="col-span-3 font-bold text-slate-400">
+                                    Set {s.setNumber}
+                                  </span>
+                                  <span className="col-span-4 text-center font-black text-amber-300">
+                                    {s.weightKg} kg
+                                  </span>
+                                  <span className="col-span-5 text-right font-black text-emerald-400">
+                                    {s.reps} reps {s.rpe ? `@ RPE ${s.rpe}` : ''}
+                                  </span>
+                                </div>
                               ))}
                             </div>
 
+                            {/* Note / Feedback dell'Atleta sull'Esercizio */}
                             {ex.notes && (
-                              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/60 italic">
-                                Nota: "{ex.notes}"
-                              </p>
+                              <div className="p-2.5 rounded-xl bg-blue-950/30 border border-blue-500/30 text-xs text-blue-200 flex items-start gap-2">
+                                <Activity className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                                <div className="space-y-0.5">
+                                  <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block">
+                                    Feedback Atleta:
+                                  </span>
+                                  <p className="italic leading-snug">"{ex.notes}"</p>
+                                </div>
+                              </div>
                             )}
                           </div>
                         ))}

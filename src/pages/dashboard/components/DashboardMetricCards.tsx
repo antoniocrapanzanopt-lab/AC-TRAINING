@@ -5,17 +5,17 @@ import {
   UserCheck,
   UserX,
   CreditCard,
-  AlertTriangle,
   Clock,
-  TrendingUp,
   DollarSign,
-  CheckSquare,
+  Briefcase,
   Users2,
-  Briefcase
+  CheckCircle2,
+  AlertCircle,
+  TrendingUp,
 } from 'lucide-react';
 import { NavigationTab } from '../../../types';
 
-interface DashboardMetrics {
+export interface DashboardMetrics {
   activeAthletes: number;
   newAthletes: number;
   trialAthletes: number;
@@ -39,203 +39,280 @@ export const DashboardMetricCards: React.FC<DashboardMetricCardsProps> = ({
   onNavigateTab,
   formatPrice,
 }) => {
-  const baseCardClass = "relative overflow-hidden p-4 rounded-xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 hover:bg-slate-900/60 shadow-lg flex flex-col justify-between text-left group transition-all duration-300";
-
   return (
     <div className="space-y-6">
-      {/* Gruppo 1: Gestione Atleti */}
+      {/* ── GRUPPO 1: ACQUISIZIONE & ATLETI ── */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 px-1">
-          <Users2 className="w-5 h-5 text-blue-400" />
-          <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider">Acquisizione & Atleti</h2>
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <Users2 className="w-4 h-4 text-sky-400" />
+            <h3 className="text-xs font-black text-slate-300 uppercase tracking-wider">
+              Acquisizione & Stato Atleti
+            </h3>
+          </div>
+          <span className="text-[11px] text-slate-500 font-medium">
+            Totale iscritti: {metrics.activeAthletes + metrics.trialAthletes + metrics.suspendedAthletes}
+          </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {/* Atleti Attivi */}
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+          {/* ATLETI ATTIVI (POSITIVO / OPERATIVO) */}
           <button
+            type="button"
             onClick={() => onNavigateTab('atleti')}
-            className={`${baseCardClass} hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]`}
+            className="p-4 rounded-2xl bg-slate-950/90 border border-emerald-500/30 hover:border-emerald-500/60 hover:bg-slate-900/80 transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between"
           >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-emerald-400/80 transition-colors">Atleti Attivi</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500/20 transition-all">
-                <UserCheck className="w-4 h-4" />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-emerald-400 transition-colors">
+                Atleti Attivi
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                <UserCheck className="w-3.5 h-3.5" />
               </div>
             </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-2xl font-black text-white">{metrics.activeAthletes}</span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">In regola con l'iscrizione</span>
+            <div className="mt-3">
+              <div className="text-2xl font-black text-white font-mono">{metrics.activeAthletes}</div>
+              <span className="text-[10px] text-emerald-400/90 font-bold block mt-0.5">
+                In regola con l'iscrizione
+              </span>
             </div>
           </button>
 
-          {/* Nuovi Atleti */}
+          {/* NUOVI ATLETI (OPERATIVO / CRESCITA) */}
           <button
+            type="button"
             onClick={() => onNavigateTab('atleti')}
-            className={`${baseCardClass} hover:border-blue-500/50 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]`}
+            className="p-4 rounded-2xl bg-slate-950/90 border border-sky-500/30 hover:border-sky-500/60 hover:bg-slate-900/80 transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between"
           >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-blue-400/80 transition-colors">Nuovi Atleti</span>
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 group-hover:bg-blue-500/20 transition-all">
-                <UserPlus className="w-4 h-4" />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-sky-400 transition-colors">
+                Nuovi Iscritti
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
+                <UserPlus className="w-3.5 h-3.5" />
               </div>
             </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-2xl font-black text-white">{metrics.newAthletes}</span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Ultimi 30 giorni o Lead</span>
+            <div className="mt-3">
+              <div className="text-2xl font-black text-white font-mono">{metrics.newAthletes}</div>
+              <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+                {metrics.newAthletes > 0 ? 'Ultimi 30 giorni' : 'Nessun nuovo lead'}
+              </span>
             </div>
           </button>
 
-          {/* In Prova */}
+          {/* IN PROVA (NEUTRO) */}
           <button
+            type="button"
             onClick={() => onNavigateTab('atleti')}
-            className={`${baseCardClass} hover:border-amber-500/50 hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]`}
+            className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-amber-500/40 hover:bg-slate-900/80 transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between"
           >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl group-hover:bg-amber-500/10 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-amber-400/80 transition-colors">In Prova</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-110 group-hover:bg-amber-500/20 transition-all">
-                <Users className="w-4 h-4" />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-amber-400 transition-colors">
+                In Prova
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
+                <Users className="w-3.5 h-3.5" />
               </div>
             </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-2xl font-black text-amber-400">{metrics.trialAthletes}</span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Periodo di prova gratuito</span>
+            <div className="mt-3">
+              <div className="text-2xl font-black text-slate-200 font-mono">{metrics.trialAthletes}</div>
+              <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+                {metrics.trialAthletes > 0 ? 'Periodo di prova' : 'Nessun atleta in prova'}
+              </span>
             </div>
           </button>
 
-          {/* Sospesi */}
+          {/* SOSPESI (NEUTRO/ATTENZIONE) */}
           <button
+            type="button"
             onClick={() => onNavigateTab('atleti')}
-            className={`${baseCardClass} hover:border-slate-500/50 hover:shadow-[0_0_20px_rgba(100,116,139,0.15)]`}
+            className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-slate-700 hover:bg-slate-900/80 transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between"
           >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-slate-500/5 rounded-full blur-2xl group-hover:bg-slate-500/10 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-slate-300/80 transition-colors">Sospesi</span>
-              <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400 group-hover:scale-110 group-hover:bg-slate-700 transition-all">
-                <UserX className="w-4 h-4" />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-slate-300 transition-colors">
+                Sospesi
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:scale-110 transition-transform">
+                <UserX className="w-3.5 h-3.5" />
               </div>
             </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-2xl font-black text-slate-300">{metrics.suspendedAthletes}</span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Abbonamento in pausa</span>
+            <div className="mt-3">
+              <div className="text-2xl font-black text-slate-400 font-mono">{metrics.suspendedAthletes}</div>
+              <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+                {metrics.suspendedAthletes > 0 ? 'Abbonamento in pausa' : 'Tutti gli atleti attivi'}
+              </span>
             </div>
           </button>
 
-          {/* Abb. in Scadenza */}
+          {/* ABB. IN SCADENZA (ATTENZIONE / AMBRA) */}
           <button
+            type="button"
             onClick={() => onNavigateTab('abbonamenti')}
-            className={`${baseCardClass} hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)]`}
+            className={`p-4 rounded-2xl bg-slate-950/90 border transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between ${
+              metrics.expiringSubscriptions > 0
+                ? 'border-amber-500/40 hover:border-amber-500/70 hover:bg-slate-900/80'
+                : 'border-slate-800 hover:border-slate-700'
+            }`}
           >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-[var(--color-primary)]/5 rounded-full blur-2xl group-hover:bg-[var(--color-primary)]/10 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-[var(--color-primary)]/80 transition-colors">Abb. in Scadenza</span>
-              <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 flex items-center justify-center text-[var(--color-primary)] group-hover:scale-110 group-hover:bg-[var(--color-primary)]/20 transition-all">
-                <Clock className="w-4 h-4" />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-amber-400 transition-colors">
+                Abb. in Scadenza
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
+                <Clock className="w-3.5 h-3.5" />
               </div>
             </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-2xl font-black text-white">{metrics.expiringSubscriptions}</span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Scadono entro 30 giorni</span>
+            <div className="mt-3">
+              <div className={`text-2xl font-black font-mono ${metrics.expiringSubscriptions > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                {metrics.expiringSubscriptions}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+                {metrics.expiringSubscriptions > 0 ? 'Entro i prossimi 30gg' : 'Nessun rinnovo a breve'}
+              </span>
             </div>
           </button>
         </div>
       </div>
 
-      {/* Gruppo 2: Finanze & Operatività */}
-      <div className="space-y-3 mt-4">
-        <div className="flex items-center gap-2 px-1">
-          <Briefcase className="w-5 h-5 text-[var(--color-primary)]" />
-          <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider">Finanze & Operatività</h2>
+      {/* ── GRUPPO 2: FINANZE & CONTROLLO INCASSI ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <Briefcase className="w-4 h-4 text-[var(--color-primary)]" />
+            <h3 className="text-xs font-black text-slate-300 uppercase tracking-wider">
+              Finanze & Controllo Operativo
+            </h3>
+          </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {/* Pagamenti Scadenza */}
-          <button
-            onClick={() => onNavigateTab('scadenze')}
-            className={`${baseCardClass} hover:border-amber-500/50 hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]`}
-          >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl group-hover:bg-amber-500/10 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-amber-400/80 transition-colors">Rate in Scadenza</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-110 group-hover:bg-amber-500/20 transition-all">
-                <CreditCard className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-2xl font-black text-amber-400">{metrics.expiringPayments}</span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Rate entro 30 giorni</span>
-            </div>
-          </button>
 
-          {/* Pagamenti Scaduti */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+          {/* INCASSATO QUESTO MESE (POSITIVO / PRIMARIO) */}
           <button
-            onClick={() => onNavigateTab('scadenze')}
-            className={`${baseCardClass} bg-red-950/20 border-red-900/40 hover:bg-red-950/40 hover:border-red-500/50 hover:shadow-[0_0_20px_rgba(239,68,68,0.2)]`}
-          >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/15 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider group-hover:text-red-300 transition-colors">Rate Scadute</span>
-              <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 group-hover:scale-110 group-hover:bg-red-500/20 transition-all">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-2xl font-black text-red-400">{metrics.overduePayments}</span>
-              <span className="text-[10px] text-red-300/70 block mt-0.5">Rate insolute ed in ritardo</span>
-            </div>
-          </button>
-
-          {/* Totale Residuo */}
-          <button
+            type="button"
             onClick={() => onNavigateTab('pagamenti')}
-            className={`${baseCardClass} hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]`}
+            className="p-4 rounded-2xl bg-slate-950/90 border border-emerald-500/40 hover:border-emerald-500/70 hover:bg-slate-900/80 transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between col-span-2 sm:col-span-1"
           >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-emerald-400/80 transition-colors">Totale Residuo</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500/20 transition-all">
-                <TrendingUp className="w-4 h-4" />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-emerald-400 transition-colors">
+                Incassato Mese
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
+                <DollarSign className="w-3.5 h-3.5" />
               </div>
             </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-lg font-black text-emerald-400">{formatPrice(metrics.totalToCollect)}</span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Da incassare sui contratti</span>
+            <div className="mt-3">
+              <div className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
+                {formatPrice(metrics.collectedThisMonth)}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+                Incassi confermati nel mese
+              </span>
             </div>
           </button>
 
-          {/* Incassato Mese */}
+          {/* RATE IN SCADENZA (ATTENZIONE) */}
           <button
+            type="button"
+            onClick={() => onNavigateTab('scadenze')}
+            className={`p-4 rounded-2xl bg-slate-950/90 border transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between ${
+              metrics.expiringPayments > 0
+                ? 'border-amber-500/30 hover:border-amber-500/60 hover:bg-slate-900/80'
+                : 'border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-amber-400 transition-colors">
+                Rate a 30 Giorni
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
+                <CreditCard className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className={`text-2xl font-black font-mono ${metrics.expiringPayments > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                {metrics.expiringPayments}
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+                {metrics.expiringPayments > 0 ? 'In arrivo a breve' : 'Nessuna rata in scadenza'}
+              </span>
+            </div>
+          </button>
+
+          {/* RATE SCADUTE / INSOLUTI (CRITICO) */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('scadenze')}
+            className={`p-4 rounded-2xl bg-slate-950/90 border transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between ${
+              metrics.overduePayments > 0
+                ? 'border-rose-500/50 bg-rose-950/10 hover:border-rose-500 hover:bg-rose-950/20'
+                : 'border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-rose-400 transition-colors">
+                Rate Scadute
+              </span>
+              <div className={`w-7 h-7 rounded-xl border flex items-center justify-center ${
+                metrics.overduePayments > 0
+                  ? 'bg-rose-500/20 border-rose-500/40 text-rose-400 animate-pulse'
+                  : 'bg-slate-900 border-slate-800 text-slate-400'
+              }`}>
+                {metrics.overduePayments > 0 ? <AlertCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className={`text-2xl font-black font-mono ${metrics.overduePayments > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                {metrics.overduePayments}
+              </div>
+              <span className="text-[10px] font-medium block mt-0.5 text-slate-400">
+                {metrics.overduePayments > 0 ? 'Richiede sollecito' : 'Nessuna rata scaduta'}
+              </span>
+            </div>
+          </button>
+
+          {/* TOTALE DA INCASSARE */}
+          <button
+            type="button"
             onClick={() => onNavigateTab('pagamenti')}
-            className={`${baseCardClass} hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)]`}
+            className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-slate-700 hover:bg-slate-900/80 transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between"
           >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-[var(--color-primary)]/5 rounded-full blur-2xl group-hover:bg-[var(--color-primary)]/10 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-[var(--color-primary)]/80 transition-colors">Incassato Mese</span>
-              <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 flex items-center justify-center text-[var(--color-primary)] group-hover:scale-110 group-hover:bg-[var(--color-primary)]/20 transition-all">
-                <DollarSign className="w-4 h-4" />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-slate-300 transition-colors">
+                Residuo Totale
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:scale-110 transition-transform">
+                <TrendingUp className="w-3.5 h-3.5" />
               </div>
             </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-lg font-black text-[var(--color-primary)]">{formatPrice(metrics.collectedThisMonth)}</span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Saldo mese corrente</span>
+            <div className="mt-3">
+              <div className="text-xl sm:text-2xl font-black text-slate-200 font-mono">
+                {formatPrice(metrics.totalToCollect)}
+              </div>
+              <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+                {metrics.totalToCollect > 0 ? 'Da riscuotere' : 'Nessun credito pendente'}
+              </span>
             </div>
           </button>
 
-          {/* Attività Aperte */}
+          {/* TASK DA COMPLETARE */}
           <button
+            type="button"
             onClick={() => onNavigateTab('attivita')}
-            className={`${baseCardClass} hover:border-purple-500/50 hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]`}
+            className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-[var(--color-primary)]/40 hover:bg-slate-900/80 transition-all text-left shadow-lg cursor-pointer group flex flex-col justify-between"
           >
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl group-hover:bg-purple-500/10 transition-colors duration-500"></div>
-            <div className="flex items-center justify-between relative z-10">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-purple-400/80 transition-colors">Attività Aperte</span>
-              <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-110 group-hover:bg-purple-500/20 transition-all">
-                <CheckSquare className="w-4 h-4" />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider group-hover:text-[var(--color-primary)] transition-colors">
+                Task Aperti
+              </span>
+              <div className="w-7 h-7 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 flex items-center justify-center text-[var(--color-primary)] group-hover:scale-110 transition-transform">
+                <Briefcase className="w-3.5 h-3.5" />
               </div>
             </div>
-            <div className="mt-3 relative z-10">
-              <span className="text-2xl font-black text-white">{metrics.tasksToComplete}</span>
-              <span className="text-[10px] text-slate-500 block mt-0.5">Task in sospeso o aperte</span>
+            <div className="mt-3">
+              <div className="text-2xl font-black text-white font-mono">{metrics.tasksToComplete}</div>
+              <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+                {metrics.tasksToComplete > 0 ? 'Attività operative' : 'Tutti i task completati'}
+              </span>
             </div>
           </button>
         </div>
@@ -243,4 +320,3 @@ export const DashboardMetricCards: React.FC<DashboardMetricCardsProps> = ({
     </div>
   );
 };
-

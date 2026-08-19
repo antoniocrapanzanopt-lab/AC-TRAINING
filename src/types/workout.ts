@@ -45,6 +45,7 @@ export interface WorkoutExercise {
   is_time_based?: boolean;
   duration_seconds?: number;
   alternative_exercise?: string;
+  video_url?: string;
   
   // Progression Builder Embedded fields
   progression_rule_id?: string;

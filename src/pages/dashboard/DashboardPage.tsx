@@ -5,7 +5,6 @@ import {
   ChevronRight,
   RefreshCw,
   FileCheck2,
-  MessageSquare,
   ArrowUpRight,
   Calendar,
   Flame,
@@ -15,6 +14,9 @@ import {
   Dumbbell,
   X,
   Info,
+  Sparkles,
+  Briefcase,
+  Users,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useAthletes } from '../../context/AthletesContext';
@@ -24,6 +26,7 @@ import { usePayments } from '../../context/PaymentsContext';
 import { useRenewals } from '../../context/RenewalsContext';
 import { useTasks } from '../../context/TasksContext';
 import { useCommunications } from '../../context/CommunicationsContext';
+import { useWorkouts } from '../../context/WorkoutsContext';
 import {
   calculatePaymentStatus,
   calculateSubscriptionStatus,
@@ -41,18 +44,20 @@ import {
 } from '../../utils/dashboardCalculations';
 import { NavigationTab } from '../../types';
 import { DashboardMetricCards } from './components/DashboardMetricCards';
-import { AITrainingCopilotWidget } from './components/AITrainingCopilotWidget';
 import { DashboardChart } from './components/DashboardChart';
+import { TodayPrioritiesWidget, PriorityItem } from './components/TodayPrioritiesWidget';
+import { RecentActivityWidget, SystemActivityItem } from './components/RecentActivityWidget';
 
 export const DashboardPage: React.FC = () => {
   const { setActiveTab, ownerProfile } = useApp();
-  const { athletes } = useAthletes();
+  const { athletes, setSelectedAthleteId } = useAthletes();
   const { packages } = usePackages();
   const { subscriptions } = useSubscriptions();
   const { payments } = usePayments();
   const { renewals } = useRenewals();
   const { tasks } = useTasks();
   const { communications } = useCommunications();
+  const { allAssignedWorkouts } = useWorkouts();
 
   const now = new Date();
   const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -62,28 +67,28 @@ export const DashboardPage: React.FC = () => {
 
   // 1. Calcoli Metriche Generali dai Context
   const metrics = useMemo(() => {
-    const activeAthletes = athletes.filter(a => a.status === 'active').length;
-    const trialAthletes = athletes.filter(a => a.status === 'trial').length;
-    const suspendedAthletes = athletes.filter(a => a.status === 'suspended').length;
-    const newAthletes = athletes.filter(a => {
+    const activeAthletes = athletes.filter((a) => a.status === 'active').length;
+    const trialAthletes = athletes.filter((a) => a.status === 'trial').length;
+    const suspendedAthletes = athletes.filter((a) => a.status === 'suspended').length;
+    const newAthletes = athletes.filter((a) => {
       const createdDaysAgo = Math.floor((now.getTime() - new Date(a.createdAt).getTime()) / (1000 * 3600 * 24));
       return createdDaysAgo <= 30;
     }).length;
 
-    const expiringSubscriptions = subscriptions.filter(s => {
+    const expiringSubscriptions = subscriptions.filter((s) => {
       if (s.status !== 'active') return false;
       const calc = calculateSubscriptionStatus(s);
       return calc.daysRemaining >= 0 && calc.daysRemaining <= 30;
     }).length;
 
-    const activePayments = payments.filter(p => p.status !== 'cancelled' && p.status !== 'refunded' && p.residualAmount > 0);
+    const activePayments = payments.filter((p) => p.status !== 'cancelled' && p.status !== 'refunded' && p.residualAmount > 0);
 
-    const expiringPayments = activePayments.filter(p => {
+    const expiringPayments = activePayments.filter((p) => {
       const calc = calculatePaymentStatus(p);
       return !calc.isOverdue && calc.daysRemaining >= 0 && calc.daysRemaining <= 30;
     }).length;
 
-    const overduePayments = activePayments.filter(p => {
+    const overduePayments = activePayments.filter((p) => {
       const calc = calculatePaymentStatus(p);
       return calc.isOverdue;
     }).length;
@@ -98,7 +103,7 @@ export const DashboardPage: React.FC = () => {
       return sum;
     }, 0);
 
-    const tasksToComplete = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length;
+    const tasksToComplete = tasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled').length;
 
     // KPI avanzati da dashboardCalculations
     const mrr = calculateMRR(subscriptions, packages);
@@ -128,11 +133,135 @@ export const DashboardPage: React.FC = () => {
     };
   }, [athletes, subscriptions, packages, payments, renewals, tasks, currentMonthStr, now]);
 
+  // Atleti senza scheda attiva
+  const unassignedAthletes = useMemo(() => {
+    return athletes.filter((a) => {
+      return !allAssignedWorkouts.some((aw) => aw.athlete_id === a.id && aw.is_active);
+    });
+  }, [athletes, allAssignedWorkouts]);
+
+  // Task urgenti
+  const urgentTasks = useMemo(() => {
+    return tasks
+      .filter(
+        (t) =>
+          t.status !== 'completed' &&
+          t.status !== 'cancelled' &&
+          (t.priority === 'urgent' || t.priority === 'high' || getDaysRemaining(t.dueDate) < 0)
+      )
+      .slice(0, 5);
+  }, [tasks]);
+
+  // ── GENERATORE DINAMICO "PRIORITÀ DI OGGI" ──
+  const todayPriorities: PriorityItem[] = useMemo(() => {
+    const list: PriorityItem[] = [];
+
+    // 1. Rate Scadute (Critiche)
+    const overdueList = payments.filter((p) => {
+      if (p.status === 'cancelled' || p.status === 'refunded' || p.residualAmount <= 0) return false;
+      return calculatePaymentStatus(p).isOverdue;
+    });
+    if (overdueList.length > 0) {
+      const first = overdueList[0];
+      list.push({
+        id: `pr-overdue-${first.id}`,
+        type: 'overdue_payment',
+        priorityLevel: 'high',
+        title: `Rata Scaduta: ${first.athleteName}`,
+        subtitle: `Residuo di € ${first.residualAmount.toFixed(2)} da sollecitare o registrare`,
+        actionLabel: 'Registra Pagamento',
+        targetTab: 'pagamenti',
+        athleteId: first.athleteId,
+      });
+    }
+
+    // 2. Atleti da Avviare (Senza Scheda Assegnata)
+    if (unassignedAthletes.length > 0) {
+      const first = unassignedAthletes[0];
+      list.push({
+        id: `pr-unassigned-${first.id}`,
+        type: 'unassigned_workout',
+        priorityLevel: 'medium',
+        title: `Scheda da Assegnare: ${first.fullName}`,
+        subtitle: `${unassignedAthletes.length} atleta/i senza scheda di allenamento attiva`,
+        actionLabel: 'Assegna Scheda',
+        targetTab: 'schede',
+        athleteId: first.id,
+      });
+    }
+
+    // 3. Task Urgenti con Scadenza Oggi o Scaduti
+    if (urgentTasks.length > 0) {
+      const first = urgentTasks[0];
+      list.push({
+        id: `pr-task-${first.id}`,
+        type: 'urgent_task',
+        priorityLevel: first.priority === 'urgent' ? 'high' : 'medium',
+        title: `Task: ${first.title}`,
+        subtitle: first.athleteName ? `Atleta: ${first.athleteName}` : 'Attività prioritaria del giorno',
+        actionLabel: 'Completa Task',
+        targetTab: 'attivita',
+      });
+    }
+
+    // 4. Nuovi Lead / Iscritti da Contattare
+    const newLeads = athletes.filter((a) => a.status === 'inactive');
+    if (newLeads.length > 0 && list.length < 3) {
+      const first = newLeads[0];
+      list.push({
+        id: `pr-lead-${first.id}`,
+        type: 'new_lead',
+        priorityLevel: 'normal',
+        title: `Contatta: ${first.fullName}`,
+        subtitle: 'Invia il messaggio di benvenuto o pianifica il check-in conoscitivo',
+        actionLabel: 'Invia Messaggio',
+        targetTab: 'messaggi',
+        athleteId: first.id,
+      });
+    }
+
+    return list.slice(0, 3);
+  }, [payments, unassignedAthletes, urgentTasks, athletes]);
+
+  // ── GENERATORE DINAMICO "ULTIME ATTIVITÀ DI SISTEMA" ──
+  const systemActivities: SystemActivityItem[] = useMemo(() => {
+    const list: SystemActivityItem[] = [];
+
+    // Comunicazioni recenti
+    communications.slice(0, 3).forEach((c) => {
+      list.push({
+        id: `act-comm-${c.id}`,
+        type: 'message',
+        title: `Comunicazione: ${c.athleteName}`,
+        description: c.subject || 'Messaggio inviato',
+        timeFormatted: new Date(c.dateTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+        targetTab: 'comunicazioni',
+      });
+    });
+
+    // Pagamenti recenti
+    payments
+      .filter((p) => (p.paymentDate || p.paidDate))
+      .slice(0, 2)
+      .forEach((p) => {
+        list.push({
+          id: `act-pay-${p.id}`,
+          type: 'payment',
+          title: `Incasso Registrato: € ${p.paidAmount.toFixed(2)}`,
+          description: `Atleta: ${p.athleteName}`,
+          timeFormatted: 'Recente',
+          targetTab: 'pagamenti',
+        });
+      });
+
+    return list.slice(0, 5);
+  }, [communications, payments]);
+
   // 2. Sezioni Rapide
   const todayDeadlines = useMemo(() => {
     const list: { title: string; subtitle: string; category: string; tab: NavigationTab }[] = [];
 
-    payments.forEach(p => {
+    payments.forEach((p) => {
       if (p.status !== 'cancelled' && p.status !== 'refunded' && p.residualAmount > 0) {
         const calc = calculatePaymentStatus(p);
         if (calc.daysRemaining === 0) {
@@ -146,7 +275,7 @@ export const DashboardPage: React.FC = () => {
       }
     });
 
-    subscriptions.forEach(s => {
+    subscriptions.forEach((s) => {
       if (s.status === 'active') {
         const calc = calculateSubscriptionStatus(s);
         if (calc.daysRemaining === 0) {
@@ -160,7 +289,7 @@ export const DashboardPage: React.FC = () => {
       }
     });
 
-    tasks.forEach(t => {
+    tasks.forEach((t) => {
       if (t.status !== 'completed' && t.status !== 'cancelled' && t.dueDate.startsWith(todayStr)) {
         list.push({
           title: `Task: ${t.title}`,
@@ -177,7 +306,7 @@ export const DashboardPage: React.FC = () => {
   const upcoming7Days = useMemo(() => {
     const list: { title: string; daysLeft: number; tab: NavigationTab }[] = [];
 
-    payments.forEach(p => {
+    payments.forEach((p) => {
       if (p.status !== 'cancelled' && p.status !== 'refunded' && p.residualAmount > 0) {
         const calc = calculatePaymentStatus(p);
         if (calc.daysRemaining > 0 && calc.daysRemaining <= 7) {
@@ -190,7 +319,7 @@ export const DashboardPage: React.FC = () => {
       }
     });
 
-    subscriptions.forEach(s => {
+    subscriptions.forEach((s) => {
       if (s.status === 'active') {
         const calc = calculateSubscriptionStatus(s);
         if (calc.daysRemaining > 0 && calc.daysRemaining <= 7) {
@@ -208,28 +337,16 @@ export const DashboardPage: React.FC = () => {
 
   const renewalsToContact = useMemo(() => {
     return renewals
-      .filter(r => ['to_contact', 'contacted', 'interested', 'evaluating', 'unreachable'].includes(r.status))
+      .filter((r) => ['to_contact', 'contacted', 'interested', 'evaluating', 'unreachable'].includes(r.status))
       .slice(0, 5);
   }, [renewals]);
 
-  const urgentTasks = useMemo(() => {
-    return tasks
-      .filter(t => t.status !== 'completed' && t.status !== 'cancelled' && (t.priority === 'urgent' || t.priority === 'high' || getDaysRemaining(t.dueDate) < 0))
-      .slice(0, 5);
-  }, [tasks]);
-
   const medicalAlerts = useMemo(() => {
     return athletes
-      .map(a => ({ athlete: a, status: getMedicalCertificateStatus(a) }))
-      .filter(item => item.status !== 'valid')
+      .map((a) => ({ athlete: a, status: getMedicalCertificateStatus(a) }))
+      .filter((item) => item.status !== 'valid')
       .slice(0, 5);
   }, [athletes]);
-
-  const recentCommunications = useMemo(() => {
-    return [...communications]
-      .sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime())
-      .slice(0, 5);
-  }, [communications]);
 
   const formatPrice = (amount: number) => {
     return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(amount);
@@ -241,161 +358,573 @@ export const DashboardPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Header Benvenuto */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl relative overflow-hidden group">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-[var(--color-primary)]/10 rounded-full blur-[100px] pointer-events-none group-hover:bg-[var(--color-primary)]/20 transition-all duration-700" />
-        <div className="space-y-1 z-10">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold text-[10px] uppercase tracking-wider border border-[var(--color-primary)]/20">
-              Centro di Controllo Gestionale & Performance
-            </span>
-            <span className="text-xs text-slate-500 font-semibold">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+    <div className="space-y-7 max-w-[1600px] mx-auto pb-12 animate-in fade-in duration-200">
+      {/* ─── 1. HERO SECTION OPERATIVA: CENTRO COMANDO ─── */}
+      <div className="p-6 sm:p-7 rounded-3xl bg-gradient-to-br from-slate-900/95 via-slate-950 to-slate-950 border border-slate-800 shadow-2xl space-y-6 relative overflow-hidden group">
+        <div className="absolute right-0 top-0 w-96 h-96 bg-[var(--color-primary)]/10 rounded-full blur-[100px] pointer-events-none group-hover:bg-[var(--color-primary)]/15 transition-all duration-700" />
+
+        {/* Riga Superiore: Saluto e Pulsanti Rapidi */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10 border-b border-slate-800/80 pb-5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold text-[10px] uppercase tracking-wider border border-[var(--color-primary)]/25 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                Centro di Controllo Gestionale & Performance
+              </span>
+              <span className="text-xs text-slate-500 font-semibold">
+                {new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              Centro Comando, {ownerProfile?.fullName || 'Coach Antonio'} 👋
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 font-medium">
+              Monitoraggio finanziario, controllo diretto delle trattative ed analisi avanzata delle schede atleta.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            Centro Comando, {ownerProfile?.fullName || 'Coach'} 👋
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-400">
-            Monitoraggio finanziario, controllo diretto delle trattative ed analisi avanzata dell'andamento delle schede atleta.
-          </p>
+
+          {/* 3 Pulsanti Rapidi Primari */}
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('atleti')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-[var(--color-primary)] text-white font-bold text-xs transition-all shadow cursor-pointer active:scale-95"
+            >
+              <UserPlus className="w-4 h-4 text-[var(--color-primary)]" />
+              <span>Nuovo Atleta</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('schede')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-amber-400 text-white font-bold text-xs transition-all shadow cursor-pointer active:scale-95"
+            >
+              <Dumbbell className="w-4 h-4 text-amber-400" />
+              <span>Nuova Scheda</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('pagamenti')}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all shadow-[0_0_20px_rgba(234,179,8,0.25)] cursor-pointer active:scale-95"
+            >
+              <DollarSign className="w-4 h-4" />
+              <span>Registra Incasso</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 z-10">
+        {/* Riepilogo Operativo Integrato a 4 Indicatori Live con Evidenza Azioni */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 relative z-10">
+          {/* Box 1: Lead da Contattare */}
           <button
+            type="button"
             onClick={() => setActiveTab('atleti')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold text-xs hover:border-[var(--color-primary)] transition-all shadow"
+            className={`p-3.5 rounded-2xl border transition-all text-left cursor-pointer group/box flex flex-col justify-between ${
+              metrics.newAthletes > 0
+                ? 'bg-sky-950/20 border-sky-500/40 hover:border-sky-500 hover:bg-sky-950/30'
+                : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+            }`}
           >
-            <UserPlus className="w-4 h-4 text-[var(--color-primary)]" /> Nuovo Atleta
+            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+              <span className="text-[10px] font-black uppercase tracking-wider group-hover/box:text-sky-400 transition-colors">
+                Lead / Nuovi
+              </span>
+              <Users className="w-3.5 h-3.5 text-sky-400" />
+            </div>
+            <div className="flex items-baseline justify-between mt-1">
+              <div className="text-xl sm:text-2xl font-black text-white font-mono">{metrics.newAthletes}</div>
+              {metrics.newAthletes > 0 ? (
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                  Da Contattare
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-900 text-slate-500 border border-slate-800">
+                  In Regola
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium block mt-1">
+              {metrics.newAthletes > 0 ? 'Nuovi atleti o lead' : 'Nessun lead pendente'}
+            </span>
           </button>
+
+          {/* Box 2: Schede da Assegnare */}
           <button
+            type="button"
             onClick={() => setActiveTab('schede')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold text-xs hover:border-[var(--color-primary)] transition-all shadow"
+            className={`p-3.5 rounded-2xl border transition-all text-left cursor-pointer group/box flex flex-col justify-between ${
+              unassignedAthletes.length > 0
+                ? 'bg-amber-950/25 border-amber-500/50 hover:border-amber-400 hover:bg-amber-950/35 shadow-sm shadow-amber-500/10'
+                : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+            }`}
           >
-            <Dumbbell className="w-4 h-4 text-amber-400" /> Nuova Scheda
+            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+              <span className="text-[10px] font-black uppercase tracking-wider group-hover/box:text-amber-400 transition-colors">
+                Da Assegnare
+              </span>
+              <Dumbbell className="w-3.5 h-3.5 text-amber-400" />
+            </div>
+            <div className="flex items-baseline justify-between mt-1">
+              <div className={`text-xl sm:text-2xl font-black font-mono ${unassignedAthletes.length > 0 ? 'text-amber-400' : 'text-white'}`}>
+                {unassignedAthletes.length}
+              </div>
+              {unassignedAthletes.length > 0 ? (
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                  Richiede Azione
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-900 text-slate-500 border border-slate-800">
+                  In Regola
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium block mt-1">
+              {unassignedAthletes.length > 0 ? 'Atleti senza programma' : 'Tutte le schede assegnate'}
+            </span>
           </button>
+
+          {/* Box 3: Incassi in Arrivo / Scaduti */}
           <button
-            onClick={() => setActiveTab('pagamenti')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-[0_0_20px_rgba(234,179,8,0.2)]"
+            type="button"
+            onClick={() => setActiveTab('scadenze')}
+            className={`p-3.5 rounded-2xl border transition-all text-left cursor-pointer group/box flex flex-col justify-between ${
+              metrics.overduePayments > 0
+                ? 'bg-rose-950/25 border-rose-500/50 hover:border-rose-400 hover:bg-rose-950/35'
+                : (metrics.expiringPayments + metrics.overduePayments) > 0
+                ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-500 hover:bg-amber-950/30'
+                : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+            }`}
           >
-            <DollarSign className="w-4 h-4" /> Registra Incasso
+            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+              <span className="text-[10px] font-black uppercase tracking-wider group-hover/box:text-emerald-400 transition-colors">
+                Rate da Gestire
+              </span>
+              <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            </div>
+            <div className="flex items-baseline justify-between mt-1">
+              <div className={`text-xl sm:text-2xl font-black font-mono ${metrics.overduePayments > 0 ? 'text-rose-400' : 'text-white'}`}>
+                {metrics.expiringPayments + metrics.overduePayments}
+              </div>
+              {metrics.overduePayments > 0 ? (
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  {metrics.overduePayments} Scadute
+                </span>
+              ) : metrics.expiringPayments > 0 ? (
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  In Arrivo
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-900 text-slate-500 border border-slate-800">
+                  In Regola
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium block mt-1">
+              {metrics.overduePayments > 0 ? 'Solleciti necessari' : 'Nessun insoluto pendente'}
+            </span>
+          </button>
+
+          {/* Box 4: Task Urgenti */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('attivita')}
+            className={`p-3.5 rounded-2xl border transition-all text-left cursor-pointer group/box flex flex-col justify-between ${
+              urgentTasks.length > 0
+                ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-400 hover:bg-amber-950/30'
+                : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+              <span className="text-[10px] font-black uppercase tracking-wider group-hover/box:text-[var(--color-primary)] transition-colors">
+                Task Urgenti
+              </span>
+              <Briefcase className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+            </div>
+            <div className="flex items-baseline justify-between mt-1">
+              <div className="text-xl sm:text-2xl font-black text-white font-mono">{urgentTasks.length}</div>
+              {urgentTasks.length > 0 ? (
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Oggi
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-900 text-slate-500 border border-slate-800">
+                  Completati
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium block mt-1">
+              {urgentTasks.length > 0 ? 'Scadenze prioritarie' : 'Tutti i task completati'}
+            </span>
           </button>
         </div>
       </div>
 
-      {/* GRIGLIA METRIC CARDS TOP-LEVEL (10 CARDS) */}
+      {/* ─── 2. PRIORITÀ DI OGGI (MAX 3 TASK FOCUS) ─── */}
+      <TodayPrioritiesWidget
+        priorities={todayPriorities}
+        onNavigate={(tab, athleteId) => {
+          if (athleteId) {
+            setSelectedAthleteId(athleteId);
+          }
+          setActiveTab(tab);
+        }}
+      />
+
+      {/* ─── 3. KPI PRINCIPALI & SEMANTICI ─── */}
       <DashboardMetricCards
         metrics={metrics}
         onNavigateTab={setActiveTab}
         formatPrice={formatPrice}
       />
 
-      {/* SEZIONE SPECIALE: KPI & FINANCIAL PERFORMANCE (MRR / ARR / CHURN / ARPU) */}
-      <div className="p-6 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative group/kpi">
-        <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
-          <div className="absolute -left-20 -bottom-20 w-64 h-64 bg-purple-500/5 rounded-full blur-[80px] group-hover/kpi:bg-purple-500/10 transition-all duration-700" />
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3 relative z-10">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-[var(--color-primary)]" />
-            <h3 className="text-base font-bold text-white">KPI & Financial Performance</h3>
+      {/* ─── 4. FINANCIAL PERFORMANCE & GRAFICI MRR / ARR ─── */}
+      <div className="p-6 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-2xl space-y-4 relative group/kpi">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3.5 relative z-10">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400">
+              <BarChart3 className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-white tracking-tight">KPI & Financial Performance</h3>
+              <p className="text-[11px] text-slate-400 font-medium">Metriche contrattuali e ricorrenti</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowKPIInfoModal(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-[11px] font-bold text-slate-300 hover:text-white transition-all cursor-pointer"
-              title="Visualizza la guida alle formule dei KPI"
-            >
-              <HelpCircle className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-              <span>Guida Formule</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowKPIInfoModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-bold text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm self-start sm:self-auto"
+          >
+            <HelpCircle className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+            <span>Guida Formule</span>
+          </button>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 relative z-10 pt-2">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 relative z-10 pt-1">
           {/* MRR */}
-          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
-            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-[var(--color-primary)]/5 rounded-full blur-xl group-hover:bg-[var(--color-primary)]/20 transition-colors duration-500"></div>
-            </div>
-            <div className="flex items-center justify-between gap-1 relative z-10">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">MRR</span>
-            </div>
-            <div className="mt-2 relative z-10">
-              <span className="text-lg font-black text-[var(--color-primary)]">{formatPrice(metrics.mrr)}</span>
-              <span className="text-[9px] text-slate-500 block">Ricavo Mensile Ricorrente</span>
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">MRR</span>
+            <div className="mt-2">
+              <span className="text-lg font-black text-[var(--color-primary)] font-mono">{formatPrice(metrics.mrr)}</span>
+              <span className="text-[9px] text-slate-500 block mt-0.5">Ricavo Mensile Ricorrente</span>
             </div>
           </div>
 
           {/* ARR */}
-          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-[var(--color-primary)]/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
-            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-white/5 rounded-full blur-xl group-hover:bg-[var(--color-primary)]/20 transition-colors duration-500"></div>
-            </div>
-            <div className="flex items-center justify-between gap-1 relative z-10">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">ARR</span>
-            </div>
-            <div className="mt-2 relative z-10">
-              <span className="text-lg font-black text-white">{formatPrice(metrics.arr)}</span>
-              <span className="text-[9px] text-slate-500 block">Proiezione Annuale (MRR×12)</span>
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ARR</span>
+            <div className="mt-2">
+              <span className="text-lg font-black text-white font-mono">{formatPrice(metrics.arr)}</span>
+              <span className="text-[9px] text-slate-500 block mt-0.5">Proiezione Annuale (MRR×12)</span>
             </div>
           </div>
 
           {/* Tasso di Incasso */}
-          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.15)] transition-all duration-300">
-            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/20 transition-colors duration-500"></div>
-            </div>
-            <div className="flex items-center justify-between gap-1 relative z-10">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Incasso</span>
-            </div>
-            <div className="mt-2 relative z-10">
-              <span className="text-lg font-black text-emerald-400">{metrics.collectionRate}%</span>
-              <span className="text-[9px] text-slate-500 block">Saldo su Entrate Previste</span>
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tasso Incasso</span>
+            <div className="mt-2">
+              <span className="text-lg font-black text-emerald-400 font-mono">{metrics.collectionRate}%</span>
+              <span className="text-[9px] text-slate-500 block mt-0.5">Saldo su Entrate Previste</span>
             </div>
           </div>
 
           {/* Valore Medio Atleta (ARPU) */}
-          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-blue-500/50 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)] transition-all duration-300">
-            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-blue-500/5 rounded-full blur-xl group-hover:bg-blue-500/20 transition-colors duration-500"></div>
-            </div>
-            <div className="flex items-center justify-between gap-1 relative z-10">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate" title="Valore/Atleta (ARPU)">Valore/Atleta</span>
-            </div>
-            <div className="mt-2 relative z-10">
-              <span className="text-lg font-black text-blue-400">{formatPrice(metrics.averageValuePerAthlete)}</span>
-              <span className="text-[9px] text-slate-500 block">ARPU Mensile Stimato</span>
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valore/Atleta</span>
+            <div className="mt-2">
+              <span className="text-lg font-black text-sky-400 font-mono">{formatPrice(metrics.averageValuePerAthlete)}</span>
+              <span className="text-[9px] text-slate-500 block mt-0.5">ARPU Mensile Stimato</span>
             </div>
           </div>
 
           {/* Tasso di Rinnovo */}
-          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-yellow-500/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)] transition-all duration-300">
-            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-yellow-500/5 rounded-full blur-xl group-hover:bg-yellow-500/20 transition-colors duration-500"></div>
-            </div>
-            <div className="flex items-center justify-between gap-1 relative z-10">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tasso Rinnovo</span>
-            </div>
-            <div className="mt-2 relative z-10">
-              <span className="text-lg font-black text-yellow-400">{metrics.renewalRate}%</span>
-              <span className="text-[9px] text-slate-500 block">Fidelizzazione Contratti</span>
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tasso Rinnovo</span>
+            <div className="mt-2">
+              <span className="text-lg font-black text-amber-400 font-mono">{metrics.renewalRate}%</span>
+              <span className="text-[9px] text-slate-500 block mt-0.5">Fidelizzazione Contratti</span>
             </div>
           </div>
 
           {/* Churn Stimato */}
-          <div className="p-4 rounded-xl bg-slate-900/40 backdrop-blur-md border border-slate-800/60 flex flex-col justify-between relative group hover:bg-slate-900/60 hover:border-rose-500/50 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)] transition-all duration-300">
-            <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
-              <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-rose-500/5 rounded-full blur-xl group-hover:bg-rose-500/20 transition-colors duration-500"></div>
-            </div>
-            <div className="flex items-center justify-between gap-1 relative z-10">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Churn Rate</span>
-            </div>
-            <div className="mt-2 relative z-10">
-              <span className="text-lg font-black text-rose-400">{metrics.estimatedChurn}%</span>
-              <span className="text-[9px] text-slate-500 block">Abbandono Stimato</span>
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 flex flex-col justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Churn Rate</span>
+            <div className="mt-2">
+              <span className="text-lg font-black text-rose-400 font-mono">{metrics.estimatedChurn}%</span>
+              <span className="text-[9px] text-slate-500 block mt-0.5">Abbandono Stimato</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* GRAFICO ANDAMENTO */}
+      <DashboardChart />
+
+      {/* ─── 5. GRIGLIA SEZIONI OPERATIVE RAPIDE & ULTIME ATTIVITÀ ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* COLONNA 1: Scadenze di Oggi e Prossimi 7 Giorni */}
+        <div className="space-y-6">
+          {/* Scadenze di Oggi */}
+          <div className="p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <h4 className="text-sm font-black text-white flex items-center gap-2">
+                <Flame className="w-4 h-4 text-amber-400" /> Scadenze di Oggi
+              </h4>
+              <span className="text-[10px] font-bold text-slate-500 uppercase font-mono">{todayDeadlines.length} Totali</span>
+            </div>
+
+            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+              {todayDeadlines.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-1.5">
+                  <div className="w-9 h-9 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-emerald-400">
+                    <CheckSquare className="w-4 h-4" />
+                  </div>
+                  <p className="text-xs text-slate-300 font-bold">Nessuna scadenza oggi.</p>
+                  <p className="text-[11px] text-slate-500">Ottimo, giornata pulita! ✨</p>
+                </div>
+              ) : (
+                todayDeadlines.map((item, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => setActiveTab(item.tab)}
+                    className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-[var(--color-primary)] hover:bg-slate-900 flex items-center justify-between cursor-pointer transition-all duration-200 group/item"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center text-[10px] font-black text-amber-400">
+                        {item.title.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h5 className="text-xs font-black text-white line-clamp-1">{item.title}</h5>
+                        <p className="text-[10px] text-slate-400">{item.subtitle}</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-600 group-hover/item:text-[var(--color-primary)] group-hover/item:translate-x-0.5 transition-all" />
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Prossimi 7 Giorni */}
+          <div className="p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <h4 className="text-sm font-black text-white flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-sky-400" /> Prossimi 7 Giorni
+              </h4>
+              <button
+                type="button"
+                onClick={() => setActiveTab('scadenze')}
+                className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                Vedi Tutti <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {upcoming7Days.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-1.5">
+                  <div className="w-9 h-9 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <p className="text-xs text-slate-300 font-bold">Nessuna scadenza nei prossimi 7 giorni.</p>
+                  <p className="text-[11px] text-slate-500">Tutto regolare e sotto controllo.</p>
+                </div>
+              ) : (
+                upcoming7Days.map((item, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => setActiveTab(item.tab)}
+                    className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-sky-500/50 hover:bg-slate-900 flex items-center justify-between cursor-pointer transition-all duration-200"
+                  >
+                    <span className="text-xs font-bold text-slate-200 line-clamp-1 pr-2">{item.title}</span>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 whitespace-nowrap font-mono">
+                      Tra {item.daysLeft} gg
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* COLONNA 2: Rinnovi da Contattare & Attività Urgenti */}
+        <div className="space-y-6">
+          {/* Rinnovi da Contattare */}
+          <div className="p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <h4 className="text-sm font-black text-white flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-amber-400" /> Rinnovi da Contattare
+              </h4>
+              <button
+                type="button"
+                onClick={() => setActiveTab('rinnovi')}
+                className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                Trattative <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {renewalsToContact.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-1.5">
+                  <div className="w-9 h-9 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
+                    <RefreshCw className="w-4 h-4" />
+                  </div>
+                  <p className="text-xs text-slate-300 font-bold">Nessun rinnovo aperto al momento.</p>
+                  <p className="text-[11px] text-slate-500">Nessuna trattativa pendente.</p>
+                </div>
+              ) : (
+                renewalsToContact.map((ren) => (
+                  <div
+                    key={ren.id}
+                    onClick={() => setActiveTab('rinnovi')}
+                    className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-900 flex items-center justify-between cursor-pointer transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-[10px] font-black text-amber-400">
+                        {ren.athleteName.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h5 className="text-xs font-black text-white">{ren.athleteName}</h5>
+                        <p className="text-[10px] text-slate-400">Scadenza: {formatDate(ren.endDate)}</p>
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-black px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase font-mono">
+                      {ren.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Certificati Medici (Compatto e Allineato a Prossimi 7 Giorni) */}
+          <div className="p-4 sm:p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-xl space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+              <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
+                <FileCheck2 className="w-4 h-4 text-rose-400" /> Certificati Medici
+              </h4>
+              <button
+                type="button"
+                onClick={() => setActiveTab('documenti')}
+                className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                Documenti <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1 custom-scrollbar">
+              {medicalAlerts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-4 text-center space-y-1">
+                  <div className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-emerald-400">
+                    <FileCheck2 className="w-4 h-4" />
+                  </div>
+                  <p className="text-xs text-slate-300 font-bold">Tutti i certificati medici sono in regola.</p>
+                  <p className="text-[11px] text-slate-500">Nessun documento scaduto o in scadenza.</p>
+                </div>
+              ) : (
+                medicalAlerts.map(({ athlete, status }) => (
+                  <div
+                    key={athlete.id}
+                    onClick={() => setActiveTab('documenti')}
+                    className="py-2 px-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-rose-500/50 hover:bg-slate-900 flex items-center justify-between cursor-pointer transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className={`w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-black shrink-0 ${
+                          status === 'missing'
+                            ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
+                            : status === 'expired'
+                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        }`}
+                      >
+                        {athlete.fullName.substring(0, 2).toUpperCase()}
+                      </div>
+                      <h5 className="text-xs font-black text-white truncate max-w-[130px] sm:max-w-[160px]">
+                        {athlete.fullName}
+                      </h5>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {athlete.medicalCertificateExpiryDate && (
+                        <span className="text-[10px] text-slate-400 hidden sm:inline font-mono">
+                          {formatDate(athlete.medicalCertificateExpiryDate)}
+                        </span>
+                      )}
+                      <span
+                        className={`text-[9px] font-black px-1.5 py-0.5 rounded-md border uppercase font-mono ${
+                          status === 'missing'
+                            ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                            : status === 'expired'
+                            ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                        }`}
+                      >
+                        {status === 'missing' ? 'Mancante' : status === 'expired' ? 'Scaduto' : 'In Scadenza'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* COLONNA 3: Attività Urgenti & Mini Timeline */}
+        <div className="space-y-6">
+          {/* Attività Urgenti / Task */}
+          <div className="p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <h4 className="text-sm font-black text-white flex items-center gap-2">
+                <CheckSquare className="w-4 h-4 text-purple-400" /> Attività & Task
+              </h4>
+              <button
+                type="button"
+                onClick={() => setActiveTab('attivita')}
+                className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                Tutti i Task <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+              {urgentTasks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center space-y-1.5">
+                  <div className="w-9 h-9 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-emerald-400">
+                    <CheckSquare className="w-4 h-4" />
+                  </div>
+                  <p className="text-xs text-slate-300 font-bold">Nessun task urgente in sospeso.</p>
+                  <p className="text-[11px] text-slate-500">Tutti i compiti sono aggiornati! ✨</p>
+                </div>
+              ) : (
+                urgentTasks.map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => setActiveTab('attivita')}
+                    className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-purple-500/50 hover:bg-slate-900 flex items-center justify-between cursor-pointer transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-[10px] font-black text-purple-400 shrink-0">
+                        {t.athleteName ? t.athleteName.substring(0, 2).toUpperCase() : 'TK'}
+                      </div>
+                      <div className="min-w-0">
+                        <h5 className="text-xs font-black text-white truncate">{t.title}</h5>
+                        <p className="text-[10px] text-slate-400 truncate">{t.athleteName || 'Generale'}</p>
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-black px-2 py-0.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 uppercase font-mono shrink-0">
+                      {t.priority}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Mini Timeline Ultime Attività */}
+          <RecentActivityWidget
+            activities={systemActivities}
+            onNavigate={setActiveTab}
+          />
         </div>
       </div>
 
@@ -406,8 +935,8 @@ export const DashboardPage: React.FC = () => {
           onClick={() => setShowKPIInfoModal(false)}
         >
           <div
-            className="w-full max-w-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl shadow-2xl p-6 space-y-5"
-            onClick={e => e.stopPropagation()}
+            className="w-full max-w-2xl bg-slate-950 border border-slate-800 rounded-3xl shadow-2xl p-6 space-y-5"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
@@ -415,7 +944,7 @@ export const DashboardPage: React.FC = () => {
                   <Info className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Guida Formule KPI & Metriche Ricorrenti</h3>
+                  <h3 className="text-base font-black text-white">Guida Formule KPI & Metriche Ricorrenti</h3>
                   <p className="text-xs text-slate-400">Algoritmi applicati per l'analisi finanziaria e contrattuale</p>
                 </div>
               </div>
@@ -439,7 +968,7 @@ export const DashboardPage: React.FC = () => {
               ].map(({ key, label }) => {
                 const info = getKPIFormulaTooltip(key);
                 return (
-                  <div key={key} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                  <div key={key} className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1.5">
                     <span className="text-xs font-bold text-[var(--color-primary)] block">{label}</span>
                     <p className="text-xs font-mono font-bold text-white">{info.formula}</p>
                     <p className="text-[11px] text-slate-400">{info.description}</p>
@@ -460,294 +989,6 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* GRAFICO ANDAMENTO */}
-      <DashboardChart />
-
-      {/* WIDGET AI ATHLETE TRAINING COPILOT */}
-      <AITrainingCopilotWidget />
-
-      {/* SEZIONI RAPIDE E OPERATIVE */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* COLONNA 1: Scadenze di Oggi e Prossimi 7 Giorni */}
-        <div className="space-y-6">
-          {/* Scadenze di Oggi */}
-          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
-            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
-            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Flame className="w-4 h-4 text-amber-400" /> Scadenze di Oggi
-              </h3>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">{todayDeadlines.length} Totali</span>
-            </div>
-
-            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
-              {todayDeadlines.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
-                    <CheckSquare className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium">Nessuna scadenza prevista per oggi.<br/>Tutto sotto controllo! ✨</p>
-                </div>
-              ) : (
-                todayDeadlines.map((item, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => setActiveTab(item.tab)}
-                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-[var(--color-primary)]/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300 group/item"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-400 group-hover/item:text-white transition-colors">
-                        {item.title.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <span className="text-[9px] font-bold uppercase text-[var(--color-primary)] px-1.5 py-0.5 rounded bg-[var(--color-primary)]/10">
-                          {item.category}
-                        </span>
-                        <h4 className="text-xs font-bold text-white mt-1 line-clamp-1">{item.title}</h4>
-                        <p className="text-[10px] text-slate-400">{item.subtitle}</p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600 group-hover/item:text-[var(--color-primary)] group-hover/item:translate-x-1 transition-all" />
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Prossimi 7 Giorni */}
-          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
-            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
-            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-sky-400" /> Prossimi 7 Giorni
-              </h3>
-              <button onClick={() => setActiveTab('scadenze')} className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1">
-                Vedi Tutti <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {upcoming7Days.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
-                    <Calendar className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium">Nessuna scadenza critica<br/>nei prossimi 7 giorni.</p>
-                </div>
-              ) : (
-                upcoming7Days.map((item, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => setActiveTab(item.tab)}
-                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-sky-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
-                  >
-                    <span className="text-xs font-medium text-slate-200 line-clamp-1 pr-2">{item.title}</span>
-                    <span className="text-[10px] font-bold px-2 py-1 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 whitespace-nowrap">
-                      Tra {item.daysLeft} gg
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* COLONNA 2: Rinnovi da Contattare ed Attività Urgenti */}
-        <div className="space-y-6">
-          {/* Rinnovi da Contattare */}
-          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
-            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
-            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <RefreshCw className="w-4 h-4 text-yellow-400" /> Rinnovi da Contattare
-              </h3>
-              <button onClick={() => setActiveTab('rinnovi')} className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1">
-                Trattative <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {renewalsToContact.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
-                    <RefreshCw className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium">Nessun rinnovo in trattativa<br/>al momento.</p>
-                </div>
-              ) : (
-                renewalsToContact.map(ren => (
-                  <div
-                    key={ren.id}
-                    onClick={() => setActiveTab('rinnovi')}
-                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-yellow-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center text-[10px] font-bold text-yellow-500">
-                        {ren.athleteName.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-white">{ren.athleteName}</h4>
-                        <p className="text-[10px] text-slate-400">Scadenza: {formatDate(ren.endDate)}</p>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-bold px-2 py-1 rounded bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 uppercase">
-                      {ren.status.replace('_', ' ')}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Attività Urgenti */}
-          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
-            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
-            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <CheckSquare className="w-4 h-4 text-purple-400" /> Attività Urgenti
-              </h3>
-              <button onClick={() => setActiveTab('attivita')} className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1">
-                Tutte le Task <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {urgentTasks.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
-                    <CheckSquare className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium">Nessuna attività urgente<br/>in sospeso. Ottimo lavoro!</p>
-                </div>
-              ) : (
-                urgentTasks.map(t => (
-                  <div
-                    key={t.id}
-                    onClick={() => setActiveTab('attivita')}
-                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-purple-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center text-[10px] font-bold text-purple-400">
-                        {t.athleteName ? t.athleteName.substring(0, 2).toUpperCase() : 'TK'}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-white line-clamp-1">{t.title}</h4>
-                        <p className="text-[10px] text-slate-400 line-clamp-1">{t.athleteName || 'Generale'}</p>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-bold px-2 py-1 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 uppercase">
-                      {t.priority}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* COLONNA 3: Certificati Medici ed Ultime Comunicazioni */}
-        <div className="space-y-6">
-          {/* Certificati Medici */}
-          <div className="p-5 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-2xl space-y-4 relative overflow-hidden group">
-            <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-white/10 transition-all duration-700" />
-            <div className="relative z-10 flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <FileCheck2 className="w-4 h-4 text-rose-400" /> Certificati Medici
-              </h3>
-              <button onClick={() => setActiveTab('documenti')} className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1">
-                Documenti <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {medicalAlerts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
-                    <FileCheck2 className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium">Tutti i certificati agonistici<br/>sono in regola.</p>
-                </div>
-              ) : (
-                medicalAlerts.map(({ athlete, status }) => (
-                  <div
-                    key={athlete.id}
-                    onClick={() => setActiveTab('documenti')}
-                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-rose-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                        status === 'missing' ? 'bg-orange-500/10 text-orange-400' : status === 'expired' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'
-                      }`}>
-                        {athlete.fullName.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-white">{athlete.fullName}</h4>
-                        <p className="text-[10px] text-slate-400">
-                          {athlete.medicalCertificateExpiryDate ? `Scadenza: ${formatDate(athlete.medicalCertificateExpiryDate)}` : 'Nessuna data registrata'}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`text-[9px] font-bold px-2 py-1 rounded border uppercase ${
-                      status === 'missing'
-                        ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
-                        : status === 'expired'
-                        ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                    }`}>
-                      {status === 'missing' ? 'Mancante' : status === 'expired' ? 'Scaduto' : 'In Scadenza'}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Ultime Comunicazioni */}
-          <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-emerald-400" /> Ultime Comunicazioni
-              </h3>
-              <button onClick={() => setActiveTab('comunicazioni')} className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1">
-                Centro Contatti <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {recentCommunications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-slate-800/50 flex items-center justify-center">
-                    <MessageSquare className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium">Nessuna comunicazione registrata<br/>di recente.</p>
-                </div>
-              ) : (
-                recentCommunications.map(comm => (
-                  <div
-                    key={comm.id}
-                    onClick={() => setActiveTab('comunicazioni')}
-                    className="p-3 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-emerald-500/50 hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-all duration-300"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-[10px] font-bold text-emerald-400">
-                        {comm.athleteName.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-white">{comm.athleteName}</h4>
-                        <p className="text-[10px] text-slate-400 truncate max-w-[140px]">{comm.subject}</p>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-bold px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase">
-                      {comm.channel}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

@@ -67,7 +67,21 @@ export const AnatomicalMuscleMap: React.FC<AnatomicalMuscleMapProps> = ({
   interactive = true,
   compact = false,
 }) => {
-  const [view, setView] = useState<'front' | 'back'>('front');
+  // Determina se la maggior parte dei muscoli Target si trova sul retro
+  const defaultView = React.useMemo<'front' | 'back'>(() => {
+    const backKeywords = ['dorsale', 'dorso', 'femorali', 'ischiocrurali', 'gluteo', 'glutei', 'lombari', 'trapezio', 'tricipite', 'posteriore'];
+    const hasBackTarget = muscles.some(m => 
+      m.ruolo === 'Target' && backKeywords.some(kw => m.muscolo.toLowerCase().includes(kw))
+    );
+    return hasBackTarget ? 'back' : 'front';
+  }, [muscles]);
+
+  const [view, setView] = useState<'front' | 'back'>(defaultView);
+
+  React.useEffect(() => {
+    setView(defaultView);
+  }, [defaultView]);
+
   const [hoveredZone, setHoveredZone] = useState<MuscleZone | null>(null);
 
   // Trova se una zona è attiva tra i muscoli passati

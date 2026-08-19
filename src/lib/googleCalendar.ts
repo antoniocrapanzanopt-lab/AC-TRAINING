@@ -96,7 +96,7 @@ export const buildGoogleCalendarEvents = (email: string = 'antonio.crapanzanopt@
   return [
     {
       id: 'gcal-evt-1',
-      title: '📅 Consulta PT & Valutazione Anamnesi',
+      title: 'Consulta PT & Valutazione Anamnesi',
       description: 'Appuntamento schedulato da Google Calendar (antonio.crapanzanopt@gmail.com)',
       type: 'google_calendar',
       date: todayStr,
@@ -113,7 +113,7 @@ export const buildGoogleCalendarEvents = (email: string = 'antonio.crapanzanopt@
     },
     {
       id: 'gcal-evt-2',
-      title: '📅 Sessione Personal Training - Cliente VIP',
+      title: 'Sessione Personal Training - Cliente VIP',
       description: 'Allenamento 1-on-1 registrato su Google Calendar',
       type: 'google_calendar',
       date: tomorrowStr,
@@ -130,7 +130,7 @@ export const buildGoogleCalendarEvents = (email: string = 'antonio.crapanzanopt@
     },
     {
       id: 'gcal-evt-3',
-      title: '📅 Web Meeting: Pianificazione Trimestre PT',
+      title: 'Web Meeting: Pianificazione Trimestre PT',
       description: 'Riunione strategica registrata tramite Google Calendar API',
       type: 'google_calendar',
       date: inThreeDaysStr,
@@ -201,7 +201,7 @@ export const parseICSString = (icsContent: string, email: string): CalendarEvent
 
     events.push({
       id: `gcal-ics-${uid}`,
-      title: `📅 ${summary}`,
+      title: summary,
       description,
       type: 'google_calendar' as const,
       date: dateStr,
@@ -257,7 +257,7 @@ export const fetchGoogleEvents = async (email: string = 'antonio.crapanzanopt@gm
 
           return {
             id: `gcal-${item.id}`,
-            title: `📅 ${item.summary || 'Evento Google Calendar'}`,
+            title: item.summary || 'Evento Google Calendar',
             description: item.description || '',
             type: 'google_calendar' as const,
             date: dateStr,

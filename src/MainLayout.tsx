@@ -16,7 +16,6 @@ import { TasksPage } from './pages/tasks/TasksPage';
 import { CalendarPage } from './pages/calendar/CalendarPage';
 import { DocumentsPage } from './pages/documents/DocumentsPage';
 import { CommunicationsPage } from './pages/communications/CommunicationsPage';
-import { ReportsPage } from './pages/reports/ReportsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { CollaboratorsPage } from './pages/collaborators/CollaboratorsPage';
 import { AtletaPortalePage } from './pages/athlete-portal/AtletaPortalePage';
@@ -25,6 +24,8 @@ import { ExercisesPage } from './pages/exercises/ExercisesPage';
 import { ProgressionsPage } from './pages/progressions/ProgressionsPage';
 import { WorkoutHistoryPage } from './pages/workouts/WorkoutHistoryPage';
 import { MessagesPage } from './pages/messages/MessagesPage';
+import { NutritionEstimatorPage } from './pages/nutrition/NutritionEstimatorPage';
+import { AnalysisReportsPage } from './pages/analytics/AnalysisReportsPage';
 import { useApp } from './context/AppContext';
 import { NavigationTab } from './types';
 
@@ -41,13 +42,16 @@ const tabTitles: Record<NavigationTab, string> = {
   documenti: 'Gestione Documenti',
   comunicazioni: 'Centro Comunicazioni',
   report: 'Report e Statistiche',
+  analisi_report: 'Analisi & Report',
   collaboratori: 'Gestione Collaboratori',
   impostazioni: 'Impostazioni Sistema',
   atleta_portale: 'Portale riservato Atleta',
   schede: 'Schede di Allenamento',
+  copilot: 'AI Training Copilot',
   progressioni: 'Progressioni & Sovraccarico',
   cronologia_allenamenti: 'Cronologia Allenamenti',
   esercizi: 'Libreria Esercizi',
+  fabbisogno: 'Stima Fabbisogno Energetico',
   messaggi: 'Chat / Messaggi',
 };
 
@@ -76,19 +80,24 @@ const renderPage = (tab: NavigationTab): React.ReactNode => {
     case 'comunicazioni':
       return <CommunicationsPage />;
     case 'report':
-      return <ReportsPage />;
+    case 'analisi_report':
+      return <AnalysisReportsPage />;
     case 'collaboratori':
       return <CollaboratorsPage />;
     case 'impostazioni':
       return <SettingsPage />;
     case 'schede':
       return <WorkoutsPage />;
+    case 'copilot':
+      return <DashboardPage />;
     case 'progressioni':
       return <ProgressionsPage />;
     case 'cronologia_allenamenti':
       return <WorkoutHistoryPage />;
     case 'esercizi':
       return <ExercisesPage />;
+    case 'fabbisogno':
+      return <NutritionEstimatorPage />;
     case 'atleta_portale':
       return <AtletaPortalePage />;
     case 'messaggi':

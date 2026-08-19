@@ -15,6 +15,12 @@ import { useMetrics } from '../../context/MetricsContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { ExerciseCard } from '../../components/workouts/ExerciseCard';
+import { InteractiveRestTimer } from '../../components/workouts/InteractiveRestTimer';
+import { WorkoutCelebrationModal } from '../../components/workouts/WorkoutCelebrationModal';
+import {
+  fetchAthletePreviousExerciseHistory,
+  PreviousExerciseHistory
+} from '../../utils/workoutHistoryResolver';
 import {
   saveActiveWorkoutDraft,
   getActiveWorkoutDraft,
@@ -58,6 +64,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(true);
   const [restTimer, setRestTimer] = useState<number | null>(null);
+  const [totalRestSeconds, setTotalRestSeconds] = useState<number>(90);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -67,6 +74,19 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [completedSets, setCompletedSets] = useState<Record<string, boolean[]>>({});
   // NOTE FEEDBACK: Note dell'atleta per singolo esercizio
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
+  // STORICO SESSIONI PRECEDENTI (GHOST LOG)
+  const [previousHistoryMap, setPreviousHistoryMap] = useState<Record<string, PreviousExerciseHistory>>({});
+
+  // CELEBRATION SCREEN STATE
+  const [celebrationData, setCelebrationData] = useState<{
+    workoutTitle: string;
+    durationMinutes: number;
+    totalVolumeKg: number;
+    completedSetsCount: number;
+    totalSetsCount: number;
+    newPRs: string[];
+    earnedXP: number;
+  } | null>(null);
 
   // Questionario Post-Allenamento State
   const [showQuestionnaireModal, setShowQuestionnaireModal] = useState(false);
@@ -134,15 +154,22 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       setLogs(initialLogs);
 
       // Avvia la sessione reale su Supabase se online
-      if (navigator.onLine && workout.id) {
-        startWorkoutSession(workout.id, athleteId).then(({ session }) => {
-          if (session) {
-            setSessionId(session.id);
+      // Carica storico prestazioni precedenti (Ghost Log)
+      if (athleteId && athleteId !== 'ath-local') {
+        fetchAthletePreviousExerciseHistory(athleteId).then((history) => {
+          setPreviousHistoryMap(history);
+        });
+      }
+
+      if (!sessionId && navigator.onLine) {
+        startWorkoutSession(workout.id, targetAthleteId).then((res) => {
+          if (res.session) {
+            setSessionId(res.session.id);
           }
         });
       }
     }
-  }, [athleteId, workout, exercises, startWorkoutSession]);
+  }, [athleteId, workout, exercises, sessionId, startWorkoutSession, targetAthleteId]);
 
   // ── 3. AUTOSAVE LOCALE CONTINUO AD OGNI MODIFICA ──
   const triggerLocalAutosave = useCallback(
@@ -252,8 +279,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       currentList[setIdx] = isNowCompleted;
 
       if (isNowCompleted) {
-        restEndTimestampRef.current = Date.now() + restSeconds * 1000;
-        setRestTimer(restSeconds);
+        const safeRest = restSeconds > 0 ? restSeconds : 90;
+        restEndTimestampRef.current = Date.now() + safeRest * 1000;
+        setTotalRestSeconds(safeRest);
+        setRestTimer(safeRest);
         if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
       }
 
@@ -262,6 +291,21 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       return nextSets;
     });
   };
+
+  const handleSkipRest = useCallback(() => {
+    setRestTimer(null);
+    restEndTimestampRef.current = null;
+  }, []);
+
+  const handleAddRestTime = useCallback((seconds: number) => {
+    if (restEndTimestampRef.current) {
+      const newEnd = restEndTimestampRef.current + seconds * 1000;
+      restEndTimestampRef.current = newEnd;
+      const remaining = Math.max(0, Math.ceil((newEnd - Date.now()) / 1000));
+      setRestTimer(remaining);
+      setTotalRestSeconds((prev) => Math.max(prev + seconds, remaining));
+    }
+  }, []);
 
   const handleNoteChange = (exerciseId: string, val: string) => {
     setExerciseNotes((prev) => {
@@ -282,30 +326,58 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     setShowQuestionnaireModal(false);
 
     try {
+      // 1. Assicura che esista una sessione valida su Supabase
+      let effectiveSessionId = sessionId;
+      if (!effectiveSessionId && navigator.onLine) {
+        try {
+          const startRes = await startWorkoutSession(workout.id, targetAthleteId);
+          if (startRes.session?.id) {
+            effectiveSessionId = startRes.session.id;
+            setSessionId(effectiveSessionId);
+          }
+        } catch (e) {
+          console.warn('Errore creazione sessione all\'uscita:', e);
+        }
+      }
+
+      if (!effectiveSessionId) {
+        effectiveSessionId = crypto.randomUUID ? crypto.randomUUID() : `sess-${Date.now()}`;
+      }
+
       const logsToSave: any[] = [];
       const prResults: string[] = [];
 
       for (const ex of exercises) {
         const exLogs = logs[ex.id] || [];
         const userFeedback = exerciseNotes[ex.id]?.trim();
+        const completedMap = completedSets[ex.id] || [];
 
-        for (let idx = 0; idx < exLogs.length; idx++) {
-          const setLog = exLogs[idx];
-          const repsNum = setLog.reps ? parseInt(setLog.reps, 10) : 0;
-          const weightNum = setLog.weight ? parseFloat(setLog.weight) : 0;
+        for (let idx = 0; idx < ex.sets; idx++) {
+          const setLog = exLogs[idx] || { reps: '', weight: '', rpe: '' };
+          const isCompleted = !!completedMap[idx];
 
-          if (repsNum || weightNum || setLog.rpe) {
+          let repsNum = setLog.reps ? parseInt(setLog.reps, 10) : 0;
+          let weightNum = setLog.weight ? parseFloat(setLog.weight) : 0;
+
+          // Se la serie è stata spuntata/completata o ha note ma non sono stati digitati i numeri a mano
+          if (isCompleted && repsNum === 0) {
+            repsNum = parseInt(ex.reps_target, 10) || 10;
+          }
+          if (isCompleted && weightNum === 0 && ex.target_weight) {
+            weightNum = parseFloat(ex.target_weight) || 0;
+          }
+
+          if (repsNum > 0 || weightNum > 0 || isCompleted || setLog.rpe || userFeedback) {
             const noteParts = [];
             if (setLog.rpe) noteParts.push(`RPE: ${setLog.rpe}`);
-            if (userFeedback) noteParts.push(`Feedback: ${userFeedback}`);
+            if (userFeedback && idx === 0) noteParts.push(`Feedback: ${userFeedback}`);
 
             logsToSave.push({
-              session_id: sessionId,
+              session_id: effectiveSessionId,
               exercise_id: ex.id,
-              exercise_name: ex.name,
               set_number: idx + 1,
-              reps_completed: repsNum || null,
-              weight_kg: weightNum || null,
+              reps_completed: repsNum || 1,
+              weight_kg: weightNum || 0,
               notes: noteParts.length > 0 ? noteParts.join(' | ') : null,
             });
 
@@ -330,11 +402,18 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       const weekNum = (exercises[0] as any)?.week_number || 1;
       const dayName = (exercises[0] as any)?.day_name || 'Giorno A';
 
-      // SE OFFLINE o ERRORE SERVER: Salva in coda di sincronizzazione
+      // Backup locale istantaneo dei log completati
+      try {
+        const localLogsMap = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}');
+        localLogsMap[effectiveSessionId] = logsToSave;
+        localStorage.setItem('builder_completed_session_logs', JSON.stringify(localLogsMap));
+      } catch (_) {}
+
+      // SE OFFLINE: Salva in coda di sincronizzazione
       if (!navigator.onLine) {
         const pendingItem: PendingCompletedWorkout = {
           id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          sessionId,
+          sessionId: effectiveSessionId,
           athleteId,
           athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
           workoutId: workout.id,
@@ -378,11 +457,15 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       // SE ONLINE: Procedi con il salvataggio normale su Supabase
       if (logsToSave.length > 0) {
         const { error: logsError } = await saveExerciseLogs(logsToSave);
-        if (logsError) throw new Error(`Errore salvataggio esercizi: ${logsError}`);
+        if (logsError) {
+          console.warn(`Errore salvataggio esercizi: ${logsError}`);
+        }
       }
 
-      const { error: sessionError } = await endWorkoutSession(sessionId!, questionnaireNotes, difficulty * 2);
-      if (sessionError) throw new Error(`Errore chiusura sessione: ${sessionError}`);
+      const { error: sessionError } = await endWorkoutSession(effectiveSessionId, questionnaireNotes, difficulty * 2);
+      if (sessionError) {
+        console.warn(`Errore chiusura sessione: ${sessionError}`);
+      }
 
       // Alert questionario per il coach
       if (jointPain >= 3 || jointPainNotes.trim() !== '' || difficulty >= 4) {
@@ -410,6 +493,27 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         } catch (_) {}
       }
 
+      // Calcola Volume Totale Sollevato & Serie per la Celebration Screen
+      let calculatedVolumeKg = 0;
+      let completedSetsTotal = 0;
+      let totalSetsPlanned = 0;
+
+      exercises.forEach((ex) => {
+        totalSetsPlanned += ex.sets;
+        const exLogs = logs[ex.id] || [];
+        const exSetsMap = completedSets[ex.id] || [];
+        exLogs.forEach((l, sIdx) => {
+          const r = parseInt(l.reps, 10) || 0;
+          const w = parseFloat(l.weight) || 0;
+          if (r > 0 && w > 0) {
+            calculatedVolumeKg += r * w;
+          }
+          if (exSetsMap[sIdx] || (r > 0 && w > 0)) {
+            completedSetsTotal++;
+          }
+        });
+      });
+
       // Aggiorna progresso locale e rimuovi bozza attiva
       try {
         const progressKey = `builder_progress_${athleteId}_${workout.id}`;
@@ -419,17 +523,41 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       } catch (_) {}
 
       clearActiveWorkoutDraft(athleteId);
-
-      if (prResults.length > 0) {
-        showSuccess('Nuovo Record Personale (PR)! 🎉', prResults.join(' | '));
-      } else {
-        showSuccess('Allenamento e Questionario completati!');
-      }
-
       setIsSaving(false);
-      onClose();
+
+      // Apri la Celebration Screen
+      setCelebrationData({
+        workoutTitle: workout.title,
+        durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
+        totalVolumeKg: Math.round(calculatedVolumeKg),
+        completedSetsCount: completedSetsTotal,
+        totalSetsCount: totalSetsPlanned,
+        newPRs: prResults,
+        earnedXP: 100 + (prResults.length * 50),
+      });
     } catch (err: any) {
       console.warn('Errore salvataggio server, salvataggio in fallback offline:', err);
+
+      // Calcola Volume Totale per fallback
+      let calculatedVolumeKg = 0;
+      let completedSetsTotal = 0;
+      let totalSetsPlanned = 0;
+
+      exercises.forEach((ex) => {
+        totalSetsPlanned += ex.sets;
+        const exLogs = logs[ex.id] || [];
+        const exSetsMap = completedSets[ex.id] || [];
+        exLogs.forEach((l, sIdx) => {
+          const r = parseInt(l.reps, 10) || 0;
+          const w = parseFloat(l.weight) || 0;
+          if (r > 0 && w > 0) {
+            calculatedVolumeKg += r * w;
+          }
+          if (exSetsMap[sIdx] || (r > 0 && w > 0)) {
+            completedSetsTotal++;
+          }
+        });
+      });
 
       // Fallback offline anche in caso di eccezione network
       const nowIso = new Date().toISOString();
@@ -464,21 +592,25 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
       queueCompletedWorkoutForSync(pendingItem);
       clearActiveWorkoutDraft(athleteId);
-
-      showSuccess(
-        'Allenamento salvato in locale 💾',
-        'Impossibile raggiungere il server. I dati sono salvati sul telefono e verranno sincronizzati appena tornerà internet.'
-      );
-
       setIsSaving(false);
-      onClose();
+
+      // Apri Celebration Screen
+      setCelebrationData({
+        workoutTitle: workout.title,
+        durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
+        totalVolumeKg: Math.round(calculatedVolumeKg),
+        completedSetsCount: completedSetsTotal,
+        totalSetsCount: totalSetsPlanned,
+        newPRs: [],
+        earnedXP: 100,
+      });
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col font-sans overflow-hidden">
+    <div className="fixed inset-0 bg-[var(--color-bg)] z-50 flex flex-col font-sans overflow-hidden">
       {/* ── HEADER LIVE CON STATO OFFLINE & SYNC DISCRETO ── */}
-      <div className="bg-slate-900 border-b border-slate-800 p-3.5 sm:p-4 flex items-center justify-between shadow-lg relative z-20">
+      <div className="bg-[var(--color-panel)]/90 backdrop-blur-xl border-b border-[var(--color-panel-border)]/60 p-3.5 sm:p-4 flex items-center justify-between shadow-lg relative z-20">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -530,26 +662,14 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         </button>
       </div>
 
-      {/* REST TIMER OVERLAY */}
-      {restTimer !== null && restTimer > 0 && (
-        <div className="bg-blue-500/20 border-b border-blue-500/30 p-3 flex items-center justify-between sticky top-0 z-10 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 animate-pulse">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Recupero Attivo</p>
-              <p className="text-xl font-bold font-mono text-white">{formatTime(restTimer)}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setRestTimer(0)}
-            className="px-4 py-2 bg-blue-500/20 text-blue-300 rounded-xl text-xs font-bold cursor-pointer"
-          >
-            Salta
-          </button>
-        </div>
+      {/* REST TIMER PRO INTERATTIVO & SATINATO */}
+      {restTimer !== null && restTimer >= 0 && (
+        <InteractiveRestTimer
+          remainingSeconds={restTimer}
+          totalSeconds={totalRestSeconds}
+          onSkip={handleSkipRest}
+          onAddTime={handleAddRestTime}
+        />
       )}
 
       {/* SCROLLABLE EXERCISES LIST */}
@@ -568,6 +688,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                 logs={logs[ex.id] || []}
                 completedSetsMap={completedSets[ex.id] || []}
                 noteFeedback={exerciseNotes[ex.id] || ''}
+                previousHistory={previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()]}
                 onToggleActive={() => {
                   const nextIdx = isActive ? -1 : idx;
                   setActiveExerciseIdx(nextIdx);
@@ -577,23 +698,6 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                 onNoteFeedbackChange={(val) => handleNoteChange(ex.id, val)}
                 onToggleSetComplete={(setIdx) => handleToggleSetComplete(ex.id, setIdx, ex.rest_seconds)}
               />
-
-              {isActive && (
-                <div className="p-3 bg-slate-900 border border-slate-800 rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Note Esercizio / Feedback al Coach:
-                    </span>
-                  </div>
-                  <input
-                    type="text"
-                    value={exerciseNotes[ex.id] || ''}
-                    onChange={(e) => handleNoteChange(ex.id, e.target.value)}
-                    placeholder="Es: Ottimo feeling, fastidio spalla a serie 3, aumentato carico..."
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              )}
             </React.Fragment>
           );
         })}
@@ -604,7 +708,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="text-center space-y-1">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto shadow-md">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] mx-auto shadow-md">
                 <Sparkles className="w-6 h-6" />
               </div>
               <h3 className="text-lg font-black text-white">Com'è andato l'allenamento?</h3>
@@ -617,7 +721,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-bold">
                 <span className="text-slate-300">Fatica complessiva (RPE):</span>
-                <span className="text-amber-400 font-mono">{difficulty} / 5</span>
+                <span className="text-[var(--color-primary)] font-mono">{difficulty} / 5</span>
               </div>
               <div className="grid grid-cols-5 gap-1.5">
                 {[1, 2, 3, 4, 5].map((val) => (
@@ -627,7 +731,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                     onClick={() => setDifficulty(val)}
                     className={`py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
                       difficulty === val
-                        ? 'bg-amber-500 text-black border-amber-400 shadow-md scale-105'
+                        ? 'bg-[var(--color-primary)] text-slate-950 border-[var(--color-primary)] shadow-md scale-105'
                         : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
                     }`}
                   >
@@ -733,6 +837,24 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── CELEBRATION SCREEN & CONDIVISIONE RISULTATO ── */}
+      {celebrationData && (
+        <WorkoutCelebrationModal
+          workoutTitle={celebrationData.workoutTitle}
+          durationMinutes={celebrationData.durationMinutes}
+          totalVolumeKg={celebrationData.totalVolumeKg}
+          completedSetsCount={celebrationData.completedSetsCount}
+          totalSetsCount={celebrationData.totalSetsCount}
+          newPRs={celebrationData.newPRs}
+          earnedXP={celebrationData.earnedXP}
+          athleteName={currentAthlete?.firstName || user?.name || 'Campione'}
+          onClose={() => {
+            setCelebrationData(null);
+            onClose();
+          }}
+        />
       )}
     </div>
   );

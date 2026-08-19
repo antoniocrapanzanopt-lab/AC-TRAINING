@@ -17,8 +17,11 @@ export type NavigationTab =
   | 'schede'
   | 'progressioni'
   | 'cronologia_allenamenti'
+  | 'copilot'
   | 'esercizi'
-  | 'messaggi';
+  | 'fabbisogno'
+  | 'messaggi'
+  | 'analisi_report';
 
 export * from './types/progression';
 
@@ -770,3 +773,145 @@ export interface MFAState {
   isLoading: boolean;
   error: string | null;
 }
+
+// --- Analisi & Report Temporal Models ---
+export type TimeframeOption = 'weekly' | 'monthly' | 'bimonthly' | 'six_months' | 'yearly';
+export type ReportTrend = 'positive' | 'stable' | 'negative' | 'neutral';
+export type AthleteProgramStatus =
+  | 'active'
+  | 'inactive'
+  | 'pending_start'
+  | 'unassigned'
+  | 'completed'
+  | 'penultimate_week'
+  | 'overdue';
+
+export type ReportStrategicAction =
+  | 'continue'
+  | 'increase_stimulus'
+  | 'reduce_fatigue'
+  | 'deload'
+  | 'rebalance_volume'
+  | 'change_exercises'
+  | 'contact_athlete'
+  | 'assign_program';
+
+export interface ComparisonMetricDelta {
+  current: number;
+  previous: number;
+  deltaPercent: number; // +15.5% o -5.2%
+  deltaRaw: number; // differenza assoluta
+}
+
+export interface MuscleGroupDistribution {
+  group: string;
+  groupName?: string;
+  currentKg: number;
+  previousKg: number;
+  deltaPercent: number;
+}
+
+export interface KeyExerciseMetric {
+  name: string;
+  currentMaxKg: number;
+  previousMaxKg: number;
+  currentAvgKg: number;
+  previousAvgKg: number;
+  deltaPercent: number;
+}
+
+export interface TimelineReportEvent {
+  id: string;
+  dateFormatted: string;
+  title: string;
+  description: string;
+  type: 'copilot' | 'deload' | 'pain' | 'pr' | 'note';
+}
+
+export interface DecisionPriorityItem {
+  id: string;
+  athleteId: string;
+  athleteName: string;
+  title: string;
+  rationale: string;
+  type: 'pain' | 'plateau' | 'penultimate_week' | 'unassigned';
+  urgency: 'high' | 'medium' | 'low';
+  ctaLabel: string;
+  targetAction: 'copilot' | 'assign' | 'renew';
+}
+
+export interface AthleteReportSummary {
+  athleteId: string;
+  athleteName: string;
+  athleteEmail?: string;
+  avatarUrl?: string;
+  workoutTitle: string;
+  currentWeek: number;
+  totalWeeks: number;
+  blockProgressPercent: number;
+  programStatus: AthleteProgramStatus;
+  programStatusLabel: string;
+  isPenultimateWeek: boolean;
+  trend: ReportTrend;
+  overallScore: number; // 0 - 100
+  aiNarrativeSummary: string;
+  
+  // Singola decisione consigliata per card
+  singleDecisionTitle: string;
+  singleDecisionRationale: string;
+  singleDecisionType: 'pain' | 'plateau' | 'penultimate_week' | 'unassigned' | 'overload' | 'stimulus' | 'maintain';
+  singleDecisionCtaLabel: string;
+  
+  // Comparazioni Periodo Corrente vs Precedente
+  attendance: ComparisonMetricDelta; // %
+  completedSessions: ComparisonMetricDelta; // numero sessioni
+  avgRpe: ComparisonMetricDelta; // RPE 1-10
+  painReportsCount: ComparisonMetricDelta; // numero segnalazioni
+  totalVolumeKg: ComparisonMetricDelta; // kg sollevati
+  
+  // Dettagli Esercizi & Distretti Muscolari
+  keyExercises: KeyExerciseMetric[];
+  muscleGroups: MuscleGroupDistribution[];
+  
+  // Eventi & Serie temporale per grafici
+  timeSeriesData: {
+    label: string;
+    date: string;
+    volumeKg: number;
+    avgRpe: number;
+    sessionsCount: number;
+  }[];
+  recentEvents: TimelineReportEvent[];
+  
+  // Direzione Consigliata
+  whatIsWorking: string[];
+  whatNeedsAttention: string[];
+  recommendedAction: ReportStrategicAction;
+  recommendedActionLabel: string;
+  recommendedActionDescription: string;
+}
+
+export interface TeamOverviewReportData {
+  timeframe: TimeframeOption;
+  timeframeLabel: string;
+  currentRangeLabel: string;
+  previousRangeLabel: string;
+  
+  // Priorità di Oggi per il Coach (Max 3)
+  todayPriorities: DecisionPriorityItem[];
+
+  // KPI Globali Squadra
+  avgTeamAttendance: ComparisonMetricDelta;
+  totalTeamVolumeKg: ComparisonMetricDelta;
+  totalAthletesCount: number;
+  eligibleAthletesCount: number;
+  unassignedAthletesCount: number;
+  penultimateWeekAthletesCount: number;
+  positiveAthletesCount: number;
+  stableAthletesCount: number;
+  negativeAthletesCount: number;
+  activeAlertsCount: number;
+  
+  athletesReports: AthleteReportSummary[];
+}
+

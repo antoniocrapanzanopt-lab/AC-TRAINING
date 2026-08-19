@@ -7,11 +7,13 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import {
   getActiveWorkoutDraft,
+  saveActiveWorkoutDraft,
   clearActiveWorkoutDraft,
   syncPendingWorkoutsWithServer,
   getPendingSyncQueue,
   ActiveWorkoutDraft,
 } from '../../lib/offline/offlineWorkoutStorage';
+import { AthleteNextAppointmentCard } from '../../components/athlete/AthleteNextAppointmentCard';
 
 interface AthleteDashboardProps {
   onStartWorkout: (workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string) => void;
@@ -27,7 +29,19 @@ const WorkoutCard: React.FC<{
   const progressKey = `builder_progress_${assigned.athlete_id}_${assigned.workout_id}`;
   const [completedMap, setCompletedMap] = React.useState<Record<string, boolean>>(() => {
     try {
-      return JSON.parse(localStorage.getItem(progressKey) || '{}');
+      const raw = JSON.parse(localStorage.getItem(progressKey) || '{}');
+      // Riconciliazione immediata sincrona: se l'atleta ha completato gli altri 4 giorni o ha un Giorno B nello storico
+      const hasAnyB = raw['5-Giorno B'] || raw['1-Giorno B'] || raw['2-Giorno B'] || raw['3-Giorno B'] || raw['4-Giorno B'] || raw['Giorno B'];
+      const hasACDE = raw['1-Giorno A'] || raw['1-Giorno C'] || raw['1-Giorno D'] || raw['1-Giorno E'];
+      if (hasAnyB || hasACDE) {
+        raw['1-Giorno A'] = true;
+        raw['1-Giorno B'] = true;
+        raw['1-Giorno C'] = true;
+        raw['1-Giorno D'] = true;
+        raw['1-Giorno E'] = true;
+        localStorage.setItem(progressKey, JSON.stringify(raw));
+      }
+      return raw;
     } catch {
       return {};
     }
@@ -80,42 +94,24 @@ const WorkoutCard: React.FC<{
           .select(`
             id,
             end_time,
-            notes,
-            exercise_logs (
-              workout_exercises (
-                week_number,
-                day_name
-              )
-            )
+            notes
           `)
           .eq('athlete_id', athId)
           .eq('workout_id', wId)
           .not('end_time', 'is', null);
 
-        if (data && data.length > 0) {
-          const daysList = days.length > 0 ? days : ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
-          data.forEach((sess: any, idx: number) => {
-            let matched = false;
-            if (Array.isArray(sess.exercise_logs) && sess.exercise_logs.length > 0) {
-              sess.exercise_logs.forEach((log: any) => {
-                const we = log.workout_exercises;
-                if (we && we.week_number && we.day_name) {
-                  currentMap[`${we.week_number}-${we.day_name}`] = true;
-                  matched = true;
-                }
-              });
-            }
+        const daysList = days.length > 0 ? days : ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
+        const totalSessionCount = (data?.length || 0);
 
-            if (!matched) {
-              const weekNum = Math.floor(idx / daysList.length) + 1;
-              const dayName = daysList[idx % daysList.length];
-              currentMap[`${weekNum}-${dayName}`] = true;
-            }
+        if (totalSessionCount >= 4) {
+          // Se ci sono almeno 4 sessioni registrate, la Settimana 1 è completata
+          daysList.forEach((dName) => {
+            currentMap[`1-${dName}`] = true;
           });
-
-          setCompletedMap({ ...currentMap });
-          localStorage.setItem(progressKey, JSON.stringify(currentMap));
         }
+
+        setCompletedMap({ ...currentMap });
+        localStorage.setItem(progressKey, JSON.stringify(currentMap));
       } catch (e) {
         console.warn('Errore sync progressi da DB:', e);
       }
@@ -130,7 +126,7 @@ const WorkoutCard: React.FC<{
   // Calcola la prima settimana attiva non ancora completata al 100%
   const currentActiveWeek = React.useMemo(() => {
     for (let w = 1; w <= totalWeeks; w++) {
-      const allDone = days.every((d) => completedMap[`${w}-${d}`]);
+      const allDone = days.length > 0 && days.every((d) => completedMap[`${w}-${d}`]);
       if (!allDone) return w;
     }
     return totalWeeks;
@@ -151,14 +147,14 @@ const WorkoutCard: React.FC<{
   const isCurrentWeekAllDone = weekCompletedCount === days.length;
 
   return (
-    <div className={`bg-slate-900/90 border ${isFirst ? 'border-amber-500/40 shadow-xl shadow-amber-500/5' : 'border-slate-800'} rounded-3xl p-5 sm:p-6 mb-4 space-y-5`}>
+    <div className={`bg-slate-900/40 backdrop-blur-xl border ${isFirst ? 'border-[var(--color-primary)]/40 shadow-xl shadow-[var(--color-primary)]/5' : 'border-slate-800/60'} rounded-3xl p-5 sm:p-6 mb-4 space-y-5 shadow-lg`}>
       {/* Testata Scheda */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h3 className="text-base sm:text-lg font-black text-white leading-tight">{assigned.workout?.title}</h3>
             {isFirst && (
-              <span className="bg-amber-500 text-black text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-sm">
+              <span className="bg-[var(--color-primary)] text-slate-950 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-sm">
                 Attiva
               </span>
             )}
@@ -167,7 +163,7 @@ const WorkoutCard: React.FC<{
             {assigned.workout?.description || 'Nessuna descrizione specificata dal coach.'}
           </p>
         </div>
-        <div className="bg-slate-950 border border-slate-800 px-3 py-1 rounded-xl text-xs font-mono font-bold text-amber-400 shrink-0 shadow-inner">
+        <div className="bg-slate-900/60 border border-slate-800/80 px-3 py-1 rounded-xl text-xs font-mono font-bold text-[var(--color-primary)] shrink-0 shadow-inner">
           {totalWeeks} settimane
         </div>
       </div>
@@ -178,7 +174,7 @@ const WorkoutCard: React.FC<{
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
             Seleziona Settimana:
           </span>
-          <span className="text-xs font-bold text-amber-400 font-mono">
+          <span className="text-xs font-bold text-[var(--color-primary)] font-mono">
             {weekCompletedCount} di {days.length} sedute completate
           </span>
         </div>
@@ -197,18 +193,18 @@ const WorkoutCard: React.FC<{
                 onClick={() => setSelectedWeek(wNum)}
                 className={`px-3.5 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 cursor-pointer select-none ${
                   isSelected
-                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20 scale-105'
+                    ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20 scale-105'
                     : isWeekDone
                     ? 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900/40'
                     : isCurrent
-                    ? 'bg-slate-800 text-white border border-amber-500/50'
-                    : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+                    ? 'bg-slate-800 text-white border border-[var(--color-primary)]/50'
+                    : 'bg-slate-900/60 text-slate-400 border border-slate-800 hover:text-white'
                 }`}
               >
                 <span>Settimana {wNum}</span>
                 {isWeekDone && <span className="text-[11px]">✓</span>}
                 {isCurrent && !isWeekDone && !isSelected && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse" />
                 )}
               </button>
             );
@@ -226,7 +222,7 @@ const WorkoutCard: React.FC<{
                 ✓ Completata
               </span>
             ) : (
-              <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+              <span className="text-[10px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-0.5 rounded-full border border-[var(--color-primary)]/20">
                 In corso
               </span>
             )}
@@ -247,7 +243,7 @@ const WorkoutCard: React.FC<{
                 className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between group cursor-pointer shadow-md ${
                   isDone
                     ? 'bg-slate-950/70 border-slate-800/60 text-slate-500 opacity-75'
-                    : 'bg-slate-950 border-slate-800 hover:border-amber-500/60 hover:bg-slate-800/80 text-white'
+                    : 'bg-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-[var(--color-primary)]/60 hover:bg-slate-900/80 text-white'
                 }`}
               >
                 <div className="flex items-center justify-between w-full mb-3">
@@ -257,17 +253,17 @@ const WorkoutCard: React.FC<{
                       ✓ Completato
                     </span>
                   ) : (
-                    <div className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
-                      <Play className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                    <div className="w-7 h-7 rounded-xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] group-hover:scale-110 transition-transform">
+                      <Play className="w-3.5 h-3.5 fill-[var(--color-primary)] text-[var(--color-primary)]" />
                     </div>
                   )}
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-900">
+                <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/60">
                   <span className="flex items-center gap-1 font-medium">
                     <Clock className="w-3 h-3 text-slate-500" />
                     {isDone ? 'Eseguito' : 'Da completare'}
                   </span>
-                  <span className="text-[11px] font-bold text-amber-400 group-hover:underline">
+                  <span className="text-[11px] font-bold text-[var(--color-primary)] group-hover:underline">
                     {isDone ? 'Rivedi / Rifai' : 'Inizia ora →'}
                   </span>
                 </div>
@@ -292,12 +288,36 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
   const checkDraftAndQueue = useCallback(() => {
     if (athleteId) {
-      const draft = getActiveWorkoutDraft(athleteId);
+      let draft = getActiveWorkoutDraft(athleteId);
+      if (draft && myAssignedWorkouts.length > 0) {
+        // Se il workout assegnato ha un titolo aggiornato nel DB (es. da "MARIA BARCELLA" a "MARIA"), aggiorniamo la bozza
+        const matching = myAssignedWorkouts.find(
+          (aw: any) =>
+            aw.workout_id === draft?.workout?.id ||
+            aw.workout?.id === draft?.workout?.id ||
+            (draft?.workout?.title && aw.workout?.title && (
+              aw.workout.title.toLowerCase().includes('scheda') &&
+              draft.workout.title.toLowerCase().includes('scheda')
+            ))
+        );
+
+        if (matching?.workout?.title && matching.workout.title !== draft.workout.title) {
+          draft = {
+            ...draft,
+            workout: {
+              ...draft.workout,
+              title: matching.workout.title,
+              description: matching.workout.description ?? draft.workout.description,
+            },
+          };
+          saveActiveWorkoutDraft(draft);
+        }
+      }
       setActiveDraft(draft);
       const queue = getPendingSyncQueue();
       setPendingSyncCount(queue.length);
     }
-  }, [athleteId]);
+  }, [athleteId, myAssignedWorkouts]);
 
   useEffect(() => {
     checkDraftAndQueue();
@@ -384,16 +404,19 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         <p className="text-xs text-slate-400">Ecco cosa ha preparato il tuo coach per te.</p>
       </div>
 
+      {/* ── CARD PROSSIMO APPUNTAMENTO IN EVIDENZA ── */}
+      <AthleteNextAppointmentCard />
+
       {/* ── BANNER 1: RIPRENDI ALLENAMENTO IN CORSO SALVATO IN LOCALE ── */}
       {activeDraft && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-slate-900 to-slate-900 border border-amber-500/40 shadow-xl space-y-3 animate-in fade-in">
+        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-[var(--color-primary)]/40 shadow-xl space-y-3 animate-in fade-in">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 shadow-md">
+              <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0 shadow-md">
                 <RotateCcw className="w-5 h-5 animate-spin-slow" />
               </div>
               <div>
-                <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider block">
+                <span className="text-[10px] font-black text-[var(--color-primary)] uppercase tracking-wider block">
                   Sessione in corso salvata sul dispositivo
                 </span>
                 <h4 className="text-sm sm:text-base font-black text-white">
@@ -428,9 +451,9 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
       {/* ── BANNER 2: ALLENAMENTI IN CODA DI SINCRONIZZAZIONE ── */}
       {pendingSyncCount > 0 && (
-        <div className="p-3 rounded-2xl bg-slate-900 border border-amber-500/30 flex items-center justify-between text-xs text-slate-300">
+        <div className="p-3 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-[var(--color-primary)]/30 flex items-center justify-between text-xs text-slate-300">
           <div className="flex items-center gap-2">
-            <WifiOff className="w-4 h-4 text-amber-400 shrink-0" />
+            <WifiOff className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
             <span>
               <strong>{pendingSyncCount}</strong> allenamento/i salvato/i sul dispositivo in attesa di sincronizzazione.
             </span>
@@ -446,7 +469,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
                 showError('Dispositivo Offline', 'Connettiti a internet per inviare le sessioni.');
               }
             }}
-            className="px-3 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold hover:bg-amber-500/30 transition-colors cursor-pointer shrink-0"
+            className="px-3 py-1 rounded-lg bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/30 font-bold hover:bg-[var(--color-primary)]/30 transition-colors cursor-pointer shrink-0"
           >
             Sincronizza ora
           </button>
