@@ -23,19 +23,24 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       document.body.style.overflow = 'hidden';
       window.addEventListener('keydown', handleKeyDown);
 
-      // Auto-focus sul primo elemento o sul contenitore
+      // Auto-focus prioritario sul primo campo di testo (input/textarea)
       setTimeout(() => {
         if (modalRef.current) {
-          const focusable = modalRef.current.querySelector<HTMLElement>(
-            'input, select, textarea, button:not([aria-label="Chiudi finestra"])'
-          );
-          if (focusable) {
-            focusable.focus();
+          const inputField = modalRef.current.querySelector<HTMLElement>('input:not([type="hidden"]), textarea, select');
+          if (inputField) {
+            inputField.focus();
           } else {
-            modalRef.current.focus();
+            const focusable = modalRef.current.querySelector<HTMLElement>(
+              'button:not([aria-label*="hiudi"]):not([aria-label*="lose"])'
+            );
+            if (focusable) {
+              focusable.focus();
+            } else {
+              modalRef.current.focus();
+            }
           }
         }
-      }, 50);
+      }, 60);
     }
 
     return () => {

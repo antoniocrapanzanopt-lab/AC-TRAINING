@@ -377,6 +377,7 @@ export const AuthPage: React.FC = () => {
                   value={resetEmail}
                   onChange={(e) => setResetEmail(e.target.value)}
                   placeholder="cliente@esempio.com"
+                  autoFocus
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-[var(--color-primary)] font-medium"
                   required
                 />
