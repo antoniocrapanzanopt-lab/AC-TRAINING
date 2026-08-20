@@ -388,7 +388,63 @@ CREATE TABLE IF NOT EXISTS public.athlete_max_lifts (
 CREATE INDEX IF NOT EXISTS athlete_max_lifts_athlete_id_idx ON public.athlete_max_lifts(athlete_id);
 CREATE INDEX IF NOT EXISTS athlete_max_lifts_date_idx ON public.athlete_max_lifts(date);
 
--- 1.13 COACH NOTIFICATIONS
+-- 1.13 NOTIFICATIONS & PUSH SUBSYSTEM
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recipient_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    organization_id UUID NULL,
+    athlete_id UUID NULL REFERENCES public.athletes(id) ON DELETE SET NULL,
+    type TEXT NOT NULL,
+    priority TEXT NOT NULL CHECK (priority IN ('low', 'normal', 'high', 'critical')),
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    action_url TEXT NULL,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    channel_in_app BOOLEAN NOT NULL DEFAULT true,
+    channel_push BOOLEAN NOT NULL DEFAULT false,
+    push_status TEXT NOT NULL DEFAULT 'not_requested' CHECK (push_status IN ('not_requested', 'pending', 'sent', 'failed', 'skipped_quiet_hours', 'skipped_opt_out')),
+    read_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NULL,
+    dedupe_key TEXT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient_read_created ON public.notifications(recipient_user_id, read_at, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_athlete_created ON public.notifications(athlete_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_priority_created ON public.notifications(priority, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedupe_key ON public.notifications(dedupe_key) WHERE dedupe_key IS NOT NULL;
+
+-- 1.13.1 NOTIFICATION PREFERENCES
+CREATE TABLE IF NOT EXISTS public.notification_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+    push_enabled BOOLEAN NOT NULL DEFAULT false,
+    notify_high BOOLEAN NOT NULL DEFAULT true,
+    notify_critical BOOLEAN NOT NULL DEFAULT true,
+    quiet_hours_start TIME NULL,
+    quiet_hours_end TIME NULL,
+    timezone TEXT NOT NULL DEFAULT 'Europe/Rome',
+    categories_opt_out TEXT[] NOT NULL DEFAULT '{}',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_preferences_user_id ON public.notification_preferences(user_id);
+
+-- 1.13.2 PUSH SUBSCRIPTIONS
+CREATE TABLE IF NOT EXISTS public.push_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    user_agent TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON public.push_subscriptions(user_id);
+
+-- Legacy backward-compatibility
 CREATE TABLE IF NOT EXISTS public.coach_notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     coach_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -708,7 +764,47 @@ WITH CHECK (
     EXISTS (SELECT 1 FROM public.athletes a WHERE a.id = athlete_max_lifts.athlete_id AND a.auth_user_id = auth.uid())
 );
 
--- 3.14 TABELLA: public.coach_notifications
+-- 3.14 TABELLA: public.notifications
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users_read_own_notifications" ON public.notifications;
+CREATE POLICY "users_read_own_notifications" ON public.notifications
+    FOR SELECT TO authenticated
+    USING (recipient_user_id = auth.uid());
+
+DROP POLICY IF EXISTS "users_update_own_notifications" ON public.notifications;
+CREATE POLICY "users_update_own_notifications" ON public.notifications
+    FOR UPDATE TO authenticated
+    USING (recipient_user_id = auth.uid())
+    WITH CHECK (recipient_user_id = auth.uid());
+
+DROP POLICY IF EXISTS "deny_client_insert_notifications" ON public.notifications;
+CREATE POLICY "deny_client_insert_notifications" ON public.notifications
+    FOR INSERT TO authenticated
+    WITH CHECK (false);
+
+DROP POLICY IF EXISTS "deny_client_delete_notifications" ON public.notifications;
+CREATE POLICY "deny_client_delete_notifications" ON public.notifications
+    FOR DELETE TO authenticated
+    USING (false);
+
+-- 3.14.1 TABELLA: public.notification_preferences
+DROP POLICY IF EXISTS "users_manage_own_preferences" ON public.notification_preferences;
+CREATE POLICY "users_manage_own_preferences" ON public.notification_preferences
+    FOR ALL TO authenticated
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
+
+-- 3.14.2 TABELLA: public.push_subscriptions
+DROP POLICY IF EXISTS "users_manage_own_push_subscriptions" ON public.push_subscriptions;
+CREATE POLICY "users_manage_own_push_subscriptions" ON public.push_subscriptions
+    FOR ALL TO authenticated
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
+
+-- Legacy backward-compatibility
 DROP POLICY IF EXISTS "coach_read_own_notifications" ON public.coach_notifications;
 CREATE POLICY "coach_read_own_notifications" ON public.coach_notifications 
 FOR SELECT TO authenticated

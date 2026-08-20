@@ -22,6 +22,7 @@ import {
   ChevronDown,
   Flame,
   Brain,
+  Bell,
 } from 'lucide-react';
 import { NavigationTab } from '../../types';
 import { useAthletes } from '../../context/AthletesContext';
@@ -124,6 +125,7 @@ const menuSections: MenuSection[] = [
       iconText: 'text-purple-400',
     },
     items: [
+      { id: 'notifiche', label: 'Centro Notifiche', icon: Bell },
       { id: 'comunicazioni', label: 'Log Comunicazioni', icon: MessageSquare },
       { id: 'messaggi', label: 'Chat Atleti', icon: MessageCircle },
     ],

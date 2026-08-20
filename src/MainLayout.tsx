@@ -26,6 +26,9 @@ import { WorkoutHistoryPage } from './pages/workouts/WorkoutHistoryPage';
 import { MessagesPage } from './pages/messages/MessagesPage';
 import { NutritionEstimatorPage } from './pages/nutrition/NutritionEstimatorPage';
 import { AnalysisReportsPage } from './pages/analytics/AnalysisReportsPage';
+import { NotificationsPage } from './pages/notifications/NotificationsPage';
+import { NotificationToast } from './components/notifications/NotificationToast';
+import { useNotifications } from './context/NotificationsContext';
 import { useApp } from './context/AppContext';
 import { NavigationTab } from './types';
 
@@ -53,9 +56,10 @@ const tabTitles: Record<NavigationTab, string> = {
   esercizi: 'Libreria Esercizi',
   fabbisogno: 'Stima Fabbisogno Energetico',
   messaggi: 'Chat / Messaggi',
+  notifiche: 'Centro Notifiche',
 };
 
-const renderPage = (tab: NavigationTab): React.ReactNode => {
+const renderPage = (tab: NavigationTab, onNavigateToTab: (t: NavigationTab) => void): React.ReactNode => {
   switch (tab) {
     case 'dashboard':
       return <DashboardPage />;
@@ -102,6 +106,8 @@ const renderPage = (tab: NavigationTab): React.ReactNode => {
       return <AtletaPortalePage />;
     case 'messaggi':
       return <MessagesPage />;
+    case 'notifiche':
+      return <NotificationsPage onNavigateToTab={onNavigateToTab} />;
     default:
       return <PageContainer tab={tab} title={tabTitles[tab]} />;
   }
@@ -109,6 +115,7 @@ const renderPage = (tab: NavigationTab): React.ReactNode => {
 
 export const MainLayout: React.FC = () => {
   const { activeTab, setActiveTab } = useApp();
+  const { activeToast, clearActiveToast } = useNotifications();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
@@ -127,12 +134,17 @@ export const MainLayout: React.FC = () => {
           onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full min-w-0 overflow-x-hidden">
-          {renderPage(activeTab)}
+          {renderPage(activeTab, setActiveTab)}
         </main>
       </div>
       <GlobalCoachAIAssistantWidget />
       <FloatingChatWidget />
       <ToastContainer />
+      <NotificationToast
+        notification={activeToast}
+        onClose={clearActiveToast}
+        onOpenAction={() => setActiveTab('notifiche')}
+      />
     </div>
   );
 };

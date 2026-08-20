@@ -82,7 +82,36 @@ npm run check
 
 ---
 
-## 🎓 Scopo Educativo
+---
 
-Questo progetto è stato creato a scopo didattico e dimostrativo per mostrare le migliori pratiche di sviluppo in **React e TypeScript**, la gestione reattiva dello stato locale e la progettazione di un'interfaccia utente moderna ed accessibile.
+## 🔔 Sistema Notifiche Real-Time & Web Push
+
+La piattaforma **AC Coaching** include un'infrastruttura completa di notifiche push ed eventi in tempo reale:
+
+### 1. Canali Supportati
+- **In-App Real-Time**: Ricezione immediata via Supabase Realtime (WebSocket) sul canale dedicato `recipient_user_id = auth.uid()` senza refresh di pagina.
+- **Web Push Nativo (Browser/OS)**: Service Worker dedicato (`public/sw.js`) per inviare notifiche native al coach anche quando il portale è chiuso o in background.
+
+### 2. Priorità & Canali
+- **`critical`**: Alert di sicurezza (accessi sospetti, tentativi MFA falliti). In-App + Push immediato (bypassa anche le ore di silenzio).
+- **`high`**: Fastidi articolari/dolori riportati nei workout, check-in con note di dolore, penultima settimana o rinnovo programma. In-App + Push (se abilitato).
+- **`normal`**: Check-in completati, allenamenti svolti regolarmente, nuovi messaggi. In-App.
+- **`low`**: Aggiornamenti informativi a bassa priorità. In-App.
+
+### 3. Antispam & Deduplicazione
+- Campo `dedupe_key` univoco per ciclo/evento (`checkin_{athlete_id}_{date}`, `workout_{session_id}`, `penultimate_{athlete_id}_{workout_id}`).
+- Le notifiche di penultima settimana e rinnovo scattano al massimo una volta per programma e solo per atleti con scheda assegnata.
+
+### 4. Configurazione VAPID (Web Push)
+Per personalizzare la chiave pubblica VAPID nei file `.env`:
+```env
+VITE_VAPID_PUBLIC_KEY=BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBKr3qBUYIHBQFLXYp5Nksh8U
+```
+
+---
+
+## 🎓 Scopo e Note Operative
+
+Questo progetto è sviluppato per la gestione professionale di atleti e programmi su **AC Coaching**.
 # AC-TRAINING
+

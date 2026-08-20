@@ -1,11 +1,11 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Menu, X, User, ChevronDown, LogOut, Settings as SettingsIcon, Camera, Bell } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Menu, X, User, ChevronDown, LogOut, Settings as SettingsIcon, Camera } from 'lucide-react';
 import { NavigationTab } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { LogoUploadModal } from './LogoUploadModal';
-import { useNotifications } from '../../context/NotificationsContext';
+import { NotificationBell } from '../notifications/NotificationBell';
 import { NotificationsPanel } from '../notifications/NotificationsPanel';
 
 interface HeaderProps {
@@ -23,10 +23,6 @@ export const Header: React.FC<HeaderProps> = ({
   const { ownerProfile } = useApp();
   const { user, logout } = useAuth();
   const { showInfo } = useToast();
-  const { unreadCount, notifications } = useNotifications();
-  const hasUrgentAlert = useMemo(() => {
-    return notifications.some((n) => !n.read_at && (n.type === 'pain_reported' || n.type === 'message_received'));
-  }, [notifications]);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -112,28 +108,17 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Campanella Notifiche */}
         {(user?.role === 'owner' || user?.role === 'coach') && (
           <div className="relative" ref={notificationsBellRef}>
-            <button
-              id="notifications-bell-btn"
-              onClick={() => { setIsNotificationsPanelOpen(p => !p); setIsUserMenuOpen(false); }}
-              className="relative p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
-              title="Notifiche"
-            >
-              <Bell className="w-5 h-5" />
-              {unreadCount > 0 && (
-                <span
-                  className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-mono font-black flex items-center justify-center shadow-lg ${
-                    hasUrgentAlert
-                      ? 'bg-rose-500 text-white shadow-rose-500/50 animate-pulse'
-                      : 'bg-[var(--color-primary)] text-slate-950 shadow-[var(--color-primary)]/40'
-                  }`}
-                >
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
+            <NotificationBell
+              isOpen={isNotificationsPanelOpen}
+              onClick={() => {
+                setIsNotificationsPanelOpen((p) => !p);
+                setIsUserMenuOpen(false);
+              }}
+            />
             <NotificationsPanel
               isOpen={isNotificationsPanelOpen}
               onClose={() => setIsNotificationsPanelOpen(false)}
+              onNavigateToAll={() => onTabChange('notifiche')}
             />
           </div>
         )}

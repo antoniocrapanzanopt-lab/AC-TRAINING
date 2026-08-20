@@ -43,6 +43,7 @@ import { OwnerProfileTab } from './components/OwnerProfileTab';
 import { BackupSettingsTab } from './components/BackupSettingsTab';
 import { ThemeCustomizer } from '../../components/settings/ThemeCustomizer';
 import { SecuritySettingsPage } from './SecuritySettingsPage';
+import { NotificationSettingsTab } from '../../components/settings/NotificationSettingsTab';
 
 export type SettingsTab =
   | 'owner'
@@ -847,62 +848,66 @@ export const SettingsPage: React.FC = () => {
             <SecuritySettingsPage />
           )}
 
-          {/* SEZIONE 10: PROMEMORIA */}
+          {/* SEZIONE 10: NOTIFICHE, WEB PUSH & PROMEMORIA */}
           {activeSubTab === 'reminders' && (
-            <form onSubmit={handleSaveReminders} className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Bell className="w-5 h-5 text-[var(--color-primary)]" /> Regole Automatiche di Promemoria
-                </h3>
-              </div>
+            <div className="space-y-8">
+              <NotificationSettingsTab />
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Certificato Medico (giorni)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="90"
-                    value={reminderForm.certificateDaysBefore}
-                    onChange={e => setReminderForm({ ...reminderForm, certificateDaysBefore: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-                  />
+              <form onSubmit={handleSaveReminders} className="p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Bell className="w-5 h-5 text-[var(--color-primary)]" /> Regole Automatiche di Scadenza & Rinnovi
+                  </h3>
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Abbonamento (giorni)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="90"
-                    value={reminderForm.subscriptionDaysBefore}
-                    onChange={e => setReminderForm({ ...reminderForm, subscriptionDaysBefore: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Certificato Medico (giorni)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="90"
+                      value={reminderForm.certificateDaysBefore}
+                      onChange={e => setReminderForm({ ...reminderForm, certificateDaysBefore: Number(e.target.value) })}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Abbonamento (giorni)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="90"
+                      value={reminderForm.subscriptionDaysBefore}
+                      onChange={e => setReminderForm({ ...reminderForm, subscriptionDaysBefore: Number(e.target.value) })}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Rata (giorni)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="90"
+                      value={reminderForm.installmentDaysBefore}
+                      onChange={e => setReminderForm({ ...reminderForm, installmentDaysBefore: Number(e.target.value) })}
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Rata (giorni)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="90"
-                    value={reminderForm.installmentDaysBefore}
-                    onChange={e => setReminderForm({ ...reminderForm, installmentDaysBefore: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-                  />
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" /> Salva Regole Scadenze
+                  </button>
                 </div>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow"
-                >
-                  <Save className="w-4 h-4" /> Salva Regole Promemoria
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           )}
 
           {/* SEZIONE 11: BACKUP ED ESPORTAZIONE AVANZATA */}

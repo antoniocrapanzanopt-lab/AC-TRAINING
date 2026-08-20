@@ -21,9 +21,11 @@ export type NavigationTab =
   | 'esercizi'
   | 'fabbisogno'
   | 'messaggi'
-  | 'analisi_report';
+  | 'analisi_report'
+  | 'notifiche';
 
 export * from './types/progression';
+export * from './types/notification';
 
 export type UserRole = 'owner' | 'admin' | 'coach' | 'receptionist' | 'athlete' | 'collaborator';
 
