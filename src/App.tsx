@@ -31,7 +31,7 @@ import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { isLoading } = useApp();
-  const { isAuthenticated, user, markDisclaimerAsSeen } = useAuth();
+  const { isAuthenticated, user, markDisclaimerAsSeen, isPasswordRecovery } = useAuth();
 
   // 1. Schermata di caricamento iniziale senza lampi
   if (isLoading) {
@@ -54,8 +54,8 @@ const AppContent: React.FC = () => {
     return <InvitePage email={inviteEmail} />;
   }
 
-  // 3. Se l'utente non ha effettuato il login
-  if (!isAuthenticated) {
+  // 3. Se l'utente non ha effettuato il login oppure sta reimpostando la password dal link email
+  if (!isAuthenticated || isPasswordRecovery) {
     return <AuthPage />;
   }
 

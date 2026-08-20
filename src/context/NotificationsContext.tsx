@@ -18,6 +18,8 @@ export interface CoachNotification {
 interface NotificationsContextType {
   notifications: CoachNotification[];
   unreadCount: number;
+  unreadTrophiesCount: number;
+  totalUnreadCount: number;
   loading: boolean;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
@@ -185,13 +187,20 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
     []
   );
 
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
+  // Conteggio non lette solo operative (esclude i trofei per non disturbare la campanella coach)
+  const unreadCount = notifications.filter((n) => !n.read_at && n.type !== 'new_pr').length;
+  // Conteggio non lette trofei & PR
+  const unreadTrophiesCount = notifications.filter((n) => !n.read_at && n.type === 'new_pr').length;
+  // Conteggio totale non lette
+  const totalUnreadCount = notifications.filter((n) => !n.read_at).length;
 
   return (
     <NotificationsContext.Provider
       value={{
         notifications,
         unreadCount,
+        unreadTrophiesCount,
+        totalUnreadCount,
         loading,
         markAsRead,
         markAllAsRead,

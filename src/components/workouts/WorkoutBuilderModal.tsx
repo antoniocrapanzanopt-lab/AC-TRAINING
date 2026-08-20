@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity } from 'lucide-react';
+import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { generateAISmartSuggestions, CoPilotActionableSuggestion } from '../../lib/ai/workoutGenerator';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
@@ -138,6 +139,205 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       });
     }
   }, [initialWorkout]);
+
+  // ─── TRACCIAMENTO AVANZAMENTO ATLETA (SETTIMANA & GIORNO CORRENTI) ───
+  interface AthleteExecutionProgress {
+    loading: boolean;
+    hasStarted: boolean;
+    currentWeek: number;
+    currentDay: string;
+    lastSessionDateFormatted: string | null;
+    lastSessionRpe: number | null;
+    lastCompletedDay: string | null;
+    lastCompletedWeek: number | null;
+    completedMap: Record<string, boolean>;
+    completedSessionsCount: number;
+    totalPlannedSessions: number;
+    progressPercent: number;
+  }
+
+  const [athleteProgress, setAthleteProgress] = useState<AthleteExecutionProgress>({
+    loading: false,
+    hasStarted: false,
+    currentWeek: 1,
+    currentDay: 'Giorno A',
+    lastSessionDateFormatted: null,
+    lastSessionRpe: null,
+    lastCompletedDay: null,
+    lastCompletedWeek: null,
+    completedMap: {},
+    completedSessionsCount: 0,
+    totalPlannedSessions: 0,
+    progressPercent: 0,
+  });
+
+  useEffect(() => {
+    if (!athleteId) return;
+
+    let isMounted = true;
+
+    const fetchAthleteProgress = async () => {
+      setAthleteProgress(prev => ({ ...prev, loading: true }));
+      try {
+        const currentDays = daysList.length > 0 ? daysList : ['Giorno A', 'Giorno B', 'Giorno C'];
+        const totalPlanned = Math.max(1, totalWeeks * currentDays.length);
+
+        // 1. Query Supabase (fonte di verità reale: solo sessioni effettivamente completate)
+        let query = supabase
+          .from('workout_sessions')
+          .select(`
+            id,
+            start_time,
+            end_time,
+            notes,
+            rpe,
+            workout_id,
+            exercise_logs (
+              id,
+              exercise_id,
+              workout_exercises (
+                id,
+                week_number,
+                day_name
+              )
+            )
+          `)
+          .eq('athlete_id', athleteId)
+          .not('end_time', 'is', null)
+          .order('start_time', { ascending: false });
+
+        if (initialWorkout?.id) {
+          query = query.eq('workout_id', initialWorkout.id);
+        }
+
+        const { data: sessionsData } = await query.limit(50);
+
+        const dbCompletedMap: Record<string, boolean> = {};
+        let lastDateIso: string | null = null;
+        let lastRpe: number | null = null;
+        let lastCompWeek: number | null = null;
+        let lastCompDay: string | null = null;
+
+        if (sessionsData && sessionsData.length > 0) {
+          // Ultimo workout (più recente)
+          lastDateIso = sessionsData[0].end_time || sessionsData[0].start_time;
+          lastRpe = sessionsData[0].rpe ? Number(sessionsData[0].rpe) : null;
+
+          // Mappa le sessioni dalla più vecchia alla più recente per simulare la progressione cronologica
+          const sortedChronological = [...sessionsData].reverse();
+
+          sortedChronological.forEach((sess) => {
+            let mappedThisSession = false;
+            const logs = sess.exercise_logs || [];
+
+            logs.forEach((log) => {
+              const weRaw = log.workout_exercises;
+              const weList = Array.isArray(weRaw) ? weRaw : weRaw ? [weRaw] : [];
+              weList.forEach((we) => {
+                if (we && we.week_number && we.day_name) {
+                  dbCompletedMap[`${we.week_number}-${we.day_name}`] = true;
+                  lastCompWeek = Number(we.week_number);
+                  lastCompDay = String(we.day_name);
+                  mappedThisSession = true;
+                }
+              });
+            });
+
+            // Se i log non avevano la foreign key esplicita, assegna la sessione al prossimo giorno non completato
+            if (!mappedThisSession) {
+              for (let w = 1; w <= totalWeeks; w++) {
+                for (const d of currentDays) {
+                  if (!dbCompletedMap[`${w}-${d}`]) {
+                    dbCompletedMap[`${w}-${d}`] = true;
+                    lastCompWeek = w;
+                    lastCompDay = d;
+                    mappedThisSession = true;
+                    break;
+                  }
+                }
+                if (mappedThisSession) break;
+              }
+            }
+          });
+        }
+
+        const completedKeys = Object.keys(dbCompletedMap).filter(k => dbCompletedMap[k]);
+        const completedCount = completedKeys.length;
+
+        // Trova la prima settimana e giorno non ancora completati (prossimo allenamento da svolgere)
+        let detectedWeek = 1;
+        let detectedDay = currentDays[0] || 'Giorno A';
+        let foundActive = false;
+
+        for (let w = 1; w <= totalWeeks; w++) {
+          for (const d of currentDays) {
+            const isDone = Boolean(dbCompletedMap[`${w}-${d}`]);
+            if (!isDone && !foundActive) {
+              detectedWeek = w;
+              detectedDay = d;
+              foundActive = true;
+              break;
+            }
+          }
+          if (foundActive) break;
+        }
+
+        if (!foundActive && completedCount > 0) {
+          detectedWeek = totalWeeks;
+          detectedDay = currentDays[currentDays.length - 1] || 'Giorno A';
+        }
+
+        let dateFormatted: string | null = null;
+        if (lastDateIso) {
+          const dObj = new Date(lastDateIso);
+          const now = new Date();
+          const diffMs = now.getTime() - dObj.getTime();
+          const diffDays = Math.floor(diffMs / (24 * 3600 * 1000));
+          
+          if (diffDays === 0) {
+            dateFormatted = `Oggi, ${dObj.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
+          } else if (diffDays === 1) {
+            dateFormatted = `Ieri, ${dObj.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
+          } else if (diffDays < 7) {
+            dateFormatted = `${diffDays} gg fa`;
+          } else {
+            dateFormatted = dObj.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
+          }
+        }
+
+        const hasStarted = completedCount > 0 || Boolean(lastDateIso);
+        const percent = Math.min(100, Math.round((completedCount / totalPlanned) * 100));
+
+        if (isMounted) {
+          setAthleteProgress({
+            loading: false,
+            hasStarted,
+            currentWeek: detectedWeek,
+            currentDay: detectedDay,
+            lastSessionDateFormatted: dateFormatted,
+            lastSessionRpe: lastRpe,
+            lastCompletedWeek: lastCompWeek,
+            lastCompletedDay: lastCompDay,
+            completedMap: dbCompletedMap,
+            completedSessionsCount: completedCount,
+            totalPlannedSessions: totalPlanned,
+            progressPercent: percent,
+          });
+        }
+      } catch (err) {
+        console.warn('Errore calcolo progresso atleta:', err);
+        if (isMounted) {
+          setAthleteProgress(prev => ({ ...prev, loading: false }));
+        }
+      }
+    };
+
+    fetchAthleteProgress();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [athleteId, initialWorkout?.id, totalWeeks, daysList]);
 
   // Esercizi filtrati per la settimana ed il giorno correntemente selezionati
   const currentWeekDayExercises = exercises.filter(
@@ -836,15 +1036,36 @@ ${result.regole_adattamento || '-'}
                   </>
                 )}
               </h2>
-              <p className="text-xs text-slate-400">
-                {athleteId ? (
-                  `Le modifiche apportate influenzeranno solo ed esclusivamente la scheda di questo atleta.`
+              {athleteId ? (
+                <div className="space-y-1.5 mt-0.5">
+                  <p className="text-xs text-slate-400">
+                    Le modifiche apportate influenzeranno solo ed esclusivamente la scheda di questo atleta.
+                  </p>
+                    {/* Badge Rapido di Avanzamento nell'Header */}
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-300">
+                      <Compass className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="font-bold">Avanzamento:</span>
+                      {athleteProgress.hasStarted ? (
+                        <span className="font-black text-white bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-500/30">
+                          Settimana {athleteProgress.currentWeek} • {athleteProgress.currentDay}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">Non ancora iniziato (Settimana 1)</span>
+                      )}
+                      {athleteProgress.lastSessionDateFormatted && (
+                        <span className="text-[11px] text-slate-400">
+                          (Ultimo workout: <strong className="text-slate-200">{athleteProgress.lastSessionDateFormatted}</strong>{athleteProgress.lastCompletedDay ? ` • ${athleteProgress.lastCompletedDay} fatto` : ''})
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 ) : (
-                  `Gestisci giorni, settimane, carichi target e progressioni parametrizzate`
+                  <p className="text-xs text-slate-400">
+                    Gestisci giorni, settimane, carichi target e progressioni parametrizzate
+                  </p>
                 )}
-              </p>
+              </div>
             </div>
-          </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsCoPilotOpen(true)}
@@ -861,6 +1082,84 @@ ${result.regole_adattamento || '-'}
 
         {/* Scrollable Body (Senza Barre di Scorrimento Visibili) */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 no-scrollbar">
+          
+          {/* BANNER PROMINENTE AVANZAMENTO ATLETA */}
+          {athleteId && (
+            <div className="p-4 rounded-3xl bg-slate-950/90 border border-amber-500/30 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+              
+              <div className="flex items-center gap-3.5 min-w-0 relative z-10">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/10">
+                  <Compass className="w-6 h-6 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-black text-amber-400 uppercase tracking-wider">
+                      Stato Attuale di {currentAthlete ? currentAthlete.firstName : 'Atleta'}:
+                    </span>
+                    {athleteProgress.hasStarted ? (
+                      <span className="text-sm font-black text-white px-2.5 py-0.5 rounded-xl bg-amber-500/20 border border-amber-500/40 shadow-sm flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                        Settimana {athleteProgress.currentWeek} • {athleteProgress.currentDay}
+                        {athleteProgress.lastCompletedDay && (
+                          <span className="text-[10px] text-emerald-400 font-mono font-bold ml-1 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                            (Ultimo svolto: {athleteProgress.lastCompletedDay})
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold text-slate-400 italic">
+                        Scheda assegnata • In attesa del primo allenamento
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-3 mt-2 flex-wrap text-xs text-slate-400">
+                    {athleteProgress.lastSessionDateFormatted && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Ultimo workout: <strong className="text-slate-200">{athleteProgress.lastSessionDateFormatted}</strong></span>
+                        {athleteProgress.lastSessionRpe && (
+                          <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                            RPE {athleteProgress.lastSessionRpe}/10
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    
+                    <div className="flex items-center gap-2">
+                      <div className="w-28 sm:w-36 h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700/60">
+                        <div
+                          className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 rounded-full transition-all duration-500"
+                          style={{ width: `${athleteProgress.progressPercent}%` }}
+                        />
+                      </div>
+                      <span className="font-mono font-bold text-slate-300 text-[11px]">
+                        {athleteProgress.completedSessionsCount}/{athleteProgress.totalPlannedSessions} sessioni ({athleteProgress.progressPercent}%)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Azione rapida Salta alla settimana corrente */}
+              {athleteProgress.hasStarted && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveWeek(athleteProgress.currentWeek);
+                    setActiveDay(athleteProgress.currentDay);
+                    setActiveBuilderTab('exercises');
+                  }}
+                  className="self-start md:self-auto px-4 py-2.5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all flex items-center gap-2 shrink-0 cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 active:scale-95 relative z-10"
+                >
+                  <Target className="w-4 h-4" />
+                  <span>Vai a Sett. {athleteProgress.currentWeek} ({athleteProgress.currentDay})</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
           
           {/* ══════════════════════════════════════════════════════════════════ */}
           {/* SEGMENTED NAVIGATION BAR PRINCIPALE A 4 MODULI                     */}
@@ -1153,18 +1452,37 @@ ${result.regole_adattamento || '-'}
                 const isCurrent = activeWeek === wNum;
                 const countEx = exercises.filter(e => (e.week_number || 1) === wNum).length;
 
+                // Calcolo stato avanzamento atleta per questa settimana
+                const isWeekCompleted = athleteId && daysList.length > 0 && daysList.every(d => Boolean(athleteProgress.completedMap[`${wNum}-${d}`]));
+                const isAthleteCurrentWeek = athleteId && athleteProgress.currentWeek === wNum && athleteProgress.hasStarted;
+
                 return (
                   <button
                     key={wNum}
                     type="button"
                     onClick={() => setActiveWeek(wNum)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer relative ${
                       isCurrent
                         ? 'bg-[var(--color-primary)] text-black font-black shadow-md'
+                        : isAthleteCurrentWeek
+                        ? 'bg-amber-500/15 text-amber-300 border-2 border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                        : isWeekCompleted
+                        ? 'bg-emerald-950/30 text-emerald-300 border border-emerald-500/40'
                         : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700 border border-slate-700/60'
                     }`}
                   >
                     <span>Settimana {wNum}</span>
+
+                    {/* Indicatori Avanzamento Atleta */}
+                    {isWeekCompleted && (
+                      <span className="text-[11px] text-emerald-400 font-bold" title="Settimana completata dall'atleta">✓</span>
+                    )}
+                    {isAthleteCurrentWeek && !isWeekCompleted && (
+                      <span className="px-1.5 py-0.2 rounded-md text-[9px] font-black bg-amber-500 text-slate-950">
+                        📍 In corso
+                      </span>
+                    )}
+
                     <span
                       className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
                         isCurrent ? 'bg-black/20 text-black' : 'bg-slate-900 text-slate-400'
@@ -1198,6 +1516,10 @@ ${result.regole_adattamento || '-'}
                     e => (e.week_number || 1) === activeWeek && (e.day_name || 'Giorno A') === dName
                   ).length;
 
+                  // Calcolo avanzamento giorno per la settimana attiva
+                  const isDayDone = athleteId && Boolean(athleteProgress.completedMap[`${activeWeek}-${dName}`]);
+                  const isAthleteTargetDay = athleteId && athleteProgress.currentWeek === activeWeek && athleteProgress.currentDay === dName && athleteProgress.hasStarted;
+
                   return (
                     <button
                       key={dName}
@@ -1206,9 +1528,15 @@ ${result.regole_adattamento || '-'}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
                         isCurrentDay
                           ? 'bg-slate-700 text-white border border-[var(--color-primary)] font-black'
+                          : isAthleteTargetDay
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 font-black'
+                          : isDayDone
+                          ? 'bg-emerald-950/30 text-emerald-300 border border-emerald-500/30'
                           : 'bg-slate-800/50 text-slate-400 border border-transparent hover:bg-slate-800'
                       }`}
                     >
+                      {isDayDone && <span className="text-emerald-400 font-bold text-[10px]" title="Giorno completato">✓</span>}
+                      {isAthleteTargetDay && <span className="text-amber-400 font-bold text-[10px]" title="Giorno attuale atleta">📍</span>}
                       <span>{dName}</span>
                       <span className="text-[10px] opacity-70">({exCountDay})</span>
                     </button>

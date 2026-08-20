@@ -16,13 +16,14 @@ import {
 } from 'lucide-react';
 import { useNotifications, CoachNotification } from '../../context/NotificationsContext';
 import { useApp } from '../../context/AppContext';
+import { useAthletes } from '../../context/AthletesContext';
 
 interface NotificationsPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type FilterCategory = 'all' | 'unread' | 'alerts' | 'workouts' | 'messages';
+type FilterCategory = 'all' | 'unread' | 'alerts' | 'workouts' | 'messages' | 'trophies';
 
 const typeConfig: Record<CoachNotification['type'], {
   icon: React.FC<{ className?: string }>;
@@ -107,6 +108,7 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ isOpen, 
   const {
     notifications,
     unreadCount,
+    unreadTrophiesCount,
     markAsRead,
     markAllAsRead,
     deleteNotification,
@@ -115,20 +117,44 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ isOpen, 
   } = useNotifications();
 
   const { setActiveTab } = useApp();
+  const { athletes, setSelectedAthleteId } = useAthletes();
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
+
+  // Conteggi separati per filtri
+  const counts = useMemo(() => {
+    const operative = notifications.filter((n) => n.type !== 'new_pr');
+    const alerts = notifications.filter((n) => n.type === 'pain_reported');
+    const workouts = notifications.filter((n) => n.type === 'workout_completed');
+    const messages = notifications.filter((n) => n.type === 'message_received' || n.type === 'questionnaire_submitted');
+    const trophies = notifications.filter((n) => n.type === 'new_pr');
+
+    return {
+      allOperative: operative.length,
+      unreadOperative: unreadCount,
+      alerts: alerts.length,
+      workouts: workouts.length,
+      messages: messages.length,
+      trophies: trophies.length,
+      unreadTrophies: unreadTrophiesCount,
+    };
+  }, [notifications, unreadCount, unreadTrophiesCount]);
 
   // Smart Grouping: Raggruppa i record multipli (PR) dello stesso atleta nello stesso giorno
   const processedNotifications = useMemo(() => {
-    // 1. Filtro base
-    let filtered = notifications;
-    if (activeFilter === 'unread') {
-      filtered = filtered.filter((n) => !n.read_at);
+    // 1. Filtro base: 'all' e 'unread' mostrano SOLO notifiche operative di default (senza intasare di PR/Trofei)
+    let filtered: CoachNotification[] = [];
+    if (activeFilter === 'all') {
+      filtered = notifications.filter((n) => n.type !== 'new_pr');
+    } else if (activeFilter === 'unread') {
+      filtered = notifications.filter((n) => !n.read_at && n.type !== 'new_pr');
     } else if (activeFilter === 'alerts') {
-      filtered = filtered.filter((n) => n.type === 'pain_reported');
+      filtered = notifications.filter((n) => n.type === 'pain_reported');
     } else if (activeFilter === 'workouts') {
-      filtered = filtered.filter((n) => n.type === 'workout_completed' || n.type === 'new_pr');
+      filtered = notifications.filter((n) => n.type === 'workout_completed');
     } else if (activeFilter === 'messages') {
-      filtered = filtered.filter((n) => n.type === 'message_received' || n.type === 'questionnaire_submitted');
+      filtered = notifications.filter((n) => n.type === 'message_received' || n.type === 'questionnaire_submitted');
+    } else if (activeFilter === 'trophies') {
+      filtered = notifications.filter((n) => n.type === 'new_pr');
     }
 
     // 2. Raggruppamento per atleta e tipo 'new_pr' nello stesso giorno
@@ -219,17 +245,45 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ isOpen, 
   if (!isOpen) return null;
 
   const handleItemClick = async (aggItem: AggregatedNotificationItem) => {
-    // Segna tutte come lette nel gruppo
+    // 1. Segna tutte come lette nel gruppo
     for (const notif of aggItem.originalNotifications) {
       if (!notif.read_at) {
         await markAsRead(notif.id);
       }
     }
 
-    const cfg = typeConfig[aggItem.type];
-    if (cfg?.navTab) {
-      setActiveTab(cfg.navTab as any);
+    // 2. Risolvi l'ID dell'atleta
+    let targetAthleteId = aggItem.athleteId || aggItem.originalNotifications.find((n) => n.athlete_id)?.athlete_id;
+    if (!targetAthleteId) {
+      const searchTerms = [aggItem.athleteName, aggItem.title, ...aggItem.originalNotifications.map((n) => n.athlete_name || n.title)].filter(Boolean) as string[];
+      for (const term of searchTerms) {
+        const lowerTerm = term.toLowerCase();
+        const match = athletes.find((a) => {
+          const fullName = `${a.firstName} ${a.lastName}`.trim().toLowerCase();
+          return fullName && (lowerTerm.includes(fullName) || lowerTerm.includes(a.firstName.toLowerCase()));
+        });
+        if (match) {
+          targetAthleteId = match.id;
+          break;
+        }
+      }
     }
+
+    // 3. Routing preciso
+    if (aggItem.type === 'message_received') {
+      setActiveTab('messaggi');
+    } else if (targetAthleteId) {
+      setSelectedAthleteId(targetAthleteId);
+      setActiveTab('atleti');
+    } else if (aggItem.type === 'workout_completed' || aggItem.type === 'new_pr') {
+      setActiveTab('cronologia_allenamenti');
+    } else {
+      const cfg = typeConfig[aggItem.type];
+      if (cfg?.navTab) {
+        setActiveTab(cfg.navTab as any);
+      }
+    }
+
     onClose();
   };
 
@@ -312,7 +366,7 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ isOpen, 
                   : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              Tutte ({notifications.length})
+              Tutte ({counts.allOperative})
             </button>
 
             <button
@@ -324,7 +378,7 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ isOpen, 
                   : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              Da leggere ({unreadCount})
+              Da leggere ({counts.unreadOperative})
             </button>
 
             <button
@@ -333,10 +387,12 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ isOpen, 
               className={`px-2.5 py-1 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap text-[11px] ${
                 activeFilter === 'alerts'
                   ? 'bg-rose-500 text-white font-black shadow-sm'
+                  : counts.alerts > 0
+                  ? 'bg-rose-500/10 text-rose-300 hover:text-rose-200 border border-rose-500/30'
                   : 'bg-slate-900/80 text-slate-400 hover:text-rose-400 border border-slate-800'
               }`}
             >
-              🚨 Dolori ({notifications.filter((n) => n.type === 'pain_reported').length})
+              🚨 Dolori ({counts.alerts})
             </button>
 
             <button
@@ -348,7 +404,7 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ isOpen, 
                   : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              🏋️ Allenamenti & PR
+              🏋️ Allenamenti ({counts.workouts})
             </button>
 
             <button
@@ -360,7 +416,26 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ isOpen, 
                   : 'bg-slate-900/80 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
-              💬 Messaggi
+              💬 Messaggi ({counts.messages})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveFilter('trophies')}
+              className={`px-2.5 py-1 rounded-xl font-bold transition-all cursor-pointer whitespace-nowrap text-[11px] flex items-center gap-1.5 ${
+                activeFilter === 'trophies'
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                  : 'bg-amber-500/10 text-amber-300/90 hover:text-amber-200 border border-amber-500/25'
+              }`}
+            >
+              <span>🏆 Trofei & PR ({counts.trophies})</span>
+              {counts.unreadTrophies > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black ${
+                  activeFilter === 'trophies' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500 text-slate-950'
+                }`}>
+                  {counts.unreadTrophies}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -375,10 +450,22 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ isOpen, 
           ) : processedNotifications.length === 0 ? (
             <div className="py-16 px-6 flex flex-col items-center gap-2 text-center text-slate-500">
               <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600">
-                <CheckCheck className="w-6 h-6 text-emerald-400" />
+                {activeFilter === 'trophies' ? (
+                  <Trophy className="w-6 h-6 text-amber-400" />
+                ) : (
+                  <CheckCheck className="w-6 h-6 text-emerald-400" />
+                )}
               </div>
-              <p className="text-sm font-bold text-slate-300">Tutte le notifiche sono in regola</p>
-              <p className="text-xs text-slate-500">Nessuna nuova notifica nella categoria selezionata.</p>
+              <p className="text-sm font-bold text-slate-300">
+                {activeFilter === 'trophies'
+                  ? 'Nessun trofeo o record recente'
+                  : 'Tutte le notifiche sono in regola'}
+              </p>
+              <p className="text-xs text-slate-500">
+                {activeFilter === 'trophies'
+                  ? 'I nuovi record personali (PR) e i traguardi degli atleti vengono raccolti qui in modo dedicato.'
+                  : 'Nessuna nuova notifica nella categoria selezionata.'}
+              </p>
             </div>
           ) : (
             processedNotifications.map((n) => {

@@ -84,11 +84,6 @@ const WorkoutCard: React.FC<{
         const wId = assigned.workout_id;
         if (!athId || !wId) return;
 
-        let currentMap: Record<string, boolean> = {};
-        try {
-          currentMap = JSON.parse(localStorage.getItem(progressKey) || '{}');
-        } catch {}
-
         const { data } = await supabase
           .from('workout_sessions')
           .select(`
@@ -101,16 +96,24 @@ const WorkoutCard: React.FC<{
           .not('end_time', 'is', null);
 
         const daysList = days.length > 0 ? days : ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
-        const totalSessionCount = (data?.length || 0);
+        const totalSessionCount = data?.length || 0;
 
-        if (totalSessionCount >= 4) {
-          // Se ci sono almeno 4 sessioni registrate, la Settimana 1 è completata
-          daysList.forEach((dName) => {
-            currentMap[`1-${dName}`] = true;
-          });
+        const currentMap: Record<string, boolean> = {};
+        let mappedCount = 0;
+        const totalWeeksNum = assigned.workout?.total_weeks || 4;
+
+        for (let w = 1; w <= totalWeeksNum && mappedCount < totalSessionCount; w++) {
+          for (const dName of daysList) {
+            if (mappedCount < totalSessionCount) {
+              currentMap[`${w}-${dName}`] = true;
+              mappedCount++;
+            } else {
+              break;
+            }
+          }
         }
 
-        setCompletedMap({ ...currentMap });
+        setCompletedMap(currentMap);
         localStorage.setItem(progressKey, JSON.stringify(currentMap));
       } catch (e) {
         console.warn('Errore sync progressi da DB:', e);
@@ -118,7 +121,7 @@ const WorkoutCard: React.FC<{
     };
 
     syncProgressFromDb();
-  }, [assigned.athlete_id, assigned.workout_id, days, progressKey]);
+  }, [assigned.athlete_id, assigned.workout_id, days, progressKey, assigned.workout?.total_weeks]);
 
   const totalWeeks = assigned.workout?.total_weeks || 4;
   const isStartingThis = startingWorkoutId === assigned.workout_id;

@@ -28,6 +28,9 @@ export interface AuthContextType {
   loginWithCredentials: (email: string, password?: string) => Promise<{ error: Error | AuthError | null }>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
+  isPasswordRecovery: boolean;
+  setIsPasswordRecovery: (val: boolean) => void;
+  updateUserPassword: (newPassword: string) => Promise<{ error: Error | null }>;
   signUpAthlete: (email: string, password: string) => Promise<{ error: Error | AuthError | null }>;
   refreshAuthProfile: () => Promise<void>;
   markDisclaimerAsSeen: () => Promise<void>;
@@ -42,6 +45,14 @@ const getDefaultMembers = (_orgId: string): OrganizationMember[] => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      return hash.includes('type=recovery') || search.includes('type=recovery');
+    }
+    return false;
+  });
   const mfa = useMFA();
   const [loading, setLoading] = useState(true);
   const [ownerProfile] = useState(() => getLocalOwnerProfile());
@@ -148,6 +159,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 2. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+      }
       await checkUserRoleAndSet(session?.user);
       if (event !== 'SIGNED_OUT') {
         await mfa.loadMFAStatus();
@@ -276,11 +290,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const requestPasswordReset = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      return { success: false, message: 'Inserisci un indirizzo email valido.' };
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: window.location.origin,
+    });
     if (error) {
       return { success: false, message: error.message };
     }
-    return { success: true, message: 'Email di reset inviata. Controlla la tua casella.' };
+    return { 
+      success: true, 
+      message: 'Email di ripristino inviata con successo! Controlla la tua casella di posta (inclusa la cartella Spam) e clicca sul link sicuro per impostare la nuova password.' 
+    };
+  };
+
+  const updateUserPassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    if (!error) {
+      setIsPasswordRecovery(false);
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+    return { error: error ? new Error(error.message) : null };
   };
 
   const activeCanViewFinancials = hasPermission(
@@ -321,6 +357,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signUpAthlete,
         logout,
         requestPasswordReset,
+        isPasswordRecovery,
+        setIsPasswordRecovery,
+        updateUserPassword,
         refreshAuthProfile,
         markDisclaimerAsSeen,
       }}
