@@ -509,8 +509,20 @@ export function buildTeamOverviewReport(
 
   const todayPriorities: DecisionPriorityItem[] = [];
 
+  // Lettura alert archiviati / gestiti dal coach
+  const dismissedAlerts: Set<string> = (() => {
+    try {
+      const saved = localStorage.getItem('builder_copilot_dismissed_alerts');
+      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  })();
+
   // 1. Dolori articolari segnalati (Priorità Alta)
-  const painAthletes = eligibleReports.filter((a) => a.painReportsCount.current > 0);
+  const painAthletes = eligibleReports.filter(
+    (a) => a.painReportsCount.current > 0 && !dismissedAlerts.has(a.athleteId) && !dismissedAlerts.has(`prio-pain-${a.athleteId}`)
+  );
   painAthletes.forEach((pa) => {
     if (todayPriorities.length < 3) {
       todayPriorities.push({
@@ -528,7 +540,10 @@ export function buildTeamOverviewReport(
   });
 
   // 2. Atleti in Penultima Settimana (Priorità Media/Alta)
-  penultimateReports.forEach((pa) => {
+  const pendingPenultimateReports = penultimateReports.filter(
+    (pa) => !dismissedAlerts.has(pa.athleteId) && !dismissedAlerts.has(`prio-penult-${pa.athleteId}`)
+  );
+  pendingPenultimateReports.forEach((pa) => {
     if (todayPriorities.length < 3) {
       todayPriorities.push({
         id: `prio-penult-${pa.athleteId}`,

@@ -354,7 +354,16 @@ export const AnalysisReportsPage: React.FC = () => {
           isOpen={isCopilotOpen}
           onClose={() => setIsCopilotOpen(false)}
           alertData={copilotContext}
-          onApplied={() => {
+          onApplied={(athleteId) => {
+            try {
+              const saved = localStorage.getItem('builder_copilot_dismissed_alerts');
+              const set = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+              set.add(athleteId);
+              set.add(`prio-pain-${athleteId}`);
+              set.add(`prio-penult-${athleteId}`);
+              set.add(`prio-unassigned-${athleteId}`);
+              localStorage.setItem('builder_copilot_dismissed_alerts', JSON.stringify(Array.from(set)));
+            } catch (_) {}
             setIsCopilotOpen(false);
             loadData();
           }}

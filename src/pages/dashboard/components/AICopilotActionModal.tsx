@@ -202,10 +202,28 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     setCurrentStep('no_changes');
   };
 
+  // Helper per archiviare l'alert nei gestiti/dismissed
+  const persistDismissedAlert = () => {
+    try {
+      const saved = localStorage.getItem('builder_copilot_dismissed_alerts');
+      const set = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+      if (alertData) {
+        set.add(alertData.athleteId);
+        set.add(`prio-pain-${alertData.athleteId}`);
+        set.add(`prio-penult-${alertData.athleteId}`);
+        set.add(`prio-unassigned-${alertData.athleteId}`);
+      }
+      localStorage.setItem('builder_copilot_dismissed_alerts', JSON.stringify(Array.from(set)));
+      window.dispatchEvent(new Event('storage'));
+    } catch (_) {}
+  };
+
   // Applicazione modifiche alla scheda
   const handleApply = async () => {
     setIsProcessing(true);
     setOutcomeType('applied');
+    persistDismissedAlert();
+
     addTimelineEvent(
       alertData.athleteId,
       'other',
@@ -227,13 +245,14 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     setTimeout(() => {
       onApplied?.(alertData.athleteId);
       onClose();
-    }, 1400);
+    }, 900);
   };
 
   // Gestione senza modifiche ("Non Applicare Nulla")
   const handleDismissNoChange = async () => {
     setIsProcessing(true);
     setOutcomeType('no_changes');
+    persistDismissedAlert();
 
     addTimelineEvent(
       alertData.athleteId,
@@ -261,12 +280,17 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     setTimeout(() => {
       onApplied?.(alertData.athleteId);
       onClose();
-    }, 1400);
+    }, 900);
+  };
+
+  const handleImmediateFinish = () => {
+    onApplied?.(alertData.athleteId);
+    onClose();
   };
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={currentStep === 'success' ? undefined : onClose} />
+      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
 
       <div className={`relative w-full max-w-4xl bg-[#0a0e17] rounded-3xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[92vh] transition-all duration-300 border ${
         currentStep === 'success'
@@ -359,6 +383,15 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                     : `L'intervento Copilot per ${alertData.athleteName} è stato registrato nel programma.`}
                   {sendChatNotification && chatMessageText.trim() && ' Il messaggio è stato inoltrato all\'atleta in chat.'}
                 </p>
+                <div className="pt-3">
+                  <button
+                    type="button"
+                    onClick={handleImmediateFinish}
+                    className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all shadow-lg cursor-pointer"
+                  >
+                    Chiudi Schermata
+                  </button>
+                </div>
               </div>
             </div>
           )}
