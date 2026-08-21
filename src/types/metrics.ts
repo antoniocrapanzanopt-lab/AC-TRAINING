@@ -37,3 +37,57 @@ export interface AthleteMaxLift {
 
 export type AthleteMetricInput = Omit<AthleteMetric, 'id' | 'created_at' | 'updated_at'>;
 export type AthleteMaxLiftInput = Omit<AthleteMaxLift, 'id' | 'created_at'>;
+
+// ─── RITUALE CHECK MISURE & PROMEMORIA AUTOMATICI ─────────────────────────
+
+export type CheckFrequency = 7 | 14 | 30;
+export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=Domenica, 1=Lunedì, ...
+export type PhotoRequirement = 'none' | 'optional' | 'mandatory';
+export type CheckStatus = 'scheduled' | 'due_today' | 'overdue' | 'completed';
+
+export interface RequiredMeasurementsConfig {
+  weight: boolean;
+  body_fat: boolean;
+  neck: boolean;
+  shoulders: boolean;
+  chest: boolean;
+  waist: boolean;
+  hips: boolean;
+  biceps: boolean;
+  thighs: boolean;
+  calves: boolean;
+}
+
+export interface AthleteCheckScheduleConfig {
+  athlete_id: string;
+  frequency_days: CheckFrequency;
+  preferred_day_of_week?: DayOfWeek;
+  required_fields: RequiredMeasurementsConfig;
+  photo_requirement: PhotoRequirement;
+  reminder_active: boolean;
+  second_reminder_active: boolean; // Sollecito dopo 24/48h se non compilato
+  custom_notes_prompt?: string;
+  updated_at: string;
+}
+
+export interface CheckScheduleState {
+  status: CheckStatus;
+  statusLabel: string;
+  lastCheckDate: string | null;
+  nextCheckDate: string;
+  daysDiff: number; // Giorni rimanenti o di ritardo
+  frequencyDays: number;
+  isOverdue: boolean;
+  isDueToday: boolean;
+}
+
+export interface AthleteProgressPhoto {
+  id: string;
+  athlete_id: string;
+  metric_id?: string;
+  date: string;
+  pose: 'front' | 'back' | 'side' | 'other';
+  image_url: string;
+  notes?: string;
+  created_at: string;
+}

@@ -9,18 +9,42 @@ import {
   TrendingDown,
   Activity,
   Calendar,
-  X
+  X,
+  Bell,
+  Clock,
+  Camera,
+  ChevronDown,
+  ChevronUp,
+  Save,
+  Flame,
 } from 'lucide-react';
 import { useMetrics } from '../../context/MetricsContext';
 import { useToast } from '../../context/ToastContext';
 import { MaxLiftsSection } from '../metrics/MaxLiftsSection';
+import { EnergyEstimatorSection } from '../nutrition/EnergyEstimatorSection';
+import {
+  CheckFrequency,
+  DayOfWeek,
+  PhotoRequirement,
+} from '../../types/metrics';
 
 interface MetricsTabProps {
   athleteId: string;
   athleteName: string;
+  athleteBirthDate?: string | null;
+  athleteGender?: string | null;
+  athleteHeightCm?: number | null;
+  onNavigateToFullNutrition?: () => void;
 }
 
-export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }) => {
+export const MetricsTab: React.FC<MetricsTabProps> = ({
+  athleteId,
+  athleteName,
+  athleteBirthDate,
+  athleteGender,
+  athleteHeightCm,
+  onNavigateToFullNutrition,
+}) => {
   const {
     metrics,
     maxLifts,
@@ -28,11 +52,15 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
     addMetric,
     deleteMetric,
     fetchMaxLiftsForAthlete,
+    getAthleteSchedule,
+    saveAthleteSchedule,
+    getAthleteScheduleState,
   } = useMetrics();
 
   const { showSuccess, showError } = useToast();
 
-  const [activeSubTab, setActiveSubTab] = useState<'misure' | 'massimali'>('misure');
+  const [activeSubTab, setActiveSubTab] = useState<'misure' | 'fabbisogno' | 'massimali'>('misure');
+  const [isScheduleOpen, setIsScheduleOpen] = useState<boolean>(false);
 
 
   // Modali State
@@ -82,6 +110,50 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
     return Math.round(diff * 10) / 10;
   }, [latestMetric, previousMetric]);
 
+
+  // Configurazione Rituale Check Misure per questo atleta
+  const currentSchedule = useMemo(() => {
+    return getAthleteSchedule(athleteId);
+  }, [athleteId, getAthleteSchedule]);
+
+  const [frequencyDays, setFrequencyDays] = useState<CheckFrequency>(7);
+  const [preferredDay, setPreferredDay] = useState<DayOfWeek>(1);
+  const [photoRequirement, setPhotoRequirement] = useState<PhotoRequirement>('optional');
+  const [reminderActive, setReminderActive] = useState<boolean>(true);
+  const [secondReminderActive, setSecondReminderActive] = useState<boolean>(true);
+  const [requiredFields, setRequiredFields] = useState(currentSchedule.required_fields);
+  const [notesPrompt, setNotesPrompt] = useState(currentSchedule.custom_notes_prompt || '');
+
+  useEffect(() => {
+    if (currentSchedule) {
+      setFrequencyDays(currentSchedule.frequency_days);
+      setPreferredDay(currentSchedule.preferred_day_of_week ?? 1);
+      setPhotoRequirement(currentSchedule.photo_requirement);
+      setReminderActive(currentSchedule.reminder_active);
+      setSecondReminderActive(currentSchedule.second_reminder_active);
+      setRequiredFields(currentSchedule.required_fields);
+      setNotesPrompt(currentSchedule.custom_notes_prompt || '');
+    }
+  }, [currentSchedule]);
+
+  const scheduleState = useMemo(() => {
+    return getAthleteScheduleState(athleteId, latestMetric?.date || null);
+  }, [athleteId, latestMetric, getAthleteScheduleState]);
+
+  const handleSaveSchedule = async () => {
+    await saveAthleteSchedule({
+      athlete_id: athleteId,
+      frequency_days: frequencyDays,
+      preferred_day_of_week: preferredDay,
+      required_fields: requiredFields,
+      photo_requirement: photoRequirement,
+      reminder_active: reminderActive,
+      second_reminder_active: secondReminderActive,
+      custom_notes_prompt: notesPrompt.trim() || undefined,
+      updated_at: new Date().toISOString(),
+    });
+    showSuccess('Configurazione salvata!', `Rituale check aggiornato per ${athleteName}.`);
+  };
 
   // Salvataggio Nuova Metrica
   const handleSaveMetric = async (e: React.FormEvent) => {
@@ -149,23 +221,36 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
     <div className="space-y-6">
       {/* Header Tabs Navigation */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
-        <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+        <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800 overflow-x-auto no-scrollbar w-full sm:w-auto">
           <button
             onClick={() => setActiveSubTab('misure')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
               activeSubTab === 'misure'
-                ? 'bg-[var(--color-primary)] text-black shadow-md shadow-[var(--color-primary)]/20'
+                ? 'bg-[var(--color-primary)] text-black font-black shadow-md shadow-[var(--color-primary)]/20'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Scale className="w-4 h-4" />
             <span>Misure & Antropometria</span>
           </button>
+
+          <button
+            onClick={() => setActiveSubTab('fabbisogno')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+              activeSubTab === 'fabbisogno'
+                ? 'bg-[var(--color-primary)] text-black font-black shadow-md shadow-[var(--color-primary)]/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Flame className="w-4 h-4 text-amber-400" />
+            <span>Stima Fabbisogno & Macro</span>
+          </button>
+
           <button
             onClick={() => setActiveSubTab('massimali')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
               activeSubTab === 'massimali'
-                ? 'bg-[var(--color-primary)] text-black shadow-md shadow-[var(--color-primary)]/20'
+                ? 'bg-[var(--color-primary)] text-black font-black shadow-md shadow-[var(--color-primary)]/20'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -174,7 +259,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
           </button>
         </div>
 
-        <div>
+        <div className="shrink-0">
           {activeSubTab === 'misure' && (
             <button
               onClick={() => setShowMetricModal(true)}
@@ -190,6 +275,271 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
       {/* ─── SOTTO-TAB MISURE ────────────────────────────────────────── */}
       {activeSubTab === 'misure' && (
         <div className="space-y-6">
+          
+          {/* ─── PANNELLO CONFIGURAZIONE RITUALE CHECK MISURE & PROMEMORIA COACH ─── */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div
+              onClick={() => setIsScheduleOpen(!isScheduleOpen)}
+              className="p-4 sm:p-5 flex items-center justify-between cursor-pointer hover:bg-slate-850/60 transition-colors select-none"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0">
+                  <Bell className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black text-white">
+                      Rituale Check Misure & Promemoria Automatici
+                    </h3>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                      scheduleState.isOverdue
+                        ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                        : scheduleState.isDueToday
+                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    }`}>
+                      {scheduleState.statusLabel}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Frequenza: ogni {frequencyDays} giorni • Foto: {photoRequirement === 'mandatory' ? 'Obbligatorie' : photoRequirement === 'optional' ? 'Opzionali' : 'Disattivate'} • Reminder: {reminderActive ? 'Attivi' : 'Disattivati'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
+              >
+                {isScheduleOpen ? <ChevronUp className="w-5 h-5 text-[var(--color-primary)]" /> : <ChevronDown className="w-5 h-5" />}
+              </button>
+            </div>
+
+            {/* Corpo Espanso Configurazione */}
+            {isScheduleOpen && (
+              <div className="p-5 sm:p-6 border-t border-slate-800 bg-slate-950/60 space-y-5">
+                
+                {/* 1. Frequenza e Giorno Preferito */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Frequenza */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                      Frequenza del Monitoraggio
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([7, 14, 30] as CheckFrequency[]).map((days) => (
+                        <button
+                          key={days}
+                          type="button"
+                          onClick={() => setFrequencyDays(days)}
+                          className={`py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                            frequencyDays === days
+                              ? 'bg-[var(--color-primary)] text-black shadow-md'
+                              : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Ogni {days} gg
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Giorno Preferito */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-sky-400" />
+                      Giorno Preferito della Settimana
+                    </label>
+                    <select
+                      value={preferredDay}
+                      onChange={(e) => setPreferredDay(Number(e.target.value) as DayOfWeek)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+                    >
+                      <option value={1}>Lunedì</option>
+                      <option value={2}>Martedì</option>
+                      <option value={3}>Mercoledì</option>
+                      <option value={4}>Giovedì</option>
+                      <option value={5}>Venerdì</option>
+                      <option value={6}>Sabato</option>
+                      <option value={0}>Domenica</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 2. Foto Progressi & Reminder */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800/80">
+                  {/* Foto Progressi */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                      <Camera className="w-3.5 h-3.5 text-purple-400" />
+                      Foto Progressi Visive
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['none', 'optional', 'mandatory'] as PhotoRequirement[]).map((req) => (
+                        <button
+                          key={req}
+                          type="button"
+                          onClick={() => setPhotoRequirement(req)}
+                          className={`py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                            photoRequirement === req
+                              ? 'bg-purple-500 text-white shadow-md'
+                              : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {req === 'none' ? 'Nessuna' : req === 'optional' ? 'Opzionali' : 'Obbligatorie'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Promemoria Automatici */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-300 uppercase tracking-wide block">
+                      Automazioni Promemoria
+                    </label>
+                    <div className="space-y-1.5">
+                      <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={reminderActive}
+                          onChange={(e) => setReminderActive(e.target.checked)}
+                          className="w-4 h-4 rounded text-[var(--color-primary)] focus:ring-0 cursor-pointer"
+                        />
+                        <span>Invia notifica promemoria il giorno del check</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={secondReminderActive}
+                          onChange={(e) => setSecondReminderActive(e.target.checked)}
+                          className="w-4 h-4 rounded text-[var(--color-primary)] focus:ring-0 cursor-pointer"
+                        />
+                        <span>Invia secondo sollecito se il check non viene compilato entro 48h</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Misure Richieste */}
+                <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wide block">
+                    Misure Corporee Richieste all'Atleta
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300">
+                    <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requiredFields.weight}
+                        onChange={(e) => setRequiredFields({ ...requiredFields, weight: e.target.checked })}
+                        className="rounded text-[var(--color-primary)]"
+                      />
+                      <span>Peso (kg)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requiredFields.waist}
+                        onChange={(e) => setRequiredFields({ ...requiredFields, waist: e.target.checked })}
+                        className="rounded text-[var(--color-primary)]"
+                      />
+                      <span>Circonferenza Vita</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requiredFields.chest}
+                        onChange={(e) => setRequiredFields({ ...requiredFields, chest: e.target.checked })}
+                        className="rounded text-[var(--color-primary)]"
+                      />
+                      <span>Torace</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requiredFields.hips}
+                        onChange={(e) => setRequiredFields({ ...requiredFields, hips: e.target.checked })}
+                        className="rounded text-[var(--color-primary)]"
+                      />
+                      <span>Fianchi</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requiredFields.biceps}
+                        onChange={(e) => setRequiredFields({ ...requiredFields, biceps: e.target.checked })}
+                        className="rounded text-[var(--color-primary)]"
+                      />
+                      <span>Braccia</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requiredFields.thighs}
+                        onChange={(e) => setRequiredFields({ ...requiredFields, thighs: e.target.checked })}
+                        className="rounded text-[var(--color-primary)]"
+                      />
+                      <span>Cosce</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requiredFields.body_fat}
+                        onChange={(e) => setRequiredFields({ ...requiredFields, body_fat: e.target.checked })}
+                        className="rounded text-[var(--color-primary)]"
+                      />
+                      <span>% Grasso Corporeo</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requiredFields.calves}
+                        onChange={(e) => setRequiredFields({ ...requiredFields, calves: e.target.checked })}
+                        className="rounded text-[var(--color-primary)]"
+                      />
+                      <span>Polpacci</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* 4. Prompt Note Personalizzato */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
+                    Domanda / Prompt Personalizzato per le Note dell'Atleta
+                  </label>
+                  <input
+                    type="text"
+                    value={notesPrompt}
+                    onChange={(e) => setNotesPrompt(e.target.value)}
+                    placeholder="Es. Come ti senti in questa fase? Segnala note su recupero o aderenza."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+
+                {/* Footer Salvataggio Configurazione */}
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveSchedule}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Salva Regole Rituale per {athleteName}</span>
+                  </button>
+                </div>
+
+              </div>
+            )}
+          </div>
+
           {/* CARDS RIEPILOGATIVE */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
@@ -321,6 +671,19 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({ athleteId, athleteName }
             )}
           </div>
         </div>
+      )}
+
+      {/* ─── SOTTO-TAB STIMA FABBISOGNO & MACRO ─────────────────────── */}
+      {activeSubTab === 'fabbisogno' && (
+        <EnergyEstimatorSection
+          athleteId={athleteId}
+          athleteName={athleteName}
+          latestMetric={latestMetric}
+          athleteBirthDate={athleteBirthDate}
+          athleteGender={athleteGender}
+          athleteHeightCm={athleteHeightCm}
+          onNavigateToFullNutrition={onNavigateToFullNutrition}
+        />
       )}
 
       {/* ─── SOTTO-TAB MASSIMALI & 1RM ────────────────────────────────── */}

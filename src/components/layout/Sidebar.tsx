@@ -10,7 +10,7 @@ import {
   Activity,
   Calendar,
   FileText,
-  MessageSquare,
+  Send,
   UserCheck,
   Settings,
   X,
@@ -126,7 +126,7 @@ const menuSections: MenuSection[] = [
     },
     items: [
       { id: 'notifiche', label: 'Centro Notifiche', icon: Bell },
-      { id: 'comunicazioni', label: 'Log Comunicazioni', icon: MessageSquare },
+      { id: 'comunicazioni', label: 'Comunicazioni', icon: Send },
       { id: 'messaggi', label: 'Chat Atleti', icon: MessageCircle },
     ],
   },

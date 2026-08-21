@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target } from 'lucide-react';
+import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { generateAISmartSuggestions, CoPilotActionableSuggestion } from '../../lib/ai/workoutGenerator';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
@@ -17,6 +17,14 @@ import { MuscleVolumeSummary } from './MuscleVolumeSummary';
 import { AIVolumeCoach } from './AIVolumeCoach';
 import { calculateMuscleVolumeSummary } from '../../utils/muscleVolumeCalculator';
 import { analyzeVolumeWithAI, ActionPayload } from '../../utils/aiVolumeCoach';
+
+export interface DeletedDayRecord {
+  id: string;
+  dayName: string;
+  exercises: Partial<WorkoutExercise>[];
+  dayIndex: number;
+  deletedAt: number;
+}
 
 interface WorkoutBuilderModalProps {
   athleteId?: string;
@@ -42,6 +50,11 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const [activeWeek, setActiveWeek] = useState<number>(1);
   const [activeDay, setActiveDay] = useState<string>('Giorno A');
   const [daysList, setDaysList] = useState<string[]>(['Giorno A', 'Giorno B']);
+
+  // Registro e stato di ripristino per i giorni eliminati accidentalmente
+  const [deletedDaysHistory, setDeletedDaysHistory] = useState<DeletedDayRecord[]>([]);
+  const [undoBanner, setUndoBanner] = useState<{ record: DeletedDayRecord; timerId: NodeJS.Timeout | null } | null>(null);
+  const [isRestoreDropdownOpen, setIsRestoreDropdownOpen] = useState(false);
 
   const [exercises, setExercises] = useState<Partial<WorkoutExercise>[]>([
     { name: '', sets: 3, reps_target: '10', rest_seconds: 60, week_number: 1, day_name: 'Giorno A', is_time_based: false }
@@ -893,13 +906,76 @@ ${result.regole_adattamento || '-'}
       showError('La scheda deve contenere almeno un giorno di allenamento.');
       return;
     }
-    if (confirm(`Vuoi eliminare "${dayName}" e tutti i suoi esercizi per tutte le settimane?`)) {
-      setExercises(prev => prev.filter(ex => (ex.day_name || 'Giorno A') !== dayName));
-      const nextDays = daysList.filter(d => d !== dayName);
-      setDaysList(nextDays);
-      setActiveDay(nextDays[0] || 'Giorno A');
-      showSuccess('Giorno Rimosso', `"${dayName}" è stato eliminato.`);
+
+    // Salva un backup completo di tutti gli esercizi associati a questo giorno per tutte le settimane
+    const dayExercises = exercises.filter(ex => (ex.day_name || 'Giorno A') === dayName);
+    const dayIndex = daysList.indexOf(dayName);
+
+    const record: DeletedDayRecord = {
+      id: `del-day-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      dayName,
+      exercises: JSON.parse(JSON.stringify(dayExercises)),
+      dayIndex: dayIndex >= 0 ? dayIndex : daysList.length - 1,
+      deletedAt: Date.now(),
+    };
+
+    // Rimuovi il giorno e i relativi esercizi
+    setExercises(prev => prev.filter(ex => (ex.day_name || 'Giorno A') !== dayName));
+    const nextDays = daysList.filter(d => d !== dayName);
+    setDaysList(nextDays);
+    setActiveDay(nextDays[0] || 'Giorno A');
+
+    // Aggiungi alla cronologia giorni eliminati
+    setDeletedDaysHistory(prev => [record, ...prev]);
+
+    // Mostra banner di ripristino rapido (10 secondi)
+    if (undoBanner?.timerId) {
+      clearTimeout(undoBanner.timerId);
     }
+    const timer = setTimeout(() => {
+      setUndoBanner(null);
+    }, 10000);
+
+    setUndoBanner({ record, timerId: timer });
+    showSuccess('Giorno Rimosso', `"${dayName}" eliminato. Puoi ripristinarlo in qualsiasi momento.`);
+  };
+
+  const restoreDay = (record: DeletedDayRecord) => {
+    if (undoBanner?.timerId) {
+      clearTimeout(undoBanner.timerId);
+    }
+    setUndoBanner(null);
+
+    // Se il giorno esiste già nella scheda (es. è stato ricreato), usa suffisso
+    let targetName = record.dayName;
+    if (daysList.includes(targetName)) {
+      targetName = `${record.dayName} (Ripristinato)`;
+    }
+
+    // Reinserisci il giorno nella posizione originale o in coda
+    const newDaysList = [...daysList];
+    const insertIndex = Math.min(record.dayIndex, newDaysList.length);
+    newDaysList.splice(insertIndex, 0, targetName);
+    setDaysList(newDaysList);
+
+    // Rigenera ID univoci per gli esercizi ripristinati e assegna il targetName
+    const restoredExercises = record.exercises.map((ex, idx) => ({
+      ...ex,
+      day_name: targetName,
+      id: `restored-d-ex-${Date.now()}-${idx}`,
+    }));
+
+    setExercises(prev => [...prev, ...restoredExercises]);
+    setActiveDay(targetName);
+
+    // Rimuovi dal registro eliminati
+    setDeletedDaysHistory(prev => prev.filter(d => d.id !== record.id));
+    setIsRestoreDropdownOpen(false);
+
+    showSuccess(
+      'Giorno Ripristinato',
+      `"${targetName}" è stato ripristinato con tutti i suoi ${record.exercises.length} esercizi.`
+    );
   };
 
   // --- DUPLICAZIONE SINGOLO ESERCIZIO ---
@@ -1594,6 +1670,58 @@ ${result.regole_adattamento || '-'}
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 )}
+
+                {/* Ripristina Giorno Eliminato */}
+                {deletedDaysHistory.length > 0 && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsRestoreDropdownOpen(!isRestoreDropdownOpen)}
+                      className="px-2 py-1 text-[11px] font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 rounded-lg transition-colors flex items-center gap-1 cursor-pointer shadow-sm"
+                      title="Ripristina giorni cancellati accidentalmente"
+                    >
+                      <RotateCcw className="w-3 h-3 text-amber-400" />
+                      <span>Ripristina ({deletedDaysHistory.length})</span>
+                    </button>
+
+                    {isRestoreDropdownOpen && (
+                      <div className="absolute right-0 top-full mt-1.5 w-64 p-2 rounded-2xl bg-slate-900 border border-amber-500/40 shadow-2xl z-50 space-y-1.5 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="flex items-center justify-between px-2 py-1 border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <span>Giorni Eliminati ({deletedDaysHistory.length})</span>
+                          <button
+                            type="button"
+                            onClick={() => setIsRestoreDropdownOpen(false)}
+                            className="hover:text-white cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto space-y-1">
+                          {deletedDaysHistory.map((rec) => (
+                            <div
+                              key={rec.id}
+                              className="p-2 rounded-xl bg-slate-950/80 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between gap-2 transition-colors"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-white truncate">{rec.dayName}</p>
+                                <p className="text-[10px] text-slate-400">
+                                  {rec.exercises.length} {rec.exercises.length === 1 ? 'esercizio' : 'esercizi'}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => restoreDay(rec)}
+                                className="px-2 py-1 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-[10px] shrink-0 cursor-pointer shadow-sm"
+                              >
+                                Ripristina
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -2227,6 +2355,43 @@ ${result.regole_adattamento || '-'}
                 Salva & Chiudi Note
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── BANNER FLUTTUANTE RIPRISTINO RAPIDO GIORNO ELIMINATO ─── */}
+      {undoBanner && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div className="p-4 rounded-2xl bg-slate-900/95 border border-amber-500/50 shadow-2xl backdrop-blur-xl flex items-center gap-4 text-white shadow-black/80">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+              <RotateCcw className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-xs font-black text-white flex items-center gap-1.5">
+                <span>Giorno eliminato</span>
+              </h4>
+              <p className="text-[11px] text-slate-300 truncate max-w-[200px]">
+                "{undoBanner.record.dayName}" ({undoBanner.record.exercises.length} es.)
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => restoreDay(undoBanner.record)}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[var(--color-primary)] to-amber-400 text-slate-950 font-black text-xs hover:scale-105 active:scale-95 transition-all shadow-lg shadow-amber-500/20 cursor-pointer flex items-center gap-1.5 shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Ripristina</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (undoBanner.timerId) clearTimeout(undoBanner.timerId);
+                setUndoBanner(null);
+              }}
+              className="p-1 text-slate-500 hover:text-white rounded-lg cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

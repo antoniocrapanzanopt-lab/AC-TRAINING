@@ -3,6 +3,8 @@ import {
   Brain,
   RefreshCw,
   TrendingUp,
+  Users,
+  User,
 } from 'lucide-react';
 import { useAthletes } from '../../context/AthletesContext';
 import { useWorkouts } from '../../context/WorkoutsContext';
@@ -262,16 +264,51 @@ export const AnalysisReportsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Bottone Ricarica */}
-        <button
-          type="button"
-          onClick={loadData}
-          disabled={isLoading}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white hover:border-slate-700 transition-all cursor-pointer shadow-sm self-start sm:self-auto"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>Aggiorna Dati</span>
-        </button>
+        {/* Toggle Vista: Squadra vs Singolo Atleta + Bottone Ricarica */}
+        <div className="flex items-center gap-2.5 flex-wrap self-start sm:self-auto">
+          <div className="inline-flex bg-slate-950 p-1 rounded-2xl border border-slate-800 gap-1 text-xs shadow-inner">
+            <button
+              type="button"
+              onClick={handleBackToOverview}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                !selectedAthleteId
+                  ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Panoramica Squadra</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedAthleteId && athletes.length > 0) {
+                  handleSelectAthlete(athletes[0].id);
+                }
+              }}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                selectedAthleteId
+                  ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Singolo Atleta</span>
+            </button>
+          </div>
+
+          {/* Bottone Ricarica */}
+          <button
+            type="button"
+            onClick={loadData}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white hover:border-slate-700 transition-all cursor-pointer shadow-sm"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isLoading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Aggiorna</span>
+          </button>
+        </div>
       </div>
 
       {/* ─── CONTENUTO PRINCIPALE (VISTA GENERALE O DETTAGLIO ATLETA) ─── */}
@@ -285,6 +322,7 @@ export const AnalysisReportsPage: React.FC = () => {
         <AthleteDetailReportView
           athleteReport={selectedAthleteReport}
           allAthletes={athletes}
+          allReports={teamReportData.athletesReports}
           timeframe={timeframe}
           currentRangeLabel={teamReportData.currentRangeLabel}
           previousRangeLabel={teamReportData.previousRangeLabel}

@@ -1,11 +1,21 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { getStorageItem, setStorageItem } from '../lib/storage';
-import { AthleteMetric, AthleteMaxLift, AthleteMetricInput, AthleteMaxLiftInput } from '../types/metrics';
+import {
+  AthleteMetric,
+  AthleteMaxLift,
+  AthleteMetricInput,
+  AthleteMaxLiftInput,
+  AthleteCheckScheduleConfig,
+  CheckScheduleState,
+  AthleteProgressPhoto,
+} from '../types/metrics';
+import { STORAGE_KEYS } from '../config/storageKeys';
 
 interface MetricsContextType {
   metrics: AthleteMetric[];
   maxLifts: AthleteMaxLift[];
+  progressPhotos: AthleteProgressPhoto[];
   loading: boolean;
   fetchMetricsForAthlete: (athleteId: string) => Promise<AthleteMetric[]>;
   fetchAllMetrics: () => Promise<void>;
@@ -23,6 +33,12 @@ interface MetricsContextType {
     weightKg: number,
     reps: number
   ) => Promise<{ isNewPR: boolean; calculated1RM: number }>;
+  getAthleteSchedule: (athleteId: string) => AthleteCheckScheduleConfig;
+  saveAthleteSchedule: (config: AthleteCheckScheduleConfig) => Promise<void>;
+  getAthleteScheduleState: (athleteId: string, latestMetricDate?: string | null) => CheckScheduleState;
+  addProgressPhoto: (photo: Omit<AthleteProgressPhoto, 'id' | 'created_at'>) => Promise<AthleteProgressPhoto>;
+  getAthleteProgressPhotos: (athleteId: string) => AthleteProgressPhoto[];
+  deleteProgressPhoto: (photoId: string) => Promise<void>;
 }
 
 const MetricsContext = createContext<MetricsContextType | undefined>(undefined);
@@ -36,14 +52,26 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     getStorageItem<AthleteMaxLift[]>('builder_athlete_max_lifts', [])
   );
 
+  const [checkSchedules, setCheckSchedules] = useState<Record<string, AthleteCheckScheduleConfig>>(() =>
+    getStorageItem<Record<string, AthleteCheckScheduleConfig>>(STORAGE_KEYS.CHECK_SCHEDULES, {})
+  );
+
+  const [progressPhotos, setProgressPhotos] = useState<AthleteProgressPhoto[]>(() =>
+    getStorageItem<AthleteProgressPhoto[]>(STORAGE_KEYS.PROGRESS_PHOTOS, [])
+  );
+
   const [loading, setLoading] = useState(false);
 
   // Sincronizza lo stato da localStorage (utile per eventi inter-tab e aggiornamenti in tempo reale)
   const syncFromLocalStorage = useCallback(() => {
     const localMetrics = getStorageItem<AthleteMetric[]>('builder_athlete_metrics', []);
     const localLifts = getStorageItem<AthleteMaxLift[]>('builder_athlete_max_lifts', []);
+    const localSchedules = getStorageItem<Record<string, AthleteCheckScheduleConfig>>(STORAGE_KEYS.CHECK_SCHEDULES, {});
+    const localPhotos = getStorageItem<AthleteProgressPhoto[]>(STORAGE_KEYS.PROGRESS_PHOTOS, []);
     setMetrics(localMetrics);
     setMaxLifts(localLifts);
+    setCheckSchedules(localSchedules);
+    setProgressPhotos(localPhotos);
   }, []);
 
   // Ascolta eventi storage per aggiornare in tempo reale se il check viene fatto in un'altra scheda/finestra
@@ -411,11 +439,170 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
+  // ─── GESTIONE RITUALE CHECK MISURE & PROMEMORIA ───────────────────────
+
+  const DEFAULT_REQUIRED_FIELDS = {
+    weight: true,
+    body_fat: false,
+    neck: false,
+    shoulders: false,
+    chest: false,
+    waist: true,
+    hips: false,
+    biceps: false,
+    thighs: false,
+    calves: false,
+  };
+
+  const DEFAULT_SCHEDULE = (athId: string): AthleteCheckScheduleConfig => ({
+    athlete_id: athId,
+    frequency_days: 7,
+    preferred_day_of_week: 1, // Lunedì
+    required_fields: { ...DEFAULT_REQUIRED_FIELDS },
+    photo_requirement: 'optional',
+    reminder_active: true,
+    second_reminder_active: true,
+    custom_notes_prompt: 'Come ti senti in questa fase? Segnala eventuali note su recupero o aderenza.',
+    updated_at: new Date().toISOString(),
+  });
+
+  const getAthleteSchedule = useCallback((athId: string): AthleteCheckScheduleConfig => {
+    if (!athId) return DEFAULT_SCHEDULE('');
+    const saved = checkSchedules[athId];
+    if (saved) return saved;
+    return DEFAULT_SCHEDULE(athId);
+  }, [checkSchedules]);
+
+  const saveAthleteSchedule = useCallback(async (config: AthleteCheckScheduleConfig): Promise<void> => {
+    setCheckSchedules(prev => {
+      const updated = { ...prev, [config.athlete_id]: { ...config, updated_at: new Date().toISOString() } };
+      setStorageItem(STORAGE_KEYS.CHECK_SCHEDULES, updated);
+      return updated;
+    });
+    notifyChange();
+  }, []);
+
+  const getAthleteScheduleState = useCallback((athId: string, latestMetricDate?: string | null): CheckScheduleState => {
+    const schedule = getAthleteSchedule(athId);
+    const freq = schedule.frequency_days || 7;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (!latestMetricDate) {
+      return {
+        status: 'due_today',
+        statusLabel: 'Primo check progressi da effettuare',
+        lastCheckDate: null,
+        nextCheckDate: today.toISOString().slice(0, 10),
+        daysDiff: 0,
+        frequencyDays: freq,
+        isOverdue: false,
+        isDueToday: true,
+      };
+    }
+
+    const lastDate = new Date(latestMetricDate);
+    lastDate.setHours(0, 0, 0, 0);
+
+    const nextCheck = new Date(lastDate);
+    nextCheck.setDate(nextCheck.getDate() + freq);
+    const nextCheckDateStr = nextCheck.toISOString().slice(0, 10);
+
+    const diffTime = today.getTime() - lastDate.getTime();
+    const daysSinceLast = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    if (daysSinceLast === 0) {
+      return {
+        status: 'completed',
+        statusLabel: 'Check completato oggi',
+        lastCheckDate: latestMetricDate,
+        nextCheckDate: nextCheckDateStr,
+        daysDiff: freq,
+        frequencyDays: freq,
+        isOverdue: false,
+        isDueToday: false,
+      };
+    }
+
+    if (daysSinceLast < freq) {
+      const daysRemaining = freq - daysSinceLast;
+      const dateFormatted = nextCheck.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'short' });
+      return {
+        status: 'scheduled',
+        statusLabel: `Prossimo check: ${dateFormatted} (tra ${daysRemaining} ${daysRemaining === 1 ? 'giorno' : 'giorni'})`,
+        lastCheckDate: latestMetricDate,
+        nextCheckDate: nextCheckDateStr,
+        daysDiff: daysRemaining,
+        frequencyDays: freq,
+        isOverdue: false,
+        isDueToday: false,
+      };
+    }
+
+    if (daysSinceLast === freq) {
+      return {
+        status: 'due_today',
+        statusLabel: 'È il giorno del check progressi!',
+        lastCheckDate: latestMetricDate,
+        nextCheckDate: nextCheckDateStr,
+        daysDiff: 0,
+        frequencyDays: freq,
+        isOverdue: false,
+        isDueToday: true,
+      };
+    }
+
+    const daysOverdue = daysSinceLast - freq;
+    return {
+      status: 'overdue',
+      statusLabel: `Check in ritardo di ${daysOverdue} ${daysOverdue === 1 ? 'giorno' : 'giorni'}`,
+      lastCheckDate: latestMetricDate,
+      nextCheckDate: nextCheckDateStr,
+      daysDiff: daysOverdue,
+      frequencyDays: freq,
+      isOverdue: true,
+      isDueToday: false,
+    };
+  }, [getAthleteSchedule]);
+
+  // ─── GESTIONE FOTO PROGRESSI ──────────────────────────────────────────
+
+  const addProgressPhoto = useCallback(async (photoData: Omit<AthleteProgressPhoto, 'id' | 'created_at'>): Promise<AthleteProgressPhoto> => {
+    const newPhoto: AthleteProgressPhoto = {
+      ...photoData,
+      id: 'photo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      created_at: new Date().toISOString(),
+    };
+
+    setProgressPhotos(prev => {
+      const updated = [newPhoto, ...prev];
+      setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+      return updated;
+    });
+
+    notifyChange();
+    return newPhoto;
+  }, []);
+
+  const getAthleteProgressPhotos = useCallback((athId: string): AthleteProgressPhoto[] => {
+    return progressPhotos.filter(p => p.athlete_id === athId);
+  }, [progressPhotos]);
+
+  const deleteProgressPhoto = useCallback(async (photoId: string): Promise<void> => {
+    setProgressPhotos(prev => {
+      const updated = prev.filter(p => p.id !== photoId);
+      setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+      return updated;
+    });
+    notifyChange();
+  }, []);
+
   return (
     <MetricsContext.Provider
       value={{
         metrics,
         maxLifts,
+        progressPhotos,
         loading,
         fetchMetricsForAthlete,
         fetchAllMetrics,
@@ -427,6 +614,12 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addMaxLift,
         deleteMaxLift,
         checkAndUpdateAutoPR,
+        getAthleteSchedule,
+        saveAthleteSchedule,
+        getAthleteScheduleState,
+        addProgressPhoto,
+        getAthleteProgressPhotos,
+        deleteProgressPhoto,
       }}
     >
       {children}

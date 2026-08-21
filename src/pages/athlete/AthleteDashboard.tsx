@@ -1,5 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Dumbbell, Clock, Play, RotateCcw, WifiOff } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  Dumbbell,
+  Clock,
+  Play,
+  RotateCcw,
+  WifiOff,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Flame,
+} from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useToast } from '../../context/ToastContext';
@@ -13,44 +24,44 @@ import {
   getPendingSyncQueue,
   ActiveWorkoutDraft,
 } from '../../lib/offline/offlineWorkoutStorage';
-import { AthleteNextAppointmentCard } from '../../components/athlete/AthleteNextAppointmentCard';
+import { PwaInstallBanner } from '../../components/pwa/PwaInstallBanner';
 
 interface AthleteDashboardProps {
   onStartWorkout: (workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string) => void;
 }
 
-// Componente per singola scheda di allenamento
-const WorkoutCard: React.FC<{
+// ─── COMPONENTE SCHEDA PROGRAMMA DI ALLENAMENTO ─────────────────────────────
+interface WorkoutCardProps {
   assigned: any;
   isFirst: boolean;
   onStart: (assigned: any, week: number, day: string) => void;
   startingWorkoutId: string | null;
-}> = ({ assigned, isFirst, onStart, startingWorkoutId }) => {
+  activeDraft: ActiveWorkoutDraft | null;
+}
+
+const WorkoutCard: React.FC<WorkoutCardProps> = ({
+  assigned,
+  isFirst,
+  onStart,
+  startingWorkoutId,
+  activeDraft,
+}) => {
   const progressKey = `builder_progress_${assigned.athlete_id}_${assigned.workout_id}`;
-  const [completedMap, setCompletedMap] = React.useState<Record<string, boolean>>(() => {
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+  const [completedMap, setCompletedMap] = useState<Record<string, boolean>>(() => {
     try {
       const raw = JSON.parse(localStorage.getItem(progressKey) || '{}');
-      // Riconciliazione immediata sincrona: se l'atleta ha completato gli altri 4 giorni o ha un Giorno B nello storico
-      const hasAnyB = raw['5-Giorno B'] || raw['1-Giorno B'] || raw['2-Giorno B'] || raw['3-Giorno B'] || raw['4-Giorno B'] || raw['Giorno B'];
-      const hasACDE = raw['1-Giorno A'] || raw['1-Giorno C'] || raw['1-Giorno D'] || raw['1-Giorno E'];
-      if (hasAnyB || hasACDE) {
-        raw['1-Giorno A'] = true;
-        raw['1-Giorno B'] = true;
-        raw['1-Giorno C'] = true;
-        raw['1-Giorno D'] = true;
-        raw['1-Giorno E'] = true;
-        localStorage.setItem(progressKey, JSON.stringify(raw));
-      }
       return raw;
     } catch {
       return {};
     }
   });
 
-  const [days, setDays] = React.useState<string[]>(['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E']);
+  const [days, setDays] = useState<string[]>(['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E']);
 
-  // Carica dinamicamente tutti i giorni reali presenti negli esercizi della scheda assegnata
-  React.useEffect(() => {
+  // Carica i giorni reali presenti negli esercizi della scheda
+  useEffect(() => {
     const fetchWorkoutDays = async () => {
       if (!assigned.workout_id) return;
       try {
@@ -76,8 +87,8 @@ const WorkoutCard: React.FC<{
     fetchWorkoutDays();
   }, [assigned.workout_id]);
 
-  // Carica i progressi da Supabase se l'utente ha fatto il relogin
-  React.useEffect(() => {
+  // Sincronizza i progressi dal DB
+  useEffect(() => {
     const syncProgressFromDb = async () => {
       try {
         const athId = assigned.athlete_id;
@@ -86,11 +97,7 @@ const WorkoutCard: React.FC<{
 
         const { data } = await supabase
           .from('workout_sessions')
-          .select(`
-            id,
-            end_time,
-            notes
-          `)
+          .select('id, end_time, notes')
           .eq('athlete_id', athId)
           .eq('workout_id', wId)
           .not('end_time', 'is', null);
@@ -126,8 +133,8 @@ const WorkoutCard: React.FC<{
   const totalWeeks = assigned.workout?.total_weeks || 4;
   const isStartingThis = startingWorkoutId === assigned.workout_id;
 
-  // Calcola la prima settimana attiva non ancora completata al 100%
-  const currentActiveWeek = React.useMemo(() => {
+  // Calcola la settimana attiva corrente (la prima non ancora completata al 100%)
+  const currentActiveWeek = useMemo(() => {
     for (let w = 1; w <= totalWeeks; w++) {
       const allDone = days.length > 0 && days.every((d) => completedMap[`${w}-${d}`]);
       if (!allDone) return w;
@@ -135,54 +142,124 @@ const WorkoutCard: React.FC<{
     return totalWeeks;
   }, [totalWeeks, days, completedMap]);
 
-  const [selectedWeek, setSelectedWeek] = React.useState<number>(currentActiveWeek);
+  const [selectedWeek, setSelectedWeek] = useState<number>(currentActiveWeek);
 
-  // Aggiorna la settimana selezionata se cambia la settimana attiva
-  React.useEffect(() => {
+  useEffect(() => {
     setSelectedWeek(currentActiveWeek);
   }, [currentActiveWeek]);
 
   // Conteggio allenamenti completati nella settimana selezionata
-  const weekCompletedCount = React.useMemo(() => {
+  const weekCompletedCount = useMemo(() => {
     return days.filter((d) => completedMap[`${selectedWeek}-${d}`]).length;
   }, [days, completedMap, selectedWeek]);
 
+  const weekProgressPercent = useMemo(() => {
+    if (days.length === 0) return 0;
+    return Math.round((weekCompletedCount / days.length) * 100);
+  }, [weekCompletedCount, days.length]);
+
   const isCurrentWeekAllDone = weekCompletedCount === days.length;
 
+  // Trova il primo giorno non completato della settimana selezionata
+  const nextPendingDay = useMemo(() => {
+    return days.find((d) => !completedMap[`${selectedWeek}-${d}`]) || null;
+  }, [days, completedMap, selectedWeek]);
+
   return (
-    <div className={`bg-slate-900/40 backdrop-blur-xl border ${isFirst ? 'border-[var(--color-primary)]/40 shadow-xl shadow-[var(--color-primary)]/5' : 'border-slate-800/60'} rounded-3xl p-5 sm:p-6 mb-4 space-y-5 shadow-lg`}>
-      {/* Testata Scheda */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <h3 className="text-base sm:text-lg font-black text-white leading-tight">{assigned.workout?.title}</h3>
-            {isFirst && (
-              <span className="bg-[var(--color-primary)] text-slate-950 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-sm">
+    <div
+      className={`bg-slate-900/40 backdrop-blur-xl border ${
+        isFirst
+          ? 'border-[var(--color-primary)]/40 shadow-2xl shadow-[var(--color-primary)]/5'
+          : 'border-slate-800/60'
+      } rounded-3xl p-4 sm:p-6 space-y-5 shadow-lg overflow-hidden transition-all`}
+    >
+      {/* ─── 1. HEADER SCHEDA SEMPLIFICATO ─── */}
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1">
+                <Dumbbell className="w-3.5 h-3.5" />
+                Programma Attivo
+              </span>
+              <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
                 Attiva
               </span>
+            </div>
+            <h3 className="text-base sm:text-lg font-black text-white leading-snug">
+              {assigned.workout?.title}
+            </h3>
+          </div>
+
+          <span className="bg-slate-950 border border-slate-800 px-3 py-1 rounded-xl text-xs font-mono font-bold text-[var(--color-primary)] shrink-0 shadow-inner">
+            {totalWeeks} settimane
+          </span>
+        </div>
+
+        {/* ─── STATO SINTETICO & BARRA DI AVANZAMENTO ─── */}
+        <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-white flex items-center gap-1.5">
+              <span>Settimana {selectedWeek} di {totalWeeks}</span>
+              {isCurrentWeekAllDone && <span className="text-emerald-400 font-black">✓</span>}
+            </span>
+            <span className="font-mono font-black text-[var(--color-primary)]">
+              {weekCompletedCount}/{days.length} sedute completate
+            </span>
+          </div>
+
+          {/* Barra di Avanzamento */}
+          <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-800">
+            <div
+              className="h-full bg-gradient-to-r from-amber-500 to-[var(--color-primary)] rounded-full transition-all duration-500 shadow-sm shadow-[var(--color-primary)]/30"
+              style={{ width: `${weekProgressPercent}%` }}
+            />
+          </div>
+
+          {/* Messaggio Motivazionale Breve */}
+          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+            <span>
+              {isCurrentWeekAllDone
+                ? 'Hai completato tutti gli allenamenti previsti per questa settimana! 🎉'
+                : selectedWeek === currentActiveWeek
+                ? `Sei nella settimana ${selectedWeek}. Continua così! 🔥`
+                : `Visualizzazione storico settimana ${selectedWeek}.`}
+            </span>
+            <span className="font-bold text-slate-300 shrink-0 font-mono">{weekProgressPercent}%</span>
+          </div>
+        </div>
+
+        {/* Toggle Descrizione Tecnica */}
+        {assigned.workout?.description && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+              className="text-[11px] font-bold text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors py-1"
+            >
+              <span>{isDetailsOpen ? 'Nascondi dettagli scheda' : 'Vedi dettagli scheda'}</span>
+              {isDetailsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            {isDetailsOpen && (
+              <p className="text-xs text-slate-300 bg-slate-950/60 p-3 rounded-xl border border-slate-800 mt-1 leading-relaxed animate-in fade-in">
+                {assigned.workout.description}
+              </p>
             )}
           </div>
-          <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-            {assigned.workout?.description || 'Nessuna descrizione specificata dal coach.'}
-          </p>
-        </div>
-        <div className="bg-slate-900/60 border border-slate-800/80 px-3 py-1 rounded-xl text-xs font-mono font-bold text-[var(--color-primary)] shrink-0 shadow-inner">
-          {totalWeeks} settimane
-        </div>
+        )}
       </div>
 
-      {/* ── SELETTORE SETTIMANA A PILLOLA ORIZZONTALE ── */}
-      <div className="space-y-3">
+      {/* ─── 2. SELETTORE SETTIMANE ("IL TUO PERCORSO") ─── */}
+      <div className="space-y-2.5 pt-2 border-t border-slate-800/80">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-            Seleziona Settimana:
+          <span className="text-[11px] font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+            Il tuo percorso
           </span>
-          <span className="text-xs font-bold text-[var(--color-primary)] font-mono">
-            {weekCompletedCount} di {days.length} sedute completate
-          </span>
+          <span className="text-[10px] text-slate-500">Scorri per navigare le settimane</span>
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 -mx-1 px-1 touch-pan-x snap-x">
           {Array.from({ length: totalWeeks }, (_, idx) => {
             const wNum = idx + 1;
             const isSelected = selectedWeek === wNum;
@@ -194,83 +271,140 @@ const WorkoutCard: React.FC<{
                 key={wNum}
                 type="button"
                 onClick={() => setSelectedWeek(wNum)}
-                className={`px-3.5 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 cursor-pointer select-none ${
+                className={`px-3.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 cursor-pointer select-none active:scale-95 ${
                   isSelected
-                    ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20 scale-105'
+                    ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-lg shadow-[var(--color-primary)]/20 ring-1 ring-[var(--color-primary)]'
                     : isWeekDone
-                    ? 'bg-emerald-950/40 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900/40'
+                    ? 'bg-emerald-950/30 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900/40'
                     : isCurrent
-                    ? 'bg-slate-800 text-white border border-[var(--color-primary)]/50'
-                    : 'bg-slate-900/60 text-slate-400 border border-slate-800 hover:text-white'
+                    ? 'bg-slate-800/90 text-white border border-[var(--color-primary)]/40 hover:border-[var(--color-primary)]'
+                    : 'bg-slate-950/60 text-slate-400 border border-slate-800 hover:text-white hover:border-slate-700'
                 }`}
               >
                 <span>Settimana {wNum}</span>
-                {isWeekDone && <span className="text-[11px]">✓</span>}
-                {isCurrent && !isWeekDone && !isSelected && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse" />
-                )}
+                {isWeekDone ? (
+                  <span className="text-emerald-400 font-bold text-[11px]">✓</span>
+                ) : isCurrent && !isSelected ? (
+                  <span className="text-[10px] text-amber-400 font-bold">• In corso</span>
+                ) : null}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* ── GIORNI DELLA SETTIMANA SELEZIONATA ── */}
+      {/* ─── 3. CARD DEI GIORNI CON 4 STATI DIFFERENZIATI ─── */}
       <div className="space-y-3 pt-2 border-t border-slate-800/80">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-black text-white flex items-center gap-2">
-            <span>Settimana {selectedWeek}</span>
-            {isCurrentWeekAllDone ? (
-              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                ✓ Completata
-              </span>
-            ) : (
-              <span className="text-[10px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-0.5 rounded-full border border-[var(--color-primary)]/20">
-                In corso
-              </span>
-            )}
+          <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
+            <span>Sedute di Allenamento (Settimana {selectedWeek})</span>
           </h4>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {days.map((dayName) => {
             const key = `${selectedWeek}-${dayName}`;
             const isDone = Boolean(completedMap[key]);
 
+            const draftDayName = activeDraft?.exercises?.[0]?.day_name;
+            const draftWeekNum = activeDraft?.exercises?.[0]?.week_number;
+            const isDraftForThisDay = Boolean(
+              activeDraft &&
+                (activeDraft.workout?.id === assigned.workout_id ||
+                  activeDraft.workout?.title === assigned.workout?.title) &&
+                Boolean(draftDayName && draftDayName.trim().toLowerCase() === dayName.trim().toLowerCase()) &&
+                (typeof draftWeekNum === 'number' ? draftWeekNum === selectedWeek : true)
+            );
+
+            const isNextUpcoming = !isDone && nextPendingDay === dayName && selectedWeek === currentActiveWeek && !isDraftForThisDay;
+
             return (
-              <button
+              <div
                 key={dayName}
-                type="button"
-                disabled={isStartingThis}
-                onClick={() => onStart(assigned, selectedWeek, dayName)}
-                className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between group cursor-pointer shadow-md ${
+                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between shadow-md relative overflow-hidden ${
                   isDone
-                    ? 'bg-slate-950/70 border-slate-800/60 text-slate-500 opacity-75'
-                    : 'bg-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-[var(--color-primary)]/60 hover:bg-slate-900/80 text-white'
+                    ? 'bg-slate-950/60 border-slate-800/60 text-slate-400'
+                    : isDraftForThisDay
+                    ? 'bg-gradient-to-b from-amber-950/30 to-slate-900 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/50'
+                    : isNextUpcoming
+                    ? 'bg-slate-900/90 border-[var(--color-primary)]/60 shadow-lg shadow-[var(--color-primary)]/5 text-white'
+                    : 'bg-slate-950/60 border-slate-800/80 text-slate-300 hover:border-slate-700'
                 }`}
               >
-                <div className="flex items-center justify-between w-full mb-3">
-                  <span className="text-sm font-black truncate">{dayName}</span>
+                {/* Header Card Giorno */}
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-black text-white whitespace-nowrap">{dayName}</span>
+                    {isDone ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-black flex items-center gap-1 shrink-0 whitespace-nowrap">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        Completato
+                      </span>
+                    ) : isDraftForThisDay ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse whitespace-nowrap">
+                        <RotateCcw className="w-3 h-3 text-amber-400" />
+                        In corso
+                      </span>
+                    ) : isNextUpcoming ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40 text-[10px] font-black shrink-0 whitespace-nowrap">
+                        Allenamento di oggi
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800 text-[10px] font-bold shrink-0 whitespace-nowrap">
+                        Programmata
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+                    <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <span className="whitespace-nowrap">Durata ~45-60 min</span>
+                  </div>
+                </div>
+
+                {/* Pulsante CTA con gerarchia chiara */}
+                <div className="pt-2 border-t border-slate-800/60 mt-auto">
                   {isDone ? (
-                    <span className="text-xs text-emerald-400 font-black bg-emerald-500/15 px-2 py-0.5 rounded-md border border-emerald-500/30">
-                      ✓ Completato
-                    </span>
+                    <button
+                      type="button"
+                      disabled={isStartingThis}
+                      onClick={() => onStart(assigned, selectedWeek, dayName)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-bold transition-all cursor-pointer text-center"
+                    >
+                      Rivedi
+                    </button>
+                  ) : isDraftForThisDay ? (
+                    <button
+                      type="button"
+                      disabled={isStartingThis}
+                      onClick={() => onStart(assigned, selectedWeek, dayName)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5 active:scale-95"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-black" />
+                      <span>Riprendi</span>
+                    </button>
+                  ) : isNextUpcoming ? (
+                    <button
+                      type="button"
+                      disabled={isStartingThis}
+                      onClick={() => onStart(assigned, selectedWeek, dayName)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 flex items-center justify-center gap-1.5 active:scale-95"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-black" />
+                      <span>Inizia ora →</span>
+                    </button>
                   ) : (
-                    <div className="w-7 h-7 rounded-xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] group-hover:scale-110 transition-transform">
-                      <Play className="w-3.5 h-3.5 fill-[var(--color-primary)] text-[var(--color-primary)]" />
-                    </div>
+                    <button
+                      type="button"
+                      disabled={isStartingThis}
+                      onClick={() => onStart(assigned, selectedWeek, dayName)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-bold transition-all cursor-pointer text-center"
+                    >
+                      Inizia
+                    </button>
                   )}
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/60">
-                  <span className="flex items-center gap-1 font-medium">
-                    <Clock className="w-3 h-3 text-slate-500" />
-                    {isDone ? 'Eseguito' : 'Da completare'}
-                  </span>
-                  <span className="text-[11px] font-bold text-[var(--color-primary)] group-hover:underline">
-                    {isDone ? 'Rivedi / Rifai' : 'Inizia ora →'}
-                  </span>
-                </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -279,6 +413,7 @@ const WorkoutCard: React.FC<{
   );
 };
 
+// ─── DASHBOARD PRINCIPALE HOME OPERATIVA ATLETA ─────────────────────────────
 export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorkout }) => {
   const { myAssignedWorkouts, getExercisesForWorkout, loading } = useWorkouts();
   const { showSuccess, showError } = useToast();
@@ -293,15 +428,14 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     if (athleteId) {
       let draft = getActiveWorkoutDraft(athleteId);
       if (draft && myAssignedWorkouts.length > 0) {
-        // Se il workout assegnato ha un titolo aggiornato nel DB (es. da "MARIA BARCELLA" a "MARIA"), aggiorniamo la bozza
         const matching = myAssignedWorkouts.find(
           (aw: any) =>
             aw.workout_id === draft?.workout?.id ||
             aw.workout?.id === draft?.workout?.id ||
-            (draft?.workout?.title && aw.workout?.title && (
+            (draft?.workout?.title &&
+              aw.workout?.title &&
               aw.workout.title.toLowerCase().includes('scheda') &&
-              draft.workout.title.toLowerCase().includes('scheda')
-            ))
+              draft.workout.title.toLowerCase().includes('scheda'))
         );
 
         if (matching?.workout?.title && matching.workout.title !== draft.workout.title) {
@@ -362,7 +496,6 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         return;
       }
 
-      // Filtra gli esercizi per la settimana e giorno selezionati, se presenti
       const filtered = allExercises.filter((ex) => {
         const matchWeek = !ex.week_number || ex.week_number === selectedWeek;
         const matchDay = !ex.day_name || ex.day_name === selectedDay;
@@ -371,7 +504,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
       const finalExercises = filtered.length > 0 ? filtered : allExercises;
       onStartWorkout(assigned.workout, finalExercises, assigned.athlete_id);
-    } catch (err) {
+    } catch {
       showError('Impossibile caricare gli esercizi della scheda');
     } finally {
       setStartingWorkoutId(null);
@@ -390,71 +523,155 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     }
   };
 
+  // Identifica la prima scheda attiva e il prossimo allenamento di oggi
+  const firstAssigned = myAssignedWorkouts[0];
+
+  const draftCompletedSetsPercent = useMemo(() => {
+    if (!activeDraft) return null;
+    const setsObj = activeDraft.completedSets || {};
+    const allSets = Object.values(setsObj);
+    const totalSets = allSets.reduce((acc, sets) => acc + sets.length, 0);
+    const doneSets = allSets.reduce((acc, sets) => acc + sets.filter(Boolean).length, 0);
+    return totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
+  }, [activeDraft]);
+
+  const draftCurrentExerciseName = useMemo(() => {
+    if (!activeDraft || !activeDraft.exercises || activeDraft.exercises.length === 0) return null;
+    const idx = activeDraft.activeExerciseIdx || 0;
+    return activeDraft.exercises[idx]?.name || null;
+  }, [activeDraft]);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <div className="w-12 h-12 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-slate-400 font-bold">Caricamento delle tue schede...</p>
+        <p className="text-slate-400 font-bold text-sm">Caricamento delle tue schede...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
-      {/* Saluto e Riepilogo */}
-      <div>
-        <h2 className="text-xl font-bold mb-0.5">Il tuo Allenamento</h2>
-        <p className="text-xs text-slate-400">Ecco cosa ha preparato il tuo coach per te.</p>
+    <div className="space-y-4 sm:space-y-6 pb-32 font-sans">
+      {/* ─── 1. HEADER: SALUTO E TITOLO ─── */}
+      <div className="space-y-0.5">
+        <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">Il tuo Allenamento</h2>
+        <p className="text-xs text-slate-400">La tua home operativa per raggiungere i tuoi obiettivi.</p>
       </div>
 
-      {/* ── CARD PROSSIMO APPUNTAMENTO IN EVIDENZA ── */}
-      <AthleteNextAppointmentCard />
+      {/* ─── BANNER INVITO AGGIUNGI AC ALLA HOME ─── */}
+      <PwaInstallBanner />
 
-      {/* ── BANNER 1: RIPRENDI ALLENAMENTO IN CORSO SALVATO IN LOCALE ── */}
-      {activeDraft && (
-        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-[var(--color-primary)]/40 shadow-xl space-y-3 animate-in fade-in">
+      {/* ─── 2. BLOCCO PRINCIPALE: AZIONE IMMEDIATA HERO ─── */}
+      {activeDraft ? (
+        // SCENARIO A: RIPRENDI SESSIONE IN CORSO
+        <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-b from-amber-950/40 via-slate-900 to-slate-950 border border-[var(--color-primary)] shadow-2xl shadow-[var(--color-primary)]/10 space-y-4 animate-in fade-in">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0 shadow-md">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40 flex items-center justify-center shrink-0 shadow-lg">
                 <RotateCcw className="w-5 h-5 animate-spin-slow" />
               </div>
-              <div>
-                <span className="text-[10px] font-black text-[var(--color-primary)] uppercase tracking-wider block">
-                  Sessione in corso salvata sul dispositivo
-                </span>
-                <h4 className="text-sm sm:text-base font-black text-white">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black text-[var(--color-primary)] uppercase tracking-wider">
+                    Riprendi da dove avevi lasciato
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-950 text-slate-400 text-[9px] font-bold border border-slate-800">
+                    Salvato sul dispositivo
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-white truncate mt-0.5">
                   {activeDraft.workout?.title}
-                </h4>
-                <p className="text-[11px] text-slate-300 font-medium mt-0.5">
-                  Ultimo salvataggio: {new Date(activeDraft.lastSavedTimestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-                </p>
+                </h3>
+                <div className="flex items-center gap-2 text-xs text-slate-300 mt-0.5">
+                  {draftCurrentExerciseName && (
+                    <span className="text-slate-300 truncate">
+                      In corso: <strong className="text-white">{draftCurrentExerciseName}</strong>
+                    </span>
+                  )}
+                  {draftCompletedSetsPercent !== null && draftCompletedSetsPercent > 0 && (
+                    <span className="text-amber-400 font-bold font-mono">
+                      • {draftCompletedSetsPercent}% completato
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1 border-t border-slate-800/80">
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
+            <span>
+              Ultimo salvataggio alle{' '}
+              {new Date(activeDraft.lastSavedTimestamp).toLocaleTimeString('it-IT', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          </div>
+
+          {/* CTA Primaria & Secondaria */}
+          <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
             <button
               type="button"
               onClick={handleResumeDraft}
-              className="flex-1 py-2.5 px-4 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
+              className="w-full sm:flex-1 py-3.5 px-5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-[var(--color-primary)]/20 transition-all cursor-pointer active:scale-95"
             >
-              <Play className="w-3.5 h-3.5 fill-black" />
+              <Play className="w-4 h-4 fill-black" />
               <span>Riprendi Allenamento</span>
             </button>
             <button
               type="button"
               onClick={handleDiscardDraft}
-              className="py-2.5 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 text-xs font-bold border border-slate-800 transition-colors cursor-pointer"
+              className="w-full sm:w-auto py-2.5 px-4 rounded-xl text-slate-400 hover:text-rose-400 text-xs font-bold hover:bg-slate-900 border border-slate-800/60 transition-colors cursor-pointer text-center"
             >
-              Scarta
+              Scarta sessione
             </button>
           </div>
         </div>
-      )}
+      ) : firstAssigned ? (
+        // SCENARIO B: ALLENAMENTO DI OGGI (NESSUNA BOZZA ATTIVA)
+        <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-b from-slate-900 via-[var(--color-panel)] to-slate-950 border border-[var(--color-primary)]/40 shadow-xl space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0 shadow-lg">
+                <Flame className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-black text-[var(--color-primary)] uppercase tracking-wider">
+                    Allenamento di Oggi
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 text-[9px] font-black border border-emerald-500/30">
+                    Pronto per iniziare
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-white truncate mt-0.5">
+                  {firstAssigned.workout?.title}
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Preparati per la tua seduta di oggi. Raggiungi il tuo massimo!
+                </p>
+              </div>
+            </div>
+          </div>
 
-      {/* ── BANNER 2: ALLENAMENTI IN CODA DI SINCRONIZZAZIONE ── */}
+          {/* CTA Primaria per avviare il primo giorno */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => handleStartWorkout(firstAssigned, 1, 'Giorno A')}
+              className="w-full py-3.5 px-5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-[var(--color-primary)]/20 transition-all cursor-pointer active:scale-95"
+            >
+              <Play className="w-4 h-4 fill-black" />
+              <span>Inizia Allenamento</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ─── 3. BANNER CODA SINCRONIZZAZIONE OFFLINE ─── */}
       {pendingSyncCount > 0 && (
-        <div className="p-3 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-[var(--color-primary)]/30 flex items-center justify-between text-xs text-slate-300">
+        <div className="p-3 rounded-2xl bg-slate-900/50 backdrop-blur-xl border border-[var(--color-primary)]/30 flex items-center justify-between text-xs text-slate-300">
           <div className="flex items-center gap-2">
             <WifiOff className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
             <span>
@@ -479,19 +696,19 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         </div>
       )}
 
-      {/* Elenco Schede Assegnate */}
+      {/* ─── 4. ELENCO SCHEDE ASSEGNATE ─── */}
       {myAssignedWorkouts.length === 0 ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center">
-          <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Dumbbell className="w-8 h-8 text-slate-500" />
+        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 sm:p-12 text-center space-y-3">
+          <div className="w-14 h-14 bg-slate-800/80 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+            <Dumbbell className="w-7 h-7" />
           </div>
-          <h3 className="text-lg font-bold text-white mb-2">Nessuna scheda assegnata</h3>
-          <p className="text-slate-400 text-sm">
-            Il tuo coach non ti ha ancora assegnato un programma di allenamento. Torna a controllare più tardi!
+          <h3 className="text-base sm:text-lg font-black text-white">Nessuna scheda assegnata</h3>
+          <p className="text-slate-400 text-xs max-w-sm mx-auto leading-relaxed">
+            Il tuo coach non ti ha ancora assegnato un programma di allenamento. Riceverai una notifica non appena sarà pronto!
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 sm:space-y-6">
           {myAssignedWorkouts.map((assigned: any, index) => (
             <WorkoutCard
               key={assigned.id}
@@ -499,6 +716,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
               isFirst={index === 0}
               onStart={handleStartWorkout}
               startingWorkoutId={startingWorkoutId}
+              activeDraft={activeDraft}
             />
           ))}
         </div>

@@ -1,10 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, ArrowRight, KeyRound, Mail, Lock, CheckCircle2, ShieldCheck, Eye, EyeOff, Sparkles } from 'lucide-react';
+import {
+  ShieldAlert,
+  ArrowRight,
+  KeyRound,
+  Mail,
+  Lock,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Sparkles,
+  Zap,
+  Activity,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../../components/common/Modal';
+import { AuthAnimatedBackground } from '../../components/auth/AuthAnimatedBackground';
 
 export const AuthPage: React.FC = () => {
-  const { loginWithCredentials, requestPasswordReset, isPasswordRecovery, updateUserPassword, setIsPasswordRecovery } = useAuth();
+  const {
+    loginWithCredentials,
+    requestPasswordReset,
+    isPasswordRecovery,
+    updateUserPassword,
+    setIsPasswordRecovery,
+  } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,12 +57,12 @@ export const AuthPage: React.FC = () => {
     e.preventDefault();
     setIsLoading(true);
     setLoginError(null);
-    
+
     const { error } = await loginWithCredentials(email, password);
     if (error) {
       setLoginError('Credenziali non valide. Controlla email e password.');
     }
-    
+
     setIsLoading(false);
   };
 
@@ -57,7 +76,7 @@ export const AuthPage: React.FC = () => {
     if (result.success) {
       setResetMessage(result.message);
     } else {
-      setResetError(result.message || 'Si è verificato un errore durante l\'invio del link.');
+      setResetError(result.message || "Si è verificato un errore durante l'invio del link.");
     }
     setIsResetLoading(false);
   };
@@ -80,7 +99,10 @@ export const AuthPage: React.FC = () => {
     const { error } = await updateUserPassword(newPassword);
 
     if (error) {
-      setRecoveryError(error.message || 'Errore durante l\'aggiornamento della password. Il link potrebbe essere scaduto.');
+      setRecoveryError(
+        error.message ||
+          "Errore durante l'aggiornamento della password. Il link potrebbe essere scaduto."
+      );
       setIsUpdatingPassword(false);
     } else {
       setRecoverySuccess('Password reimpostata con successo! Stai per essere reindirizzato...');
@@ -92,262 +114,280 @@ export const AuthPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between relative overflow-hidden select-none font-sans">
-      {/* ─── EFFETTI LUCE DI SFONDO DINAMICI & AMBIENTALI ─── */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[450px] bg-[var(--color-primary)]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-10 left-10 w-[400px] h-[400px] bg-blue-600/5 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute top-10 right-10 w-[400px] h-[400px] bg-[var(--color-primary)]/5 rounded-full blur-[100px] pointer-events-none" />
+    <div className="min-h-screen bg-[#05070d] text-white flex flex-col justify-between relative overflow-hidden select-none font-sans">
+      
+      {/* ─── MOTORE SFONDO ELETTRICO AD ALTO VOLTAGGIO (FULMINI, SCINTILLE & ARCHI VOLTAICI) ─── */}
+      <AuthAnimatedBackground />
 
-      {/* Griglia Tecnica Sottile di Sfondo */}
-      <div 
-        className="absolute inset-0 opacity-[0.03] pointer-events-none" 
-        style={{ 
-          backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', 
-          backgroundSize: '32px 32px' 
-        }} 
-      />
-
-      {/* ─── HEADER MINIMALE BRANDED AD ALTA DEFINIZIONE ─── */}
-      <header className="bg-slate-950/60 backdrop-blur-2xl border-b border-slate-800/60 px-5 sm:px-8 py-3.5 flex items-center justify-between relative z-10">
+      {/* ─── HEADER HIGH-TECH AD ALTA DEFINIZIONE ─── */}
+      <header className="bg-slate-950/50 backdrop-blur-2xl border-b border-cyan-500/20 px-5 sm:px-8 py-3.5 flex items-center justify-between relative z-10 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center gap-3">
-          {/* Logo Ufficiale Trasparente in Box Satinato */}
-          <div className="w-10 h-10 rounded-2xl bg-slate-900/90 border border-slate-800/90 flex items-center justify-center shrink-0 shadow-lg shadow-black/60 p-1.5 backdrop-blur-md">
-            <img 
-              src="/ac-logo-transparent.png" 
-              alt="AC Coaching Logo" 
-              className="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]"
+          {/* Logo Ufficiale Trasparente in Box Satinato con Aura Elettrica */}
+          <div className="w-10 h-10 rounded-2xl bg-slate-900/90 border border-cyan-500/40 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.3)] p-1.5 backdrop-blur-md relative group">
+            <div className="absolute inset-0 rounded-2xl bg-cyan-400/20 blur-sm group-hover:bg-cyan-400/40 transition-all duration-300" />
+            <img
+              src="/ac-logo-transparent.png"
+              alt="AC Coaching Logo"
+              className="w-full h-full object-contain relative z-10 drop-shadow-[0_0_10px_rgba(6,182,212,0.5)]"
             />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="text-base sm:text-lg font-black tracking-wider text-white uppercase">
+              <span className="text-base sm:text-lg font-black tracking-wider text-white uppercase flex items-center gap-1">
                 <span className="text-[var(--color-primary)]">AC</span> COACHING
+                <Zap className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400 animate-pulse inline-block" />
               </span>
             </div>
-            <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold tracking-widest uppercase flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] inline-block shadow-[0_0_8px_var(--color-primary)] animate-pulse" />
-              High Performance Management
+            <p className="text-[9px] sm:text-[10px] text-cyan-300/80 font-black tracking-widest uppercase flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block shadow-[0_0_10px_#06b6d4] animate-ping" />
+              High Performance Electric System
             </p>
           </div>
         </div>
 
-        {/* Badge di Sicurezza Crittografata */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] font-bold text-slate-300 backdrop-blur-md shadow-sm">
-          <ShieldCheck className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-          <span className="hidden sm:inline">Portale Protetto & Crittografato</span>
+        {/* Badge di Sicurezza Crittografata con bagliore neon */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-cyan-500/30 text-[10px] font-bold text-cyan-200 backdrop-blur-md shadow-[0_0_15px_rgba(6,182,212,0.2)]">
+          <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+          <span className="hidden sm:inline">Sistema Protetto & Connesso AAL2</span>
         </div>
       </header>
 
-      {/* ─── CARD CENTRALE (LOGIN NORMALE o IMPOSTA NUOVA PASSWORD) ─── */}
+      {/* ─── CARD CENTRALE ELETTRICA CON CORNICE NEON AD ALTO VOLTAGGIO ─── */}
       <div className="flex-1 flex items-center justify-center p-4 sm:p-6 relative z-10">
-        {isPasswordRecovery ? (
-          /* ── SCHERMATA IMPOSTA NUOVA PASSWORD (DOPO CLICK SUL LINK EMAIL) ── */
-          <div className="max-w-md w-full bg-slate-950/85 backdrop-blur-3xl border border-amber-500/30 rounded-[32px] p-7 sm:p-9 shadow-[0_0_60px_rgba(0,0,0,0.9)] space-y-6 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-[var(--color-primary)] to-transparent" />
+        
+        {/* Glow esterno sfumato ad alto voltaggio */}
+        <div className="relative w-full max-w-md group">
+          
+          {/* Alone di energia pulsante dietro la card */}
+          <div className="absolute -inset-1.5 bg-gradient-to-r from-cyan-500/40 via-[var(--color-primary)]/40 to-cyan-500/40 rounded-[38px] blur-2xl opacity-80 animate-pulse duration-1000 -z-10 pointer-events-none" />
 
-            <div className="text-center space-y-3">
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl shadow-amber-500/10">
-                <KeyRound className="w-7 h-7" />
-              </div>
-              <h1 className="text-2xl font-black tracking-tight text-white uppercase">
-                Crea Nuova <span className="text-[var(--color-primary)]">Password</span>
-              </h1>
-              <p className="text-xs text-slate-400 font-medium leading-relaxed">
-                Inserisci la nuova password sicura per il tuo account su AC Coaching.
-              </p>
-            </div>
+          {isPasswordRecovery ? (
+            /* ── SCHERMATA IMPOSTA NUOVA PASSWORD ── */
+            <div className="w-full bg-slate-950/90 backdrop-blur-3xl border border-amber-500/40 rounded-[32px] p-7 sm:p-9 shadow-[0_0_80px_rgba(0,0,0,0.95)] space-y-6 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--color-primary)] to-transparent shadow-[0_0_10px_var(--color-primary)]" />
 
-            <form onSubmit={handleUpdatePasswordSubmit} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
-                  Nuova Password (min. 6 caratteri)
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type={showNewPassword ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Nuova password"
-                    className="w-full pl-10 pr-10 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-white text-sm focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all placeholder:text-slate-600 font-medium"
-                    required
-                    minLength={6}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-                  >
-                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+              <div className="text-center space-y-3">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-[0_0_20px_rgba(234,179,8,0.3)]">
+                  <KeyRound className="w-7 h-7" />
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
-                  Conferma Nuova Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type={showNewPassword ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Ripeti la nuova password"
-                    className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-white text-sm focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all placeholder:text-slate-600 font-medium"
-                    required
-                    minLength={6}
-                  />
-                </div>
-              </div>
-
-              {recoveryError && (
-                <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-start gap-2.5 text-rose-400 text-xs animate-in fade-in">
-                  <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="font-bold">{recoveryError}</span>
-                </div>
-              )}
-
-              {recoverySuccess && (
-                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-start gap-2.5 text-emerald-400 text-xs animate-in fade-in">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="font-bold">{recoverySuccess}</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isUpdatingPassword}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl bg-[var(--color-primary)] text-slate-950 font-black text-sm hover:bg-[var(--color-primary-hover)] active:scale-98 transition-all shadow-xl shadow-[var(--color-primary)]/25 disabled:opacity-50 cursor-pointer mt-2"
-              >
-                {isUpdatingPassword ? (
-                  <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <span>Salva Nuova Password & Entra</span>
-                    <ArrowRight className="w-4 h-4 stroke-[3]" />
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-        ) : (
-          /* ── SCHERMATA LOGIN STANDARD ── */
-          <div className="max-w-md w-full bg-slate-950/80 backdrop-blur-3xl border border-slate-800/80 rounded-[32px] p-7 sm:p-9 shadow-[0_0_60px_rgba(0,0,0,0.8)] space-y-6 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            
-            {/* Riflesso di luce sottile superiore */}
-            <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-[var(--color-primary)]/50 to-transparent" />
-
-            {/* Testata Card con Logo AC Grande Trasparente & Medaglione Luminoso */}
-            <div className="text-center space-y-3.5">
-              <div className="relative mx-auto w-24 h-24 rounded-full bg-gradient-to-b from-slate-900/90 to-slate-950/90 border-2 border-[var(--color-primary)]/40 p-4 flex items-center justify-center shadow-2xl shadow-[var(--color-primary)]/20 group hover:scale-105 transition-all">
-                <div className="absolute inset-0 rounded-full bg-[var(--color-primary)]/10 blur-md pointer-events-none" />
-                <img 
-                  src="/ac-logo-transparent.png" 
-                  alt="AC Coaching Official" 
-                  className="w-full h-full object-contain relative z-10 drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]"
-                />
-              </div>
-
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white uppercase">
-                  AC <span className="text-[var(--color-primary)]">COACHING</span>
+                <h1 className="text-2xl font-black tracking-tight text-white uppercase">
+                  Crea Nuova <span className="text-[var(--color-primary)]">Password</span>
                 </h1>
-                <p className="text-xs text-slate-400 font-medium mt-1">
-                  Inserisci le tue credenziali per accedere al portale
+                <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                  Inserisci la nuova password sicura per il tuo account su AC Coaching.
                 </p>
               </div>
-            </div>
 
-            {/* Form Campi Credenziali */}
-            <form onSubmit={handleFormSubmit} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
-                  Email Account
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="nome@esempio.com"
-                    className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-white text-sm focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all placeholder:text-slate-600 font-medium"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
-                    Password
+              <form onSubmit={handleUpdatePasswordSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                    Nuova Password (min. 6 caratteri)
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (email.trim()) setResetEmail(email.trim());
-                      setResetMessage(null);
-                      setResetError(null);
-                      setIsResetModalOpen(true);
-                    }}
-                    className="text-xs font-bold text-[var(--color-primary)] hover:underline cursor-pointer transition-colors"
-                  >
-                    Password dimenticata?
-                  </button>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Nuova password"
+                      className="w-full pl-10 pr-10 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-white text-sm focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 transition-all placeholder:text-slate-600 font-medium shadow-inner"
+                      required
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-10 pr-10 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-white text-sm focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all placeholder:text-slate-600 font-medium"
-                    required
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                    Conferma Nuova Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Ripeti la nuova password"
+                      className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-white text-sm focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 transition-all placeholder:text-slate-600 font-medium shadow-inner"
+                      required
+                      minLength={6}
+                    />
+                  </div>
+                </div>
+
+                {recoveryError && (
+                  <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-start gap-2.5 text-rose-400 text-xs animate-in fade-in">
+                    <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span className="font-bold">{recoveryError}</span>
+                  </div>
+                )}
+
+                {recoverySuccess && (
+                  <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-start gap-2.5 text-emerald-400 text-xs animate-in fade-in">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span className="font-bold">{recoverySuccess}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isUpdatingPassword}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl bg-[var(--color-primary)] text-slate-950 font-black text-sm hover:bg-[var(--color-primary-hover)] active:scale-98 transition-all shadow-[0_0_30px_rgba(234,179,8,0.4)] disabled:opacity-50 cursor-pointer mt-2 overflow-hidden relative group"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
+
+                  {isUpdatingPassword ? (
+                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span>Salva Nuova Password & Entra</span>
+                      <ArrowRight className="w-4 h-4 stroke-[3] group-hover:translate-x-1 transition-transform" />
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          ) : (
+            /* ── SCHERMATA LOGIN STANDARD ELETTRICA ── */
+            <div className="w-full bg-slate-950/90 backdrop-blur-3xl border border-cyan-500/40 hover:border-cyan-400/70 rounded-[32px] p-7 sm:p-9 shadow-[0_0_100px_rgba(0,0,0,0.95)] space-y-6 relative overflow-hidden transition-all duration-300">
+              
+              {/* Fascio laser animato in cima alla card */}
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_12px_#06b6d4]" />
+
+              {/* Testata Card con Logo AC Grande Trasparente & Medaglione con Anello Orbitale Elettrico */}
+              <div className="text-center space-y-3.5">
+                <div className="relative mx-auto w-24 h-24 rounded-full bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-cyan-400/60 p-4 flex items-center justify-center shadow-[0_0_40px_rgba(6,182,212,0.4)] group-hover:shadow-[0_0_60px_rgba(6,182,212,0.6)] group-hover:scale-105 transition-all duration-300">
+                  
+                  {/* Anello elettrico rotante esterno */}
+                  <div className="absolute -inset-2.5 rounded-full border border-dashed border-cyan-400/50 animate-[spin_12s_linear_infinite] pointer-events-none" />
+                  
+                  {/* Anello di luce dorata inverso */}
+                  <div className="absolute -inset-1.5 rounded-full border border-[var(--color-primary)]/40 animate-[spin_8s_linear_infinite_reverse] pointer-events-none" />
+
+                  {/* Bagliore centrale */}
+                  <div className="absolute inset-0 rounded-full bg-cyan-400/20 blur-md pointer-events-none animate-pulse duration-1000" />
+
+                  <img
+                    src="/ac-logo-transparent.png"
+                    alt="AC Coaching Official"
+                    className="w-full h-full object-contain relative z-10 drop-shadow-[0_0_15px_rgba(255,255,255,0.6)]"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                </div>
+
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white uppercase flex items-center justify-center gap-1.5">
+                    AC <span className="text-[var(--color-primary)] drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]">COACHING</span>
+                  </h1>
+                  <p className="text-xs text-cyan-200/80 font-bold mt-1 tracking-wide">
+                    Inserisci le tue credenziali per accedere al portale
+                  </p>
                 </div>
               </div>
 
-              {loginError && (
-                <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-start gap-2.5 text-rose-400 text-xs animate-in fade-in">
-                  <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="font-bold">{loginError}</span>
+              {/* Form Campi Credenziali */}
+              <form onSubmit={handleFormSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
+                    <span>Email Account</span>
+                    <span className="text-cyan-400 font-mono text-[9px]">ENCRYPTED</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-500/70 transition-colors" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="nome@esempio.com"
+                      className="w-full pl-10 pr-4 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-white text-sm focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 focus:shadow-[0_0_25px_rgba(6,182,212,0.25)] transition-all placeholder:text-slate-600 font-medium"
+                      required
+                    />
+                  </div>
                 </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl bg-[var(--color-primary)] text-slate-950 font-black text-sm hover:bg-[var(--color-primary-hover)] active:scale-98 transition-all shadow-xl shadow-[var(--color-primary)]/25 disabled:opacity-50 cursor-pointer mt-2"
-              >
-                {isLoading ? (
-                  <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <span>Accedi al Portale</span>
-                    <ArrowRight className="w-4 h-4 stroke-[3]" />
-                  </>
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (email.trim()) setResetEmail(email.trim());
+                        setResetMessage(null);
+                        setResetError(null);
+                        setIsResetModalOpen(true);
+                      }}
+                      className="text-xs font-bold text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer transition-colors"
+                    >
+                      Password dimenticata?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-500/70" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-10 pr-10 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-white text-sm focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30 focus:shadow-[0_0_25px_rgba(6,182,212,0.25)] transition-all placeholder:text-slate-600 font-medium"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-cyan-300 transition-colors cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {loginError && (
+                  <div className="p-3.5 bg-rose-500/15 border border-rose-500/40 rounded-2xl flex items-start gap-2.5 text-rose-400 text-xs animate-in fade-in slide-in-from-top-2 duration-200 shadow-[0_0_20px_rgba(244,63,94,0.2)]">
+                    <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span className="font-bold">{loginError}</span>
+                  </div>
                 )}
-              </button>
-            </form>
-          </div>
-        )}
+
+                {/* Pulsante Elettrico con Glow ad Alta Densità */}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl bg-gradient-to-r from-cyan-400 via-cyan-300 to-[var(--color-primary)] text-slate-950 font-black text-sm hover:opacity-95 active:scale-98 transition-all shadow-[0_0_35px_rgba(6,182,212,0.4)] hover:shadow-[0_0_50px_rgba(6,182,212,0.6)] disabled:opacity-50 cursor-pointer mt-2 overflow-hidden relative group"
+                >
+                  {/* Effetto Sweep Laser ad Alta Velocità */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out pointer-events-none" />
+
+                  {isLoading ? (
+                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 fill-slate-950" />
+                      <span>Accedi al Portale</span>
+                      <ArrowRight className="w-4 h-4 stroke-[3] group-hover:translate-x-1.5 transition-transform" />
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ─── FOOTER MINIMALE ─── */}
-      <footer className="py-4 text-center text-xs text-slate-500 relative z-10 border-t border-slate-900/80">
+      {/* ─── FOOTER MINIMALE CON DIODI LUMINOSI ─── */}
+      <footer className="py-4 text-center text-xs text-slate-500 relative z-10 border-t border-slate-900/80 backdrop-blur-sm flex items-center justify-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
         <span>© {new Date().getFullYear()} AC COACHING • High Performance Platform</span>
       </footer>
 
-      {/* ─── MODAL RECUPERO PASSWORD (OPZIONE 1) ─── */}
+      {/* ─── MODAL RECUPERO PASSWORD ─── */}
       <Modal
         isOpen={isResetModalOpen}
         onClose={() => {
@@ -358,10 +398,12 @@ export const AuthPage: React.FC = () => {
         title="Password dimenticata?"
       >
         <div className="space-y-4 select-none">
-          <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-300">
-            <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.1)]">
+            <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
             <p className="leading-relaxed">
-              Inserisci l'indirizzo email con cui sei registrata/o su <strong>AC Coaching</strong>. Ti invieremo subito il link sicuro per impostare una nuova password e rientrare autonomamente.
+              Inserisci l'indirizzo email con cui sei registrata/o su <strong>AC Coaching</strong>.
+              Ti invieremo subito il link sicuro per impostare una nuova password e rientrare
+              autonomamente.
             </p>
           </div>
 
@@ -378,7 +420,7 @@ export const AuthPage: React.FC = () => {
                   onChange={(e) => setResetEmail(e.target.value)}
                   placeholder="cliente@esempio.com"
                   autoFocus
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:outline-none focus:border-cyan-400 font-medium"
                   required
                 />
               </div>
@@ -413,7 +455,7 @@ export const AuthPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isResetLoading}
-                className="px-4 py-2.5 bg-[var(--color-primary)] text-slate-950 font-black text-xs rounded-xl hover:bg-[var(--color-primary-hover)] active:scale-98 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-lg shadow-[var(--color-primary)]/20"
+                className="px-4 py-2.5 bg-gradient-to-r from-cyan-400 to-[var(--color-primary)] text-slate-950 font-black text-xs rounded-xl hover:opacity-95 active:scale-98 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-lg shadow-cyan-500/20"
               >
                 {isResetLoading ? (
                   <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />

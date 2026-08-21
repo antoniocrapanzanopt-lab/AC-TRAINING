@@ -28,6 +28,7 @@ import {
   Dumbbell,
   Sparkles,
   MoreVertical,
+  Flame,
 } from 'lucide-react';
 import { AthleteModal, ModalSection } from '../../components/athletes/AthleteModal';
 import { AIProgressionAssistantModal } from '../../components/progressions/AIProgressionAssistantModal';
@@ -42,6 +43,7 @@ import { useCommunications } from '../../context/CommunicationsContext';
 import { useMetrics } from '../../context/MetricsContext';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useApp } from '../../context/AppContext';
+import { useNutrition } from '../../context/NutritionContext';
 import { AthleteStatusBadge, PaymentStatusBadge, contactChannelLabel, acquisitionSourceLabel } from '../../components/athletes/AthleteBadges';
 import { SubscriptionsTab } from '../../components/athletes/SubscriptionsTab';
 import { PaymentsTab } from '../../components/athletes/PaymentsTab';
@@ -50,6 +52,8 @@ import { ActivityTab } from '../../components/athletes/ActivityTab';
 import { CommunicationsTab } from '../../components/athletes/CommunicationsTab';
 import { TimelineTab } from '../../components/athletes/TimelineTab';
 import { MetricsTab } from '../../components/athletes/MetricsTab';
+import { NutritionMonitoringView } from '../../components/nutrition/NutritionMonitoringView';
+import { NutritionRevisionsView } from '../../components/nutrition/NutritionRevisionsView';
 import { Scale, TrendingUp, TrendingDown } from 'lucide-react';
 
 // ─── Tipi Tab ─────────────────────────────────────────────────────────────────
@@ -57,6 +61,7 @@ import { Scale, TrendingUp, TrendingDown } from 'lucide-react';
 type DetailTab =
   | 'panoramica'
   | 'metriche'
+  | 'nutrizione'
   | 'note'
   | 'abbonamenti'
   | 'pagamenti'
@@ -311,11 +316,13 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const { getAthleteActivePlan } = useNutrition();
   const athlete = getAthleteById(athleteId);
   const athleteNotes = notes?.[athleteId] ?? [];
   const athleteTimeline = timeline?.[athleteId] ?? [];
   const athleteDocs = documents.filter(d => d.athleteId === athleteId);
   const athleteComms = communications.filter(c => c.athleteId === athleteId);
+  const activeNutritionPlan = getAthleteActivePlan(athleteId);
 
   const athleteAssignedWorkouts = useMemo(() => {
     return allAssignedWorkouts.filter(a => 
@@ -466,7 +473,8 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   // Badge Conteggio Tabs
   const tabList: { id: DetailTab; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'panoramica', label: 'Panoramica', icon: <User className="w-4 h-4" /> },
-    { id: 'metriche', label: 'Metriche & Massimali', icon: <Scale className="w-4 h-4" /> },
+    { id: 'metriche', label: 'Progressi & Fabbisogno', icon: <Scale className="w-4 h-4" /> },
+    { id: 'nutrizione', label: 'Nutrizione & Macro', icon: <Flame className="w-4 h-4" /> },
     { id: 'note', label: 'Note', icon: <StickyNote className="w-4 h-4" />, count: athleteNotes.length },
     { id: 'abbonamenti', label: 'Abbonamenti', icon: <BookOpen className="w-4 h-4" /> },
     { id: 'pagamenti', label: 'Pagamenti', icon: <CreditCard className="w-4 h-4" /> },
@@ -479,7 +487,16 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   const renderTab = (): React.ReactNode => {
     switch (activeTab) {
       case 'metriche':
-        return <MetricsTab athleteId={athlete.id} athleteName={safeFullName} />;
+        return (
+          <MetricsTab
+            athleteId={athlete.id}
+            athleteName={safeFullName}
+            athleteBirthDate={athlete.dateOfBirth}
+            athleteGender={athlete.gender}
+            athleteHeightCm={latestMetric?.height_cm || undefined}
+            onNavigateToFullNutrition={() => setActiveTab('nutrizione')}
+          />
+        );
       case 'panoramica':
         return (
           <div className="space-y-4">
@@ -722,6 +739,22 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
 
       case 'attivita':
         return <ActivityTab athleteId={athlete.id} athleteName={athlete.fullName} />;
+
+      case 'nutrizione':
+        return (
+          <div className="space-y-6">
+            <NutritionMonitoringView
+              athleteId={athlete.id}
+              athleteName={athlete.fullName}
+              athletePhone={athlete.phone}
+              activePlan={activeNutritionPlan}
+              onNavigateToMacros={() => setAppActiveTab('fabbisogno')}
+            />
+            {activeNutritionPlan && (
+              <NutritionRevisionsView plan={activeNutritionPlan} />
+            )}
+          </div>
+        );
 
       case 'comunicazioni':
         return (

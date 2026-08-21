@@ -43,7 +43,7 @@ const tabTitles: Record<NavigationTab, string> = {
   attivita: 'Registro Attività',
   calendario: 'Calendario Appuntamenti',
   documenti: 'Gestione Documenti',
-  comunicazioni: 'Centro Comunicazioni',
+  comunicazioni: 'Comunicazioni',
   report: 'Report e Statistiche',
   analisi_report: 'Analisi & Report',
   collaboratori: 'Gestione Collaboratori',

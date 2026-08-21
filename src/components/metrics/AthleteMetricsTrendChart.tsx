@@ -14,12 +14,14 @@ import {
   Minus,
   Activity,
   Calendar,
-  Sparkles
+  Sparkles,
+  Plus,
 } from 'lucide-react';
 import { AthleteMetric } from '../../types/metrics';
 
 interface AthleteMetricsTrendChartProps {
   metrics: AthleteMetric[];
+  onOpenCheckIn?: () => void;
 }
 
 type MetricKey =
@@ -40,14 +42,17 @@ interface MetricOption {
 
 const METRIC_OPTIONS: MetricOption[] = [
   { key: 'weight_kg', label: 'Peso', unit: 'kg', icon: '⚖️', color: 'var(--color-primary)' },
-  { key: 'body_fat_percentage', label: 'Massa Grassa', unit: '%', icon: '📉', color: '#f59e0b' },
-  { key: 'waist_cm', label: 'Girovita', unit: 'cm', icon: '📏', color: '#38bdf8' },
+  { key: 'body_fat_percentage', label: '% Grasso', unit: '%', icon: '📉', color: '#f59e0b' },
+  { key: 'waist_cm', label: 'Vita', unit: 'cm', icon: '📏', color: '#38bdf8' },
   { key: 'chest_cm', label: 'Torace', unit: 'cm', icon: '📐', color: '#a855f7' },
-  { key: 'bicep_right_cm', label: 'Bicipite', unit: 'cm', icon: '💪', color: '#ec4899' },
-  { key: 'thigh_right_cm', label: 'Coscia', unit: 'cm', icon: '🦵', color: '#10b981' },
+  { key: 'bicep_right_cm', label: 'Braccia', unit: 'cm', icon: '💪', color: '#ec4899' },
+  { key: 'thigh_right_cm', label: 'Cosce', unit: 'cm', icon: '🦵', color: '#10b981' },
 ];
 
-export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> = ({ metrics }) => {
+export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> = ({
+  metrics,
+  onOpenCheckIn,
+}) => {
   const [selectedMetricKey, setSelectedMetricKey] = useState<MetricKey>('weight_kg');
 
   const selectedMetric = useMemo(() => {
@@ -104,22 +109,28 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
   }, [stats]);
 
   return (
-    <div className="p-5 sm:p-6 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 shadow-xl space-y-5">
+    <div className="p-4 sm:p-6 rounded-3xl bg-slate-900/50 backdrop-blur-xl border border-slate-800/80 shadow-xl space-y-4 sm:space-y-5 overflow-hidden">
       
-      {/* ─── HEADER & SELETTORE METRICHE A PILLOLA ─── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
-        <div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-primary)] flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5" />
-            Trend & Progressione Corporea
+      {/* ─── HEADER & SELETTORE METRICHE CON SCORRIMENTO TOUCH ─── */}
+      <div className="space-y-3 border-b border-slate-800/80 pb-3 sm:pb-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5" />
+              Trend & Progressione Corporea
+            </span>
+            <h3 className="text-base sm:text-lg font-black text-white mt-0.5">
+              Evoluzione {selectedMetric.label}
+            </h3>
+          </div>
+
+          <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800 shrink-0">
+            {chartData.length} {chartData.length === 1 ? 'rilevazione' : 'rilevazioni'}
           </span>
-          <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2 mt-0.5">
-            <span>Evoluzione di {selectedMetric.label}</span>
-          </h3>
         </div>
 
-        {/* Switch Metriche Orizzontale */}
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
+        {/* Switch Metriche Orizzontale a Scorrimento Rapido */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 -mx-1 px-1 touch-pan-x">
           {METRIC_OPTIONS.map((opt) => {
             const isSelected = opt.key === selectedMetricKey;
             return (
@@ -127,14 +138,14 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
                 key={opt.key}
                 type="button"
                 onClick={() => setSelectedMetricKey(opt.key)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95 ${
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none active:scale-95 ${
                   isSelected
-                    ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
-                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                    ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20 ring-1 ring-[var(--color-primary)]'
+                    : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
                 }`}
               >
-                <span>{opt.icon}</span>
-                <span>{opt.label}</span>
+                <span className="text-xs">{opt.icon}</span>
+                <span className="whitespace-nowrap">{opt.label}</span>
               </button>
             );
           })}
@@ -143,14 +154,14 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
 
       {/* ─── KPI METRICHE IN EVIDENZA ─── */}
       {stats && (
-        <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
           {/* Partenza */}
-          <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-0.5">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-0.5">
+            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
               Iniziale
             </span>
-            <div className="text-base sm:text-xl font-black font-mono text-slate-300">
-              {stats.first} <span className="text-xs font-sans text-slate-500">{selectedMetric.unit}</span>
+            <div className="text-sm sm:text-lg font-black font-mono text-slate-300">
+              {stats.first} <span className="text-[10px] sm:text-xs font-sans text-slate-500">{selectedMetric.unit}</span>
             </div>
             <span className="text-[9px] text-slate-500 block truncate">
               {chartData[0]?.formattedDate}
@@ -158,12 +169,12 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
           </div>
 
           {/* Attuale */}
-          <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-0.5">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-0.5">
+            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
               Attuale
             </span>
-            <div className="text-base sm:text-xl font-black font-mono text-white">
-              {stats.current} <span className="text-xs font-sans text-[var(--color-primary)] font-bold">{selectedMetric.unit}</span>
+            <div className="text-sm sm:text-lg font-black font-mono text-white">
+              {stats.current} <span className="text-[10px] sm:text-xs font-sans text-[var(--color-primary)] font-bold">{selectedMetric.unit}</span>
             </div>
             <span className="text-[9px] text-slate-500 block truncate">
               {chartData[chartData.length - 1]?.formattedDate}
@@ -171,12 +182,12 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
           </div>
 
           {/* Variazione Netta (Delta) */}
-          <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-0.5">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-              Variazione
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-0.5">
+            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+              Delta
             </span>
-            <div className="flex items-center gap-1">
-              <span className={`text-base sm:text-xl font-black font-mono flex items-center gap-0.5 ${
+            <div className="flex items-center gap-0.5">
+              <span className={`text-sm sm:text-lg font-black font-mono flex items-center ${
                 stats.delta < 0
                   ? 'text-sky-400'
                   : stats.delta > 0
@@ -184,28 +195,28 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
                   : 'text-slate-400'
               }`}>
                 {stats.delta > 0 ? (
-                  <TrendingUp className="w-4 h-4 text-amber-400 shrink-0" />
+                  <TrendingUp className="w-3.5 h-3.5 text-amber-400 shrink-0 mr-0.5" />
                 ) : stats.delta < 0 ? (
-                  <TrendingDown className="w-4 h-4 text-sky-400 shrink-0" />
+                  <TrendingDown className="w-3.5 h-3.5 text-sky-400 shrink-0 mr-0.5" />
                 ) : (
-                  <Minus className="w-4 h-4 text-slate-400 shrink-0" />
+                  <Minus className="w-3.5 h-3.5 text-slate-400 shrink-0 mr-0.5" />
                 )}
                 {stats.delta > 0 ? `+${stats.delta}` : stats.delta}
               </span>
-              <span className="text-xs font-sans text-slate-500 font-bold">{selectedMetric.unit}</span>
+              <span className="text-[10px] sm:text-xs font-sans text-slate-500 font-bold">{selectedMetric.unit}</span>
             </div>
-            <span className="text-[9px] text-slate-500 block">
-              Su {stats.count} check-in
+            <span className="text-[9px] text-slate-500 block truncate">
+              Su {stats.count} check
             </span>
           </div>
         </div>
       )}
 
-      {/* ─── GRAFICO RECHARTS AREA SPLINE SATINATA ─── */}
+      {/* ─── GRAFICO RECHARTS AREA SPLINE CON MARGINI OTTIMIZZATI PER SMARTPHONE ─── */}
       {chartData.length >= 2 ? (
-        <div className="w-full h-64 sm:h-72 pt-2">
+        <div className="w-full h-52 sm:h-64 pt-2">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
               <defs>
                 <linearGradient id="metricGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.4} />
@@ -218,7 +229,7 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
               <XAxis
                 dataKey="formattedDate"
                 stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
                 tickLine={false}
                 axisLine={{ stroke: '#334155', opacity: 0.6 }}
               />
@@ -226,7 +237,7 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
               <YAxis
                 domain={yDomain}
                 stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
                 tickLine={false}
                 axisLine={false}
               />
@@ -241,7 +252,7 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
                           <Calendar className="w-3 h-3 text-[var(--color-primary)]" />
                           <span>{data.fullDate}</span>
                         </div>
-                        <div className="text-lg font-black font-mono text-white flex items-center gap-1">
+                        <div className="text-base font-black font-mono text-white flex items-center gap-1">
                           <span>{data.value}</span>
                           <span className="text-xs text-[var(--color-primary)] font-bold">{selectedMetric.unit}</span>
                         </div>
@@ -261,25 +272,41 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
                 type="monotone"
                 dataKey="value"
                 stroke="var(--color-primary)"
-                strokeWidth={3}
+                strokeWidth={2.5}
                 fill="url(#metricGradient)"
-                activeDot={{ r: 6, fill: 'var(--color-primary)', stroke: '#0f172a', strokeWidth: 3 }}
-                dot={{ r: 4, fill: '#0f172a', stroke: 'var(--color-primary)', strokeWidth: 2 }}
+                activeDot={{ r: 5, fill: 'var(--color-primary)', stroke: '#0f172a', strokeWidth: 2 }}
+                dot={{ r: 3.5, fill: '#0f172a', stroke: 'var(--color-primary)', strokeWidth: 2 }}
               />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       ) : (
-        <div className="py-10 text-center space-y-2 border border-dashed border-slate-800 rounded-2xl">
-          <div className="w-10 h-10 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto">
+        <div className="py-8 sm:py-10 text-center space-y-3 border border-dashed border-slate-800/80 bg-slate-950/40 rounded-2xl p-4">
+          <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/25 flex items-center justify-center text-[var(--color-primary)] mx-auto shadow-md shadow-[var(--color-primary)]/5">
             <Sparkles className="w-5 h-5" />
           </div>
-          <div>
-            <h4 className="text-xs font-bold text-slate-300">Dati insufficienti per il grafico</h4>
-            <p className="text-[11px] text-slate-500 max-w-xs mx-auto mt-0.5">
-              Registra almeno 2 check-in con {selectedMetric.label} per visualizzare la curva di progressione e il trend temporale.
+          <div className="space-y-1">
+            <h4 className="text-xs sm:text-sm font-black text-white">
+              {chartData.length === 1 ? `1 sola rilevazione di ${selectedMetric.label}` : `Nessun dato per ${selectedMetric.label}`}
+            </h4>
+            <p className="text-[11px] text-slate-400 max-w-sm mx-auto leading-relaxed">
+              {chartData.length === 1
+                ? `Hai registrato ${chartData[0].value} ${selectedMetric.unit} il ${chartData[0].formattedDate}. Inserisci un secondo check per visualizzare la curva di trend.`
+                : `Registra almeno 2 check-in con ${selectedMetric.label} per generare la curva di progressione temporale.`}
             </p>
           </div>
+          {onOpenCheckIn && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={onOpenCheckIn}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-[var(--color-primary)] border border-[var(--color-primary)]/30 hover:border-[var(--color-primary)] font-black text-xs transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Registra {selectedMetric.label}</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

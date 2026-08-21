@@ -148,55 +148,126 @@ export const buildGoogleCalendarEvents = (email: string = 'antonio.crapanzanopt@
   ];
 };
 
+/**
+ * Converte una stringa data/ora da standard iCal (.ics) in data (YYYY-MM-DD) e ora (HH:mm) locali,
+ * gestendo correttamente i timestamp UTC (con suffisso 'Z') e i relativi fusi orari.
+ */
+export const parseIcsDateTime = (raw: string): { dateStr: string; timeStr?: string } => {
+  if (!raw) return { dateStr: new Date().toISOString().slice(0, 10) };
+
+  const trimmed = raw.trim();
+
+  // Caso 1: Solo data (es. "20260818")
+  if (!trimmed.includes('T')) {
+    if (trimmed.length >= 8) {
+      const y = trimmed.slice(0, 4);
+      const m = trimmed.slice(4, 6);
+      const d = trimmed.slice(6, 8);
+      return { dateStr: `${y}-${m}-${d}` };
+    }
+    return { dateStr: new Date().toISOString().slice(0, 10) };
+  }
+
+  // Caso 2: Data e ora (es. "20260818T070000Z" o "20260818T090000")
+  const isUtc = trimmed.toUpperCase().endsWith('Z');
+  const tIndex = trimmed.indexOf('T');
+  const datePart = trimmed.slice(0, tIndex);
+  const timePart = trimmed.slice(tIndex + 1).replace(/Z/i, '');
+
+  const y = parseInt(datePart.slice(0, 4), 10);
+  const m = parseInt(datePart.slice(4, 6), 10) - 1; // Mese 0-based
+  const d = parseInt(datePart.slice(6, 8), 10);
+
+  const hh = parseInt(timePart.slice(0, 2), 10) || 0;
+  const mm = parseInt(timePart.slice(2, 4), 10) || 0;
+  const ss = timePart.length >= 6 ? parseInt(timePart.slice(4, 6), 10) || 0 : 0;
+
+  if (isUtc) {
+    // È in formato UTC: costruiamo la data UTC e leggiamo l'ora locale del browser/utente
+    const utcDate = new Date(Date.UTC(y, m, d, hh, mm, ss));
+    const localYear = utcDate.getFullYear();
+    const localMonth = String(utcDate.getMonth() + 1).padStart(2, '0');
+    const localDay = String(utcDate.getDate()).padStart(2, '0');
+    const localHour = String(utcDate.getHours()).padStart(2, '0');
+    const localMin = String(utcDate.getMinutes()).padStart(2, '0');
+
+    return {
+      dateStr: `${localYear}-${localMonth}-${localDay}`,
+      timeStr: `${localHour}:${localMin}`,
+    };
+  } else {
+    // Già in orario locale o floating
+    const yStr = datePart.slice(0, 4);
+    const mStr = datePart.slice(4, 6);
+    const dStr = datePart.slice(6, 8);
+    const hhStr = String(hh).padStart(2, '0');
+    const mmStr = String(mm).padStart(2, '0');
+
+    return {
+      dateStr: `${yStr}-${mStr}-${dStr}`,
+      timeStr: `${hhStr}:${mmStr}`,
+    };
+  }
+};
+
+/**
+ * Converte una stringa data/ora ISO restituita dalle API di Google Calendar
+ * in data e ora locali.
+ */
+export const parseGoogleApiDateTime = (apiDateStr: string | undefined): { dateStr: string; timeStr?: string } => {
+  if (!apiDateStr) return { dateStr: new Date().toISOString().slice(0, 10) };
+
+  // Solo giorno (es. "2026-08-18")
+  if (!apiDateStr.includes('T')) {
+    return { dateStr: apiDateStr.slice(0, 10) };
+  }
+
+  // Timestamp ISO con orario e fuso orario (es. "2026-08-18T07:00:00Z")
+  const dateObj = new Date(apiDateStr);
+  if (isNaN(dateObj.getTime())) {
+    return {
+      dateStr: apiDateStr.slice(0, 10),
+      timeStr: apiDateStr.slice(11, 16),
+    };
+  }
+
+  const localYear = dateObj.getFullYear();
+  const localMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const localDay = String(dateObj.getDate()).padStart(2, '0');
+  const localHour = String(dateObj.getHours()).padStart(2, '0');
+  const localMin = String(dateObj.getMinutes()).padStart(2, '0');
+
+  return {
+    dateStr: `${localYear}-${localMonth}-${localDay}`,
+    timeStr: `${localHour}:${localMin}`,
+  };
+};
+
 export const parseICSString = (icsContent: string, email: string): CalendarEvent[] => {
   const events: CalendarEvent[] = [];
-  const vevents = icsContent.split('BEGIN:VEVENT');
+  // Unfold delle linee spezzate RFC 5545
+  const unfolded = icsContent.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
+  const vevents = unfolded.split('BEGIN:VEVENT');
 
   for (let i = 1; i < vevents.length; i++) {
     const chunk = vevents[i].split('END:VEVENT')[0];
     
-    const summaryMatch = chunk.match(/SUMMARY:(.*)/);
+    const summaryMatch = chunk.match(/SUMMARY:(.*)/i);
     const summary = summaryMatch ? summaryMatch[1].trim() : 'Evento Google Calendar';
 
-    const descMatch = chunk.match(/DESCRIPTION:(.*)/);
+    const descMatch = chunk.match(/DESCRIPTION:(.*)/i);
     const description = descMatch ? descMatch[1].trim().replace(/\\n/g, '\n') : '';
 
-    const locMatch = chunk.match(/LOCATION:(.*)/);
+    const locMatch = chunk.match(/LOCATION:(.*)/i);
     const location = locMatch ? locMatch[1].trim() : '';
 
-    const startMatch = chunk.match(/DTSTART(?:;[^:]*)?:([0-9T]+)/);
-    let dateStr = new Date().toISOString().slice(0, 10);
-    let startTime: string | undefined = undefined;
+    const startMatch = chunk.match(/DTSTART(?:;[^:]*)?:([0-9TZ]+)/i);
+    const parsedStart = startMatch ? parseIcsDateTime(startMatch[1]) : { dateStr: new Date().toISOString().slice(0, 10) };
 
-    if (startMatch && startMatch[1]) {
-      const raw = startMatch[1];
-      if (raw.length >= 8) {
-        const y = raw.slice(0, 4);
-        const m = raw.slice(4, 6);
-        const d = raw.slice(6, 8);
-        dateStr = `${y}-${m}-${d}`;
-      }
-      if (raw.includes('T') && raw.length >= 13) {
-        const tIndex = raw.indexOf('T');
-        const hh = raw.slice(tIndex + 1, tIndex + 3);
-        const mm = raw.slice(tIndex + 3, tIndex + 5);
-        startTime = `${hh}:${mm}`;
-      }
-    }
+    const endMatch = chunk.match(/DTEND(?:;[^:]*)?:([0-9TZ]+)/i);
+    const parsedEnd = endMatch ? parseIcsDateTime(endMatch[1]) : undefined;
 
-    const endMatch = chunk.match(/DTEND(?:;[^:]*)?:([0-9T]+)/);
-    let endTime: string | undefined = undefined;
-    if (endMatch && endMatch[1]) {
-      const raw = endMatch[1];
-      if (raw.includes('T') && raw.length >= 13) {
-        const tIndex = raw.indexOf('T');
-        const hh = raw.slice(tIndex + 1, tIndex + 3);
-        const mm = raw.slice(tIndex + 3, tIndex + 5);
-        endTime = `${hh}:${mm}`;
-      }
-    }
-
-    const uidMatch = chunk.match(/UID:(.*)/);
+    const uidMatch = chunk.match(/UID:(.*)/i);
     const uid = uidMatch ? uidMatch[1].trim() : `ics-${i}-${Date.now()}`;
 
     events.push({
@@ -204,9 +275,9 @@ export const parseICSString = (icsContent: string, email: string): CalendarEvent
       title: summary,
       description,
       type: 'google_calendar' as const,
-      date: dateStr,
-      startTime,
-      endTime,
+      date: parsedStart.dateStr,
+      startTime: parsedStart.timeStr,
+      endTime: parsedEnd?.timeStr,
       status: 'scheduled' as const,
       isSystemGenerated: false,
       location,
@@ -249,20 +320,19 @@ export const fetchGoogleEvents = async (email: string = 'antonio.crapanzanopt@gm
         const items = data.items || [];
 
         return items.map((item: any) => {
-          const start = item.start?.dateTime || item.start?.date || '';
-          const end = item.end?.dateTime || item.end?.date || '';
-          const dateStr = start ? start.slice(0, 10) : new Date().toISOString().slice(0, 10);
-          const startTime = start.includes('T') ? start.slice(11, 16) : undefined;
-          const endTime = end.includes('T') ? end.slice(11, 16) : undefined;
+          const start = item.start?.dateTime || item.start?.date;
+          const end = item.end?.dateTime || item.end?.date;
+          const parsedStart = parseGoogleApiDateTime(start);
+          const parsedEnd = parseGoogleApiDateTime(end);
 
           return {
             id: `gcal-${item.id}`,
             title: item.summary || 'Evento Google Calendar',
             description: item.description || '',
             type: 'google_calendar' as const,
-            date: dateStr,
-            startTime,
-            endTime,
+            date: parsedStart.dateStr,
+            startTime: parsedStart.timeStr,
+            endTime: parsedEnd.timeStr,
             status: 'scheduled' as const,
             isSystemGenerated: false,
             location: item.location || '',

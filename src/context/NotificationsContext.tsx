@@ -68,7 +68,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   // 2. Carica le notifiche dal database (con fallback se la tabella notifications è appena creata)
   const loadNotifications = useCallback(
     async (isInitial = true) => {
-      if (!user?.id || !isCoach) return;
+      if (!user?.id) return;
       setLoading(true);
 
       const offset = isInitial ? 0 : notifications.length;
@@ -87,7 +87,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
           const parsed = data as AppNotification[];
           setNotifications((prev) => (isInitial ? parsed : [...prev, ...parsed]));
           setHasMore(data.length === limit);
-        } else if (error) {
+        } else if (error && isCoach) {
           // Fallback trasparente su coach_notifications legacy
           const { data: legacyData } = await supabase
             .from('coach_notifications')
@@ -130,7 +130,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // 3. Sottoscrizione Realtime Supabase su WebSocket
   useEffect(() => {
-    if (!user?.id || !isCoach) return;
+    if (!user?.id) return;
 
     loadNotifications(true);
 

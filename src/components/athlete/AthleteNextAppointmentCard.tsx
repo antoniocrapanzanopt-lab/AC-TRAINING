@@ -111,14 +111,16 @@ export const AthleteNextAppointmentCard: React.FC<AthleteNextAppointmentCardProp
             <Calendar className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             Prossimo Appuntamento
           </span>
-          <button
-            type="button"
-            onClick={() => setIsModalOpen(true)}
-            className="text-[11px] font-bold text-[var(--color-primary)] hover:underline flex items-center gap-0.5 cursor-pointer"
-          >
-            <span>Vedi dettagli</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
+          {nextAppointment && (
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="text-[11px] font-bold text-[var(--color-primary)] hover:underline flex items-center gap-0.5 cursor-pointer"
+            >
+              <span>Vedi dettagli</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {nextAppointment ? (

@@ -16,7 +16,10 @@ export const STORAGE_KEYS = {
   DOCUMENTS: 'builder_athlete_documents',
   CONSENTS: 'builder_athlete_consents',
   COMMUNICATIONS: 'builder_athlete_communications',
+  BROADCAST_COMMUNICATIONS: 'builder_athlete_broadcast_communications',
   MESSAGE_TEMPLATES: 'builder_athlete_message_templates',
+  BROADCAST_TEMPLATES: 'builder_athlete_broadcast_templates',
+  CHANNEL_SETTINGS: 'builder_athlete_channel_settings',
   DEMO_API_CONFIG: 'builder_athlete_demo_api_config',
   SETTINGS: 'builder_athlete_settings',
   GENERAL_AUDIT: 'builder_athlete_general_audit',
@@ -30,6 +33,10 @@ export const STORAGE_KEYS = {
   PROGRESSION_SUGGESTIONS: 'builder_athlete_progression_suggestions',
   PROGRESSION_EVENTS: 'builder_athlete_progression_events',
   PROGRESSION_TEMPLATES: 'builder_athlete_progression_templates',
+  NUTRITION_PLANS: 'builder_athlete_nutrition_plans',
+  NUTRITION_CHECKINS: 'builder_athlete_nutrition_checkins',
+  CHECK_SCHEDULES: 'builder_athlete_check_schedules',
+  PROGRESS_PHOTOS: 'builder_athlete_progress_photos',
 } as const;
 
 export type AppStorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

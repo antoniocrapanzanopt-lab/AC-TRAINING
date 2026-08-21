@@ -426,9 +426,15 @@ export function buildAthleteReport(
   if (whatIsWorking.length === 0) whatIsWorking.push('Dati atleta sincronizzati.');
   if (whatNeedsAttention.length === 0) whatNeedsAttention.push('Nessuna criticità rilevata, parametri in perfetto equilibrio.');
 
+  const safeAthleteName =
+    athlete.fullName ||
+    [athlete.firstName, athlete.lastName].filter(Boolean).join(' ') ||
+    athlete.email ||
+    'Atleta';
+
   return {
     athleteId: athlete.id,
-    athleteName: athlete.fullName,
+    athleteName: safeAthleteName,
     athleteEmail: athlete.email,
     avatarUrl: athlete.avatarUrl,
     workoutTitle,

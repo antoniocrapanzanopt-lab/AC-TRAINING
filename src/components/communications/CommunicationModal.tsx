@@ -134,7 +134,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       athleteName: selectedAthlete ? selectedAthlete.fullName : 'Atleta Sconosciuto',
       dateTime: new Date().toISOString(),
       channel,
-      author: owner?.fullName || 'Proprietario Demo',
+      author: owner?.fullName || 'Coach',
       subject,
       summary,
       outcome,

@@ -47,8 +47,15 @@ export const DeadlinesPage: React.FC = () => {
     return tasks
       .filter((t): t is typeof t & { athleteId: string; athleteName: string } => !!t.athleteId && !!t.athleteName)
       .map(t => {
-        const activityStatus: AthleteActivity['status'] = t.status === 'in_progress' ? 'pending' : t.status;
-        const activityCategory: AthleteActivity['category'] = t.category === 'checkup' ? 'assessment' : t.category;
+        const activityStatus: AthleteActivity['status'] =
+          t.status === 'in_progress' ? 'pending' : t.status === 'overdue' ? 'overdue' : t.status === 'completed' ? 'completed' : t.status === 'cancelled' ? 'cancelled' : 'pending';
+
+        let activityCategory: AthleteActivity['category'] = 'other';
+        if (t.category === 'workout_plan' || t.category === 'training') activityCategory = 'training';
+        else if (t.category === 'measurements' || t.category === 'assessment' || t.category === 'checkup' || t.category === 'checkin') activityCategory = 'assessment';
+        else if (t.category === 'call' || t.category === 'appointment' || t.category === 'follow_up') activityCategory = 'call';
+        else if (t.category === 'payment' || t.category === 'document' || t.category === 'administrative') activityCategory = 'administrative';
+
         return {
           id: t.id,
           athleteId: t.athleteId,

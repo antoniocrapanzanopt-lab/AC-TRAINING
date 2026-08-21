@@ -16,6 +16,7 @@ import {
   Flame,
   Sparkles,
   ArrowRight,
+  Smartphone,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
@@ -26,6 +27,8 @@ import { ChangeLogTab } from '../../components/athletes/ChangeLogTab';
 import { AthleteNutritionModal } from '../../components/athlete/AthleteNutritionModal';
 import { AthleteNextAppointmentCard } from '../../components/athlete/AthleteNextAppointmentCard';
 import { AthleteTrophiesSection } from '../../components/athlete/AthleteTrophiesSection';
+import { AthleteCommunicationsFeed } from '../../components/athlete/AthleteCommunicationsFeed';
+import { PwaInstallModal } from '../../components/pwa/PwaInstallModal';
 
 interface PastSession {
   id: string;
@@ -62,6 +65,7 @@ export const AthleteProfileView: React.FC = () => {
   const [isHistorySectionOpen, setIsHistorySectionOpen] = useState<boolean>(false);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [isNutritionModalOpen, setIsNutritionModalOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
 
   // Carica metriche e max lift per il calcolo dei trofei
   useEffect(() => {
@@ -209,7 +213,7 @@ export const AthleteProfileView: React.FC = () => {
   const athletePRs = maxLifts.filter(m => m.athlete_id === athleteId || !m.athlete_id);
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-8">
+    <div className="space-y-6 max-w-4xl mx-auto pb-32">
       {/* 1. Header Profilo Atleta */}
       <div className="p-6 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-xl flex flex-col sm:flex-row items-center sm:items-start gap-5">
         <div className="w-20 h-20 rounded-full bg-[var(--color-primary)] text-slate-950 font-black text-2xl flex items-center justify-center shadow-lg shadow-[var(--color-primary)]/20 shrink-0">
@@ -245,6 +249,9 @@ export const AthleteProfileView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* COMUNICAZIONI E AVVISI DAL COACH */}
+      {athleteId && <AthleteCommunicationsFeed athleteId={athleteId} />}
 
       {/* 2. Dati Anagrafici & Certificato Medico */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -298,7 +305,7 @@ export const AthleteProfileView: React.FC = () => {
       </div>
 
       {/* 3. Prossimo Appuntamento & Calendario */}
-      <AthleteNextAppointmentCard />
+      <AthleteNextAppointmentCard targetAthleteId={athleteId} />
 
       {/* 4. Stima Fabbisogno Energetico (Card Compatta con Modale Dedicata) */}
       <div className="p-5 sm:p-6 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -573,6 +580,47 @@ export const AthleteProfileView: React.FC = () => {
           <ChangeLogTab athleteId={athleteId} />
         </div>
       )}
+
+      {/* 6. Impostazioni App Mobile & Aggiunta a Schermata Home */}
+      <div className="pt-2">
+        <div className="p-5 rounded-3xl bg-gradient-to-r from-slate-950 via-[#0d1424] to-slate-950 border border-cyan-500/30 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[var(--color-primary)] to-amber-300 p-0.5 shadow-lg shadow-[var(--color-primary)]/20 shrink-0">
+              <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center relative overflow-hidden">
+                <span className="font-black text-sm italic text-[var(--color-primary)]">AC</span>
+                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-cyan-400" />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-white">App Mobile AC & Schermata Home</h3>
+                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                  Home Screen
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Aggiungi l'icona AC sul tuo smartphone per aprire il portale a schermo intero in un tocco.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsInstallModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-400 to-[var(--color-primary)] text-slate-950 font-black text-xs hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/20 cursor-pointer self-start sm:self-auto shrink-0"
+          >
+            <Smartphone className="w-4 h-4" />
+            <span>Guida Installazione</span>
+            <ArrowRight className="w-3.5 h-3.5 stroke-[3]" />
+          </button>
+        </div>
+      </div>
+
+      {/* Modale Guida Installazione PWA */}
+      <PwaInstallModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+      />
     </div>
   );
 };

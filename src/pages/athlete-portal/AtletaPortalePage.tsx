@@ -12,7 +12,9 @@ import {
   Download,
   Info,
   ShieldAlert,
-  Scale
+  Scale,
+  Sparkles,
+  Flame,
 } from 'lucide-react';
 import { useAthletes } from '../../context/AthletesContext';
 import { useSubscriptions } from '../../context/SubscriptionsContext';
@@ -25,9 +27,9 @@ import { useAuth } from '../../context/AuthContext';
 import { getMedicalCertificateStatus, getDaysRemaining } from '../../lib/statusEngine';
 import { Athlete, CalendarEvent } from '../../types';
 import { AthleteProgressView } from '../athlete/AthleteProgressView';
-import { AthleteNutritionEstimator } from '../../components/athlete/AthleteNutritionEstimator';
+import { AthleteNutritionDashboard } from '../../components/athlete/AthleteNutritionDashboard';
 import { AthleteNextAppointmentCard } from '../../components/athlete/AthleteNextAppointmentCard';
-import { Flame } from 'lucide-react';
+import { AthleteCommunicationsFeed } from '../../components/athlete/AthleteCommunicationsFeed';
 
 export const AtletaPortalePage: React.FC = () => {
   const { athletes } = useAthletes();
@@ -39,7 +41,7 @@ export const AtletaPortalePage: React.FC = () => {
   const { ownerProfile } = useApp();
   const { currentOrganization } = useAuth();
 
-  const [portalTab, setPortalTab] = useState<'panoramica' | 'progressi' | 'fabbisogno'>('panoramica');
+  const [portalTab, setPortalTab] = useState<'panoramica' | 'comunicazioni' | 'progressi' | 'fabbisogno'>('panoramica');
 
   // Atleta Selezionato per l'anteprima del portale
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>(
@@ -218,6 +220,17 @@ export const AtletaPortalePage: React.FC = () => {
           <span>Panoramica, Scadenze & Documenti</span>
         </button>
         <button
+          onClick={() => setPortalTab('comunicazioni')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            portalTab === 'comunicazioni'
+              ? 'bg-[var(--color-primary)] text-black shadow-md font-black'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>Comunicazioni & Avvisi Coach</span>
+        </button>
+        <button
           onClick={() => setPortalTab('progressi')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             portalTab === 'progressi'
@@ -237,16 +250,23 @@ export const AtletaPortalePage: React.FC = () => {
           }`}
         >
           <Flame className="w-4 h-4" />
-          <span>Stima Fabbisogno (BMR/TDEE)</span>
+          <span>Nutrizione & Target</span>
         </button>
       </div>
 
       {portalTab === 'fabbisogno' ? (
-        <AthleteNutritionEstimator />
+        <AthleteNutritionDashboard athleteId={selectedAthlete.id} />
       ) : portalTab === 'progressi' ? (
         <AthleteProgressView targetAthleteId={selectedAthlete.id} />
+      ) : portalTab === 'comunicazioni' ? (
+        <div className="space-y-4">
+          <AthleteCommunicationsFeed athleteId={selectedAthlete.id} />
+        </div>
       ) : (
         <>
+          {/* COMUNICAZIONI E AVVISI DAL COACH */}
+          <AthleteCommunicationsFeed athleteId={selectedAthlete.id} />
+
           {/* PROSSIMO APPUNTAMENTO IN EVIDENZA ATLETA */}
           <AthleteNextAppointmentCard targetAthleteId={selectedAthlete.id} />
 

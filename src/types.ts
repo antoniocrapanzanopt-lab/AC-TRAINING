@@ -26,6 +26,8 @@ export type NavigationTab =
 
 export * from './types/progression';
 export * from './types/notification';
+export * from './types/nutrition';
+export * from './types/metrics';
 
 export type UserRole = 'owner' | 'admin' | 'coach' | 'receptionist' | 'athlete' | 'collaborator';
 
@@ -170,6 +172,7 @@ export interface TimelineEvent {
     | 'document_uploaded'
     | 'message_sent'
     | 'communication'
+    | 'nutrition'
     | 'goal_set'
     | 'goal_achieved'
     | 'other';
@@ -476,7 +479,21 @@ export interface SubscriptionPause {
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'overdue';
-export type TaskCategory = 'training' | 'assessment' | 'call' | 'checkup' | 'administrative' | 'other';
+export type TaskCategory =
+  | 'checkin'
+  | 'measurements'
+  | 'workout_plan'
+  | 'nutrition'
+  | 'payment'
+  | 'appointment'
+  | 'document'
+  | 'follow_up'
+  | 'training'
+  | 'assessment'
+  | 'call'
+  | 'checkup'
+  | 'administrative'
+  | 'other';
 
 export interface AthleteTask {
   id: string;
@@ -491,6 +508,8 @@ export interface AthleteTask {
   dueTime?: string;
   status: TaskStatus;
   category: TaskCategory;
+  origin?: 'system' | 'manual';
+  systemRule?: string;
   reminder: boolean;
   reminderTime?: string;
   completedAt?: string;
@@ -613,6 +632,7 @@ export interface AthleteConsent {
 export type AthleteConsentFormData = Omit<AthleteConsent, 'id' | 'createdAt' | 'updatedAt'>;
 
 // ─── Tipi per il Centro Comunicazioni ──────────────────────────────────────────
+export * from './types/communications';
 
 export type CommunicationChannel = 
   | 'whatsapp' 

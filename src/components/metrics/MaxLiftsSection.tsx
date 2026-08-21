@@ -211,12 +211,55 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
 
       {/* LISTA CARD ESERCIZI CON GRAFICO ESPANDIBILE */}
       {exercisesSummary.length === 0 ? (
-        <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl text-center space-y-3">
-          <Dumbbell className="w-10 h-10 text-slate-600 mx-auto" />
-          <h4 className="text-sm font-bold text-slate-300">Nessun massimale registrato</h4>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            Non hai ancora registrato record personali per {athleteName}. Clicca su "+ Aggiungi PR" per inserire il primo massimale!
-          </p>
+        <div className="bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800 p-6 sm:p-8 rounded-3xl text-center space-y-5 shadow-xl">
+          <div className="w-14 h-14 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] mx-auto shadow-lg shadow-[var(--color-primary)]/10">
+            <Dumbbell className="w-7 h-7" />
+          </div>
+
+          <div className="space-y-1">
+            <h4 className="text-base font-black text-white">Nessun massimale registrato</h4>
+            <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+              Inizia a tracciare la tua progressione di forza nei test reali o stimati su base 1RM.
+            </p>
+          </div>
+
+          {/* CTA Primaria Centrale */}
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedExerciseOption('Squat');
+                setShowLiftModal(true);
+              }}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-[0_0_20px_rgba(234,179,8,0.25)] cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Inserisci il tuo primo Massimale</span>
+            </button>
+          </div>
+
+          {/* Quick-add chips per esercizi fondamentali */}
+          <div className="pt-3 border-t border-slate-800/80 space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+              Oppure seleziona un esercizio fondamentale con 1-click:
+            </span>
+            <div className="flex flex-wrap items-center justify-center gap-2 max-w-lg mx-auto">
+              {DEFAULT_FUNDAMENTAL_EXERCISES.map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => {
+                    setSelectedExerciseOption(ex);
+                    setShowLiftModal(true);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 group"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] opacity-60 group-hover:opacity-100" />
+                  <span>{ex}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       ) : (
         <div className="space-y-4">

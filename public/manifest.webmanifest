@@ -1,0 +1,38 @@
+{
+  "name": "AC Coaching",
+  "short_name": "AC",
+  "description": "Portale Atleta AC — Il tuo percorso di allenamento e progressi sempre a portata di tocco.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#05070d",
+  "theme_color": "#05070d",
+  "orientation": "portrait",
+  "categories": ["fitness", "sports", "health", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/ac-logo-transparent.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

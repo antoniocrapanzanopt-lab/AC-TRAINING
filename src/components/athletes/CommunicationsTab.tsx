@@ -11,6 +11,8 @@ import {
   Globe,
   User,
   MessageCircle,
+  Sparkles,
+  Clock,
 } from 'lucide-react';
 import {
   CommunicationLog,
@@ -54,6 +56,7 @@ export const CommunicationsTab: React.FC<CommunicationsTabProps> = ({
   athleteEmail,
 }) => {
   const {
+    broadcasts,
     communications,
     logCommunication,
     updateCommunication,
@@ -72,6 +75,17 @@ export const CommunicationsTab: React.FC<CommunicationsTabProps> = ({
     open: false,
     logId: null,
   });
+
+  // Broadcast inviati a questo specifico atleta
+  const athleteBroadcasts = useMemo(() => {
+    return broadcasts.filter(b => {
+      if (b.status !== 'sent') return false;
+      if (!b.audienceFilter || b.audienceFilter.type === 'all_active' || b.audienceFilter.type === 'trial' || b.audienceFilter.type === 'active_program') return true;
+      if (b.audienceFilter.selectedAthleteIds && b.audienceFilter.selectedAthleteIds.includes(athleteId)) return true;
+      if (b.recipients && b.recipients.some(r => r.athleteId === athleteId)) return true;
+      return false;
+    }).sort((a, b) => new Date(b.sentAt || b.createdAt).getTime() - new Date(a.sentAt || a.createdAt).getTime());
+  }, [broadcasts, athleteId]);
 
   // Comunicazioni dell'atleta
   const athleteComms = useMemo(() => {
@@ -147,7 +161,7 @@ export const CommunicationsTab: React.FC<CommunicationsTabProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-black text-white flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-[var(--color-primary)]" /> Centro Comunicazioni & Storico Contatti
+            <MessageSquare className="w-5 h-5 text-[var(--color-primary)]" /> Comunicazioni & Storico Contatti
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
             Registra le interazioni, invia messaggi rapidi e pianifica i promemoria di ricontatto per {athleteName}.
@@ -225,10 +239,78 @@ export const CommunicationsTab: React.FC<CommunicationsTabProps> = ({
         <div className="p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-1">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Totale Interazioni</span>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-white">{metrics.totalComms}</span>
-            <span className="text-xs text-slate-500 font-semibold">in archivio</span>
+            <span className="text-2xl font-black text-white">{metrics.totalComms + athleteBroadcasts.length}</span>
+            <span className="text-xs text-slate-500 font-semibold">({athleteBroadcasts.length} broadcast)</span>
           </div>
         </div>
+      </div>
+
+      {/* SEZIONE BROADCAST & ANNUNCI RICEVUTI DALL'ATLETA */}
+      <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
+            Comunicazioni Broadcast & Annunci Ricevuti
+          </h3>
+          <span className="text-[10px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2.5 py-0.5 rounded-full border border-[var(--color-primary)]/30">
+            {athleteBroadcasts.length} inviat{athleteBroadcasts.length === 1 ? 'o' : 'i'}
+          </span>
+        </div>
+
+        {athleteBroadcasts.length === 0 ? (
+          <p className="text-xs text-slate-500 py-4 text-center">Nessuna comunicazione broadcast trasmessa a questo atleta.</p>
+        ) : (
+          <div className="space-y-3">
+            {athleteBroadcasts.map(b => {
+              const recipientStatus = b.recipients?.find(r => r.athleteId === athleteId);
+              const isConfirmed = recipientStatus?.status === 'confirmed';
+              const isRead = recipientStatus?.status === 'read' || isConfirmed;
+
+              return (
+                <div key={b.id} className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                        {b.type === 'update' ? 'Aggiornamento' : b.type === 'content_video' ? 'Video' : b.type === 'important_alert' ? 'Avviso Urgente' : 'Comunicazione'}
+                      </span>
+                      <h4 className="text-xs sm:text-sm font-black text-white">{b.title}</h4>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {new Date(b.sentAt || b.createdAt).toLocaleDateString('it-IT')}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        isConfirmed
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : isRead
+                          ? 'bg-sky-500/10 text-sky-400 border-sky-500/30'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}>
+                        {isConfirmed ? '✓ Presa Visione' : isRead ? 'Letto' : 'Inviato'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
+                    {b.message}
+                  </p>
+
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500 pt-1">
+                    <span>Canali: {b.channels.join(', ')}</span>
+                    {b.cta && b.cta.type !== 'none' && (
+                      <>
+                        <span>•</span>
+                        <span className="text-[var(--color-primary)]">CTA: {b.cta.label}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Bar Filtri & Timeline Comunicazioni */}

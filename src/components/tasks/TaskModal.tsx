@@ -175,10 +175,15 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   onChange={e => setCategory(e.target.value as TaskCategory)}
                   className={`${inputCls} pl-9`}
                 >
-                  <option value="training">Allenamento / Scheda</option>
-                  <option value="assessment">Plicometria / Valutazione</option>
-                  <option value="call">Chiamata Telefonica</option>
-                  <option value="checkup">Checkup Periodico</option>
+                  <option value="checkin">📊 Check-in</option>
+                  <option value="measurements">📏 Misure & Foto Progressi</option>
+                  <option value="workout_plan">🏋️ Scheda Allenamento</option>
+                  <option value="nutrition">🥗 Nutrizione & Macro</option>
+                  <option value="payment">💳 Pagamento / Rata</option>
+                  <option value="appointment">📞 Appuntamento / Call</option>
+                  <option value="document">📄 Documento / Certificato</option>
+                  <option value="follow_up">🤝 Follow-up Coach</option>
+                  <option value="training">Allenamento</option>
                   <option value="administrative">Amministrativa</option>
                   <option value="other">Altro</option>
                 </select>

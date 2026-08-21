@@ -24,7 +24,6 @@ import {
   ShieldAlert,
   CheckCircle2,
   AlertTriangle,
-  ChevronDown,
   MessageCircle,
   Zap,
   FileText,
@@ -37,10 +36,12 @@ import {
   AthleteReportSummary,
   Athlete,
 } from '../../../types';
+import { AthleteSelectDropdown } from './AthleteSelectDropdown';
 
 interface AthleteDetailReportViewProps {
   athleteReport: AthleteReportSummary;
   allAthletes: Athlete[];
+  allReports?: AthleteReportSummary[];
   timeframe: TimeframeOption;
   currentRangeLabel: string;
   previousRangeLabel: string;
@@ -55,6 +56,7 @@ interface AthleteDetailReportViewProps {
 export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = ({
   athleteReport,
   allAthletes,
+  allReports,
   timeframe,
   currentRangeLabel,
   previousRangeLabel,
@@ -141,24 +143,15 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
           </button>
         </div>
 
-        {/* Switcher Veloce Atleta */}
+        {/* Switcher Veloce Atleta Custom */}
         <div className="flex items-center gap-2.5 self-stretch sm:self-auto">
           <span className="text-xs font-bold text-slate-400 hidden md:inline">Atleta:</span>
-          <div className="relative flex-1 sm:flex-initial min-w-[200px] sm:min-w-[240px]">
-            <select
-              value={athleteReport.athleteId}
-              onChange={(e) => onSelectAthlete(e.target.value)}
-              aria-label="Seleziona Atleta da Analizzare"
-              className="w-full pl-3.5 pr-9 py-2.5 rounded-xl bg-slate-950 border border-slate-700 hover:border-slate-600 text-xs font-black text-white appearance-none cursor-pointer focus:outline-none focus:border-[var(--color-primary)] transition-all shadow-inner"
-            >
-              {allAthletes.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.fullName}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
+          <AthleteSelectDropdown
+            athletes={allAthletes}
+            selectedAthleteId={athleteReport.athleteId}
+            onSelectAthlete={onSelectAthlete}
+            athletesReports={allReports}
+          />
         </div>
       </div>
 
