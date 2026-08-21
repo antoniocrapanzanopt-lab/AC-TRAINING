@@ -20,6 +20,8 @@ import { MetricsProvider } from './context/MetricsContext';
 import { NotificationsProvider } from './context/NotificationsContext';
 import { ProgressionsProvider } from './context/ProgressionsContext';
 import { NutritionProvider } from './context/NutritionContext';
+import { InboxProvider } from './context/InboxContext';
+import { ContentsProvider } from './context/ContentsContext';
 
 
 import { AuthPage } from './pages/auth/AuthPage';
@@ -100,7 +102,11 @@ export const App: React.FC = () => {
                                         <NotificationsProvider>
                                           <ProgressionsProvider>
                                             <NutritionProvider>
-                                              <AppContent />
+                                              <InboxProvider>
+                                                <ContentsProvider>
+                                                  <AppContent />
+                                                </ContentsProvider>
+                                              </InboxProvider>
                                             </NutritionProvider>
                                           </ProgressionsProvider>
                                         </NotificationsProvider>

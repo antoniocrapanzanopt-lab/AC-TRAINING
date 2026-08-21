@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, ChevronUp, ChevronDown, Terminal, Clock, Key, Cpu } from 'lucide-react';
+import { Sparkles, ChevronUp, ChevronDown, Terminal, Clock, Shield, Cpu } from 'lucide-react';
 import {
   subscribeToAIDiagnostics,
   AIDiagnosticInfo,
   getGeminiRuntimeConfig,
-  setGeminiApiKey,
-  clearGeminiApiKey,
 } from '../../lib/ai/geminiClient';
 
 interface AIDiagnosticPanelProps {
@@ -17,14 +15,14 @@ export const AIDiagnosticPanel: React.FC<AIDiagnosticPanelProps> = ({ className 
   const [diag, setDiag] = useState<AIDiagnosticInfo>({
     provider: 'gemini',
     model: 'gemini-2.0-flash',
-    apiKeyStatus: 'missing',
-    apiKeyMasked: 'NON PRESENTE',
+    apiKeyStatus: 'edge_function_route',
+    apiKeyMasked: 'Gestita da Supabase Edge Function (Server-Side)',
     lastCallStatus: 'idle',
   });
 
   const [isOpen, setIsOpen] = useState(false);
-  const [inputKey, setInputKey] = useState('');
   const runtimeConfig = getGeminiRuntimeConfig();
+  const activeModel = runtimeConfig.model || diag.model;
 
   useEffect(() => {
     return subscribeToAIDiagnostics((info) => {
@@ -32,24 +30,21 @@ export const AIDiagnosticPanel: React.FC<AIDiagnosticPanelProps> = ({ className 
     });
   }, []);
 
-  const isConfigured = diag.apiKeyStatus !== 'missing' || Boolean(runtimeConfig.apiKey);
-  const activeModel = runtimeConfig.model || diag.model;
-
   if (compact) {
     return (
       <div className={`flex items-center gap-2 px-2.5 py-1 bg-slate-900/80 border border-slate-800 rounded-lg text-[11px] ${className}`}>
         <div className="flex items-center gap-1.5 font-mono">
-          <span className={`w-2 h-2 rounded-full ${isConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-slate-300 font-bold">AI Gateway:</span>
           <span className="text-[var(--color-primary)] font-bold">{activeModel}</span>
         </div>
         <span className="text-slate-600">|</span>
         <span className="text-slate-400">
-          Key: <span className={isConfigured ? 'text-emerald-400' : 'text-amber-400'}>{runtimeConfig.maskedKey}</span>
+          Route: <span className="text-emerald-400 font-bold">Edge Function (Server-Side)</span>
         </span>
         <span className="text-slate-600">|</span>
         <span className="text-slate-400">
-          Fallback Silenzioso: <span className="text-emerald-400 font-bold">DISABILITATO</span>
+          Fallback: <span className="text-emerald-400 font-bold">DISABILITATO</span>
         </span>
       </div>
     );
@@ -67,10 +62,8 @@ export const AIDiagnosticPanel: React.FC<AIDiagnosticPanelProps> = ({ className 
             <Sparkles className="w-3 h-3" />
           </div>
           <span className="font-bold text-slate-200">AI Diagnostic Monitor</span>
-          <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
-            isConfigured ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-          }`}>
-            {isConfigured ? 'LIVE GEMINI' : 'SERVER ROUTE'}
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+            EDGE FUNCTION ROUTE
           </span>
         </div>
 
@@ -94,60 +87,26 @@ export const AIDiagnosticPanel: React.FC<AIDiagnosticPanelProps> = ({ className 
               </div>
             </div>
 
-            <div className="p-2 rounded-lg bg-slate-900/50 border border-slate-800/60 flex items-start gap-2">
-              <Key className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+            <div className="p-2 rounded-lg bg-slate-900/50 border border-emerald-800/30 flex items-start gap-2">
+              <Shield className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <span className="text-[10px] uppercase text-slate-500 block font-bold">Stato API Key</span>
-                <span className={`font-bold ${isConfigured ? 'text-emerald-400' : 'text-amber-400'}`}>
-                  {runtimeConfig.apiKey ? 'Google Gemini API (Attiva)' : 'Non Rilevata (Richiesta Chiave)'}
+                <span className="text-[10px] uppercase text-slate-500 block font-bold">Sicurezza API Key</span>
+                <span className="font-bold text-emerald-400">
+                  Gestita Server-Side (Secret Supabase)
                 </span>
-                <span className="text-slate-400 block text-[11px]">{runtimeConfig.maskedKey}</span>
+                <span className="text-slate-400 block text-[11px]">
+                  Nessuna chiave esposta nel client o nel bundle
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Sezione Gestione Rapida Chiave API Gemini */}
-          <div className="p-2.5 rounded-lg bg-slate-900/40 border border-slate-800/60 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300 font-bold text-[11px]">Chiave API Google Gemini (Google AI Studio)</span>
-              {runtimeConfig.apiKey && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearGeminiApiKey();
-                    setInputKey('');
-                  }}
-                  className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
-                >
-                  Rimuovi
-                </button>
-              )}
-            </div>
-            <div className="flex gap-1.5">
-              <input
-                type="password"
-                placeholder={runtimeConfig.apiKey ? "Chiave configurata (incolla per sovrascrivere)" : "Incolla qui la chiave AQ.Ab8..."}
-                value={inputKey}
-                onChange={(e) => setInputKey(e.target.value)}
-                className="flex-1 px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)] font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (inputKey.trim()) {
-                    setGeminiApiKey(inputKey.trim());
-                    setInputKey('');
-                  }
-                }}
-                disabled={!inputKey.trim()}
-                className="px-3 py-1.5 bg-[var(--color-primary)] hover:opacity-90 disabled:opacity-40 text-black font-bold rounded text-xs transition cursor-pointer"
-              >
-                Salva
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-500">
-              La chiave viene salvata in modo sicuro nel browser per le chiamate dirette all'API Gemini.
-            </p>
+          {/* Nota sicurezza */}
+          <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-800/40 text-[11px] text-emerald-300">
+            <span className="font-bold">🛡️ Architettura Sicura:</span> tutte le chiamate AI passano
+            esclusivamente tramite la Supabase Edge Function <code className="bg-emerald-950/60 px-1 rounded">generate-workout</code>,
+            con controllo MFA AAL2, RBAC is_coach(), rate limiting e audit log.
+            La chiave API è un secret server-side e non raggiunge mai il browser.
           </div>
 
           <div className="p-2.5 rounded-lg bg-slate-900/30 border border-slate-800/40 space-y-1.5 text-[11px]">

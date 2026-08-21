@@ -23,6 +23,8 @@ import {
   Flame,
   Brain,
   Bell,
+  Inbox,
+  Video,
 } from 'lucide-react';
 import { NavigationTab } from '../../types';
 import { useAthletes } from '../../context/AthletesContext';
@@ -68,6 +70,8 @@ const menuSections: MenuSection[] = [
     },
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { id: 'inbox_ai', label: 'Inbox AI & Brain Dump', icon: Inbox },
+      { id: 'contenuti', label: 'Pipeline Contenuti', icon: Video },
       { id: 'calendario', label: 'Calendario', icon: Calendar },
       { id: 'attivita', label: 'Task & Attività', icon: Activity },
     ],

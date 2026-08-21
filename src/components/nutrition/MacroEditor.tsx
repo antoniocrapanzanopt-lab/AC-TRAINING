@@ -254,11 +254,13 @@ export const MacroEditor: React.FC<MacroEditorProps> = ({
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  min="30"
+                  min="0"
                   max="400"
                   disabled={disabled}
-                  value={values.proteinGrams}
-                  onChange={(e) => handleGramChange('protein', Number(e.target.value))}
+                  value={values.proteinGrams === 0 ? '' : values.proteinGrams}
+                  onFocus={(e) => { if (values.proteinGrams === 0) e.target.select(); }}
+                  onChange={(e) => handleGramChange('protein', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:outline-none focus:border-sky-400 transition-colors"
                 />
                 <span className="text-xs font-bold text-slate-400 shrink-0">g</span>
@@ -271,8 +273,10 @@ export const MacroEditor: React.FC<MacroEditorProps> = ({
                   min="0.8"
                   max="4.0"
                   disabled={disabled}
-                  value={proteinGPerKg}
-                  onChange={(e) => handleGPerKgChange('protein', Number(e.target.value))}
+                  value={proteinGPerKg === '0.00' || proteinGPerKg === '0' ? '' : proteinGPerKg}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => handleGPerKgChange('protein', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0.0"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:outline-none focus:border-sky-400 transition-colors"
                 />
                 <span className="text-xs font-bold text-slate-400 shrink-0">g/kg</span>
@@ -281,11 +285,13 @@ export const MacroEditor: React.FC<MacroEditorProps> = ({
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  min="10"
-                  max="60"
+                  min="0"
+                  max="100"
                   disabled={disabled}
-                  value={proteinPercent}
-                  onChange={(e) => handlePercentChange('protein', Number(e.target.value))}
+                  value={proteinPercent === 0 ? '' : proteinPercent}
+                  onFocus={(e) => { if (proteinPercent === 0) e.target.select(); }}
+                  onChange={(e) => handlePercentChange('protein', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:outline-none focus:border-sky-400 transition-colors"
                 />
                 <span className="text-xs font-bold text-slate-400 shrink-0">%</span>
@@ -314,11 +320,13 @@ export const MacroEditor: React.FC<MacroEditorProps> = ({
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  min="20"
+                  min="0"
                   max="800"
                   disabled={disabled}
-                  value={values.carbGrams}
-                  onChange={(e) => handleGramChange('carb', Number(e.target.value))}
+                  value={values.carbGrams === 0 ? '' : values.carbGrams}
+                  onFocus={(e) => { if (values.carbGrams === 0) e.target.select(); }}
+                  onChange={(e) => handleGramChange('carb', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:outline-none focus:border-amber-400 transition-colors"
                 />
                 <span className="text-xs font-bold text-slate-400 shrink-0">g</span>
@@ -331,8 +339,10 @@ export const MacroEditor: React.FC<MacroEditorProps> = ({
                   min="0.5"
                   max="10.0"
                   disabled={disabled}
-                  value={carbGPerKg}
-                  onChange={(e) => handleGPerKgChange('carb', Number(e.target.value))}
+                  value={carbGPerKg === '0.00' || carbGPerKg === '0' ? '' : carbGPerKg}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => handleGPerKgChange('carb', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0.0"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:outline-none focus:border-amber-400 transition-colors"
                 />
                 <span className="text-xs font-bold text-slate-400 shrink-0">g/kg</span>
@@ -341,11 +351,13 @@ export const MacroEditor: React.FC<MacroEditorProps> = ({
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  min="10"
-                  max="80"
+                  min="0"
+                  max="100"
                   disabled={disabled}
-                  value={carbPercent}
-                  onChange={(e) => handlePercentChange('carb', Number(e.target.value))}
+                  value={carbPercent === 0 ? '' : carbPercent}
+                  onFocus={(e) => { if (carbPercent === 0) e.target.select(); }}
+                  onChange={(e) => handlePercentChange('carb', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:outline-none focus:border-amber-400 transition-colors"
                 />
                 <span className="text-xs font-bold text-slate-400 shrink-0">%</span>
@@ -374,11 +386,13 @@ export const MacroEditor: React.FC<MacroEditorProps> = ({
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  min="15"
+                  min="0"
                   max="250"
                   disabled={disabled}
-                  value={values.fatGrams}
-                  onChange={(e) => handleGramChange('fat', Number(e.target.value))}
+                  value={values.fatGrams === 0 ? '' : values.fatGrams}
+                  onFocus={(e) => { if (values.fatGrams === 0) e.target.select(); }}
+                  onChange={(e) => handleGramChange('fat', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:outline-none focus:border-rose-400 transition-colors"
                 />
                 <span className="text-xs font-bold text-slate-400 shrink-0">g</span>
@@ -391,8 +405,10 @@ export const MacroEditor: React.FC<MacroEditorProps> = ({
                   min="0.3"
                   max="3.0"
                   disabled={disabled}
-                  value={fatGPerKg}
-                  onChange={(e) => handleGPerKgChange('fat', Number(e.target.value))}
+                  value={fatGPerKg === '0.00' || fatGPerKg === '0' ? '' : fatGPerKg}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => handleGPerKgChange('fat', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0.0"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:outline-none focus:border-rose-400 transition-colors"
                 />
                 <span className="text-xs font-bold text-slate-400 shrink-0">g/kg</span>
@@ -401,11 +417,13 @@ export const MacroEditor: React.FC<MacroEditorProps> = ({
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  min="10"
-                  max="50"
+                  min="0"
+                  max="100"
                   disabled={disabled}
-                  value={fatPercent}
-                  onChange={(e) => handlePercentChange('fat', Number(e.target.value))}
+                  value={fatPercent === 0 ? '' : fatPercent}
+                  onFocus={(e) => { if (fatPercent === 0) e.target.select(); }}
+                  onChange={(e) => handlePercentChange('fat', e.target.value === '' ? 0 : Number(e.target.value))}
+                  placeholder="0"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-lg focus:outline-none focus:border-rose-400 transition-colors"
                 />
                 <span className="text-xs font-bold text-slate-400 shrink-0">%</span>

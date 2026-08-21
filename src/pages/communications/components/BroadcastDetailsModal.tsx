@@ -44,16 +44,17 @@ const typeConfig: Record<BroadcastType, { label: string; icon: React.FC<{ classN
 export const BroadcastDetailsModal: React.FC<BroadcastDetailsModalProps> = ({
   isOpen,
   onClose,
-  broadcast,
+  broadcast: initialBroadcast,
 }) => {
-  const { confirmRecipientRead, openWhatsApp, openMailto } = useCommunications();
+  const { broadcasts, confirmRecipientRead, openWhatsApp, openMailto } = useCommunications();
   const { showSuccess } = useToast();
 
   const [query, setQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'delivered' | 'read' | 'confirmed' | 'replied'>('all');
 
-  if (!isOpen || !broadcast) return null;
+  if (!isOpen || !initialBroadcast) return null;
 
+  const broadcast = broadcasts.find(b => b.id === initialBroadcast.id) || initialBroadcast;
   const currentType = typeConfig[broadcast.type] || typeConfig.update;
   const TypeIcon = currentType.icon;
 
@@ -318,14 +319,14 @@ export const BroadcastDetailsModal: React.FC<BroadcastDetailsModalProps> = ({
 
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            {!isConfirmed && broadcast.cta?.requireConfirmation && (
+                            {!isConfirmed && (
                               <button
                                 type="button"
                                 onClick={() => handleManualConfirm(r.athleteId, r.athleteName)}
-                                className="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold transition-all"
-                                title="Segna confermato manualmente"
+                                className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold transition-all cursor-pointer"
+                                title="Segna presa visione / letto manualmente"
                               >
-                                Segna Confermato
+                                Segna Letto
                               </button>
                             )}
 

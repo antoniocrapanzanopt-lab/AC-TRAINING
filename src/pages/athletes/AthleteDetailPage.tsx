@@ -44,6 +44,7 @@ import { useMetrics } from '../../context/MetricsContext';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useApp } from '../../context/AppContext';
 import { useNutrition } from '../../context/NutritionContext';
+import { getSignedMedicalCertificateUrl } from '../../lib/storage';
 import { AthleteStatusBadge, PaymentStatusBadge, contactChannelLabel, acquisitionSourceLabel } from '../../components/athletes/AthleteBadges';
 import { SubscriptionsTab } from '../../components/athletes/SubscriptionsTab';
 import { PaymentsTab } from '../../components/athletes/PaymentsTab';
@@ -689,7 +690,30 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                   <button onClick={handleSendCertReminderWhatsApp} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-bold hover:bg-emerald-500/20 transition-all"><MessageCircle className="w-3.5 h-3.5" />WhatsApp</button>
                   <button onClick={handleSendCertReminderTelegram} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/30 text-xs font-bold hover:bg-sky-500/20 transition-all"><Send className="w-3.5 h-3.5 text-sky-400" />Telegram</button>
                 </div>
-                {athlete.medicalCertificateUrl && (<div className="mt-2 flex items-center justify-between bg-slate-900 border border-slate-800 p-3 rounded-xl"><div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400"><FileText className="w-4 h-4" /><span>Certificato Allegato</span></div><a href={athlete.medicalCertificateUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] text-xs font-bold rounded-lg transition-colors"><Eye className="w-3.5 h-3.5" />Visualizza</a></div>)}
+                {athlete.medicalCertificateUrl && (
+                  <div className="mt-2 flex items-center justify-between bg-slate-900 border border-slate-800 p-3 rounded-xl">
+                    <div className="flex items-center gap-2.5 text-xs font-bold text-emerald-400">
+                      <FileText className="w-4 h-4" />
+                      <span>Certificato Allegato</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!athlete.medicalCertificateUrl) return;
+                        const url = await getSignedMedicalCertificateUrl(athlete.medicalCertificateUrl);
+                        if (url) {
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                        } else {
+                          alert('Impossibile aprire il certificato. Riprova più tardi.');
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      Visualizza
+                    </button>
+                  </div>
+                )}
               </div>
             </CollapsibleSection>
 

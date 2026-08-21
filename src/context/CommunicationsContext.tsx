@@ -39,6 +39,7 @@ interface CommunicationsContextType {
   resolveRecipients: (filter: AudienceFilterType, tag?: string, selectedAthleteIds?: string[]) => { id: string; fullName: string; email?: string; phone?: string; avatarUrl?: string }[];
   
   // Tracking Actions
+  markRecipientRead: (broadcastId: string, athleteId: string) => void;
   confirmRecipientRead: (broadcastId: string, athleteId: string) => void;
   recordRecipientClick: (broadcastId: string, athleteId: string) => void;
   recordRecipientReply: (broadcastId: string, athleteId: string, replyText: string) => void;
@@ -505,17 +506,96 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
     return saveBroadcastsToStorage(updated);
   }, [broadcasts, resolveRecipients, saveBroadcastsToStorage]);
 
-  // Conferma lettura da parte di un atleta
-  const confirmRecipientRead = useCallback((broadcastId: string, athleteId: string) => {
+  // Registra visualizzazione/lettura da parte di un atleta
+  const markRecipientRead = useCallback((broadcastId: string, athleteId: string) => {
+    if (!broadcastId || !athleteId) return;
     const nowIso = new Date().toISOString();
+    let hasChanged = false;
+
     const updated = broadcasts.map(b => {
       if (b.id === broadcastId) {
-        const recipients = b.recipients.map(r => {
-          if (r.athleteId === athleteId && r.status !== 'confirmed') {
+        let foundRecipient = false;
+        let recipients = (b.recipients || []).map(r => {
+          if (r.athleteId === athleteId || r.athleteName?.toLowerCase() === athleteId.toLowerCase()) {
+            foundRecipient = true;
+            if (r.status === 'delivered') {
+              hasChanged = true;
+              return { ...r, status: 'read' as const, readAt: r.readAt || nowIso };
+            }
+          }
+          return r;
+        });
+
+        if (!foundRecipient) {
+          hasChanged = true;
+          recipients = [
+            ...recipients,
+            {
+              athleteId,
+              athleteName: athleteId,
+              status: 'read',
+              readAt: nowIso,
+              deliveredAt: nowIso,
+              channels: b.channels || ['in_app'],
+            }
+          ];
+        }
+
+        const confirmedCount = recipients.filter(r => r.status === 'confirmed').length;
+        const readCount = recipients.filter(r => r.status === 'read' || r.status === 'confirmed').length;
+        return {
+          ...b,
+          recipients,
+          metrics: { ...b.metrics, confirmed: confirmedCount, read: readCount },
+          updatedAt: hasChanged ? nowIso : b.updatedAt,
+        };
+      }
+      return b;
+    });
+
+    if (hasChanged) {
+      saveBroadcastsToStorage(updated);
+      try {
+        supabase.channel('realtime:broadcasts_sync').send({
+          type: 'broadcast',
+          event: 'sync_read',
+          payload: { broadcastId, athleteId, readAt: nowIso },
+        });
+      } catch (_) {}
+    }
+  }, [broadcasts, saveBroadcastsToStorage]);
+
+  // Conferma lettura da parte di un atleta
+  const confirmRecipientRead = useCallback((broadcastId: string, athleteId: string) => {
+    if (!broadcastId || !athleteId) return;
+    const nowIso = new Date().toISOString();
+
+    const updated = broadcasts.map(b => {
+      if (b.id === broadcastId) {
+        let foundRecipient = false;
+        let recipients = (b.recipients || []).map(r => {
+          if (r.athleteId === athleteId || r.athleteName?.toLowerCase() === athleteId.toLowerCase()) {
+            foundRecipient = true;
             return { ...r, status: 'confirmed' as const, confirmedAt: nowIso, readAt: r.readAt || nowIso };
           }
           return r;
         });
+
+        if (!foundRecipient) {
+          recipients = [
+            ...recipients,
+            {
+              athleteId,
+              athleteName: athleteId,
+              status: 'confirmed',
+              confirmedAt: nowIso,
+              readAt: nowIso,
+              deliveredAt: nowIso,
+              channels: b.channels || ['in_app'],
+            }
+          ];
+        }
+
         const confirmedCount = recipients.filter(r => r.status === 'confirmed').length;
         const readCount = recipients.filter(r => r.status === 'read' || r.status === 'confirmed').length;
         return {
@@ -527,7 +607,15 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
       }
       return b;
     });
+
     saveBroadcastsToStorage(updated);
+    try {
+      supabase.channel('realtime:broadcasts_sync').send({
+        type: 'broadcast',
+        event: 'sync_confirm',
+        payload: { broadcastId, athleteId, confirmedAt: nowIso },
+      });
+    } catch (_) {}
   }, [broadcasts, saveBroadcastsToStorage]);
 
   // Registra click CTA da parte di un atleta
@@ -756,6 +844,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
         deleteQuickTemplate,
         saveChannelSettings,
         resolveRecipients,
+        markRecipientRead,
         confirmRecipientRead,
         recordRecipientClick,
         recordRecipientReply,

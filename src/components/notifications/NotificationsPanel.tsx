@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationsContext';
 import { useAthletes } from '../../context/AthletesContext';
+import { useCommunications } from '../../context/CommunicationsContext';
 import { AppNotification } from '../../types/notification';
 
 interface NotificationsPanelProps {
@@ -30,6 +31,7 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
   const { notifications, unreadCount, unreadTrophiesCount, markAsRead, markAllAsRead } =
     useNotifications();
   const { setSelectedAthleteId } = useAthletes();
+  const { markRecipientRead } = useCommunications();
   const [activeSubTab, setActiveSubTab] = useState<'operative' | 'urgent' | 'trophies'>('operative');
 
   if (!isOpen) return null;
@@ -81,6 +83,10 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
   const handleItemClick = (item: AppNotification) => {
     if (!item.read_at) {
       markAsRead(item.id);
+    }
+
+    if (item.metadata?.broadcastId && item.athlete_id) {
+      markRecipientRead(item.metadata.broadcastId as string, item.athlete_id);
     }
 
     if (item.athlete_id) {

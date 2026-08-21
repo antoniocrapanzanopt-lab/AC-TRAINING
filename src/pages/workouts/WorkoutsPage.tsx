@@ -22,7 +22,8 @@ import {
   Calendar,
   Layers,
   UserX,
-  AlertCircle
+  AlertCircle,
+  FileText
 } from 'lucide-react';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useAthletes } from '../../context/AthletesContext';
@@ -30,6 +31,7 @@ import { useApp } from '../../context/AppContext';
 import { useToast } from '../../context/ToastContext';
 import { WorkoutBuilderModal } from '../../components/workouts/WorkoutBuilderModal';
 import { AssignWorkoutModal } from '../../components/workouts/AssignWorkoutModal';
+import { PDFWorkoutImporterModal } from '../../components/workouts/PDFWorkoutImporterModal';
 import { WorkoutTemplate, WorkoutFolder, AthleteAssignedWorkout } from '../../types/workout';
 
 export const WorkoutsPage: React.FC = () => {
@@ -61,6 +63,7 @@ export const WorkoutsPage: React.FC = () => {
   // ─── STATO LIBRERIA TEMPLATE MASTER ───
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [isPDFImporterOpen, setIsPDFImporterOpen] = useState(false);
   const [builderTargetAthleteId, setBuilderTargetAthleteId] = useState<string | undefined>(undefined);
   const [editingWorkout, setEditingWorkout] = useState<WorkoutTemplate | null>(null);
   const [deletingWorkout, setDeletingWorkout] = useState<WorkoutTemplate | null>(null);
@@ -293,6 +296,14 @@ export const WorkoutsPage: React.FC = () => {
             </button>
           )}
           
+          <button 
+            onClick={() => setIsPDFImporterOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-xs font-bold rounded-xl border border-purple-500/40 transition-all cursor-pointer shadow-md shadow-purple-500/10"
+          >
+            <FileText className="w-4 h-4 text-purple-400" />
+            <span>Importa da PDF</span>
+          </button>
+
           <button 
             onClick={() => {
               setBuilderTargetAthleteId(selectedAthleteFolderId || undefined);
@@ -1271,6 +1282,12 @@ export const WorkoutsPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* MODALE IMPORTAZIONE PDF */}
+      <PDFWorkoutImporterModal
+        isOpen={isPDFImporterOpen}
+        onClose={() => setIsPDFImporterOpen(false)}
+        targetAthleteId={selectedAthleteFolderId || undefined}
+      />
     </div>
   );
 };

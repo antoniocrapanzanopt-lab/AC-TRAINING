@@ -15,7 +15,6 @@ import {
   Check,
   Upload,
   Package,
-  AlertTriangle,
   X,
   FileCheck2,
   FileX,
@@ -31,12 +30,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useRenewals } from '../../context/RenewalsContext';
 import { usePackages } from '../../context/PackagesContext';
-import {
-  exportAppLocalStorage,
-  clearAppLocalStorage,
-  validateImportPayload,
-  importAppLocalStorageTransactional,
-  ImportValidationResult,
+import { 
+  exportAppLocalStorage, 
+  validateImportPayload, 
+  importAppLocalStorageTransactional, 
+  ImportValidationResult 
 } from '../../config/storageKeys';
 import { getLocalOwnerProfile, saveOwnerProfile } from '../../lib/ownerProfile';
 import { OwnerProfileTab } from './components/OwnerProfileTab';
@@ -97,7 +95,7 @@ export const SettingsPage: React.FC = () => {
   const { packages } = usePackages();
   const { showSuccess, showInfo, showError } = useToast();
   const { ownerProfile, setOwnerProfile } = useApp();
-  const { refreshAuthProfile, logout, members } = useAuth();
+  const { refreshAuthProfile, members } = useAuth();
   const { syncOwnerNameInAthletes } = useAthletes();
   const { syncOwnerNameInRenewalsAndPauses } = useRenewals();
 
@@ -112,8 +110,7 @@ export const SettingsPage: React.FC = () => {
     organizationName: currentOwner?.organizationName || 'Builder Athlete Manager',
   });
 
-  // Modal di rimozione proprietario (Step 1 e Step 2)
-  const [removeOwnerStep, setRemoveOwnerStep] = useState<0 | 1 | 2>(0);
+
 
   // Anteprima ed Importazione JSON
   const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
@@ -167,13 +164,7 @@ export const SettingsPage: React.FC = () => {
     );
   };
 
-  // 2. RIMOZIONE COMPLETA CONFIGURAZIONE PROPRIETARIO
-  const handleExecuteFullOwnerRemoval = () => {
-    clearAppLocalStorage();
-    logout();
-    setOwnerProfile(null);
-    showInfo('Profilo Rimosso', 'La configurazione del proprietario è stata totalmente cancellata. Ripristino del setup iniziale.');
-  };
+
 
   // 3. ESPORTAZIONE BACKUP JSON
   const handleExportBackup = () => {
@@ -434,7 +425,6 @@ export const SettingsPage: React.FC = () => {
               ownerForm={ownerForm}
               onOwnerFormChange={setOwnerForm}
               onSaveOwnerProfile={handleSaveOwnerProfile}
-              onOpenRemoveModal={() => setRemoveOwnerStep(1)}
             />
           )}
 
@@ -983,7 +973,7 @@ export const SettingsPage: React.FC = () => {
                 </span>
               </div>
               <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto">
-                {importValidation.recognizedKeys.map((k) => (
+                {importValidation.recognizedKeys.map((k: string) => (
                   <span key={k} className="px-2 py-0.5 rounded bg-emerald-900/40 text-emerald-300 text-[10px] font-mono border border-emerald-700/50">
                     {k}
                   </span>
@@ -1000,7 +990,7 @@ export const SettingsPage: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
-                  {importValidation.foreignKeys.map((k) => (
+                  {importValidation.foreignKeys.map((k: string) => (
                     <span key={k} className="px-2 py-0.5 rounded bg-amber-900/40 text-amber-300 text-[10px] font-mono border border-amber-700/50">
                       {k}
                     </span>
@@ -1032,70 +1022,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       )}
 
-      {/* MODALE CONFERMA STEP 1 PER RIMOZIONE PROPRIETARIO */}
-      {removeOwnerStep === 1 && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-slate-900 border border-red-900/60 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-red-400 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-red-400" /> Prima Conferma Richiesta
-              </h3>
-              <button onClick={() => setRemoveOwnerStep(0)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <p className="text-xs text-slate-300">
-              Sei sicuro di voler rimuovere la configurazione del proprietario? Verranno eliminati il profilo e l'intera configurazione salvata nel browser.
-            </p>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button onClick={() => setRemoveOwnerStep(0)} className="px-4 py-2 rounded-xl bg-slate-800 text-white font-bold text-xs">
-                Annulla
-              </button>
-              <button onClick={() => setRemoveOwnerStep(2)} className="px-4 py-2 rounded-xl bg-red-600 text-white font-black text-xs">
-                Procedi alla Seconda Conferma →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODALE CONFERMA STEP 2 PER RIMOZIONE DEFINITIVA PROPRIETARIO */}
-      {removeOwnerStep === 2 && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-red-950 border border-red-600 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
-            <div className="flex items-center justify-between border-b border-red-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-yellow-400" /> Seconda e Ultima Conferma Definitiva
-              </h3>
-              <button onClick={() => setRemoveOwnerStep(0)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-3 rounded-xl bg-black/40 border border-red-500/40 text-xs text-red-200 space-y-1">
-              <p className="font-bold">CANCELLAZIONE DEFINITIVA SISTEMA</p>
-              <p>Confermi la rimozione del profilo proprietario ed il reset completo? L'applicazione verrà riportata alla schermata di Prima Configurazione.</p>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button onClick={() => setRemoveOwnerStep(0)} className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs">
-                Annulla Operazione
-              </button>
-              <button
-                onClick={() => {
-                  setRemoveOwnerStep(0);
-                  handleExecuteFullOwnerRemoval();
-                }}
-                className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-black text-xs shadow-lg uppercase tracking-wider"
-              >
-                Conferma ed Elimina Definitivamente
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

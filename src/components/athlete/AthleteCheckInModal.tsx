@@ -112,8 +112,12 @@ export const AthleteCheckInModal: React.FC<AthleteCheckInModalProps> = ({
                   min="30"
                   max="250"
                   required
-                  value={weightKg}
-                  onChange={(e) => setWeightKg(Number(e.target.value))}
+                  value={weightKg === 0 ? '' : weightKg}
+                  onFocus={(e) => { if (weightKg === 0) e.target.select(); }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setWeightKg(val === '' ? 0 : Number(val));
+                  }}
                   placeholder="Es. 72.5"
                   className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-black text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
                 />

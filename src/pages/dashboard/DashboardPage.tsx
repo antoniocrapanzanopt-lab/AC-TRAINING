@@ -47,6 +47,8 @@ import { DashboardMetricCards } from './components/DashboardMetricCards';
 import { DashboardChart } from './components/DashboardChart';
 import { TodayPrioritiesWidget, PriorityItem } from './components/TodayPrioritiesWidget';
 import { RecentActivityWidget, SystemActivityItem } from './components/RecentActivityWidget';
+import { InboxAIWidget } from '../../components/dashboard/InboxAIWidget';
+import { ContentsTodayWidget } from '../../components/dashboard/ContentsTodayWidget';
 
 export const DashboardPage: React.FC = () => {
   const { setActiveTab, ownerProfile } = useApp();
@@ -575,6 +577,12 @@ export const DashboardPage: React.FC = () => {
         onNavigateTab={setActiveTab}
         formatPrice={formatPrice}
       />
+
+      {/* ─── 3.5 HUB COACH: INBOX AI & PIPELINE CONTENUTI ─── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <InboxAIWidget />
+        <ContentsTodayWidget />
+      </div>
 
       {/* ─── 4. FINANCIAL PERFORMANCE & GRAFICI MRR / ARR ─── */}
       <div className="p-6 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-2xl space-y-4 relative group/kpi">

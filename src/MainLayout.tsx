@@ -27,6 +27,8 @@ import { MessagesPage } from './pages/messages/MessagesPage';
 import { NutritionEstimatorPage } from './pages/nutrition/NutritionEstimatorPage';
 import { AnalysisReportsPage } from './pages/analytics/AnalysisReportsPage';
 import { NotificationsPage } from './pages/notifications/NotificationsPage';
+import { InboxAIPage } from './pages/inbox/InboxAIPage';
+import { ContentsHubPage } from './pages/contents/ContentsHubPage';
 import { NotificationToast } from './components/notifications/NotificationToast';
 import { useNotifications } from './context/NotificationsContext';
 import { useApp } from './context/AppContext';
@@ -57,12 +59,18 @@ const tabTitles: Record<NavigationTab, string> = {
   fabbisogno: 'Stima Fabbisogno Energetico',
   messaggi: 'Chat / Messaggi',
   notifiche: 'Centro Notifiche',
+  inbox_ai: 'Inbox AI & Brain Dump',
+  contenuti: 'Pipeline Contenuti Instagram',
 };
 
 const renderPage = (tab: NavigationTab, onNavigateToTab: (t: NavigationTab) => void): React.ReactNode => {
   switch (tab) {
     case 'dashboard':
       return <DashboardPage />;
+    case 'inbox_ai':
+      return <InboxAIPage />;
+    case 'contenuti':
+      return <ContentsHubPage />;
     case 'atleti':
       return <AthletesPage />;
     case 'pacchetti':

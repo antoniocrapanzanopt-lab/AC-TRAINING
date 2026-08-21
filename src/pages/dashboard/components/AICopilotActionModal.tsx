@@ -8,6 +8,10 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle2,
+  MessageSquare,
+  ShieldCheck,
+  Send,
+  Ban,
 } from 'lucide-react';
 import { useAthletes } from '../../../context/AthletesContext';
 import { useToast } from '../../../context/ToastContext';
@@ -32,6 +36,8 @@ interface AICopilotActionModalProps {
   alertData: CopilotAlertContext | null;
 }
 
+type CopilotStep = 'select_mode' | 'ai_recommendation' | 'manual_command' | 'no_changes' | 'success';
+
 export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
   isOpen,
   onClose,
@@ -42,8 +48,9 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
   const { showSuccess } = useToast();
   const { sendMessage } = useMessages();
 
-  // Step di navigazione: 'select_mode' | 'ai_recommendation' | 'manual_command' | 'success'
-  const [currentStep, setCurrentStep] = useState<'select_mode' | 'ai_recommendation' | 'manual_command' | 'success'>('select_mode');
+  // Step di navigazione
+  const [currentStep, setCurrentStep] = useState<CopilotStep>('select_mode');
+  const [outcomeType, setOutcomeType] = useState<'applied' | 'no_changes'>('applied');
 
   // Comando manuale del coach
   const [customCommand, setCustomCommand] = useState('');
@@ -67,6 +74,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
   useEffect(() => {
     if (!isOpen || !alertData) {
       setCurrentStep('select_mode');
+      setOutcomeType('applied');
       return;
     }
 
@@ -171,8 +179,33 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     }, 350);
   };
 
+  const handleSelectNoChanges = () => {
+    // Prepariamo un messaggio dedicato a "Nessuna modifica / solo rassicurazione o chiarimento"
+    if (alertData.type === 'critical_note') {
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, ho preso visione della tua nota sul fastidio. Per ora mantieni carichi controllati senza forzare; valutiamo insieme come va al prossimo allenamento!`
+      );
+    } else if (alertData.type === 'plateau') {
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, ho visionato i dati dell'ultima seduta. Per ora manteniamo l'assetto invariato e valutiamo la risposta nei prossimi giorni!`
+      );
+    } else if (alertData.type === 'inactivity') {
+      setChatMessageText(
+        `Ciao ${athleteFirstName}, tutto bene? Ti scrivo per sapere come stai. Quando riprendi fammi sapere qui in chat!`
+      );
+    } else {
+      setChatMessageText(
+        `Ottimo lavoro ${athleteFirstName}! Ho registrato i tuoi progressi, continua così!`
+      );
+    }
+    setSendChatNotification(true);
+    setCurrentStep('no_changes');
+  };
+
+  // Applicazione modifiche alla scheda
   const handleApply = async () => {
     setIsProcessing(true);
+    setOutcomeType('applied');
     addTimelineEvent(
       alertData.athleteId,
       'other',
@@ -182,7 +215,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
 
     if (sendChatNotification && chatMessageText.trim()) {
       try {
-        await sendMessage(alertData.athleteId, chatMessageText);
+        await sendMessage(alertData.athleteId, chatMessageText.trim());
       } catch (e) {
         console.warn('Errore invio chat:', e);
       }
@@ -197,11 +230,45 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     }, 1400);
   };
 
+  // Gestione senza modifiche ("Non Applicare Nulla")
+  const handleDismissNoChange = async () => {
+    setIsProcessing(true);
+    setOutcomeType('no_changes');
+
+    addTimelineEvent(
+      alertData.athleteId,
+      'other',
+      `Avviso Copilot Visionato (${targetWeek})`,
+      `Nessuna modifica apportata alla scheda dal coach.${sendChatNotification && chatMessageText.trim() ? ' Inviato messaggio di feedback in chat.' : ''}`
+    );
+
+    if (sendChatNotification && chatMessageText.trim()) {
+      try {
+        await sendMessage(alertData.athleteId, chatMessageText.trim());
+      } catch (e) {
+        console.warn('Errore invio chat:', e);
+      }
+    }
+
+    setCurrentStep('success');
+    showSuccess(
+      'Avviso Gestito',
+      sendChatNotification && chatMessageText.trim()
+        ? 'Messaggio inviato all\'atleta e avviso archiviato senza modifiche alla scheda.'
+        : 'Avviso archiviato senza modifiche alla scheda.'
+    );
+
+    setTimeout(() => {
+      onApplied?.(alertData.athleteId);
+      onClose();
+    }, 1400);
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
       <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={currentStep === 'success' ? undefined : onClose} />
 
-      <div className={`relative w-full max-w-3xl bg-[#0a0e17] rounded-3xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[92vh] transition-all duration-300 border ${
+      <div className={`relative w-full max-w-4xl bg-[#0a0e17] rounded-3xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[92vh] transition-all duration-300 border ${
         currentStep === 'success'
           ? 'border-emerald-500 shadow-[0_0_50px_rgba(16,185,129,0.25)] ring-2 ring-emerald-500/40'
           : 'border-slate-700/80'
@@ -270,10 +337,10 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
           )}
         </div>
 
-        {/* ─── CORPO: STEP 1 (SCELTA INIZIALE), STEP 2 (MODALITÀ ATTIVA) O SUCCESS ─── */}
+        {/* ─── CORPO: SCELTA INIZIALE, MODALITÀ ATTIVA O SUCCESS ─── */}
         <div className="p-6 sm:p-8 overflow-y-auto flex-1 custom-scrollbar">
           
-          {/* STEP SUCCESS: SCHERMATA VERDE SMERALDO CELEBRATIVA */}
+          {/* STEP SUCCESS */}
           {currentStep === 'success' && (
             <div className="py-8 sm:py-12 px-4 text-center space-y-4 animate-in zoom-in-95 duration-200">
               <div className="w-20 h-20 rounded-3xl bg-emerald-500/20 border-2 border-emerald-500/50 text-emerald-400 flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(16,185,129,0.3)] scale-110 transition-transform">
@@ -281,39 +348,42 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
               </div>
               <div className="space-y-2">
                 <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-black text-xs uppercase tracking-wider border border-emerald-500/40 inline-block">
-                  ✅ Modifiche Applicate
+                  {outcomeType === 'no_changes' ? '🛡️ Avviso Archiviato' : '✅ Modifiche Applicate'}
                 </span>
                 <h4 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                  Programma Aggiornato con Successo!
+                  {outcomeType === 'no_changes' ? 'Avviso Gestito Senza Modifiche' : 'Programma Aggiornato con Successo!'}
                 </h4>
                 <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
-                  L'intervento Copilot per <strong className="text-white">{alertData.athleteName}</strong> è stato registrato.
-                  {sendChatNotification && ' L\'atleta riceverà le istruzioni aggiornate in chat.'}
+                  {outcomeType === 'no_changes'
+                    ? `La segnalazione per ${alertData.athleteName} è stata archiviata mantenendo la scheda attiva invariata.`
+                    : `L'intervento Copilot per ${alertData.athleteName} è stato registrato nel programma.`}
+                  {sendChatNotification && chatMessageText.trim() && ' Il messaggio è stato inoltrato all\'atleta in chat.'}
                 </p>
               </div>
             </div>
           )}
           
           {/* ══════════════════════════════════════════════════════════════════ */}
-          {/* STEP 1: SCELTA INIZIALE GUIDATA (2 CARD GRANDI)                   */}
+          {/* STEP 1: SCELTA INIZIALE GUIDATA (CON OPZIONE NON APPLICARE NULLA) */}
           {/* ══════════════════════════════════════════════════════════════════ */}
           {currentStep === 'select_mode' && (
-            <div className="space-y-6 animate-in fade-in duration-150">
+            <div className="space-y-5 animate-in fade-in duration-150">
               <div className="text-center space-y-1">
                 <h4 className="text-lg sm:text-xl font-black text-white tracking-tight">
                   Come desideri intervenire sul programma?
                 </h4>
                 <p className="text-xs sm:text-sm text-slate-400">
-                  Seleziona l'approccio migliore per aggiornare la scheda dell'atleta
+                  Seleziona l'approccio migliore per aggiornare la scheda o gestire l'avviso
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              {/* 3 CARD AFFIANCATE (CONSIGLIO IA | COMANDO MANUALE | NON APPLICARE NULLA) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
                 {/* CARD 1: CONSIGLIO MIGLIORE IA */}
                 <button
                   type="button"
                   onClick={() => setCurrentStep('ai_recommendation')}
-                  className="group p-6 rounded-3xl bg-gradient-to-b from-amber-500/15 via-slate-900 to-slate-950 border-2 border-amber-500/40 hover:border-amber-400 hover:shadow-[0_0_30px_rgba(245,158,11,0.25)] text-left transition-all cursor-pointer flex flex-col justify-between space-y-4"
+                  className="group p-5 sm:p-6 rounded-3xl bg-gradient-to-b from-amber-500/15 via-slate-900 to-slate-950 border-2 border-amber-500/40 hover:border-amber-400 hover:shadow-[0_0_30px_rgba(245,158,11,0.25)] text-left transition-all cursor-pointer flex flex-col justify-between space-y-4"
                 >
                   <div className="space-y-3">
                     <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 group-hover:scale-110 transition-transform">
@@ -332,7 +402,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                     </div>
                   </div>
 
-                  <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-400 group-hover:translate-x-1 transition-transform">
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-400 group-hover:translate-x-1 transition-transform pt-2 border-t border-amber-500/20">
                     Apri proposta IA →
                   </span>
                 </button>
@@ -341,7 +411,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setCurrentStep('manual_command')}
-                  className="group p-6 rounded-3xl bg-slate-900/80 hover:bg-slate-900 border-2 border-slate-700/80 hover:border-sky-500/50 hover:shadow-[0_0_30px_rgba(56,189,248,0.15)] text-left transition-all cursor-pointer flex flex-col justify-between space-y-4"
+                  className="group p-5 sm:p-6 rounded-3xl bg-slate-900/80 hover:bg-slate-900 border-2 border-slate-700/80 hover:border-sky-500/50 hover:shadow-[0_0_30px_rgba(56,189,248,0.15)] text-left transition-all cursor-pointer flex flex-col justify-between space-y-4"
                 >
                   <div className="space-y-3">
                     <div className="w-12 h-12 rounded-2xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
@@ -360,8 +430,36 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                     </div>
                   </div>
 
-                  <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-400 group-hover:translate-x-1 transition-transform">
-                    Digita o scegli comando →
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-400 group-hover:translate-x-1 transition-transform pt-2 border-t border-sky-500/20">
+                    Digita comando →
+                  </span>
+                </button>
+
+                {/* CARD 3: NON APPLICARE NULLA */}
+                <button
+                  type="button"
+                  onClick={handleSelectNoChanges}
+                  className="group p-5 sm:p-6 rounded-3xl bg-slate-900/60 hover:bg-slate-900 border-2 border-slate-800 hover:border-slate-600 hover:shadow-[0_0_30px_rgba(100,116,139,0.15)] text-left transition-all cursor-pointer flex flex-col justify-between space-y-4"
+                >
+                  <div className="space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-800/90 border border-slate-700 flex items-center justify-center text-slate-300 group-hover:scale-110 transition-transform">
+                      <Ban className="w-6 h-6 text-slate-400 group-hover:text-slate-200" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
+                        Nessun Cambio
+                      </span>
+                      <h5 className="text-base sm:text-lg font-black text-white group-hover:text-amber-300 transition-colors">
+                        Non Applicare Nulla
+                      </h5>
+                      <p className="text-xs text-slate-400 leading-relaxed mt-1">
+                        Mantieni la scheda attiva invariata e archivia l'alert, con opzione messaggio in chat.
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 group-hover:text-white group-hover:translate-x-1 transition-transform pt-2 border-t border-slate-800">
+                    Non applicare nulla →
                   </span>
                 </button>
               </div>
@@ -369,7 +467,80 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
           )}
 
           {/* ══════════════════════════════════════════════════════════════════ */}
-          {/* STEP 2: MODALITÀ CONSIGLIO IA (PULITA & ARIOSA)                    */}
+          {/* STEP 2: MODALITÀ "NON APPLICARE NULLA & MANDA MESSAGGIO"           */}
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {currentStep === 'no_changes' && (
+            <div className="space-y-5 animate-in fade-in duration-150">
+              <button
+                type="button"
+                onClick={() => setCurrentStep('select_mode')}
+                className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" /> Torna alla scelta modalità
+              </button>
+
+              {/* Box Riepilogo Scelta */}
+              <div className="p-5 sm:p-6 rounded-3xl bg-slate-900/90 border-2 border-slate-700/80 space-y-2">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                    Nessuna Modifica al Programma
+                  </span>
+                </div>
+
+                <h4 className="text-base sm:text-lg font-black text-white tracking-tight">
+                  Mantieni la scheda attuale invariata per {alertData.athleteName}
+                </h4>
+
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                  La scheda e i carichi di lavoro non subiranno alterazioni. L'avviso Copilot verrà contrassegnato come visionato e archiviato.
+                </p>
+              </div>
+
+              {/* Sezione Manda un Messaggio in Chat (Opzionale) */}
+              <div className="p-5 sm:p-6 rounded-3xl bg-slate-950 border border-slate-800 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <label className="flex items-start gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={sendChatNotification}
+                      onChange={(e) => setSendChatNotification(e.target.checked)}
+                      className="w-5 h-5 rounded text-amber-500 focus:ring-0 bg-slate-900 border-slate-700 cursor-pointer mt-0.5"
+                    />
+                    <div>
+                      <span className="text-sm font-black text-white block">
+                        Manda un messaggio in chat all'atleta (Opzionale)
+                      </span>
+                      <span className="text-xs text-slate-400 block mt-0.5">
+                        Invia un messaggio rapido di rassicurazione, istruzioni o chiarimento senza modificare la scheda.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
+                {sendChatNotification && (
+                  <div className="space-y-2 pt-2 border-t border-slate-800/80 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5" /> Testo Messaggio per {athleteFirstName}:
+                      </span>
+                      <span className="text-slate-500 text-[11px]">Verrà inviato direttamente nella chat atleta</span>
+                    </div>
+                    <textarea
+                      rows={3}
+                      value={chatMessageText}
+                      onChange={(e) => setChatMessageText(e.target.value)}
+                      className="w-full p-4 rounded-2xl bg-slate-900 border border-slate-700 text-white text-xs sm:text-sm leading-relaxed resize-none focus:outline-none focus:border-amber-500 placeholder:text-slate-600"
+                      placeholder="Scrivi qui il messaggio per l'atleta..."
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════════ */}
+          {/* STEP 2: MODALITÀ CONSIGLIO IA                                      */}
           {/* ══════════════════════════════════════════════════════════════════ */}
           {currentStep === 'ai_recommendation' && (
             <div className="space-y-5 animate-in fade-in duration-150">
@@ -423,7 +594,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
           )}
 
           {/* ══════════════════════════════════════════════════════════════════ */}
-          {/* STEP 2: MODALITÀ COMANDO MANUALE (PULITA & GUIDATA)               */}
+          {/* STEP 2: MODALITÀ COMANDO MANUALE                                   */}
           {/* ══════════════════════════════════════════════════════════════════ */}
           {currentStep === 'manual_command' && (
             <div className="space-y-5 animate-in fade-in duration-150">
@@ -506,9 +677,9 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
           )}
 
           {/* ══════════════════════════════════════════════════════════════════ */}
-          {/* MESSAGGIO CHAT COLLASSABILE OPZIONALE (Solo nello Step 2)          */}
+          {/* MESSAGGIO CHAT COLLASSABILE (Per Modalità IA o Comando Manuale)    */}
           {/* ══════════════════════════════════════════════════════════════════ */}
-          {currentStep !== 'select_mode' && (
+          {(currentStep === 'ai_recommendation' || currentStep === 'manual_command') && (
             <div className="pt-4 border-t border-slate-800/80 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 cursor-pointer select-none text-xs sm:text-sm font-bold text-slate-300">
@@ -547,7 +718,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
 
         </div>
 
-        {/* ─── FOOTER UNIFICATO & PULSANTE GIGANTE (Solo nello Step 2) ─── */}
+        {/* ─── FOOTER UNIFICATO ─── */}
         {currentStep !== 'select_mode' && currentStep !== 'success' && (
           <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
             <button
@@ -558,14 +729,36 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
               Annulla
             </button>
 
-            <button
-              type="button"
-              onClick={handleApply}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-sm transition-all shadow-xl shadow-amber-500/20 cursor-pointer"
-            >
-              <Zap className="w-4 h-4 fill-black" />
-              <span>Applica Modifica al Programma</span>
-            </button>
+            {currentStep === 'no_changes' ? (
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleDismissNoChange}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm transition-all shadow-xl shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
+              >
+                {sendChatNotification && chatMessageText.trim() ? (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Archivia & Invia Messaggio</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Archivia Senza Modifiche</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleApply}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-sm transition-all shadow-xl shadow-amber-500/20 cursor-pointer disabled:opacity-50"
+              >
+                <Zap className="w-4 h-4 fill-black" />
+                <span>Applica Modifica al Programma</span>
+              </button>
+            )}
           </div>
         )}
 

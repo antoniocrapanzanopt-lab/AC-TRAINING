@@ -17,7 +17,7 @@ import {
 } from './AthleteBadges';
 import { LOCAL_OWNER_ID, getLocalOwnerProfile } from '../../lib/ownerProfile';
 import { compressImageFile } from '../../utils/fileCompressor';
-import { uploadMedicalCertificateToStorage } from '../../lib/storage';
+import { uploadMedicalCertificateToStorage, getSignedMedicalCertificateUrl } from '../../lib/storage';
 
 export type ModalSection = 'anagrafica' | 'profilo' | 'obiettivi' | 'avanzato';
 
@@ -684,18 +684,25 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                           <span>Certificato Medico Allegato</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <a
-                            href={form.medicalCertificateUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-white rounded-lg font-bold transition-colors"
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!form.medicalCertificateUrl) return;
+                              const url = await getSignedMedicalCertificateUrl(form.medicalCertificateUrl);
+                              if (url) {
+                                window.open(url, '_blank', 'noopener,noreferrer');
+                              } else {
+                                alert('Impossibile aprire il certificato. Riprova più tardi.');
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-white rounded-lg font-bold transition-colors cursor-pointer"
                           >
                             Visualizza
-                          </a>
+                          </button>
                           <button
                             type="button"
                             onClick={() => { set('medicalCertificateUrl', ''); setCompressionStats(null); }}
-                            className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs rounded-lg font-bold transition-colors"
+                            className="p-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs rounded-lg font-bold transition-colors cursor-pointer"
                             title="Rimuovi allegato"
                           >
                             <Trash2 className="w-4 h-4" />

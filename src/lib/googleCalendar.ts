@@ -1,5 +1,6 @@
 import { CalendarEvent } from '../types';
 import { getStorageItem, setStorageItem } from './storage';
+import { supabase } from './supabase';
 
 export const GCAL_STORAGE_KEYS = {
   CONNECTED: 'gcal_connected',
@@ -19,14 +20,12 @@ export interface GoogleCalendarState {
   hasRealTokenOrUrl: boolean;
 }
 
-export const DEFAULT_ICAL_URL = 'https://calendar.google.com/calendar/ical/antonio.crapanzanopt%40gmail.com/private-4904ed58652aca2dfff4d62155330aa0/basic.ics';
-
 export const getGoogleCalendarState = (): GoogleCalendarState => {
   const isConnected = getStorageItem<boolean>(GCAL_STORAGE_KEYS.CONNECTED, true);
   const email = getStorageItem<string | null>(GCAL_STORAGE_KEYS.EMAIL, 'antonio.crapanzanopt@gmail.com');
   const lastSynced = getStorageItem<string | null>('gcal_last_synced', null);
   const clientId = getStorageItem<string | null>(GCAL_STORAGE_KEYS.CLIENT_ID, null);
-  const icalUrl = getStorageItem<string | null>(GCAL_STORAGE_KEYS.ICAL_URL, DEFAULT_ICAL_URL);
+  const icalUrl = getStorageItem<string | null>(GCAL_STORAGE_KEYS.ICAL_URL, null);
   const token = getStorageItem<string | null>(GCAL_STORAGE_KEYS.TOKEN, null);
   
   return {
@@ -70,7 +69,7 @@ export const setGoogleICalUrl = (url: string | null) => {
 };
 
 export const getGoogleICalUrl = (): string | null => {
-  return getStorageItem<string | null>(GCAL_STORAGE_KEYS.ICAL_URL, DEFAULT_ICAL_URL);
+  return getStorageItem<string | null>(GCAL_STORAGE_KEYS.ICAL_URL, null);
 };
 
 /**
@@ -100,200 +99,178 @@ export const buildGoogleCalendarEvents = (email: string = 'antonio.crapanzanopt@
       description: 'Appuntamento schedulato da Google Calendar (antonio.crapanzanopt@gmail.com)',
       type: 'google_calendar',
       date: todayStr,
-      startTime: '10:30',
-      endTime: '11:30',
+      startTime: '10:00',
+      endTime: '11:00',
       status: 'scheduled',
       isSystemGenerated: false,
-      location: 'Studio PT Milano / Google Meet',
-      googleEventId: 'gcal_1030_pt_consult',
+      location: 'AC Training Studio / Google Meet',
+      googleEventId: 'evt_gcal_01',
       googleCalendarEmail: email,
-      htmlLink: 'https://calendar.google.com',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     },
     {
       id: 'gcal-evt-2',
-      title: 'Sessione Personal Training - Cliente VIP',
-      description: 'Allenamento 1-on-1 registrato su Google Calendar',
+      title: 'Check Misure & Revisione Progressione',
+      description: 'Sincronizzato automaticamente via Google Calendar API',
       type: 'google_calendar',
       date: tomorrowStr,
-      startTime: '16:00',
-      endTime: '17:00',
+      startTime: '15:30',
+      endTime: '16:30',
       status: 'scheduled',
       isSystemGenerated: false,
-      location: 'Palestra Central Gym',
-      googleEventId: 'gcal_1600_vip_session',
+      location: 'Studio Privato',
+      googleEventId: 'evt_gcal_02',
       googleCalendarEmail: email,
-      htmlLink: 'https://calendar.google.com',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     },
     {
       id: 'gcal-evt-3',
-      title: 'Web Meeting: Pianificazione Trimestre PT',
-      description: 'Riunione strategica registrata tramite Google Calendar API',
+      title: 'Sessione Personal Training One-to-One',
+      description: 'Allenamento programmato e confermato su Google Calendar',
       type: 'google_calendar',
       date: inThreeDaysStr,
-      startTime: '18:30',
-      endTime: '19:30',
+      startTime: '18:00',
+      endTime: '19:00',
       status: 'scheduled',
       isSystemGenerated: false,
-      location: 'Google Meet',
-      googleEventId: 'gcal_1830_web_meeting',
+      location: 'Gym Area 1',
+      googleEventId: 'evt_gcal_03',
       googleCalendarEmail: email,
-      htmlLink: 'https://calendar.google.com',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
-    },
+    }
   ];
 };
 
 /**
- * Converte una stringa data/ora da standard iCal (.ics) in data (YYYY-MM-DD) e ora (HH:mm) locali,
- * gestendo correttamente i timestamp UTC (con suffisso 'Z') e i relativi fusi orari.
+ * Parsing helper per file iCal standard (.ics)
  */
-export const parseIcsDateTime = (raw: string): { dateStr: string; timeStr?: string } => {
-  if (!raw) return { dateStr: new Date().toISOString().slice(0, 10) };
-
-  const trimmed = raw.trim();
-
-  // Caso 1: Solo data (es. "20260818")
-  if (!trimmed.includes('T')) {
-    if (trimmed.length >= 8) {
-      const y = trimmed.slice(0, 4);
-      const m = trimmed.slice(4, 6);
-      const d = trimmed.slice(6, 8);
-      return { dateStr: `${y}-${m}-${d}` };
-    }
-    return { dateStr: new Date().toISOString().slice(0, 10) };
-  }
-
-  // Caso 2: Data e ora (es. "20260818T070000Z" o "20260818T090000")
-  const isUtc = trimmed.toUpperCase().endsWith('Z');
-  const tIndex = trimmed.indexOf('T');
-  const datePart = trimmed.slice(0, tIndex);
-  const timePart = trimmed.slice(tIndex + 1).replace(/Z/i, '');
-
-  const y = parseInt(datePart.slice(0, 4), 10);
-  const m = parseInt(datePart.slice(4, 6), 10) - 1; // Mese 0-based
-  const d = parseInt(datePart.slice(6, 8), 10);
-
-  const hh = parseInt(timePart.slice(0, 2), 10) || 0;
-  const mm = parseInt(timePart.slice(2, 4), 10) || 0;
-  const ss = timePart.length >= 6 ? parseInt(timePart.slice(4, 6), 10) || 0 : 0;
-
-  if (isUtc) {
-    // È in formato UTC: costruiamo la data UTC e leggiamo l'ora locale del browser/utente
-    const utcDate = new Date(Date.UTC(y, m, d, hh, mm, ss));
-    const localYear = utcDate.getFullYear();
-    const localMonth = String(utcDate.getMonth() + 1).padStart(2, '0');
-    const localDay = String(utcDate.getDate()).padStart(2, '0');
-    const localHour = String(utcDate.getHours()).padStart(2, '0');
-    const localMin = String(utcDate.getMinutes()).padStart(2, '0');
-
-    return {
-      dateStr: `${localYear}-${localMonth}-${localDay}`,
-      timeStr: `${localHour}:${localMin}`,
-    };
-  } else {
-    // Già in orario locale o floating
-    const yStr = datePart.slice(0, 4);
-    const mStr = datePart.slice(4, 6);
-    const dStr = datePart.slice(6, 8);
-    const hhStr = String(hh).padStart(2, '0');
-    const mmStr = String(mm).padStart(2, '0');
-
-    return {
-      dateStr: `${yStr}-${mStr}-${dStr}`,
-      timeStr: `${hhStr}:${mmStr}`,
-    };
-  }
-};
-
-/**
- * Converte una stringa data/ora ISO restituita dalle API di Google Calendar
- * in data e ora locali.
- */
-export const parseGoogleApiDateTime = (apiDateStr: string | undefined): { dateStr: string; timeStr?: string } => {
-  if (!apiDateStr) return { dateStr: new Date().toISOString().slice(0, 10) };
-
-  // Solo giorno (es. "2026-08-18")
-  if (!apiDateStr.includes('T')) {
-    return { dateStr: apiDateStr.slice(0, 10) };
-  }
-
-  // Timestamp ISO con orario e fuso orario (es. "2026-08-18T07:00:00Z")
-  const dateObj = new Date(apiDateStr);
-  if (isNaN(dateObj.getTime())) {
-    return {
-      dateStr: apiDateStr.slice(0, 10),
-      timeStr: apiDateStr.slice(11, 16),
-    };
-  }
-
-  const localYear = dateObj.getFullYear();
-  const localMonth = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const localDay = String(dateObj.getDate()).padStart(2, '0');
-  const localHour = String(dateObj.getHours()).padStart(2, '0');
-  const localMin = String(dateObj.getMinutes()).padStart(2, '0');
-
-  return {
-    dateStr: `${localYear}-${localMonth}-${localDay}`,
-    timeStr: `${localHour}:${localMin}`,
-  };
-};
-
-export const parseICSString = (icsContent: string, email: string): CalendarEvent[] => {
+function parseICSString(icsContent: string, email: string): CalendarEvent[] {
   const events: CalendarEvent[] = [];
-  // Unfold delle linee spezzate RFC 5545
-  const unfolded = icsContent.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
-  const vevents = unfolded.split('BEGIN:VEVENT');
+  const lines = icsContent.split(/\r\n|\n|\r/);
+  
+  let currentEvent: Partial<CalendarEvent> | null = null;
+  let inVEvent = false;
 
-  for (let i = 1; i < vevents.length; i++) {
-    const chunk = vevents[i].split('END:VEVENT')[0];
-    
-    const summaryMatch = chunk.match(/SUMMARY:(.*)/i);
-    const summary = summaryMatch ? summaryMatch[1].trim() : 'Evento Google Calendar';
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
 
-    const descMatch = chunk.match(/DESCRIPTION:(.*)/i);
-    const description = descMatch ? descMatch[1].trim().replace(/\\n/g, '\n') : '';
+    // Gestione continuazione linea RFC 5545 (line folding)
+    while (i + 1 < lines.length && (lines[i + 1].startsWith(' ') || lines[i + 1].startsWith('\t'))) {
+      i++;
+      line += lines[i].substring(1);
+    }
 
-    const locMatch = chunk.match(/LOCATION:(.*)/i);
-    const location = locMatch ? locMatch[1].trim() : '';
+    if (line.startsWith('BEGIN:VEVENT')) {
+      inVEvent = true;
+      currentEvent = {
+        type: 'google_calendar',
+        status: 'scheduled',
+        isSystemGenerated: false,
+        googleCalendarEmail: email,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      continue;
+    }
 
-    const startMatch = chunk.match(/DTSTART(?:;[^:]*)?:([0-9TZ]+)/i);
-    const parsedStart = startMatch ? parseIcsDateTime(startMatch[1]) : { dateStr: new Date().toISOString().slice(0, 10) };
+    if (line.startsWith('END:VEVENT') && inVEvent && currentEvent) {
+      inVEvent = false;
+      if (currentEvent.title && currentEvent.date) {
+        currentEvent.id = currentEvent.googleEventId ? `gcal-${currentEvent.googleEventId}` : `gcal-ics-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        events.push(currentEvent as CalendarEvent);
+      }
+      currentEvent = null;
+      continue;
+    }
 
-    const endMatch = chunk.match(/DTEND(?:;[^:]*)?:([0-9TZ]+)/i);
-    const parsedEnd = endMatch ? parseIcsDateTime(endMatch[1]) : undefined;
+    if (!inVEvent || !currentEvent) continue;
 
-    const uidMatch = chunk.match(/UID:(.*)/i);
-    const uid = uidMatch ? uidMatch[1].trim() : `ics-${i}-${Date.now()}`;
-
-    events.push({
-      id: `gcal-ics-${uid}`,
-      title: summary,
-      description,
-      type: 'google_calendar' as const,
-      date: parsedStart.dateStr,
-      startTime: parsedStart.timeStr,
-      endTime: parsedEnd?.timeStr,
-      status: 'scheduled' as const,
-      isSystemGenerated: false,
-      location,
-      googleEventId: uid,
-      googleCalendarEmail: email,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+    if (line.startsWith('SUMMARY:')) {
+      currentEvent.title = line.substring(8).trim();
+    } else if (line.startsWith('DESCRIPTION:')) {
+      currentEvent.description = line.substring(12).replace(/\\n/g, '\n').replace(/\\,/g, ',').trim();
+    } else if (line.startsWith('LOCATION:')) {
+      currentEvent.location = line.substring(9).replace(/\\,/g, ',').trim();
+    } else if (line.startsWith('UID:')) {
+      currentEvent.googleEventId = line.substring(4).trim();
+    } else if (line.startsWith('DTSTART')) {
+      const parts = line.split(':');
+      const val = parts[1]?.trim();
+      if (val) {
+        const { dateStr, timeStr } = parseICSDate(val);
+        currentEvent.date = dateStr;
+        currentEvent.startTime = timeStr || '09:00';
+      }
+    } else if (line.startsWith('DTEND')) {
+      const parts = line.split(':');
+      const val = parts[1]?.trim();
+      if (val) {
+        const { timeStr } = parseICSDate(val);
+        currentEvent.endTime = timeStr || '10:00';
+      }
+    }
   }
 
   return events;
-};
+}
+
+function parseICSDate(val: string): { dateStr: string; timeStr: string } {
+  // Formati tipici: 20260821T100000Z, 20260821T100000, 20260821
+  const clean = val.replace(/[^0-9T]/g, '');
+  if (clean.includes('T')) {
+    const [d, t] = clean.split('T');
+    const y = d.substring(0, 4);
+    const m = d.substring(4, 6);
+    const day = d.substring(6, 8);
+    const hh = t.substring(0, 2);
+    const mm = t.substring(2, 4);
+    return {
+      dateStr: `${y}-${m}-${day}`,
+      timeStr: `${hh}:${mm}`,
+    };
+  } else {
+    const y = clean.substring(0, 4);
+    const m = clean.substring(4, 6);
+    const day = clean.substring(6, 8);
+    return {
+      dateStr: `${y}-${m}-${day}`,
+      timeStr: '09:00',
+    };
+  }
+}
+
+function parseGoogleApiDateTime(dtStr?: string): { dateStr: string; timeStr: string } {
+  if (!dtStr) {
+    const today = new Date();
+    return {
+      dateStr: today.toISOString().split('T')[0],
+      timeStr: '09:00',
+    };
+  }
+  if (dtStr.includes('T')) {
+    const d = new Date(dtStr);
+    const dateStr = dtStr.split('T')[0];
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return {
+      dateStr,
+      timeStr: `${hh}:${mm}`,
+    };
+  }
+  return {
+    dateStr: dtStr,
+    timeStr: '09:00',
+  };
+}
 
 /**
- * Tenta di scaricare gli eventi reali da Google Calendar v3 usando il Bearer Token o il Link iCal.
- * Se non è ancora presente una configurazione reale, fa il fallback agli eventi dimostrativi.
+ * Scarica gli eventi reali da Google Calendar in modo sicuro:
+ * 1. Tramite Bearer Token OAuth diretto
+ * 2. Tramite Supabase Edge Function 'sync-calendar' protetta da JWT/AAL2 (senza proxy terzi)
+ * 3. Fallback armonioso agli appuntamenti dimostrativi per il coach
  */
 export const fetchGoogleEvents = async (email: string = 'antonio.crapanzanopt@gmail.com'): Promise<CalendarEvent[]> => {
   const token = getGoogleAccessToken();
@@ -319,7 +296,17 @@ export const fetchGoogleEvents = async (email: string = 'antonio.crapanzanopt@gm
         const data = await res.json();
         const items = data.items || [];
 
-        return items.map((item: any) => {
+        return items.map((item: {
+            id: string;
+            summary?: string;
+            description?: string;
+            start?: { dateTime?: string; date?: string };
+            end?: { dateTime?: string; date?: string };
+            location?: string;
+            htmlLink?: string;
+            created?: string;
+            updated?: string;
+          }) => {
           const start = item.start?.dateTime || item.start?.date;
           const end = item.end?.dateTime || item.end?.date;
           const parsedStart = parseGoogleApiDateTime(start);
@@ -349,28 +336,22 @@ export const fetchGoogleEvents = async (email: string = 'antonio.crapanzanopt@gm
     }
   }
 
-  // 2. Tenta via Link Segreto iCal (.ics) se disponibile
+  // 2. Tenta via Edge Function Supabase 'sync-calendar' per iCal sicuro (Server-Side)
   if (icalUrl) {
     try {
-      let res: Response | null = await fetch(icalUrl).catch(() => null);
+      const { data, error } = await supabase.functions.invoke('sync-calendar', {
+        body: { icalUrl },
+      });
 
-      if (!res || !res.ok) {
-        res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(icalUrl)}`).catch(() => null);
-      }
-      if (!res || !res.ok) {
-        res = await fetch(`https://corsproxy.io/?${encodeURIComponent(icalUrl)}`).catch(() => null);
-      }
-
-      if (res && res.ok) {
-        const text = await res.text();
-        const parsed = parseICSString(text, email);
+      if (!error && data?.icsContent) {
+        const parsed = parseICSString(data.icsContent, email);
         if (parsed.length > 0) return parsed;
       }
     } catch (err) {
-      console.warn('Impossibile scaricare o formattare il feed iCal di Google Calendar:', err);
+      console.warn('Sincronizzazione Edge Function iCal non riuscita:', err);
     }
   }
 
-  // Fallback con eventi dimostrativi
+  // 3. Fallback con eventi dimostrativi
   return buildGoogleCalendarEvents(email);
 };

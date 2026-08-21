@@ -22,12 +22,15 @@ export type NavigationTab =
   | 'fabbisogno'
   | 'messaggi'
   | 'analisi_report'
-  | 'notifiche';
+  | 'notifiche'
+  | 'inbox_ai'
+  | 'contenuti';
 
 export * from './types/progression';
 export * from './types/notification';
 export * from './types/nutrition';
 export * from './types/metrics';
+export * from './types/inboxAndContent';
 
 export type UserRole = 'owner' | 'admin' | 'coach' | 'receptionist' | 'athlete' | 'collaborator';
 

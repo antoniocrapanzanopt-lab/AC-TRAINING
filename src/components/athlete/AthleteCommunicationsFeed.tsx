@@ -35,7 +35,7 @@ const typeConfig: Record<BroadcastType, { label: string; icon: React.FC<{ classN
 };
 
 export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps> = ({ athleteId }) => {
-  const { broadcasts, confirmRecipientRead, recordRecipientClick } = useCommunications();
+  const { broadcasts, markRecipientRead, confirmRecipientRead, recordRecipientClick } = useCommunications();
   const { timeline } = useAthletes();
   const { showSuccess } = useToast();
 
@@ -83,6 +83,14 @@ export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps>
 
     return Array.from(map.values()).sort((a, b) => new Date(b.sentAt || b.createdAt).getTime() - new Date(a.sentAt || a.createdAt).getTime());
   }, [broadcasts, athleteId, timeline]);
+
+  // Segna automaticamente le comunicazioni come lette quando l'atleta accede al feed
+  React.useEffect(() => {
+    if (!athleteId || athleteBroadcasts.length === 0) return;
+    athleteBroadcasts.forEach(b => {
+      markRecipientRead(b.id, athleteId);
+    });
+  }, [athleteId, athleteBroadcasts, markRecipientRead]);
 
   if (athleteBroadcasts.length === 0) {
     return (

@@ -318,8 +318,13 @@ export const AthleteNutritionEstimator: React.FC<AthleteNutritionEstimatorProps>
               type="number"
               min="30"
               max="250"
-              value={weightKg}
-              onChange={(e) => setWeightKg(Number(e.target.value))}
+              value={weightKg === 0 ? '' : weightKg}
+              onFocus={(e) => { if (weightKg === 0) e.target.select(); }}
+              onChange={(e) => {
+                const val = e.target.value;
+                setWeightKg(val === '' ? 0 : Number(val));
+              }}
+              placeholder="75"
               className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono font-bold text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
           </div>
@@ -332,8 +337,13 @@ export const AthleteNutritionEstimator: React.FC<AthleteNutritionEstimatorProps>
               type="number"
               min="100"
               max="240"
-              value={heightCm}
-              onChange={(e) => setHeightCm(Number(e.target.value))}
+              value={heightCm === 0 ? '' : heightCm}
+              onFocus={(e) => { if (heightCm === 0) e.target.select(); }}
+              onChange={(e) => {
+                const val = e.target.value;
+                setHeightCm(val === '' ? 0 : Number(val));
+              }}
+              placeholder="175"
               className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono font-bold text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
           </div>
@@ -346,8 +356,13 @@ export const AthleteNutritionEstimator: React.FC<AthleteNutritionEstimatorProps>
               type="number"
               min="14"
               max="100"
-              value={age}
-              onChange={(e) => setAge(Number(e.target.value))}
+              value={age === 0 ? '' : age}
+              onFocus={(e) => { if (age === 0) e.target.select(); }}
+              onChange={(e) => {
+                const val = e.target.value;
+                setAge(val === '' ? 0 : Number(val));
+              }}
+              placeholder="28"
               className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono font-bold text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
           </div>
@@ -518,8 +533,13 @@ export const AthleteNutritionEstimator: React.FC<AthleteNutritionEstimatorProps>
                 <input
                   type="number"
                   step="50"
-                  value={customTargetKcal}
-                  onChange={(e) => setCustomTargetKcal(Number(e.target.value))}
+                  value={customTargetKcal === 0 ? '' : customTargetKcal}
+                  onFocus={(e) => { if (customTargetKcal === 0) e.target.select(); }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomTargetKcal(val === '' ? 0 : Number(val));
+                  }}
+                  placeholder="2000"
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono font-bold focus:border-[var(--color-primary)]"
                 />
               </div>
@@ -529,8 +549,13 @@ export const AthleteNutritionEstimator: React.FC<AthleteNutritionEstimatorProps>
                 <input
                   type="number"
                   step="5"
-                  value={customProteinGrams}
-                  onChange={(e) => setCustomProteinGrams(Number(e.target.value))}
+                  value={customProteinGrams === 0 ? '' : customProteinGrams}
+                  onFocus={(e) => { if (customProteinGrams === 0) e.target.select(); }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomProteinGrams(val === '' ? 0 : Number(val));
+                  }}
+                  placeholder="150"
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-sky-500/40 text-white font-mono font-bold focus:border-sky-400"
                 />
               </div>
@@ -540,8 +565,13 @@ export const AthleteNutritionEstimator: React.FC<AthleteNutritionEstimatorProps>
                 <input
                   type="number"
                   step="5"
-                  value={customCarbGrams}
-                  onChange={(e) => setCustomCarbGrams(Number(e.target.value))}
+                  value={customCarbGrams === 0 ? '' : customCarbGrams}
+                  onFocus={(e) => { if (customCarbGrams === 0) e.target.select(); }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomCarbGrams(val === '' ? 0 : Number(val));
+                  }}
+                  placeholder="250"
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-amber-500/40 text-white font-mono font-bold focus:border-amber-400"
                 />
               </div>
@@ -551,8 +581,13 @@ export const AthleteNutritionEstimator: React.FC<AthleteNutritionEstimatorProps>
                 <input
                   type="number"
                   step="2"
-                  value={customFatGrams}
-                  onChange={(e) => setCustomFatGrams(Number(e.target.value))}
+                  value={customFatGrams === 0 ? '' : customFatGrams}
+                  onFocus={(e) => { if (customFatGrams === 0) e.target.select(); }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomFatGrams(val === '' ? 0 : Number(val));
+                  }}
+                  placeholder="60"
                   className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-rose-500/40 text-white font-mono font-bold focus:border-rose-400"
                 />
               </div>

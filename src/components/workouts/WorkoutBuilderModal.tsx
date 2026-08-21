@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target, RotateCcw } from 'lucide-react';
+import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target, RotateCcw, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { generateAISmartSuggestions, CoPilotActionableSuggestion } from '../../lib/ai/workoutGenerator';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
@@ -35,7 +35,7 @@ interface WorkoutBuilderModalProps {
 
 export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId, initialWorkout, onClose, onBack }) => {
   const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout, folders, forkWorkoutForAthlete, forkWorkoutForAllAssigned, forceSyncMasterTemplate } = useWorkouts();
-  const { exercises: libraryExercises } = useExercises();
+  const { exercises: libraryExercises, createExercise } = useExercises();
   const { athletes } = useAthletes();
   const { rules } = useProgressions();
   const { showSuccess, showError } = useToast();
@@ -55,6 +55,34 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const [deletedDaysHistory, setDeletedDaysHistory] = useState<DeletedDayRecord[]>([]);
   const [undoBanner, setUndoBanner] = useState<{ record: DeletedDayRecord; timerId: NodeJS.Timeout | null } | null>(null);
   const [isRestoreDropdownOpen, setIsRestoreDropdownOpen] = useState(false);
+  const [isReorderDaysModalOpen, setIsReorderDaysModalOpen] = useState(false);
+
+  const moveDay = (fromIndex: number, toIndex: number) => {
+    if (fromIndex < 0 || fromIndex >= daysList.length || toIndex < 0 || toIndex >= daysList.length || fromIndex === toIndex) {
+      return;
+    }
+    const newDays = [...daysList];
+    const [moved] = newDays.splice(fromIndex, 1);
+    newDays.splice(toIndex, 0, moved);
+    setDaysList(newDays);
+    showSuccess('Ordine Giorni Aggiornato', `"${moved}" spostato in posizione ${toIndex + 1}.`);
+  };
+
+  const moveDayLeft = (dayName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const idx = daysList.indexOf(dayName);
+    if (idx > 0) {
+      moveDay(idx, idx - 1);
+    }
+  };
+
+  const moveDayRight = (dayName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const idx = daysList.indexOf(dayName);
+    if (idx >= 0 && idx < daysList.length - 1) {
+      moveDay(idx, idx + 1);
+    }
+  };
 
   const [exercises, setExercises] = useState<Partial<WorkoutExercise>[]>([
     { name: '', sets: 3, reps_target: '10', rest_seconds: 60, week_number: 1, day_name: 'Giorno A', is_time_based: false }
@@ -1002,11 +1030,35 @@ ${result.regole_adattamento || '-'}
       return;
     }
     
-    const validExercises = exercises.filter(ex => ex.name?.trim() !== '');
+    const validExercises = exercises
+      .filter(ex => ex.name?.trim() !== '')
+      .sort((a, b) => {
+        const weekDiff = (a.week_number || 1) - (b.week_number || 1);
+        if (weekDiff !== 0) return weekDiff;
+        const dayIndexA = daysList.indexOf(a.day_name || 'Giorno A');
+        const dayIndexB = daysList.indexOf(b.day_name || 'Giorno A');
+        const safeA = dayIndexA >= 0 ? dayIndexA : 999;
+        const safeB = dayIndexB >= 0 ? dayIndexB : 999;
+        return safeA - safeB;
+      });
     if (validExercises.length === 0) {
       showError('Inserisci almeno un esercizio valido');
       return;
     }
+
+    // Registra in background nella libreria globale eventuali nuovi esercizi personalizzati
+    validExercises.forEach(ex => {
+      if (ex.name && ex.name.trim().length > 1) {
+        const isPresent = libraryExercises.some(libEx => libEx.name.trim().toLowerCase() === ex.name!.trim().toLowerCase());
+        if (!isPresent) {
+          createExercise({
+            name: ex.name.trim(),
+            category: 'Altro',
+            equipment: 'Corpo Libero',
+          }).catch(err => console.warn('Auto-salvataggio esercizio custom in libreria:', err));
+        }
+      }
+    });
 
     // Modalità "Edit Template" dal catalogo
     if (initialWorkout && initialWorkout.is_template && !athleteId && !globalUpdateMode) {
@@ -1586,7 +1638,7 @@ ${result.regole_adattamento || '-'}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
                 <span className="text-[11px] font-bold text-slate-400 mr-1">Giorni:</span>
-                {daysList.map(dName => {
+                {daysList.map((dName, dIdx) => {
                   const isCurrentDay = activeDay === dName;
                   const exCountDay = exercises.filter(
                     e => (e.week_number || 1) === activeWeek && (e.day_name || 'Giorno A') === dName
@@ -1597,25 +1649,54 @@ ${result.regole_adattamento || '-'}
                   const isAthleteTargetDay = athleteId && athleteProgress.currentWeek === activeWeek && athleteProgress.currentDay === dName && athleteProgress.hasStarted;
 
                   return (
-                    <button
-                      key={dName}
-                      type="button"
-                      onClick={() => setActiveDay(dName)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                        isCurrentDay
-                          ? 'bg-slate-700 text-white border border-[var(--color-primary)] font-black'
-                          : isAthleteTargetDay
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 font-black'
-                          : isDayDone
-                          ? 'bg-emerald-950/30 text-emerald-300 border border-emerald-500/30'
-                          : 'bg-slate-800/50 text-slate-400 border border-transparent hover:bg-slate-800'
-                      }`}
-                    >
-                      {isDayDone && <span className="text-emerald-400 font-bold text-[10px]" title="Giorno completato">✓</span>}
-                      {isAthleteTargetDay && <span className="text-amber-400 font-bold text-[10px]" title="Giorno attuale atleta">📍</span>}
-                      <span>{dName}</span>
-                      <span className="text-[10px] opacity-70">({exCountDay})</span>
-                    </button>
+                    <div key={dName} className="flex items-center group/day shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setActiveDay(dName)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          isCurrentDay
+                            ? 'bg-slate-700 text-white border border-[var(--color-primary)] font-black shadow-sm'
+                            : isAthleteTargetDay
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 font-black'
+                            : isDayDone
+                            ? 'bg-emerald-950/30 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-slate-800/50 text-slate-400 border border-transparent hover:bg-slate-800'
+                        }`}
+                      >
+                        {isDayDone && <span className="text-emerald-400 font-bold text-[10px]" title="Giorno completato">✓</span>}
+                        {isAthleteTargetDay && <span className="text-amber-400 font-bold text-[10px]" title="Giorno attuale atleta">📍</span>}
+                        <span>{dName}</span>
+                        <span className="text-[10px] opacity-70">({exCountDay})</span>
+
+                        {/* Frecce veloci per riordinare giorno a sinistra o a destra */}
+                        {daysList.length > 1 && isCurrentDay && (
+                          <div className="flex items-center gap-0.5 ml-1 pl-1 border-l border-slate-500/60">
+                            {dIdx > 0 && (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => moveDayLeft(dName, e)}
+                                className="p-0.5 hover:bg-slate-600 text-slate-300 hover:text-white rounded transition-colors"
+                                title={`Sposta "${dName}" prima`}
+                              >
+                                <ChevronLeft className="w-3 h-3" />
+                              </span>
+                            )}
+                            {dIdx < daysList.length - 1 && (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => moveDayRight(dName, e)}
+                                className="p-0.5 hover:bg-slate-600 text-slate-300 hover:text-white rounded transition-colors"
+                                title={`Sposta "${dName}" dopo`}
+                              >
+                                <ChevronRight className="w-3 h-3" />
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    </div>
                   );
                 })}
 
@@ -1629,7 +1710,20 @@ ${result.regole_adattamento || '-'}
               </div>
 
               {/* Azioni Struttura Giorno */}
-              <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+              <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0 flex-wrap">
+                {/* Riordina Giorni */}
+                {daysList.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsReorderDaysModalOpen(true)}
+                    className="px-2 py-1 text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center gap-1 border border-slate-700 cursor-pointer"
+                    title="Riordina la sequenza dei giorni di allenamento"
+                  >
+                    <ArrowUpDown className="w-3 h-3 text-[var(--color-primary)]" />
+                    <span>Riordina</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => duplicateDay(activeDay)}
@@ -1889,10 +1983,10 @@ ${result.regole_adattamento || '-'}
                             <GripVertical className="w-4 h-4" />
                           </div>
                           
-                          <div className="flex-1">
+                          <div className="flex-1 space-y-1">
                             <input
                               type="text"
-                              placeholder="Nome esercizio (es. Panca Piana)"
+                              placeholder="Nome esercizio (es. Panca Piana o Riccio Squat)"
                               value={ex.name || ''}
                               onChange={e => {
                                 const val = e.target.value;
@@ -1906,6 +2000,37 @@ ${result.regole_adattamento || '-'}
                               list="exercises-library-list"
                               className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm font-bold text-white focus:outline-none focus:border-[var(--color-primary)]"
                             />
+
+                            {/* Badge & Azione Rapida se Esercizio Personalizzato non presente nella Libreria */}
+                            {ex.name && ex.name.trim().length > 1 && !libraryExercises.some(libEx => libEx.name.trim().toLowerCase() === ex.name!.trim().toLowerCase()) && (
+                              <div className="flex items-center justify-between gap-2 pt-1 flex-wrap animate-in fade-in duration-150">
+                                <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3 text-amber-400" />
+                                  Esercizio personalizzato (incluso nella programmazione)
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const res = await createExercise({
+                                      name: ex.name!.trim(),
+                                      category: 'Altro',
+                                      equipment: 'Corpo Libero',
+                                    });
+                                    if (res.success) {
+                                      showSuccess('Aggiunto alla Libreria!', `"${ex.name}" è ora salvato anche nella libreria generale.`);
+                                    } else {
+                                      showError('Impossibile salvare in libreria: ' + (res.error || ''));
+                                    }
+                                  }}
+                                  className="text-[10px] font-black text-amber-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-0.5 rounded-lg border border-slate-600 transition-colors flex items-center gap-1 cursor-pointer"
+                                  title="Salva questo esercizio anche nel catalogo/database generale"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>Salva in Libreria Esercizi</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -1918,7 +2043,7 @@ ${result.regole_adattamento || '-'}
                               <span className="text-cyan-400 font-extrabold">Settimana {activeWeek}:</span>
                               <span className="text-white">{ex.sets || 3} Set</span>
                               <span className="text-slate-600">•</span>
-                              <span className="text-white">{ex.is_time_based ? `${ex.duration_seconds || 45}s` : `${ex.reps_target || '8-10'} Rep`}</span>
+                              <span className="text-white">{ex.is_time_based ? (ex.reps_target?.includes('min') ? ex.reps_target : (ex.duration_seconds && ex.duration_seconds >= 60 ? `${(ex.duration_seconds / 60).toFixed(1).replace('.0', '')} min` : `${ex.duration_seconds || 45}s`)) : `${ex.reps_target || '8-10'} Rep`}</span>
                               <span className="text-slate-600">•</span>
                               <span className="text-amber-400 font-black">{ex.target_weight ? `${ex.target_weight} kg` : 'Progressione'}</span>
                               <span className="text-slate-600">•</span>
@@ -1958,53 +2083,166 @@ ${result.regole_adattamento || '-'}
                         ) : (
                           /* SE NESSUNA PROGRESSIONE (MODALITÀ MANUALE FISSA): Mostra i campi di input modificabili standard */
                           <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
-                            {/* Toggle Tipo Lavoro: Reps vs Tempo */}
-                            <button
-                              type="button"
-                              onClick={() => updateExercise(globalIdx, 'is_time_based', !ex.is_time_based)}
-                              className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1 border transition-colors cursor-pointer ${ex.is_time_based ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
-                              title="Alterna lavoro a ripetizioni o a tempo"
-                            >
-                              {ex.is_time_based ? <Clock className="w-3.5 h-3.5" /> : <Repeat className="w-3.5 h-3.5" />}
-                              <span>{ex.is_time_based ? 'Tempo' : 'Reps'}</span>
-                            </button>
+                            {/* Toggle Tipo Lavoro: Reps vs Minuti vs Secondi */}
+                            {(() => {
+                              const workMode: 'reps' | 'minutes' | 'seconds' = !ex.is_time_based
+                                ? 'reps'
+                                : (ex.reps_target && ex.reps_target.includes('min')) || (ex.duration_seconds && ex.duration_seconds >= 60 && ex.duration_seconds % 30 === 0 && !ex.reps_target?.includes('s'))
+                                ? 'minutes'
+                                : 'seconds';
 
-                            {/* Sets */}
-                            <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
-                              <span className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2">Set</span>
-                              <input
-                                type="number"
-                                value={ex.sets || 3}
-                                onChange={e => updateExercise(globalIdx, 'sets', parseInt(e.target.value) || 1)}
-                                className="w-12 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
-                                min="1"
-                              />
-                            </div>
+                              const cycleMode = () => {
+                                if (workMode === 'reps') {
+                                  // Da Reps a Minuti
+                                  const prev = parseFloat(ex.reps_target || '') || 1;
+                                  const mins = prev > 10 ? 1 : prev;
+                                  updateExerciseFields(globalIdx, {
+                                    is_time_based: true,
+                                    duration_seconds: Math.round(mins * 60),
+                                    reps_target: `${mins} min`,
+                                  });
+                                } else if (workMode === 'minutes') {
+                                  // Da Minuti a Secondi
+                                  const secs = ex.duration_seconds || 45;
+                                  updateExerciseFields(globalIdx, {
+                                    is_time_based: true,
+                                    duration_seconds: secs,
+                                    reps_target: `${secs}s`,
+                                  });
+                                } else {
+                                  // Da Secondi a Reps
+                                  updateExerciseFields(globalIdx, {
+                                    is_time_based: false,
+                                    reps_target: '10-12',
+                                  });
+                                }
+                              };
 
-                            {/* Reps Target oppure Durata in Secondi */}
-                            {ex.is_time_based ? (
-                              <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
-                                <span className="px-2 text-[10px] text-amber-400 font-bold uppercase bg-slate-800 py-2">Sec</span>
-                                <input
-                                  type="number"
-                                  placeholder="45"
-                                  value={ex.duration_seconds || ''}
-                                  onChange={e => updateExercise(globalIdx, 'duration_seconds', parseInt(e.target.value) || 0)}
-                                  className="w-14 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
-                                />
-                              </div>
-                            ) : (
-                              <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
-                                <span className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2">Rep</span>
-                                <input
-                                  type="text"
-                                  placeholder="8-10"
-                                  value={ex.reps_target || ''}
-                                  onChange={e => updateExercise(globalIdx, 'reps_target', e.target.value)}
-                                  className="w-16 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
-                                />
-                              </div>
-                            )}
+                              return (
+                                <>
+                                  {/* Bottone Ciclo Unità: Reps / Minuti / Secondi */}
+                                  <button
+                                    type="button"
+                                    onClick={cycleMode}
+                                    className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1 border transition-colors cursor-pointer ${
+                                      workMode === 'minutes'
+                                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 shadow-sm'
+                                        : workMode === 'seconds'
+                                        ? 'bg-sky-500/15 text-sky-300 border-sky-500/40 shadow-sm'
+                                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                                    }`}
+                                    title="Clicca per alternare: Ripetizioni (Reps) ➔ Minuti (Min) ➔ Secondi (Sec)"
+                                  >
+                                    {workMode === 'minutes' ? (
+                                      <>
+                                        <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                        <span>Minuti</span>
+                                      </>
+                                    ) : workMode === 'seconds' ? (
+                                      <>
+                                        <Clock className="w-3.5 h-3.5 text-sky-400" />
+                                        <span>Secondi</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Repeat className="w-3.5 h-3.5 text-slate-400" />
+                                        <span>Reps</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  {/* Sets */}
+                                  <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
+                                    <span className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2">Set</span>
+                                    <input
+                                      type="number"
+                                      value={ex.sets === 0 ? '' : (ex.sets || 3)}
+                                      onChange={e => updateExercise(globalIdx, 'sets', e.target.value === '' ? 0 : (parseInt(e.target.value) || 1))}
+                                      className="w-12 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
+                                      min="1"
+                                    />
+                                  </div>
+
+                                  {/* Target Reps / Minuti / Secondi */}
+                                  {workMode === 'minutes' ? (
+                                    <div className="flex items-center border border-amber-500/40 rounded-lg overflow-hidden bg-slate-950 ring-1 ring-amber-500/20">
+                                      <button
+                                        type="button"
+                                        onClick={cycleMode}
+                                        className="px-2 text-[10px] text-amber-300 font-black uppercase bg-amber-500/20 py-2 hover:bg-amber-500/30 transition-colors cursor-pointer"
+                                        title="Cambia unità: Reps / Min / Sec"
+                                      >
+                                        Min
+                                      </button>
+                                      <input
+                                        type="text"
+                                        placeholder="1"
+                                        value={
+                                          ex.reps_target?.includes('min')
+                                            ? ex.reps_target.replace('min', '').trim()
+                                            : ex.duration_seconds
+                                            ? (ex.duration_seconds / 60).toString()
+                                            : '1'
+                                        }
+                                        onChange={e => {
+                                          const val = e.target.value;
+                                          const num = parseFloat(val) || 0;
+                                          updateExerciseFields(globalIdx, {
+                                            is_time_based: true,
+                                            duration_seconds: Math.round(num * 60),
+                                            reps_target: `${val} min`,
+                                          });
+                                        }}
+                                        className="w-16 px-1 py-1.5 bg-transparent text-xs text-amber-200 font-black text-center focus:outline-none"
+                                      />
+                                    </div>
+                                  ) : workMode === 'seconds' ? (
+                                    <div className="flex items-center border border-sky-500/40 rounded-lg overflow-hidden bg-slate-950 ring-1 ring-sky-500/20">
+                                      <button
+                                        type="button"
+                                        onClick={cycleMode}
+                                        className="px-2 text-[10px] text-sky-300 font-black uppercase bg-sky-500/20 py-2 hover:bg-sky-500/30 transition-colors cursor-pointer"
+                                        title="Cambia unità: Reps / Min / Sec"
+                                      >
+                                        Sec
+                                      </button>
+                                      <input
+                                        type="number"
+                                        placeholder="45"
+                                        value={ex.duration_seconds === 0 ? '' : (ex.duration_seconds || 45)}
+                                        onChange={e => {
+                                          const num = e.target.value === '' ? 0 : (parseInt(e.target.value) || 0);
+                                          updateExerciseFields(globalIdx, {
+                                            is_time_based: true,
+                                            duration_seconds: num,
+                                            reps_target: `${num}s`,
+                                          });
+                                        }}
+                                        className="w-14 px-1 py-1.5 bg-transparent text-xs text-sky-200 font-black text-center focus:outline-none"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
+                                      <button
+                                        type="button"
+                                        onClick={cycleMode}
+                                        className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2 hover:bg-slate-700 hover:text-white transition-colors cursor-pointer"
+                                        title="Cambia unità: Reps / Min / Sec"
+                                      >
+                                        Rep
+                                      </button>
+                                      <input
+                                        type="text"
+                                        placeholder="8-10"
+                                        value={ex.reps_target || ''}
+                                        onChange={e => updateExercise(globalIdx, 'reps_target', e.target.value)}
+                                        className="w-16 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
+                                      />
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
 
                             {/* Target Carico (kg) */}
                             <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
@@ -2231,6 +2469,100 @@ ${result.regole_adattamento || '-'}
           onClose={() => setIsCoPilotOpen(false)}
           onGenerate={handleAIGenerated}
         />
+      )}
+
+      {/* Modale Riordina Sequenza Giorni */}
+      {isReorderDaysModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#0c1017] border border-slate-700/80 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                  <ArrowUpDown className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Riordina Sequenza Giorni</h3>
+                  <p className="text-[11px] text-slate-400">Modifica l'ordine dei giorni nella scheda</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReorderDaysModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar pr-1">
+              {daysList.map((dName, idx) => {
+                const exCount = exercises.filter(
+                  e => (e.week_number || 1) === activeWeek && (e.day_name || 'Giorno A') === dName
+                ).length;
+                const isSelected = activeDay === dName;
+
+                return (
+                  <div
+                    key={dName}
+                    className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                      isSelected
+                        ? 'bg-slate-900/90 border-[var(--color-primary)]/60 shadow-sm'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="w-7 h-7 rounded-xl bg-slate-800 text-amber-300 text-xs font-black flex items-center justify-center border border-slate-700">
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                          <span>{dName}</span>
+                          {isSelected && (
+                            <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                              Attivo
+                            </span>
+                          )}
+                        </h4>
+                        <span className="text-[11px] text-slate-400">{exCount} esercizi in W{activeWeek}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => moveDay(idx, idx - 1)}
+                        className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 text-slate-200 rounded-xl border border-slate-700 transition-colors cursor-pointer"
+                        title="Sposta su"
+                      >
+                        <ArrowUp className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === daysList.length - 1}
+                        onClick={() => moveDay(idx, idx + 1)}
+                        className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 text-slate-200 rounded-xl border border-slate-700 transition-colors cursor-pointer"
+                        title="Sposta giù"
+                      >
+                        <ArrowDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsReorderDaysModalOpen(false)}
+                className="w-full py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs rounded-xl shadow transition-all cursor-pointer text-center"
+              >
+                Conferma Ordine Giorni
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modale Conferma Modifica Template */}

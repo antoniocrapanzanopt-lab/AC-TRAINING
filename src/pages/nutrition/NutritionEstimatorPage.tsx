@@ -466,8 +466,13 @@ export const NutritionEstimatorPage: React.FC = () => {
                       type="number"
                       min="30"
                       max="250"
-                      value={weightKg}
-                      onChange={(e) => setWeightKg(Number(e.target.value))}
+                      value={weightKg === 0 ? '' : weightKg}
+                      onFocus={(e) => { if (weightKg === 0) e.target.select(); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setWeightKg(val === '' ? 0 : Number(val));
+                      }}
+                      placeholder="75"
                       className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-black text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
                     />
                   </div>
@@ -477,8 +482,13 @@ export const NutritionEstimatorPage: React.FC = () => {
                       type="number"
                       min="100"
                       max="240"
-                      value={heightCm}
-                      onChange={(e) => setHeightCm(Number(e.target.value))}
+                      value={heightCm === 0 ? '' : heightCm}
+                      onFocus={(e) => { if (heightCm === 0) e.target.select(); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setHeightCm(val === '' ? 0 : Number(val));
+                      }}
+                      placeholder="175"
                       className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-black text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
                     />
                   </div>
@@ -488,8 +498,13 @@ export const NutritionEstimatorPage: React.FC = () => {
                       type="number"
                       min="14"
                       max="100"
-                      value={age}
-                      onChange={(e) => setAge(Number(e.target.value))}
+                      value={age === 0 ? '' : age}
+                      onFocus={(e) => { if (age === 0) e.target.select(); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAge(val === '' ? 0 : Number(val));
+                      }}
+                      placeholder="28"
                       className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-black text-sm focus:outline-none focus:border-[var(--color-primary)] transition-colors"
                     />
                   </div>

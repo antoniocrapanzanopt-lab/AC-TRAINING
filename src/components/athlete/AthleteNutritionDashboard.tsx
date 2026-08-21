@@ -512,11 +512,16 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                 </div>
                 <input
                   type="number"
-                  min="1000"
+                  min="0"
                   max="6000"
                   step="50"
-                  value={editTargetKcal}
-                  onChange={(e) => setEditTargetKcal(Number(e.target.value))}
+                  value={editTargetKcal === 0 ? '' : editTargetKcal}
+                  onFocus={(e) => { if (editTargetKcal === 0) e.target.select(); }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEditTargetKcal(val === '' ? 0 : Number(val));
+                  }}
+                  placeholder="2000"
                   className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono font-black text-sm focus:outline-none focus:border-[var(--color-primary)]"
                   required
                 />
@@ -528,10 +533,15 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                   <label className="text-[10px] font-bold text-sky-400 uppercase">Proteine (g)</label>
                   <input
                     type="number"
-                    min="30"
+                    min="0"
                     max="400"
-                    value={editProteinGrams}
-                    onChange={(e) => setEditProteinGrams(Number(e.target.value))}
+                    value={editProteinGrams === 0 ? '' : editProteinGrams}
+                    onFocus={(e) => { if (editProteinGrams === 0) e.target.select(); }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditProteinGrams(val === '' ? 0 : Number(val));
+                    }}
+                    placeholder="150"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-sky-500/40 text-white font-mono font-bold text-sm focus:outline-none focus:border-sky-400"
                     required
                   />
@@ -542,10 +552,15 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                   <label className="text-[10px] font-bold text-amber-400 uppercase">Carboidrati (g)</label>
                   <input
                     type="number"
-                    min="20"
+                    min="0"
                     max="800"
-                    value={editCarbGrams}
-                    onChange={(e) => setEditCarbGrams(Number(e.target.value))}
+                    value={editCarbGrams === 0 ? '' : editCarbGrams}
+                    onFocus={(e) => { if (editCarbGrams === 0) e.target.select(); }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditCarbGrams(val === '' ? 0 : Number(val));
+                    }}
+                    placeholder="250"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-amber-500/40 text-white font-mono font-bold text-sm focus:outline-none focus:border-amber-400"
                     required
                   />
@@ -556,10 +571,15 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                   <label className="text-[10px] font-bold text-rose-400 uppercase">Grassi (g)</label>
                   <input
                     type="number"
-                    min="15"
+                    min="0"
                     max="200"
-                    value={editFatGrams}
-                    onChange={(e) => setEditFatGrams(Number(e.target.value))}
+                    value={editFatGrams === 0 ? '' : editFatGrams}
+                    onFocus={(e) => { if (editFatGrams === 0) e.target.select(); }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditFatGrams(val === '' ? 0 : Number(val));
+                    }}
+                    placeholder="60"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-rose-500/40 text-white font-mono font-bold text-sm focus:outline-none focus:border-rose-400"
                     required
                   />

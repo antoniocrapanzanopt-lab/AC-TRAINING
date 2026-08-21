@@ -542,6 +542,59 @@ FOR UPDATE TO authenticated
 USING (auth_user_id = auth.uid()) 
 WITH CHECK (auth_user_id = auth.uid());
 
+-- Trigger di protezione sui campi sensibili della tabella athletes (Anti-Tampering / Privilege Escalation)
+CREATE OR REPLACE FUNCTION public.protect_athlete_row_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF public.is_coach() THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.auth_user_id IS DISTINCT FROM OLD.auth_user_id THEN
+        RAISE EXCEPTION 'Accesso Negato: auth_user_id non modificabile.';
+    END IF;
+
+    IF NEW.payment_status IS DISTINCT FROM OLD.payment_status THEN
+        RAISE EXCEPTION 'Accesso Negato: lo stato dei pagamenti può essere modificato esclusivamente dal coach.';
+    END IF;
+
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+        RAISE EXCEPTION 'Accesso Negato: lo stato dell''account può essere modificato esclusivamente dal coach.';
+    END IF;
+
+    IF NEW.assigned_coach_id IS DISTINCT FROM OLD.assigned_coach_id OR 
+       NEW.assigned_coach_name IS DISTINCT FROM OLD.assigned_coach_name THEN
+        RAISE EXCEPTION 'Accesso Negato: assegnazione coach non modificabile dall''atleta.';
+    END IF;
+
+    IF NEW.notes IS DISTINCT FROM OLD.notes THEN
+        RAISE EXCEPTION 'Accesso Negato: le note interne del coach non sono modificabili dall''atleta.';
+    END IF;
+
+    IF NEW.tax_code IS DISTINCT FROM OLD.tax_code AND OLD.tax_code IS NOT NULL AND OLD.tax_code <> '' THEN
+        RAISE EXCEPTION 'Accesso Negato: il codice fiscale non può essere modificato autonomamente una volta impostato.';
+    END IF;
+
+    IF NEW.medical_cert_expiry IS DISTINCT FROM OLD.medical_cert_expiry OR
+       NEW.medical_cert_type IS DISTINCT FROM OLD.medical_cert_type THEN
+        RAISE EXCEPTION 'Accesso Negato: la validazione del certificato medico è riservata al coach.';
+    END IF;
+
+    IF NEW.email IS DISTINCT FROM OLD.email THEN
+        RAISE EXCEPTION 'Accesso Negato: il cambio email richiede la procedura di aggiornamento autenticazione.';
+    END IF;
+
+    NEW.updated_at := NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+DROP TRIGGER IF EXISTS trg_protect_athlete_row_update ON public.athletes;
+CREATE TRIGGER trg_protect_athlete_row_update
+    BEFORE UPDATE ON public.athletes
+    FOR EACH ROW
+    EXECUTE FUNCTION public.protect_athlete_row_update();
+
 -- 3.2 TABELLA: public.athlete_notes
 DROP POLICY IF EXISTS "coach_manage_athlete_notes" ON public.athlete_notes;
 DROP POLICY IF EXISTS "coach_manage_athlete_notes_mfa" ON public.athlete_notes;
@@ -583,36 +636,24 @@ DROP POLICY IF EXISTS "coach_manage_own_exercises" ON public.exercises;
 DROP POLICY IF EXISTS "coach_manage_own_exercises_mfa" ON public.exercises;
 CREATE POLICY "coach_manage_own_exercises_mfa" ON public.exercises 
 FOR ALL TO authenticated 
-USING (coach_id::text = auth.uid()::text AND (auth.jwt()->>'aal') = 'aal2') 
-WITH CHECK (coach_id::text = auth.uid()::text AND (auth.jwt()->>'aal') = 'aal2');
+USING (public.is_coach_aal2()) 
+WITH CHECK (public.is_coach_aal2());
 
 -- 3.5 TABELLA: public.workout_folders
 DROP POLICY IF EXISTS "coach_manage_folders" ON public.workout_folders;
 DROP POLICY IF EXISTS "coach_manage_folders_mfa" ON public.workout_folders;
 CREATE POLICY "coach_manage_folders_mfa" ON public.workout_folders 
 FOR ALL TO authenticated 
-USING (
-    public.is_coach_aal2() 
-    OR (coach_id::text = auth.uid()::text AND (auth.jwt()->>'aal') = 'aal2')
-) 
-WITH CHECK (
-    public.is_coach_aal2() 
-    OR (coach_id::text = auth.uid()::text AND (auth.jwt()->>'aal') = 'aal2')
-);
+USING (public.is_coach_aal2()) 
+WITH CHECK (public.is_coach_aal2());
 
 -- 3.6 TABELLA: public.workouts
 DROP POLICY IF EXISTS "coach_manage_workouts" ON public.workouts;
 DROP POLICY IF EXISTS "coach_manage_workouts_mfa" ON public.workouts;
 CREATE POLICY "coach_manage_workouts_mfa" ON public.workouts 
 FOR ALL TO authenticated 
-USING (
-    public.is_coach_aal2() 
-    OR (coach_id::text = auth.uid()::text AND (auth.jwt()->>'aal') = 'aal2')
-)
-WITH CHECK (
-    public.is_coach_aal2() 
-    OR (coach_id::text = auth.uid()::text AND (auth.jwt()->>'aal') = 'aal2')
-);
+USING (public.is_coach_aal2())
+WITH CHECK (public.is_coach_aal2());
 
 DROP POLICY IF EXISTS "athlete_read_assigned_workouts" ON public.workouts;
 CREATE POLICY "athlete_read_assigned_workouts" ON public.workouts 
@@ -630,14 +671,8 @@ DROP POLICY IF EXISTS "coach_manage_exercises" ON public.workout_exercises;
 DROP POLICY IF EXISTS "coach_manage_exercises_mfa" ON public.workout_exercises;
 CREATE POLICY "coach_manage_exercises_mfa" ON public.workout_exercises 
 FOR ALL TO authenticated 
-USING (
-    public.is_coach_aal2() 
-    OR (EXISTS (SELECT 1 FROM public.workouts w WHERE w.id = workout_exercises.workout_id AND w.coach_id::text = auth.uid()::text) AND (auth.jwt()->>'aal') = 'aal2')
-)
-WITH CHECK (
-    public.is_coach_aal2() 
-    OR (EXISTS (SELECT 1 FROM public.workouts w WHERE w.id = workout_exercises.workout_id AND w.coach_id::text = auth.uid()::text) AND (auth.jwt()->>'aal') = 'aal2')
-);
+USING (public.is_coach_aal2())
+WITH CHECK (public.is_coach_aal2());
 
 DROP POLICY IF EXISTS "athlete_read_exercises" ON public.workout_exercises;
 CREATE POLICY "athlete_read_exercises" ON public.workout_exercises 
@@ -655,8 +690,8 @@ DROP POLICY IF EXISTS "coach_manage_assignments" ON public.athlete_assigned_work
 DROP POLICY IF EXISTS "coach_manage_assignments_mfa" ON public.athlete_assigned_workouts;
 CREATE POLICY "coach_manage_assignments_mfa" ON public.athlete_assigned_workouts 
 FOR ALL TO authenticated 
-USING (assigned_by::uuid = auth.uid()::uuid AND (auth.jwt()->>'aal') = 'aal2')
-WITH CHECK (assigned_by::uuid = auth.uid()::uuid AND (auth.jwt()->>'aal') = 'aal2');
+USING (public.is_coach_aal2())
+WITH CHECK (public.is_coach_aal2());
 
 DROP POLICY IF EXISTS "athlete_read_assignments" ON public.athlete_assigned_workouts;
 CREATE POLICY "athlete_read_assignments" ON public.athlete_assigned_workouts 
@@ -1097,6 +1132,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 -- 5.3 Trigger su Check-in / Nuove Metriche Atleta
 CREATE OR REPLACE FUNCTION public.handle_new_athlete_metric_notification() RETURNS TRIGGER AS $$
 DECLARE
+    v_coach_id_text TEXT;
     v_coach_id UUID;
     v_athlete_name TEXT := 'Atleta';
     v_has_pain BOOLEAN := false;
@@ -1105,12 +1141,14 @@ DECLARE
     v_body TEXT;
     v_dedupe_key TEXT;
 BEGIN
-    SELECT coach_id, (first_name || ' ' || last_name) 
-    INTO v_coach_id, v_athlete_name 
+    SELECT assigned_coach_id, (first_name || ' ' || last_name) 
+    INTO v_coach_id_text, v_athlete_name 
     FROM public.athletes 
     WHERE id = NEW.athlete_id;
 
-    IF v_coach_id IS NULL THEN
+    IF v_coach_id_text IS NOT NULL AND v_coach_id_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        v_coach_id := v_coach_id_text::UUID;
+    ELSE
         v_coach_id := public.get_coach_uid();
     END IF;
 
@@ -1161,6 +1199,7 @@ CREATE TRIGGER trg_notify_new_metric
 -- 5.4 Trigger su Sessione Allenamento Completata
 CREATE OR REPLACE FUNCTION public.handle_workout_session_notification() RETURNS TRIGGER AS $$
 DECLARE
+    v_coach_id_text TEXT;
     v_coach_id UUID;
     v_athlete_name TEXT := 'Atleta';
     v_workout_title TEXT := 'Allenamento';
@@ -1171,12 +1210,14 @@ DECLARE
     v_dedupe_key TEXT;
 BEGIN
     IF NEW.end_time IS NOT NULL AND (OLD.end_time IS NULL OR OLD.end_time IS DISTINCT FROM NEW.end_time) THEN
-        SELECT coach_id, (first_name || ' ' || last_name) 
-        INTO v_coach_id, v_athlete_name 
+        SELECT assigned_coach_id, (first_name || ' ' || last_name) 
+        INTO v_coach_id_text, v_athlete_name 
         FROM public.athletes 
         WHERE id = NEW.athlete_id;
 
-        IF v_coach_id IS NULL THEN
+        IF v_coach_id_text IS NOT NULL AND v_coach_id_text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            v_coach_id := v_coach_id_text::UUID;
+        ELSE
             v_coach_id := public.get_coach_uid();
         END IF;
 
@@ -1821,6 +1862,179 @@ AS RESTRICTIVE
 FOR ALL TO authenticated
 USING ( (auth.jwt()->>'aal') = 'aal2' )
 WITH CHECK ( (auth.jwt()->>'aal') = 'aal2' );
+
+-- =====================================================================================
+-- 1.16 INBOX AI & INSTAGRAM CONTENTS PIPELINE
+-- =====================================================================================
+
+DO $$ BEGIN
+    CREATE TYPE public.inbox_category_enum AS ENUM (
+        'content_idea',
+        'client_observation',
+        'business_task',
+        'personal_reflection',
+        'system_improvement'
+    );
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE public.inbox_priority_enum AS ENUM (
+        'low',
+        'medium',
+        'high',
+        'urgent'
+    );
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE public.inbox_status_enum AS ENUM (
+        'raw',
+        'processing',
+        'processed',
+        'converted_task',
+        'converted_content',
+        'linked_athlete',
+        'archived'
+    );
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE public.content_type_enum AS ENUM (
+        'reel',
+        'story',
+        'carousel',
+        'post'
+    );
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE public.content_pillar_enum AS ENUM (
+        'technique_execution',
+        'common_mistakes',
+        'mindset_discipline',
+        'nutrition_science',
+        'client_transformation',
+        'coaching_faq',
+        'authority_lifestyle',
+        'promotion_launch'
+    );
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE public.content_status_enum AS ENUM (
+        'idea',
+        'script_draft',
+        'ready_to_record',
+        'recorded',
+        'editing',
+        'ready_to_publish',
+        'published',
+        'repurpose'
+    );
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+CREATE TABLE IF NOT EXISTS public.inbox_entries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coach_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    raw_content TEXT NOT NULL,
+    audio_url TEXT,
+    ai_title TEXT,
+    ai_summary TEXT,
+    ai_category public.inbox_category_enum,
+    ai_priority public.inbox_priority_enum DEFAULT 'medium',
+    ai_suggested_tasks JSONB DEFAULT '[]'::jsonb,
+    ai_content_opportunity JSONB,
+    ai_next_step TEXT,
+    related_athlete_id UUID REFERENCES public.athletes(id) ON DELETE SET NULL,
+    status public.inbox_status_enum NOT NULL DEFAULT 'raw',
+    converted_content_id UUID,
+    converted_task_id UUID,
+    processed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.instagram_contents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coach_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    origin_inbox_id UUID REFERENCES public.inbox_entries(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    type public.content_type_enum NOT NULL DEFAULT 'reel',
+    pillar public.content_pillar_enum NOT NULL DEFAULT 'technique_execution',
+    status public.content_status_enum NOT NULL DEFAULT 'idea',
+    hook TEXT,
+    script_body TEXT,
+    caption TEXT,
+    call_to_action TEXT,
+    scheduled_for TIMESTAMPTZ,
+    published_at TIMESTAMPTZ,
+    internal_notes TEXT,
+    performance_metrics JSONB DEFAULT '{"views": 0, "likes": 0, "saves": 0, "shares": 0, "leads": 0}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.coach_tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coach_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    origin_inbox_id UUID REFERENCES public.inbox_entries(id) ON DELETE SET NULL,
+    related_athlete_id UUID REFERENCES public.athletes(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    priority public.inbox_priority_enum NOT NULL DEFAULT 'medium',
+    due_date DATE,
+    is_completed BOOLEAN NOT NULL DEFAULT false,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_inbox_converted_content') THEN
+        ALTER TABLE public.inbox_entries 
+            ADD CONSTRAINT fk_inbox_converted_content 
+            FOREIGN KEY (converted_content_id) REFERENCES public.instagram_contents(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_inbox_converted_task') THEN
+        ALTER TABLE public.inbox_entries 
+            ADD CONSTRAINT fk_inbox_converted_task 
+            FOREIGN KEY (converted_task_id) REFERENCES public.coach_tasks(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_inbox_coach_status ON public.inbox_entries(coach_id, status);
+CREATE INDEX IF NOT EXISTS idx_inbox_created ON public.inbox_entries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_contents_coach_status ON public.instagram_contents(coach_id, status);
+CREATE INDEX IF NOT EXISTS idx_contents_scheduled ON public.instagram_contents(scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_coach_tasks_completed ON public.coach_tasks(coach_id, is_completed, due_date);
+
+ALTER TABLE public.inbox_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.instagram_contents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.coach_tasks ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Coach manages own inbox entries" ON public.inbox_entries;
+    CREATE POLICY "Coach manages own inbox entries"
+        ON public.inbox_entries FOR ALL TO authenticated
+        USING (coach_id = auth.uid()) WITH CHECK (coach_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Coach manages own instagram contents" ON public.instagram_contents;
+    CREATE POLICY "Coach manages own instagram contents"
+        ON public.instagram_contents FOR ALL TO authenticated
+        USING (coach_id = auth.uid()) WITH CHECK (coach_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Coach manages own tasks" ON public.coach_tasks;
+    CREATE POLICY "Coach manages own tasks"
+        ON public.coach_tasks FOR ALL TO authenticated
+        USING (coach_id = auth.uid()) WITH CHECK (coach_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- Notifica ricaricamento dello schema REST
 NOTIFY pgrst, 'reload schema';
