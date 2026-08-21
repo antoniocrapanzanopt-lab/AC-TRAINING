@@ -82,10 +82,10 @@ export const PwaInstallBanner: React.FC<{ className?: string }> = ({ className =
           <div className="flex items-center gap-3 min-w-0">
             
             {/* Icona Monogramma AC */}
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[var(--color-primary)] to-amber-300 p-0.5 shadow-lg shadow-[var(--color-primary)]/25 shrink-0">
-              <div className="w-full h-full bg-slate-950 rounded-[14px] p-1.5 flex items-center justify-center relative overflow-hidden">
-                <img src="/ac-logo-transparent.png" alt="AC" className="w-full h-full object-contain" />
-                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-cyan-400" />
+            <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[var(--color-primary)] via-amber-400 to-cyan-400 p-0.5 shadow-xl shadow-[var(--color-primary)]/30 shrink-0">
+              <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center relative overflow-hidden">
+                <img src="/ac-logo-transparent.png" alt="AC" className="w-full h-full object-contain scale-115" />
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400" />
               </div>
             </div>
 
