@@ -131,11 +131,8 @@ export const AthleteLayout: React.FC = () => {
       {/* ─── TOP APP BAR ATLETA ─── */}
       <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-6 py-3 flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[var(--color-primary)] to-amber-300 p-0.5 shadow-md shadow-[var(--color-primary)]/20 shrink-0">
-            <div className="w-full h-full bg-slate-950 rounded-[12px] flex items-center justify-center relative overflow-hidden">
-              <span className="font-black text-xs italic text-[var(--color-primary)]">AC</span>
-              <span className="absolute top-1 right-1 w-1 h-1 rounded-full bg-cyan-400" />
-            </div>
+          <div className="w-10 h-10 rounded-full bg-slate-950 border border-[var(--color-primary)] p-1 shadow-md shadow-[var(--color-primary)]/20 shrink-0 flex items-center justify-center relative overflow-hidden">
+            <img src="/ac-logo-transparent.png" alt="AC" className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
