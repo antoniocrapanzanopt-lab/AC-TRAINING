@@ -146,19 +146,31 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
         if (sessionIds.length > 0) {
           const { data: logsData } = await supabase
             .from('exercise_logs')
-            .select(`
-              id,
-              session_id,
-              exercise_id,
-              set_number,
-              reps_completed,
-              weight_kg,
-              notes,
-              workout_exercises ( id, name, week_number, day_name )
-            `)
+            .select('id, session_id, exercise_id, set_number, reps_completed, weight_kg, notes')
             .in('session_id', sessionIds);
 
-          if (logsData) {
+          if (logsData && logsData.length > 0) {
+            const missingIds = Array.from(
+              new Set(logsData.map((l: any) => l.exercise_id).filter((id: string) => id && !exercisesById.has(id)))
+            );
+
+            if (missingIds.length > 0) {
+              const { data: extraWe } = await supabase
+                .from('workout_exercises')
+                .select('id, workout_id, name, day_name, week_number')
+                .in('id', missingIds);
+
+              if (extraWe) {
+                extraWe.forEach((we: any) => {
+                  exercisesById.set(we.id, {
+                    name: we.name,
+                    day_name: we.day_name,
+                    week_number: we.week_number,
+                  });
+                });
+              }
+            }
+
             logsData.forEach((l: any) => {
               if (!logsBySession.has(l.session_id)) {
                 logsBySession.set(l.session_id, []);

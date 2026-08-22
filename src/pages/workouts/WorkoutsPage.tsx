@@ -33,6 +33,7 @@ import { WorkoutBuilderModal } from '../../components/workouts/WorkoutBuilderMod
 import { AssignWorkoutModal } from '../../components/workouts/AssignWorkoutModal';
 import { PDFWorkoutImporterModal } from '../../components/workouts/PDFWorkoutImporterModal';
 import { WorkoutTemplate, WorkoutFolder, AthleteAssignedWorkout } from '../../types/workout';
+import { supabase } from '../../lib/supabase';
 
 export const WorkoutsPage: React.FC = () => {
   const { 
@@ -93,9 +94,13 @@ export const WorkoutsPage: React.FC = () => {
     return map;
   }, [allAssignedWorkouts]);
 
-  // Lista atleti con statistiche schede
+  // Lista atleti attivi con statistiche schede (esclusi inattivi, archiviati e sospesi)
+  const activeAthletes = useMemo(() => {
+    return athletes.filter(ath => ath.status === 'active' || ath.status === 'trial');
+  }, [athletes]);
+
   const athleteFoldersData = useMemo(() => {
-    return athletes.map(ath => {
+    return activeAthletes.map(ath => {
       const assignments = athleteWorkoutsMap.get(ath.id) || [];
       // Trova scheda attiva
       const activeAssignment = assignments.find(a => a.is_active);
@@ -111,7 +116,7 @@ export const WorkoutsPage: React.FC = () => {
         allAssignments: assignments,
       };
     });
-  }, [athletes, athleteWorkoutsMap]);
+  }, [activeAthletes, athleteWorkoutsMap]);
 
   // Filtro Atleti
   const filteredAthleteFolders = useMemo(() => {
@@ -132,8 +137,23 @@ export const WorkoutsPage: React.FC = () => {
   // Atleta attualmente selezionato nel raccoglitore
   const selectedAthleteData = useMemo(() => {
     if (!selectedAthleteFolderId) return null;
-    return athleteFoldersData.find(item => item.athlete.id === selectedAthleteFolderId) || null;
-  }, [selectedAthleteFolderId, athleteFoldersData]);
+    const foundInActive = athleteFoldersData.find(item => item.athlete.id === selectedAthleteFolderId);
+    if (foundInActive) return foundInActive;
+
+    // Fallback sicuro se aperto direttamente dall'atleta
+    const rawAth = athletes.find(a => a.id === selectedAthleteFolderId);
+    if (!rawAth) return null;
+    const assignments = athleteWorkoutsMap.get(rawAth.id) || [];
+    const activeAssignment = assignments.find(a => a.is_active);
+    return {
+      athlete: rawAth,
+      activeAssignment,
+      activeWorkout: activeAssignment?.workout,
+      totalWorkouts: assignments.length,
+      hasActiveWorkout: Boolean(activeAssignment?.workout),
+      allAssignments: assignments,
+    };
+  }, [selectedAthleteFolderId, athleteFoldersData, athletes, athleteWorkoutsMap]);
 
   // ─── BREADCRUMBS TEMPLATE MASTER ───
   const getBreadcrumbs = () => {
@@ -333,7 +353,7 @@ export const WorkoutsPage: React.FC = () => {
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Cartelle per Atleta ({athletes.length})</span>
+          <span>Cartelle per Atleta ({activeAthletes.length})</span>
         </button>
 
         <button
@@ -622,7 +642,7 @@ export const WorkoutsPage: React.FC = () => {
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      Tutti ({athletes.length})
+                      Tutti ({activeAthletes.length})
                     </button>
                     <button
                       type="button"
@@ -1287,6 +1307,27 @@ export const WorkoutsPage: React.FC = () => {
         isOpen={isPDFImporterOpen}
         onClose={() => setIsPDFImporterOpen(false)}
         targetAthleteId={selectedAthleteFolderId || undefined}
+        onImportSuccess={async (newWorkoutId) => {
+          setIsPDFImporterOpen(false);
+          // Cerca il template appena salvato nello stato locale
+          const localMatch = coachTemplates.find((t) => t.id === newWorkoutId);
+          if (localMatch) {
+            setEditingWorkout(localMatch);
+            setIsBuilderOpen(true);
+          } else {
+            // Fallback diretto da Supabase se non ancora sincronizzato in cache locale
+            const { data: fetched } = await supabase
+              .from('workouts')
+              .select('*')
+              .eq('id', newWorkoutId)
+              .maybeSingle();
+
+            if (fetched) {
+              setEditingWorkout(fetched as WorkoutTemplate);
+              setIsBuilderOpen(true);
+            }
+          }
+        }}
       />
     </div>
   );

@@ -51,6 +51,7 @@ export const ExerciseProgressionControl: React.FC<ExerciseProgressionControlProp
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
   const [selectedDrawerRuleId, setSelectedDrawerRuleId] = useState<string | null>(null);
 
@@ -150,33 +151,68 @@ export const ExerciseProgressionControl: React.FC<ExerciseProgressionControlProp
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+          <div className="relative self-start sm:self-auto shrink-0">
             <button
               type="button"
-              onClick={() => setIsAiModalOpen(true)}
-              className="px-2.5 py-1 bg-purple-600/15 hover:bg-purple-600/25 text-purple-300 border border-purple-500/30 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              onClick={() => setIsActionMenuOpen((prev) => !prev)}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-[var(--color-primary)] text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 border border-slate-700 cursor-pointer shadow-sm min-h-[38px] sm:min-h-0"
             >
-              <Sparkles className="w-3 h-3 text-purple-400" />
-              <span>Chiedi IA</span>
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span>Progressione</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
 
-            <button
-              type="button"
-              onClick={() => setIsPickerOpen(true)}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-[var(--color-primary)] text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1 border border-slate-700 cursor-pointer"
-            >
-              <Layers className="w-3 h-3 text-[var(--color-primary)]" />
-              <span>Scegli Modello</span>
-            </button>
+            {isActionMenuOpen && (
+              <div 
+                className="absolute right-0 top-full mt-1.5 w-60 p-1.5 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl z-50 space-y-1 animate-in fade-in zoom-in-95"
+                onMouseLeave={() => setIsActionMenuOpen(false)}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    setIsAiModalOpen(true);
+                  }}
+                  className="w-full px-3 py-2 text-left rounded-xl hover:bg-purple-600/15 text-purple-300 text-xs font-bold transition flex items-center gap-2 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+                  <div>
+                    <span className="block font-bold">Chiedi ad IA</span>
+                    <span className="text-[10px] text-purple-300/70 font-normal">Genera progressione intelligente</span>
+                  </div>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setIsConfigModalOpen(true)}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1 border border-slate-700 cursor-pointer"
-            >
-              <Sliders className="w-3 h-3 text-slate-400" />
-              <span>Regola Manuale</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    setIsPickerOpen(true);
+                  }}
+                  className="w-full px-3 py-2 text-left rounded-xl hover:bg-amber-500/15 text-amber-300 text-xs font-bold transition flex items-center gap-2 cursor-pointer"
+                >
+                  <Layers className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="block font-bold">Scegli Modello</span>
+                    <span className="text-[10px] text-amber-300/70 font-normal">Libreria modelli predefiniti</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    setIsConfigModalOpen(true);
+                  }}
+                  className="w-full px-3 py-2 text-left rounded-xl hover:bg-slate-800 text-slate-200 text-xs font-bold transition flex items-center gap-2 cursor-pointer border-t border-slate-800/80 pt-1.5"
+                >
+                  <Sliders className="w-4 h-4 text-slate-400 shrink-0" />
+                  <div>
+                    <span className="block font-bold">Regola Manuale</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Crea regola personalizzata</span>
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

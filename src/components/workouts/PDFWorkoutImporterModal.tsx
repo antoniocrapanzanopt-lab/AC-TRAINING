@@ -797,74 +797,82 @@ export const PDFWorkoutImporterModal: React.FC<PDFWorkoutImporterModalProps> = (
                             </button>
                           </div>
 
-                          {/* Dettagli parametri: Serie, Reps/Tempo, Recupero, Note */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/60 text-xs">
-                            <div>
-                              <label className="block text-[10px] text-slate-400 mb-0.5 font-bold">Serie</label>
-                              <input
-                                type="number"
-                                value={ex.sets}
-                                onChange={(e) =>
-                                  updateExerciseField(
-                                    currentWeekObj.weekNumber,
-                                    currentDayObj.dayName,
-                                    ex.id,
-                                    'sets',
-                                    parseInt(e.target.value) || 1
-                                  )
-                                }
-                                className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-white font-bold"
-                              />
+                          {/* Dettagli parametri: Serie, Reps/Tempo, Recupero */}
+                          <div className="pt-2 border-t border-slate-800/60 text-xs space-y-2">
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5 font-bold">Serie</label>
+                                <input
+                                  type="number"
+                                  value={ex.sets}
+                                  onChange={(e) =>
+                                    updateExerciseField(
+                                      currentWeekObj.weekNumber,
+                                      currentDayObj.dayName,
+                                      ex.id,
+                                      'sets',
+                                      parseInt(e.target.value) || 1
+                                    )
+                                  }
+                                  className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-white font-bold focus:border-[var(--color-primary)] focus:outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5 font-bold">Target (Reps/Tempo)</label>
+                                <input
+                                  type="text"
+                                  value={ex.reps_target}
+                                  onChange={(e) =>
+                                    updateExerciseField(
+                                      currentWeekObj.weekNumber,
+                                      currentDayObj.dayName,
+                                      ex.id,
+                                      'reps_target',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-white font-bold focus:border-[var(--color-primary)] focus:outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5 font-bold">Recupero (sec)</label>
+                                <select
+                                  value={ex.rest_seconds}
+                                  onChange={(e) =>
+                                    updateExerciseField(
+                                      currentWeekObj.weekNumber,
+                                      currentDayObj.dayName,
+                                      ex.id,
+                                      'rest_seconds',
+                                      parseInt(e.target.value)
+                                    )
+                                  }
+                                  className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-white font-bold focus:border-[var(--color-primary)] focus:outline-none cursor-pointer"
+                                >
+                                  <option value={0}>No Recupero (0s)</option>
+                                  <option value={30}>30s</option>
+                                  <option value={60}>01:00 (60s)</option>
+                                  <option value={90}>01:30 (90s)</option>
+                                  <option value={120}>02:00 (120s)</option>
+                                  <option value={180}>03:00 (180s)</option>
+                                </select>
+                              </div>
                             </div>
 
+                            {/* Note Esercizio a tutta larghezza con textarea multiriga */}
                             <div>
-                              <label className="block text-[10px] text-slate-400 mb-0.5 font-bold">Target (Reps/Tempo)</label>
-                              <input
-                                type="text"
-                                value={ex.reps_target}
-                                onChange={(e) =>
-                                  updateExerciseField(
-                                    currentWeekObj.weekNumber,
-                                    currentDayObj.dayName,
-                                    ex.id,
-                                    'reps_target',
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-white font-bold"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-[10px] text-slate-400 mb-0.5 font-bold">Recupero (sec)</label>
-                              <select
-                                value={ex.rest_seconds}
-                                onChange={(e) =>
-                                  updateExerciseField(
-                                    currentWeekObj.weekNumber,
-                                    currentDayObj.dayName,
-                                    ex.id,
-                                    'rest_seconds',
-                                    parseInt(e.target.value)
-                                  )
-                                }
-                                className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-center text-white font-bold"
-                              >
-                                <option value={0}>No Recupero (0s)</option>
-                                <option value={30}>30s</option>
-                                <option value={60}>01:00 (60s)</option>
-                                <option value={90}>01:30 (90s)</option>
-                                <option value={120}>02:00 (120s)</option>
-                                <option value={180}>03:00 (180s)</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-[10px] text-slate-400 mb-0.5 font-bold">Note Esercizio</label>
-                              <input
-                                type="text"
+                              <div className="flex items-center justify-between mb-0.5">
+                                <label className="block text-[10px] text-slate-400 font-bold">Note Esercizio & Indicazioni Tecniche</label>
+                                {ex.notes && ex.notes.length > 0 && (
+                                  <span className="text-[9px] text-slate-500 font-mono">{ex.notes.length} car.</span>
+                                )}
+                              </div>
+                              <textarea
+                                rows={2}
                                 value={ex.notes || ''}
-                                placeholder="Note esecuzione..."
+                                placeholder="Note esecuzione, indicazioni tecniche, tempo/TUT o recuperi..."
                                 onChange={(e) =>
                                   updateExerciseField(
                                     currentWeekObj.weekNumber,
@@ -874,7 +882,7 @@ export const PDFWorkoutImporterModal: React.FC<PDFWorkoutImporterModalProps> = (
                                     e.target.value
                                   )
                                 }
-                                className="w-full px-2 py-1 bg-slate-950 border border-slate-700 rounded text-slate-200"
+                                className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded text-slate-200 text-xs leading-relaxed resize-y min-h-[46px] focus:outline-none focus:border-[var(--color-primary)] placeholder:text-slate-600 transition"
                               />
                             </div>
                           </div>

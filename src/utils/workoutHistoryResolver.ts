@@ -39,7 +39,6 @@ export async function fetchAthletePreviousExerciseHistory(
         exercise_logs (
           id,
           exercise_id,
-          exercise_name,
           set_number,
           reps_completed,
           weight_kg,

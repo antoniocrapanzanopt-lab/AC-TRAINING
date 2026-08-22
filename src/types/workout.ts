@@ -53,6 +53,10 @@ export interface WorkoutExercise {
   progression_summary?: string;
   last_progression_result?: string;
   next_progression_action?: string;
+
+  // Superset & Circuit Linking
+  group_tag?: string;
+  order_label?: string;
 }
 
 export interface AthleteAssignedWorkout {

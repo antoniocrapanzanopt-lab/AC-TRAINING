@@ -13,6 +13,11 @@ import {
   Layers,
   FileQuestion,
   Dumbbell,
+  ArrowRight,
+  HelpCircle,
+  TrendingUp,
+  Check,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
   VolumeCoachAnalysis,
@@ -53,7 +58,7 @@ export const AIVolumeCoach: React.FC<AIVolumeCoachProps> = ({
       ? analysis.recommendations
       : analysis.byCategory[activeCategory] || [];
 
-  // Limitazione vista default a top 3 per categoria se in vista 'all'
+  // Limitazione vista default a top 4 se in vista 'all'
   const displayedList =
     activeCategory === 'all' && !showAllItems
       ? filteredList.slice(0, 4)
@@ -104,7 +109,7 @@ export const AIVolumeCoach: React.FC<AIVolumeCoachProps> = ({
               </span>
             </h3>
             <p className="text-xs text-slate-400 font-medium">
-              Diagnosi biomeccanica & correzioni guidate a 1-click
+              Diagnosi biomeccanica, anteprima modifiche settimanali & spiegazione scientifica
             </p>
           </div>
         </div>
@@ -210,8 +215,8 @@ export const AIVolumeCoach: React.FC<AIVolumeCoachProps> = ({
         )}
       </div>
 
-      {/* ─── 3. LISTA DELLE CARD CONSIGLIO ULTRA-COMPATTE ─── */}
-      <div className="space-y-2.5">
+      {/* ─── 3. LISTA DELLE CARD CONSIGLIO CON DETTAGLIO MODIFICHE ─── */}
+      <div className="space-y-3">
         {displayedList.length === 0 ? (
           <div className="p-6 text-center text-xs text-slate-400 bg-slate-950/40 rounded-2xl border border-dashed border-slate-800">
             Nessun suggerimento in questa categoria.
@@ -224,7 +229,7 @@ export const AIVolumeCoach: React.FC<AIVolumeCoachProps> = ({
             return (
               <div
                 key={rec.id}
-                className={`rounded-2xl border p-3 sm:p-3.5 transition-all space-y-2 ${
+                className={`rounded-2xl border p-3.5 sm:p-4 transition-all space-y-2.5 ${
                   isApplied
                     ? 'bg-emerald-950/20 border-emerald-500/40'
                     : rec.priority === 'high'
@@ -235,7 +240,7 @@ export const AIVolumeCoach: React.FC<AIVolumeCoachProps> = ({
                 }`}
               >
                 {/* Riga 1: Header Sintetico (Priorità + Distretto + Diagnosi + Tasto Applica) */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div className="flex items-center gap-2 flex-wrap min-w-0">
                     {getPriorityBadge(rec.priority)}
                     <span className="text-[10px] font-black text-amber-400 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 shrink-0">
@@ -246,19 +251,19 @@ export const AIVolumeCoach: React.FC<AIVolumeCoachProps> = ({
                     </span>
                   </div>
 
-                  {/* Azione Rapida */}
+                  {/* Azione Rapida e Toggle */}
                   <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
                     {isApplied ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-lg border border-emerald-500/30">
-                        <ShieldCheck className="w-3 h-3" /> Applicata
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/15 px-2.5 py-1 rounded-lg border border-emerald-500/30">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Modifica Applicata
                       </span>
                     ) : rec.action ? (
                       <button
                         type="button"
                         onClick={() => handleApply(rec)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black text-[11px] font-black transition-all shadow-sm cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black text-xs font-black transition-all shadow-md hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                       >
-                        <Zap className="w-3 h-3 fill-black" />
+                        <Zap className="w-3.5 h-3.5 fill-black" />
                         <span>
                           Applica ({rec.action.setsDelta && rec.action.setsDelta > 0 ? `+${rec.action.setsDelta}` : rec.action.setsDelta} set)
                         </span>
@@ -269,9 +274,16 @@ export const AIVolumeCoach: React.FC<AIVolumeCoachProps> = ({
                     <button
                       type="button"
                       onClick={() => toggleDetails(rec.id)}
-                      className="p-1 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
-                      title={isDetailsOpen ? 'Nascondi dettagli' : 'Mostra dettagli ed esercizi'}
+                      className={`p-1.5 rounded-lg border transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold ${
+                        isDetailsOpen
+                          ? 'bg-slate-800 text-amber-400 border-amber-500/30'
+                          : 'bg-slate-900/80 text-slate-400 hover:text-white border-slate-800'
+                      }`}
+                      title={isDetailsOpen ? 'Nascondi dettagli modifiche' : 'Mostra come e perché cambia la scheda'}
                     >
+                      <span className="text-[10px] hidden sm:inline">
+                        {isDetailsOpen ? 'Chiudi Dettagli' : 'Mostra Come & Perché'}
+                      </span>
                       {isDetailsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
                   </div>
@@ -279,42 +291,145 @@ export const AIVolumeCoach: React.FC<AIVolumeCoachProps> = ({
 
                 {/* Riga 2: Modifica Consigliata in 1 Riga */}
                 <div className="flex items-center gap-1.5 text-xs text-slate-300 font-medium">
-                  <Sliders className="w-3 h-3 text-amber-400 shrink-0" />
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span className="truncate">{rec.recommendation}</span>
                 </div>
 
-                {/* Riga 3: Dettagli Espandibili On-Demand (Chiusi di default) */}
+                {/* ─── RIGA 3: DETTAGLI APPROFONDITI "COME & PERCHÉ" (ESPANDIBILE) ─── */}
                 {isDetailsOpen && (
-                  <div className="pt-2 border-t border-slate-800/80 space-y-2 text-xs animate-in fade-in duration-100">
-                    {/* Motivo Fisiologico */}
-                    <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 leading-relaxed">
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
-                        Motivo Fisiologico & Biomeccanico:
-                      </span>
-                      <p>{rec.reason}</p>
-                    </div>
-
-                    {/* Impatto & Esercizi Coinvolti */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-slate-300">
-                        <span className="text-[9px] font-bold text-sky-400 uppercase tracking-wider block mb-0.5">
-                          Impatto Previsto:
+                  <div className="pt-3 border-t border-slate-800/80 space-y-3 text-xs animate-in fade-in duration-150">
+                    
+                    {/* A. PIANO DI MODIFICA DELLA SETTIMANA (BEFORE / AFTER & ESERCIZI COINVOLTI) */}
+                    <div className="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-2.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2 border-b border-slate-800/70">
+                        <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <Sliders className="w-3.5 h-3.5" />
+                          Piano di Modifica della Settimana (Cosa cambia)
                         </span>
-                        <p className="text-[11px]">{rec.expectedImpact}</p>
+
+                        {rec.beforeSummary && rec.afterSummary && (
+                          <div className="flex items-center gap-1.5 text-[11px] font-mono">
+                            <span className="px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                              {rec.beforeSummary}
+                            </span>
+                            <ArrowRight className="w-3 h-3 text-amber-400" />
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-bold border border-emerald-500/30">
+                              {rec.afterSummary}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
-                      {rec.involvedExercises && rec.involvedExercises.length > 0 && (
-                        <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300">
-                          <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wider block mb-0.5 flex items-center gap-1">
-                            <Dumbbell className="w-3 h-3" />
-                            <span>Esercizi Coinvolti:</span>
-                          </span>
-                          <p className="text-[11px] font-semibold text-slate-200">
-                            {rec.involvedExercises.join(', ')}
-                          </p>
+                      {/* Lista Dettagliata Esercizio per Esercizio */}
+                      {rec.plannedChanges && rec.plannedChanges.length > 0 ? (
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-bold text-slate-400 uppercase">
+                            Dettaglio Intervento sugli Esercizi:
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {rec.plannedChanges.map((change, cIdx) => (
+                              <div
+                                key={cIdx}
+                                className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/90 hover:border-slate-700 transition"
+                              >
+                                <div className="space-y-0.5 min-w-0 pr-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-950 text-[9px] font-mono text-cyan-300 font-bold border border-slate-800">
+                                      {change.dayName}
+                                    </span>
+                                    <span className="font-bold text-white truncate text-xs">
+                                      {change.exerciseName}
+                                    </span>
+                                  </div>
+                                  {change.reason && (
+                                    <p className="text-[10px] text-slate-400 truncate">
+                                      {change.reason}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-slate-400 line-through text-xs font-mono">
+                                    {change.currentSets}s
+                                  </span>
+                                  <ArrowRight className="w-3 h-3 text-slate-500" />
+                                  <span className="text-[var(--color-primary)] font-black text-xs font-mono">
+                                    {change.newSets}s
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                                      change.deltaSets > 0
+                                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                        : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                    }`}
+                                  >
+                                    {change.deltaSets > 0 ? `+${change.deltaSets}` : change.deltaSets}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
+                      ) : (
+                        rec.involvedExercises && rec.involvedExercises.length > 0 && (
+                          <div className="flex items-center gap-2 pt-1 flex-wrap">
+                            <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                              <Dumbbell className="w-3 h-3 text-amber-400" />
+                              <span>Esercizi del Distretto:</span>
+                            </span>
+                            {rec.involvedExercises.map((exName, eIdx) => (
+                              <span
+                                key={eIdx}
+                                className="px-2 py-0.5 rounded-lg bg-slate-900 text-slate-300 text-[11px] font-medium border border-slate-800"
+                              >
+                                {exName}
+                              </span>
+                            ))}
+                          </div>
+                        )
                       )}
                     </div>
+
+                    {/* B. SCHEDE AFFIANCATE: COME (OPERATIVO) & PERCHÉ (SCIENTIFICO) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      
+                      {/* Box COME */}
+                      <div className="p-3 rounded-2xl bg-amber-500/5 border border-amber-500/20 space-y-1">
+                        <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <TrendingUp className="w-3.5 h-3.5" />
+                          Come viene applicato nella settimana:
+                        </span>
+                        <p className="text-slate-200 text-xs leading-relaxed font-medium">
+                          {rec.how || rec.recommendation}
+                        </p>
+                      </div>
+
+                      {/* Box PERCHÉ */}
+                      <div className="p-3 rounded-2xl bg-purple-500/5 border border-purple-500/20 space-y-1">
+                        <span className="text-[10px] font-black text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <HelpCircle className="w-3.5 h-3.5 text-purple-400" />
+                          Perché questa modifica (Razionale Fisiologico):
+                        </span>
+                        <p className="text-slate-300 text-xs leading-relaxed">
+                          {rec.why || rec.reason}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* C. IMPATTO ATTESO */}
+                    {rec.expectedImpact && (
+                      <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-start gap-2">
+                        <Check className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider block">
+                            Impatto Previsto sull'Atleta:
+                          </span>
+                          <p className="text-xs text-sky-200 leading-relaxed">
+                            {rec.expectedImpact}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

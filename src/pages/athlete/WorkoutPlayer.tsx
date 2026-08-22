@@ -6,6 +6,7 @@ import {
   ShieldAlert,
   Sparkles,
   WifiOff,
+  Info,
 } from 'lucide-react';
 
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
@@ -60,7 +61,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [lastSavedText, setLastSavedText] = useState<string>('Salvato');
 
-  const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
+  const [expandedExerciseMap, setExpandedExerciseMap] = useState<Record<number, boolean>>({ 0: true });
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(true);
   const [restTimer, setRestTimer] = useState<number | null>(null);
@@ -98,6 +99,34 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const startTimestampRef = useRef<number>(Date.now());
   const restEndTimestampRef = useRef<number | null>(null);
   const hasInitializedRef = useRef<boolean>(false);
+  const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Snapshot per autosave continuo senza causare re-render a catena
+  const draftStateRef = useRef({
+    logs,
+    completedSets,
+    exerciseNotes,
+    elapsedTime,
+    sessionId,
+    difficulty,
+    jointPain,
+    pump,
+    jointPainNotes,
+  });
+
+  useEffect(() => {
+    draftStateRef.current = {
+      logs,
+      completedSets,
+      exerciseNotes,
+      elapsedTime,
+      sessionId,
+      difficulty,
+      jointPain,
+      pump,
+      jointPainNotes,
+    };
+  }, [logs, completedSets, exerciseNotes, elapsedTime, sessionId, difficulty, jointPain, pump, jointPainNotes]);
 
   // ── 1. GESTIONE STATO ONLINE/OFFLINE & AUTO-SYNC ──
   useEffect(() => {
@@ -135,7 +164,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       setLogs(savedDraft.logs || {});
       setCompletedSets(savedDraft.completedSets || {});
       setExerciseNotes(savedDraft.exerciseNotes || {});
-      setActiveExerciseIdx(savedDraft.activeExerciseIdx || 0);
+      setExpandedExerciseMap({ [savedDraft.activeExerciseIdx || 0]: true });
       setSessionId(savedDraft.sessionId || null);
 
       if (savedDraft.startTimestamp) {
@@ -171,43 +200,60 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     }
   }, [athleteId, workout, exercises, sessionId, startWorkoutSession, targetAthleteId]);
 
-  // ── 3. AUTOSAVE LOCALE CONTINUO AD OGNI MODIFICA ──
-  const triggerLocalAutosave = useCallback(
-    (
-      currentLogs: Record<string, { reps: string; weight: string; rpe: string }[]>,
-      currentSets: Record<string, boolean[]>,
-      currentNotes: Record<string, string>,
-      curExIdx: number
-    ) => {
-      if (!athleteId) return;
+  // ── 3. AUTOSAVE LOCALE DEBOUNCED ANTI-FREEZE ──
+  const flushAutosave = useCallback(() => {
+    if (!athleteId) return;
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
+    const current = draftStateRef.current;
+    const draft: ActiveWorkoutDraft = {
+      draftId: `draft-${athleteId}-${workout.id}`,
+      sessionId: current.sessionId,
+      athleteId,
+      workout,
+      exercises,
+      targetAthleteId,
+      startTimestamp: startTimestampRef.current,
+      lastSavedTimestamp: Date.now(),
+      elapsedSeconds: current.elapsedTime,
+      activeExerciseIdx: 0,
+      logs: current.logs,
+      completedSets: current.completedSets,
+      exerciseNotes: current.exerciseNotes,
+      difficulty: current.difficulty,
+      jointPain: current.jointPain,
+      pump: current.pump,
+      jointPainNotes: current.jointPainNotes,
+      syncStatus: navigator.onLine ? 'local_saved' : 'pending_sync',
+    };
 
-      const draft: ActiveWorkoutDraft = {
-        draftId: `draft-${athleteId}-${workout.id}`,
-        sessionId,
-        athleteId,
-        workout,
-        exercises,
-        targetAthleteId,
-        startTimestamp: startTimestampRef.current,
-        lastSavedTimestamp: Date.now(),
-        elapsedSeconds: elapsedTime,
-        activeExerciseIdx: curExIdx,
-        logs: currentLogs,
-        completedSets: currentSets,
-        exerciseNotes: currentNotes,
-        difficulty,
-        jointPain,
-        pump,
-        jointPainNotes,
-        syncStatus: navigator.onLine ? 'local_saved' : 'pending_sync',
-      };
+    saveActiveWorkoutDraft(draft);
+    const timeStr = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    setLastSavedText(`Salvato alle ${timeStr}`);
+  }, [athleteId, workout, exercises, targetAthleteId]);
 
-      saveActiveWorkoutDraft(draft);
-      const timeStr = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      setLastSavedText(`Salvato alle ${timeStr}`);
-    },
-    [athleteId, workout, exercises, targetAthleteId, sessionId, elapsedTime, difficulty, jointPain, pump, jointPainNotes]
-  );
+  const scheduleAutosave = useCallback((immediate = false) => {
+    if (immediate) {
+      flushAutosave();
+    } else {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+      autosaveTimeoutRef.current = setTimeout(() => {
+        flushAutosave();
+      }, 600);
+    }
+  }, [flushAutosave]);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveTimeoutRef.current) {
+        clearTimeout(autosaveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Cronometro Allenamento Globale
   useEffect(() => {
@@ -222,26 +268,27 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     };
   }, [isTimerRunning]);
 
-  // Cronometro Recupero Tra Serie
+  // Cronometro Recupero Tra Serie (Risolto: Non si interrompe mai al cambio esercizio o scrolling)
   useEffect(() => {
-    if (restTimer === null || restTimer <= 0) {
-      restEndTimestampRef.current = null;
-      return;
-    }
-
-    const updateTimer = () => {
-      if (!restEndTimestampRef.current) return;
+    const checkTimer = () => {
+      if (!restEndTimestampRef.current) {
+        setRestTimer(null);
+        return;
+      }
       const remaining = Math.max(0, Math.ceil((restEndTimestampRef.current - Date.now()) / 1000));
-      setRestTimer(remaining > 0 ? remaining : null);
-      if (remaining <= 0) {
+      if (remaining > 0) {
+        setRestTimer(remaining);
+      } else {
         restEndTimestampRef.current = null;
+        setRestTimer(null);
       }
     };
 
-    const interval = setInterval(updateTimer, 1000);
+    const interval = setInterval(checkTimer, 400);
+
     const handleVisibilityOrFocus = () => {
       if (!document.hidden) {
-        updateTimer();
+        checkTimer();
         setElapsedTime(Math.floor((Date.now() - startTimestampRef.current) / 1000));
       }
     };
@@ -254,7 +301,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
     };
-  }, [restTimer]);
+  }, []);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -262,17 +309,23 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleLogChange = (exerciseId: string, setIndex: number, field: 'reps' | 'weight' | 'rpe', value: string) => {
+  const handleToggleExerciseActive = useCallback((idx: number) => {
+    setExpandedExerciseMap((prev) => ({
+      ...prev,
+      [idx]: !prev[idx],
+    }));
+  }, []);
+
+  const handleLogChange = useCallback((exerciseId: string, setIndex: number, field: 'reps' | 'weight' | 'rpe', value: string) => {
     setLogs((prev) => {
       const updatedSets = [...(prev[exerciseId] || [])];
       updatedSets[setIndex] = { ...updatedSets[setIndex], [field]: value };
-      const nextLogs = { ...prev, [exerciseId]: updatedSets };
-      triggerLocalAutosave(nextLogs, completedSets, exerciseNotes, activeExerciseIdx);
-      return nextLogs;
+      return { ...prev, [exerciseId]: updatedSets };
     });
-  };
+    scheduleAutosave(false);
+  }, [scheduleAutosave]);
 
-  const handleToggleSetComplete = (exerciseId: string, setIdx: number, restSeconds: number) => {
+  const handleToggleSetComplete = useCallback((exerciseId: string, setIdx: number, restSeconds: number) => {
     setCompletedSets((prev) => {
       const currentList = prev[exerciseId] ? [...prev[exerciseId]] : [];
       const isNowCompleted = !currentList[setIdx];
@@ -286,11 +339,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
       }
 
-      const nextSets = { ...prev, [exerciseId]: currentList };
-      triggerLocalAutosave(logs, nextSets, exerciseNotes, activeExerciseIdx);
-      return nextSets;
+      return { ...prev, [exerciseId]: currentList };
     });
-  };
+    scheduleAutosave(true); // Salvataggio immediato al completamento della serie
+  }, [scheduleAutosave]);
 
   const handleSkipRest = useCallback(() => {
     setRestTimer(null);
@@ -307,13 +359,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     }
   }, []);
 
-  const handleNoteChange = (exerciseId: string, val: string) => {
-    setExerciseNotes((prev) => {
-      const nextNotes = { ...prev, [exerciseId]: val };
-      triggerLocalAutosave(logs, completedSets, nextNotes, activeExerciseIdx);
-      return nextNotes;
-    });
-  };
+  const handleNoteChange = useCallback((exerciseId: string, val: string) => {
+    setExerciseNotes((prev) => ({ ...prev, [exerciseId]: val }));
+    scheduleAutosave(false);
+  }, [scheduleAutosave]);
 
   const handleOpenFinishFlow = () => {
     setShowQuestionnaireModal(true);
@@ -675,25 +724,21 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       {/* SCROLLABLE EXERCISES LIST */}
       <div className="flex-1 overflow-y-auto p-4 pb-32 space-y-4 bg-slate-950">
         {exercises.map((ex, idx) => {
-          const isActive = idx === activeExerciseIdx;
-          const isCompleted = idx < activeExerciseIdx;
+          const isExpanded = Boolean(expandedExerciseMap[idx]);
+          const isCompleted = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
 
           return (
             <React.Fragment key={ex.id}>
               <ExerciseCard
                 exercise={ex}
                 index={idx}
-                isActive={isActive}
+                isActive={isExpanded}
                 isCompleted={isCompleted}
                 logs={logs[ex.id] || []}
                 completedSetsMap={completedSets[ex.id] || []}
                 noteFeedback={exerciseNotes[ex.id] || ''}
                 previousHistory={previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()]}
-                onToggleActive={() => {
-                  const nextIdx = isActive ? -1 : idx;
-                  setActiveExerciseIdx(nextIdx);
-                  triggerLocalAutosave(logs, completedSets, exerciseNotes, nextIdx);
-                }}
+                onToggleActive={() => handleToggleExerciseActive(idx)}
                 onLogChange={(setIdx, field, val) => handleLogChange(ex.id, setIdx, field, val)}
                 onNoteFeedbackChange={(val) => handleNoteChange(ex.id, val)}
                 onToggleSetComplete={(setIdx) => handleToggleSetComplete(ex.id, setIdx, ex.rest_seconds)}
@@ -704,18 +749,66 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       </div>
 
       {/* ── QUESTIONARIO POST-ALLENAMENTO MODAL ── */}
-      {showQuestionnaireModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="text-center space-y-1">
-              <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] mx-auto shadow-md">
-                <Sparkles className="w-6 h-6" />
+      {showQuestionnaireModal && (() => {
+        let filledSetsCount = 0;
+        exercises.forEach((ex) => {
+          const exLogs = logs[ex.id] || [];
+          const completedMap = completedSets[ex.id] || [];
+          for (let i = 0; i < ex.sets; i++) {
+            if (completedMap[i] || (exLogs[i]?.reps && exLogs[i]?.reps !== '') || (exLogs[i]?.weight && exLogs[i]?.weight !== '')) {
+              filledSetsCount++;
+            }
+          }
+        });
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="text-center space-y-1">
+                <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] mx-auto shadow-md">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-black text-white">Com'è andato l'allenamento?</h3>
+                <p className="text-xs text-slate-400">
+                  Aiuta il coach e l'IA a regolare i carichi e il recupero per la prossima sessione.
+                </p>
               </div>
-              <h3 className="text-lg font-black text-white">Com'è andato l'allenamento?</h3>
-              <p className="text-xs text-slate-400">
-                Aiuta il coach e l'IA a regolare i carichi e il recupero per la prossima sessione.
-              </p>
-            </div>
+
+              {/* Avviso Serie / Carichi Non Registrati */}
+              {filledSetsCount === 0 && (
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-2 text-xs animate-in fade-in">
+                  <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                    <Info className="w-4 h-4 shrink-0" />
+                    <span>Nessun carico registrato nelle serie</span>
+                  </div>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    Non hai inserito i kg per i singoli esercizi. Vuoi completare la sessione registrando i carichi target previsti dal coach?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newCompleted: Record<string, boolean[]> = {};
+                      const newLogs: Record<string, { reps: string; weight: string; rpe: string }[]> = {};
+                      exercises.forEach((ex) => {
+                        newCompleted[ex.id] = Array(ex.sets).fill(true);
+                        newLogs[ex.id] = Array(ex.sets).fill(null).map(() => ({
+                          reps: ex.reps_target || '10',
+                          weight: ex.target_weight || '',
+                          rpe: ex.rir_target?.startsWith('RPE') ? ex.rir_target.replace('RPE', '').trim() : '',
+                        }));
+                      });
+                      setCompletedSets(newCompleted);
+                      setLogs(newLogs);
+                      scheduleAutosave(true);
+                      showSuccess('Carichi target confermati su tutte le serie! 💪');
+                    }}
+                    className="w-full py-2.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-xl font-black text-xs border border-amber-500/40 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Conferma tutti i carichi target della scheda</span>
+                  </button>
+                </div>
+              )}
 
             {/* Fatica Percepita */}
             <div className="space-y-2">
@@ -837,7 +930,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             </div>
           </div>
         </div>
-      )}
+      );
+    })()}
 
       {/* ── CELEBRATION SCREEN & CONDIVISIONE RISULTATO ── */}
       {celebrationData && (

@@ -30,7 +30,7 @@ interface ExerciseCardProps {
   onToggleSetComplete: (setIndex: number) => void;
 }
 
-export const ExerciseCard: React.FC<ExerciseCardProps> = ({
+export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   exercise,
   index,
   isActive,
@@ -66,6 +66,39 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       }
     });
   };
+
+  const isTimeBased = Boolean(
+    exercise.is_time_based ||
+    (exercise.duration_seconds && exercise.duration_seconds > 0) ||
+    exercise.reps_target?.toLowerCase().includes('min') ||
+    exercise.reps_target?.toLowerCase().includes('sec') ||
+    exercise.reps_target?.toLowerCase().includes('s') ||
+    exercise.name.toLowerCase().includes('plank') ||
+    exercise.name.toLowerCase().includes('hollow') ||
+    exercise.name.toLowerCase().includes('wall sit') ||
+    exercise.name.toLowerCase().includes('dead bug') ||
+    exercise.name.toLowerCase().includes('isometr')
+  );
+
+  const formattedTarget = (() => {
+    if (isTimeBased) {
+      if (exercise.duration_seconds && exercise.duration_seconds > 0) {
+        if (exercise.duration_seconds >= 60 && exercise.duration_seconds % 60 === 0) {
+          return `${exercise.duration_seconds / 60} min`;
+        }
+        return `${exercise.duration_seconds}s`;
+      }
+      if (exercise.reps_target && (exercise.reps_target.includes('min') || exercise.reps_target.includes('s'))) {
+        return exercise.reps_target;
+      }
+      // Se il nome è Plank o simile ma per errore era rimasto il valore standard di default 10-12
+      if (exercise.name.toLowerCase().includes('plank')) {
+        return '1 min';
+      }
+      return exercise.reps_target || '60s';
+    }
+    return exercise.reps_target || '10-12';
+  })();
 
   return (
     <div
@@ -138,8 +171,12 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           <span className="text-sm sm:text-base font-extrabold text-white">{exercise.sets}</span>
         </div>
         <div className="bg-slate-950/70 border border-slate-800/80 p-2.5 rounded-2xl">
-          <span className="text-[10px] uppercase font-bold text-slate-400 block">Target Reps</span>
-          <span className="text-sm sm:text-base font-extrabold text-[var(--color-primary)]">{exercise.reps_target}</span>
+          <span className="text-[10px] uppercase font-bold text-slate-400 block">
+            {isTimeBased ? 'Target Tempo' : 'Target Reps'}
+          </span>
+          <span className="text-sm sm:text-base font-extrabold text-[var(--color-primary)]">
+            {formattedTarget}
+          </span>
         </div>
         <div className="bg-slate-950/70 border border-slate-800/80 p-2.5 rounded-2xl">
           <span className="text-[10px] uppercase font-bold text-slate-400 block">Target RIR/RPE</span>
@@ -219,7 +256,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
           {/* Header Tabella */}
           <div className="grid grid-cols-12 gap-2 text-center text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400 mb-3 px-1">
             <div className="col-span-2">SET</div>
-            <div className="col-span-3">REPS</div>
+            <div className="col-span-3">{isTimeBased ? 'TEMPO' : 'REPS'}</div>
             <div className="col-span-3">KG</div>
             <div className="col-span-2">RPE</div>
             <div className="col-span-2">CONFERMA</div>
@@ -252,11 +289,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                     {setIdx + 1}
                   </div>
 
-                  {/* REPS Input */}
+                  {/* REPS / TEMPO Input */}
                   <div className="col-span-3">
                     <input
-                      type="number"
-                      placeholder={prevSet?.reps ? `${prevSet.reps}` : exercise.reps_target}
+                      type="text"
+                      placeholder={prevSet?.reps ? `${prevSet.reps}` : formattedTarget}
                       value={setLog.reps}
                       disabled={isSetCompleted}
                       onFocus={(e) => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })}
@@ -266,7 +303,6 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
                           ? 'bg-slate-900/70 border-slate-800 text-emerald-200 cursor-not-allowed opacity-90'
                           : 'bg-slate-900 border-slate-700 text-white placeholder:text-slate-600 focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20'
                       }`}
-                      inputMode="numeric"
                     />
                   </div>
 
@@ -340,13 +376,13 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
               <MessageSquare className="w-4 h-4 text-[var(--color-primary)]" />
               Feedback / Note Esercizio per il Coach & AI Copilot:
             </label>
-            <input
-              type="text"
+            <textarea
+              rows={2}
               placeholder="Es. Fastidio alla spalla nella 3ª serie, oppure carico percepito leggero..."
               value={noteFeedback}
               onFocus={(e) => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })}
               onChange={(e) => onNoteFeedbackChange(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-[var(--color-primary)] resize-y min-h-[46px] leading-relaxed transition-colors"
             />
           </div>
         </div>
@@ -373,4 +409,4 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = ({
       )}
     </div>
   );
-};
+});

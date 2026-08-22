@@ -321,39 +321,58 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
             return (
               <div
                 key={dayName}
-                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between shadow-md relative overflow-hidden ${
+                role="button"
+                tabIndex={0}
+                onClick={() => onStart(assigned, selectedWeek, dayName)}
+                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between shadow-md relative overflow-hidden cursor-pointer select-none group/daycard active:scale-[0.98] ${
                   isDone
-                    ? 'bg-slate-950/60 border-slate-800/60 text-slate-400'
+                    ? 'bg-slate-950/60 border-slate-800/60 text-slate-400 hover:border-slate-700'
                     : isDraftForThisDay
                     ? 'bg-gradient-to-b from-amber-950/30 to-slate-900 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/50'
                     : isNextUpcoming
-                    ? 'bg-slate-900/90 border-[var(--color-primary)]/60 shadow-lg shadow-[var(--color-primary)]/5 text-white'
-                    : 'bg-slate-950/60 border-slate-800/80 text-slate-300 hover:border-slate-700'
+                    ? 'bg-slate-900/90 border-[var(--color-primary)]/70 shadow-lg shadow-[var(--color-primary)]/10 text-white hover:border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/30'
+                    : 'bg-slate-950/60 border-slate-800/80 text-slate-300 hover:border-slate-700 hover:bg-slate-900/40'
                 }`}
               >
                 {/* Header Card Giorno */}
-                <div className="space-y-1.5 mb-3">
+                <div className="space-y-2 mb-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-black text-white whitespace-nowrap">{dayName}</span>
-                    {isDone ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-black flex items-center gap-1 shrink-0 whitespace-nowrap">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        Completato
-                      </span>
-                    ) : isDraftForThisDay ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse whitespace-nowrap">
-                        <RotateCcw className="w-3 h-3 text-amber-400" />
-                        In corso
-                      </span>
-                    ) : isNextUpcoming ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40 text-[10px] font-black shrink-0 whitespace-nowrap">
-                        Allenamento di oggi
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800 text-[10px] font-bold shrink-0 whitespace-nowrap">
-                        Programmata
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-white whitespace-nowrap">{dayName}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {isDone ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-black flex items-center gap-1 shrink-0 whitespace-nowrap">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          Completato
+                        </span>
+                      ) : isDraftForThisDay ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse whitespace-nowrap">
+                          <RotateCcw className="w-3 h-3 text-amber-400" />
+                          In corso
+                        </span>
+                      ) : isNextUpcoming ? (
+                        <span className="px-2 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40 text-[9px] font-black shrink-0 whitespace-nowrap">
+                          Oggi
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800 text-[9px] font-bold shrink-0 whitespace-nowrap">
+                          Da completare
+                        </span>
+                      )}
+
+                      {/* Icona circolare Play in evidenza */}
+                      <div
+                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-all shrink-0 ${
+                          isDraftForThisDay || isNextUpcoming
+                            ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/30 scale-105'
+                            : 'bg-slate-800/80 text-slate-300 group-hover/daycard:bg-[var(--color-primary)] group-hover/daycard:text-slate-950'
+                        }`}
+                      >
+                        <Play className="w-3 h-3 fill-current ml-0.5" />
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
@@ -368,7 +387,10 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                     <button
                       type="button"
                       disabled={isStartingThis}
-                      onClick={() => onStart(assigned, selectedWeek, dayName)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStart(assigned, selectedWeek, dayName);
+                      }}
                       className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-bold transition-all cursor-pointer text-center"
                     >
                       Rivedi
@@ -377,7 +399,10 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                     <button
                       type="button"
                       disabled={isStartingThis}
-                      onClick={() => onStart(assigned, selectedWeek, dayName)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStart(assigned, selectedWeek, dayName);
+                      }}
                       className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5 active:scale-95"
                     >
                       <Play className="w-3.5 h-3.5 fill-black" />
@@ -387,7 +412,10 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                     <button
                       type="button"
                       disabled={isStartingThis}
-                      onClick={() => onStart(assigned, selectedWeek, dayName)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStart(assigned, selectedWeek, dayName);
+                      }}
                       className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 flex items-center justify-center gap-1.5 active:scale-95"
                     >
                       <Play className="w-3.5 h-3.5 fill-black" />
@@ -397,10 +425,13 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                     <button
                       type="button"
                       disabled={isStartingThis}
-                      onClick={() => onStart(assigned, selectedWeek, dayName)}
-                      className="w-full py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-bold transition-all cursor-pointer text-center"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStart(assigned, selectedWeek, dayName);
+                      }}
+                      className="w-full py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1"
                     >
-                      Inizia
+                      <span>Inizia ora →</span>
                     </button>
                   )}
                 </div>
@@ -486,7 +517,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     return () => window.removeEventListener('online', handleSync);
   }, [showSuccess, checkDraftAndQueue]);
 
-  const handleStartWorkout = async (assigned: any, selectedWeek: number, selectedDay: string) => {
+  const handleStartWorkout = async (assigned: any, selectedWeek?: number, selectedDay?: string) => {
     try {
       setStartingWorkoutId(assigned.workout_id);
       const allExercises = await getExercisesForWorkout(assigned.workout_id);
@@ -496,15 +527,39 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         return;
       }
 
-      const filtered = allExercises.filter((ex) => {
-        const matchWeek = !ex.week_number || ex.week_number === selectedWeek;
-        const matchDay = !ex.day_name || ex.day_name === selectedDay;
-        return matchWeek && matchDay;
-      });
+      let filtered = allExercises;
 
-      const finalExercises = filtered.length > 0 ? filtered : allExercises;
-      onStartWorkout(assigned.workout, finalExercises, assigned.athlete_id);
-    } catch {
+      // 1. Filtra per settimana
+      if (selectedWeek) {
+        const weekFiltered = allExercises.filter(
+          (ex) => !ex.week_number || ex.week_number === selectedWeek
+        );
+        if (weekFiltered.length > 0) {
+          filtered = weekFiltered;
+        }
+      }
+
+      // 2. Filtra per giorno (case-insensitive)
+      if (selectedDay && selectedDay.trim()) {
+        const targetDayNorm = selectedDay.trim().toLowerCase();
+        const dayFiltered = filtered.filter(
+          (ex) => !ex.day_name || ex.day_name.trim().toLowerCase() === targetDayNorm
+        );
+        if (dayFiltered.length > 0) {
+          filtered = dayFiltered;
+        }
+      }
+
+      const workoutObj = assigned.workout || {
+        id: assigned.workout_id,
+        title: assigned.workout?.title || 'Programma di Allenamento',
+        description: assigned.workout?.description,
+        total_weeks: assigned.workout?.total_weeks || 1,
+      };
+
+      onStartWorkout(workoutObj, filtered, assigned.athlete_id);
+    } catch (err) {
+      console.error('Errore avvio workout:', err);
       showError('Impossibile caricare gli esercizi della scheda');
     } finally {
       setStartingWorkoutId(null);
@@ -659,7 +714,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
           <div className="pt-1">
             <button
               type="button"
-              onClick={() => handleStartWorkout(firstAssigned, 1, 'Giorno A')}
+              onClick={() => handleStartWorkout(firstAssigned, 1)}
               className="w-full py-3.5 px-5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-[var(--color-primary)]/20 transition-all cursor-pointer active:scale-95"
             >
               <Play className="w-4 h-4 fill-black" />

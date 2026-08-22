@@ -19,6 +19,7 @@ interface WorkoutsContextType {
   duplicateWorkoutTemplate: (workoutId: string, customTitle?: string) => Promise<{ success: boolean; newWorkoutId?: string; error?: string }>;
   deleteWorkoutTemplate: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
   assignWorkoutToAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
+  assignWorkoutToAthletes: (athleteIds: string[], workoutId: string) => Promise<{ success: boolean; error?: string }>;
   unassignWorkoutFromAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
   getAssignedWorkoutsForAthlete: (athleteId: string) => Promise<AthleteAssignedWorkout[]>;
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
@@ -417,15 +418,22 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const assignWorkoutToAthlete = async (athleteId: string, workoutId: string) => {
+    return assignWorkoutToAthletes([athleteId], workoutId);
+  };
+
+  const assignWorkoutToAthletes = async (athleteIds: string[], workoutId: string) => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
+    if (athleteIds.length === 0) return { success: true };
     try {
+      const rowsToInsert = athleteIds.map((athId) => ({
+        athlete_id: athId,
+        workout_id: workoutId,
+        assigned_by: user.id,
+      }));
+
       const { error } = await supabase
         .from('athlete_assigned_workouts')
-        .insert({
-          athlete_id: athleteId,
-          workout_id: workoutId,
-          assigned_by: user.id,
-        });
+        .insert(rowsToInsert);
 
       if (error) throw error;
       await loadAssignedWorkouts();
@@ -851,6 +859,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           duplicateWorkoutTemplate,
           deleteWorkoutTemplate,
           assignWorkoutToAthlete,
+          assignWorkoutToAthletes,
           unassignWorkoutFromAthlete,
           getAssignedWorkoutsForAthlete,
           getExercisesForWorkout,

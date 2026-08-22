@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target, RotateCcw, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target, RotateCcw, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Flame, TrendingUp, User, Link2, Unlink2, Layers, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { generateAISmartSuggestions, CoPilotActionableSuggestion } from '../../lib/ai/workoutGenerator';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
@@ -9,6 +9,7 @@ import { useAthletes } from '../../context/AthletesContext';
 import { useProgressions } from '../../context/ProgressionsContext';
 import { useToast } from '../../context/ToastContext';
 import { calculateEstimatedWorkoutTime } from '../../utils/workoutUtils';
+import { extractGroupTagFromNotes, encodeGroupTagInNotes } from '../../utils/noteCleaner';
 import { AICoPilotModal } from './AICoPilotModal';
 import { GeneratedWorkoutResponse, normalizeDayName } from '../../lib/ai/workoutGenerator';
 import { ExerciseProgressionControl } from './progression/ExerciseProgressionControl';
@@ -18,9 +19,87 @@ import { AIVolumeCoach } from './AIVolumeCoach';
 import { calculateMuscleVolumeSummary } from '../../utils/muscleVolumeCalculator';
 import { analyzeVolumeWithAI, ActionPayload } from '../../utils/aiVolumeCoach';
 
+// Helper per convertire l'indice numerico (0, 1, 2...) in lettere d'ordine (A, B, C... Z, AA)
+export const indexToLetter = (index: number): string => {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  if (index < 26) return letters[index];
+  const first = letters[Math.floor(index / 26) - 1];
+  const second = letters[index % 26];
+  return `${first}${second}`;
+};
+
+export interface DayExerciseGroupInfo {
+  label: string; // "A", "B1", "B2", "C", "D1", "D2", "D3"
+  baseLetter: string; // "A", "B", "C", "D"
+  isGrouped: boolean; // true se il gruppo ha >= 2 esercizi
+  groupTag?: string;
+  groupSize: number;
+  positionInGroup: number; // 0, 1, 2...
+  isFirstInGroup: boolean;
+  isLastInGroup: boolean;
+  groupType: 'single' | 'superset' | 'circuit';
+}
+
+export function computeDayExerciseGroups(dayExercises: Partial<WorkoutExercise>[]): DayExerciseGroupInfo[] {
+  const result: DayExerciseGroupInfo[] = [];
+  let letterIndex = 0;
+  let i = 0;
+
+  while (i < dayExercises.length) {
+    const currentEx = dayExercises[i];
+    const groupTag = currentEx.group_tag;
+
+    if (!groupTag) {
+      const letter = indexToLetter(letterIndex);
+      result.push({
+        label: letter,
+        baseLetter: letter,
+        isGrouped: false,
+        groupSize: 1,
+        positionInGroup: 0,
+        isFirstInGroup: true,
+        isLastInGroup: true,
+        groupType: 'single',
+      });
+      letterIndex++;
+      i++;
+    } else {
+      let j = i;
+      while (j < dayExercises.length && dayExercises[j].group_tag === groupTag) {
+        j++;
+      }
+      const groupLength = j - i;
+      const letter = indexToLetter(letterIndex);
+      const isActuallyGrouped = groupLength > 1;
+      const groupType: 'single' | 'superset' | 'circuit' = groupLength >= 3 ? 'circuit' : groupLength === 2 ? 'superset' : 'single';
+
+      for (let k = 0; k < groupLength; k++) {
+        result.push({
+          label: isActuallyGrouped ? `${letter}${k + 1}` : letter,
+          baseLetter: letter,
+          isGrouped: isActuallyGrouped,
+          groupTag,
+          groupSize: groupLength,
+          positionInGroup: k,
+          isFirstInGroup: k === 0,
+          isLastInGroup: k === groupLength - 1,
+          groupType,
+        });
+      }
+
+      letterIndex++;
+      i = j;
+    }
+  }
+
+  return result;
+}
+
 export interface DeletedDayRecord {
   id: string;
   dayName: string;
+  scope: 'single_week' | 'all_weeks';
+  weekNumber?: number;
   exercises: Partial<WorkoutExercise>[];
   dayIndex: number;
   deletedAt: number;
@@ -56,6 +135,16 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const [undoBanner, setUndoBanner] = useState<{ record: DeletedDayRecord; timerId: NodeJS.Timeout | null } | null>(null);
   const [isRestoreDropdownOpen, setIsRestoreDropdownOpen] = useState(false);
   const [isReorderDaysModalOpen, setIsReorderDaysModalOpen] = useState(false);
+  const [isBulkDeleteWeeksModalOpen, setIsBulkDeleteWeeksModalOpen] = useState(false);
+  const [selectedWeeksToDelete, setSelectedWeeksToDelete] = useState<number[]>([]);
+
+  // Dialogo di scelta per eliminazione giorno (singola settimana vs tutto il programma)
+  const [dayToDeletePrompt, setDayToDeletePrompt] = useState<{
+    dayName: string;
+    weekNumber: number;
+    exCountActiveWeek: number;
+    exCountAllWeeks: number;
+  } | null>(null);
 
   const moveDay = (fromIndex: number, toIndex: number) => {
     if (fromIndex < 0 || fromIndex >= daysList.length || toIndex < 0 || toIndex >= daysList.length || fromIndex === toIndex) {
@@ -84,35 +173,315 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     }
   };
 
+  // Drag and Drop & Riordinamento Esercizi
+  const [draggedExerciseGlobalIndex, setDraggedExerciseGlobalIndex] = useState<number | null>(null);
+  const [dragOverExerciseGlobalIndex, setDragOverExerciseGlobalIndex] = useState<number | null>(null);
+
+  const handleExerciseDragStart = (globalIdx: number, e: React.DragEvent) => {
+    setDraggedExerciseGlobalIndex(globalIdx);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(globalIdx));
+  };
+
+  const handleExerciseDragOver = (globalIdx: number, e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverExerciseGlobalIndex !== globalIdx) {
+      setDragOverExerciseGlobalIndex(globalIdx);
+    }
+  };
+
+  const handleExerciseDrop = (targetGlobalIdx: number, e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedExerciseGlobalIndex === null || draggedExerciseGlobalIndex === targetGlobalIdx) {
+      setDraggedExerciseGlobalIndex(null);
+      setDragOverExerciseGlobalIndex(null);
+      return;
+    }
+
+    const sourceEx = exercises[draggedExerciseGlobalIndex];
+    setExercises((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(draggedExerciseGlobalIndex, 1);
+      next.splice(targetGlobalIdx, 0, moved);
+      return next;
+    });
+
+    showSuccess('Esercizio Spostato', `"${sourceEx?.name || 'Esercizio'}" riposizionato con successo.`);
+    setDraggedExerciseGlobalIndex(null);
+    setDragOverExerciseGlobalIndex(null);
+  };
+
+  const handleExerciseDragEnd = () => {
+    setDraggedExerciseGlobalIndex(null);
+    setDragOverExerciseGlobalIndex(null);
+  };
+
+  const moveExerciseWithinDay = (globalIndex: number, direction: 'up' | 'down') => {
+    const currentEx = exercises[globalIndex];
+    if (!currentEx) return;
+
+    const currentWeek = currentEx.week_number || 1;
+    const currentDayName = currentEx.day_name || 'Giorno A';
+
+    // Indici degli esercizi nel giorno attivo
+    const dayIndices: number[] = [];
+    exercises.forEach((ex, idx) => {
+      if ((ex.week_number || 1) === currentWeek && (ex.day_name || 'Giorno A') === currentDayName) {
+        dayIndices.push(idx);
+      }
+    });
+
+    const posInDay = dayIndices.indexOf(globalIndex);
+    if (posInDay === -1) return;
+
+    const targetPosInDay = direction === 'up' ? posInDay - 1 : posInDay + 1;
+    if (targetPosInDay < 0 || targetPosInDay >= dayIndices.length) return;
+
+    const targetGlobalIndex = dayIndices[targetPosInDay];
+
+    setExercises((prev) => {
+      const next = [...prev];
+      const temp = next[globalIndex];
+      next[globalIndex] = next[targetGlobalIndex];
+      next[targetGlobalIndex] = temp;
+      return next;
+    });
+
+    showSuccess(
+      'Ordine Esercizi Aggiornato',
+      `"${currentEx.name || 'Esercizio'}" spostato ${direction === 'up' ? 'in alto' : 'in basso'}.`
+    );
+  };
+
+  const invertExercisesOrderInDay = () => {
+    const dayIndices: number[] = [];
+    exercises.forEach((ex, idx) => {
+      if (
+        (ex.week_number || 1) === activeWeek && 
+        (ex.day_name || 'Giorno A').trim().toLowerCase() === activeDay.trim().toLowerCase()
+      ) {
+        dayIndices.push(idx);
+      }
+    });
+
+    if (dayIndices.length < 2) {
+      showError('Servono almeno 2 esercizi per invertire l\'ordine.');
+      return;
+    }
+
+    setExercises((prev) => {
+      const next = [...prev];
+      const reversed = dayIndices.map((idx) => prev[idx]).reverse();
+      dayIndices.forEach((targetIdx, i) => {
+        next[targetIdx] = reversed[i];
+      });
+      return next;
+    });
+
+    showSuccess('Ordine Invertito', `Invertita la sequenza dei ${dayIndices.length} esercizi in "${activeDay}".`);
+  };
+
+  // ─── GESTIONE SUPER SERIE & CIRCUITI ───
+  const linkWithNextExercise = (globalIndex: number) => {
+    const currentEx = exercises[globalIndex];
+    if (!currentEx) return;
+
+    const currentWeek = currentEx.week_number || 1;
+    const currentDay = currentEx.day_name || 'Giorno A';
+
+    // Trova tutti gli indici del giorno attivo
+    const dayIndices = exercises.reduce<number[]>((acc, e, i) => {
+      if ((e.week_number || 1) === currentWeek && (e.day_name || 'Giorno A') === currentDay) {
+        acc.push(i);
+      }
+      return acc;
+    }, []);
+
+    const posInDay = dayIndices.indexOf(globalIndex);
+    if (posInDay === -1 || posInDay >= dayIndices.length - 1) {
+      showError("Nessun esercizio successivo con cui collegare.");
+      return;
+    }
+
+    const nextGlobalIndex = dayIndices[posInDay + 1];
+    const nextEx = exercises[nextGlobalIndex];
+    if (!nextEx) return;
+
+    const targetGroupTag = currentEx.group_tag || nextEx.group_tag || `ss-${Date.now()}`;
+
+    setExercises((prev) => {
+      const next = [...prev];
+      next[globalIndex] = { ...next[globalIndex], group_tag: targetGroupTag };
+      next[nextGlobalIndex] = { ...next[nextGlobalIndex], group_tag: targetGroupTag };
+      return next;
+    });
+
+    showSuccess(
+      "Super Serie Creata",
+      `"${currentEx.name || 'Esercizio'}" e "${nextEx.name || 'Esercizio'}" sono ora collegati.`
+    );
+  };
+
+  const unlinkExerciseFromGroup = (globalIndex: number) => {
+    const targetEx = exercises[globalIndex];
+    if (!targetEx || !targetEx.group_tag) return;
+
+    const groupTag = targetEx.group_tag;
+    const currentWeek = targetEx.week_number || 1;
+    const currentDay = targetEx.day_name || 'Giorno A';
+
+    setExercises((prev) => {
+      let next = prev.map((ex, idx) => {
+        if (idx === globalIndex) {
+          return { ...ex, group_tag: undefined };
+        }
+        return ex;
+      });
+
+      // Conta quanti esercizi rimangono nel gruppo per questo giorno
+      const remainingInGroup = next.filter(
+        (e) =>
+          (e.week_number || 1) === currentWeek &&
+          (e.day_name || 'Giorno A') === currentDay &&
+          e.group_tag === groupTag
+      );
+
+      // Se ne rimane solo 1, sciogli completamente il gruppo rendendolo singolo
+      if (remainingInGroup.length <= 1) {
+        next = next.map((e) => {
+          if (
+            (e.week_number || 1) === currentWeek &&
+            (e.day_name || 'Giorno A') === currentDay &&
+            e.group_tag === groupTag
+          ) {
+            return { ...e, group_tag: undefined };
+          }
+          return e;
+        });
+      }
+
+      return next;
+    });
+
+    showSuccess("Esercizio Scollegato", "L'esercizio è tornato singolo.");
+  };
+
+  const unlinkEntireGroup = (groupTag?: string) => {
+    if (!groupTag) return;
+    setExercises((prev) =>
+      prev.map((ex) => {
+        if (
+          (ex.week_number || 1) === activeWeek &&
+          (ex.day_name || 'Giorno A').trim().toLowerCase() === activeDay.trim().toLowerCase() &&
+          ex.group_tag === groupTag
+        ) {
+          return { ...ex, group_tag: undefined };
+        }
+        return ex;
+      })
+    );
+    showSuccess("Gruppo Scollegato", "Tutti gli esercizi del gruppo sono ora indipendenti.");
+  };
+
   const [exercises, setExercises] = useState<Partial<WorkoutExercise>[]>([
     { name: '', sets: 3, reps_target: '10', rest_seconds: 60, week_number: 1, day_name: 'Giorno A', is_time_based: false }
   ]);
-  const [expandedExerciseIndex, setExpandedExerciseIndex] = useState<number | null>(0);
+  const [isCompactMode, setIsCompactMode] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Stati per modali rapidi note, alternativo e progressione nel layout a griglia
+  const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
+  const [noteDraftText, setNoteDraftText] = useState<string>('');
+  const [editingAltIndex, setEditingAltIndex] = useState<number | null>(null);
+  const [altDraftText, setAltDraftText] = useState<string>('');
+  const [activeProgressionExerciseIndex, setActiveProgressionExerciseIndex] = useState<number | null>(null);
+
+  // Navigazione rapida da tastiera: Invio passa al campo successivo nella riga o all'esercizio successivo
+  const handleNumericKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const allInputs = Array.from(
+        document.querySelectorAll<HTMLInputElement>('input.workout-cell-input:not([disabled])')
+      );
+      const currentIndex = allInputs.indexOf(e.currentTarget);
+      if (currentIndex >= 0 && currentIndex < allInputs.length - 1) {
+        allInputs[currentIndex + 1].focus();
+        allInputs[currentIndex + 1].select?.();
+      }
+    }
+  };
   const handleApplyVolumeAction = (action: ActionPayload) => {
+    if (action.plannedChanges && action.plannedChanges.length > 0) {
+      const changesMap = new Map<string, number>();
+      action.plannedChanges.forEach((p) => {
+        const key = `${(p.exerciseName || '').toLowerCase()}__${p.dayName || ''}`;
+        changesMap.set(key, p.newSets);
+      });
+
+      setExercises((prev) =>
+        prev.map((ex) => {
+          if (action.plannedChanges) {
+            const matchedById = action.plannedChanges.find((p) => p.exerciseId && p.exerciseId === ex.id);
+            if (matchedById) {
+              return { ...ex, sets: matchedById.newSets };
+            }
+          }
+          const key = `${(ex.name || '').toLowerCase()}__${ex.day_name || ''}`;
+          if (changesMap.has(key)) {
+            return { ...ex, sets: changesMap.get(key)! };
+          }
+          const planByName = action.plannedChanges?.find(
+            (p) => (p.exerciseName || '').toLowerCase() === (ex.name || '').toLowerCase()
+          );
+          if (planByName && !action.plannedChanges?.some((p) => p.dayName === ex.day_name)) {
+            return { ...ex, sets: planByName.newSets };
+          }
+          return ex;
+        })
+      );
+
+      const summaryList = action.plannedChanges
+        .map((p) => `${p.exerciseName} (${p.dayName}): ${p.currentSets} ➔ ${p.newSets}s`)
+        .join(', ');
+      showSuccess('Modifiche Settimana Applicate!', summaryList);
+      return;
+    }
+
     if (action.type === 'reduce_sets' && action.exerciseNames && action.setsDelta) {
       let remainingToReduce = Math.abs(action.setsDelta);
-      setExercises(prev => prev.map(ex => {
-        if (remainingToReduce > 0 && action.exerciseNames?.some(name => (ex.name || '').toLowerCase().includes(name.toLowerCase()))) {
-          const currentSets = Number(ex.sets) || 3;
-          const reduceBy = Math.min(remainingToReduce, Math.max(1, currentSets - 2));
-          remainingToReduce -= reduceBy;
-          return { ...ex, sets: Math.max(1, currentSets - reduceBy) };
-        }
-        return ex;
-      }));
+      setExercises((prev) =>
+        prev.map((ex) => {
+          if (
+            remainingToReduce > 0 &&
+            action.exerciseNames?.some((name) => (ex.name || '').toLowerCase().includes(name.toLowerCase()))
+          ) {
+            const currentSets = Number(ex.sets) || 3;
+            const reduceBy = Math.min(remainingToReduce, Math.max(1, currentSets - 2));
+            remainingToReduce -= reduceBy;
+            return { ...ex, sets: Math.max(1, currentSets - reduceBy) };
+          }
+          return ex;
+        })
+      );
       showSuccess('Modifica Volume Applicata!', `Ridotte le serie per ${action.targetMuscle}.`);
     } else if (action.type === 'increase_sets' && action.setsDelta) {
       let remainingToAdd = action.setsDelta;
-      setExercises(prev => prev.map(ex => {
-        if (remainingToAdd > 0 && (!action.exerciseNames?.length || action.exerciseNames.some(name => (ex.name || '').toLowerCase().includes(name.toLowerCase())))) {
-          const currentSets = Number(ex.sets) || 3;
-          const addBy = Math.min(remainingToAdd, 2);
-          remainingToAdd -= addBy;
-          return { ...ex, sets: currentSets + addBy };
-        }
-        return ex;
-      }));
+      setExercises((prev) =>
+        prev.map((ex) => {
+          if (
+            remainingToAdd > 0 &&
+            (!action.exerciseNames?.length ||
+              action.exerciseNames.some((name) => (ex.name || '').toLowerCase().includes(name.toLowerCase())))
+          ) {
+            const currentSets = Number(ex.sets) || 3;
+            const addBy = Math.min(remainingToAdd, 2);
+            remainingToAdd -= addBy;
+            return { ...ex, sets: currentSets + addBy };
+          }
+          return ex;
+        })
+      );
       showSuccess('Modifica Volume Applicata!', `Incrementate le serie per ${action.targetMuscle}.`);
     }
   };
@@ -165,11 +534,22 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     if (initialWorkout) {
       getExercisesForWorkout(initialWorkout.id).then((fetchedExercises) => {
         if (fetchedExercises && fetchedExercises.length > 0) {
-          setExercises(fetchedExercises);
+          const mapped = fetchedExercises.map((ex) => {
+            const { groupTag, cleanNotes } = extractGroupTagFromNotes(ex.notes);
+            return {
+              ...ex,
+              group_tag: ex.group_tag || groupTag,
+              notes: cleanNotes !== undefined ? cleanNotes : ex.notes,
+            };
+          });
+          setExercises(mapped);
           
           // Estrai giorni unici
           const uniqueDays = Array.from(new Set(fetchedExercises.map(e => e.day_name || 'Giorno A')));
-          if (uniqueDays.length > 0) setDaysList(uniqueDays);
+          if (uniqueDays.length > 0) {
+            setDaysList(uniqueDays);
+            setActiveDay(uniqueDays[0]);
+          }
           
           // Estrai max settimane
           const maxW = Math.max(...fetchedExercises.map(e => e.week_number || 1), initialWorkout.total_weeks || 1);
@@ -180,6 +560,20 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       });
     }
   }, [initialWorkout]);
+
+  // Sincronizzazione automatica di activeDay con i giorni reali disponibili
+  useEffect(() => {
+    if (daysList.length > 0) {
+      const match = daysList.find(d => d.trim().toLowerCase() === activeDay.trim().toLowerCase());
+      if (match) {
+        if (match !== activeDay) {
+          setActiveDay(match);
+        }
+      } else {
+        setActiveDay(daysList[0]);
+      }
+    }
+  }, [daysList, activeDay]);
 
   // ─── TRACCIAMENTO AVANZAMENTO ATLETA (SETTIMANA & GIORNO CORRENTI) ───
   interface AthleteExecutionProgress {
@@ -433,7 +827,6 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
         setActiveDay(uniqueDays[0]); // Seleziona il primo giorno generato
       }
       setActiveWeek(1);
-      setExpandedExerciseIndex(null); // Chiudi espansioni per vista pulita
 
       // Formatta i metadati generati in una stringa Markdown e mettila nella descrizione
       const metaDescription = `
@@ -468,7 +861,6 @@ ${result.regole_adattamento || '-'}
       is_time_based: false,
     };
     setExercises([...exercises, newEx]);
-    setExpandedExerciseIndex(exercises.length);
   };
 
   const updateExercise = (globalIndex: number, field: keyof WorkoutExercise, value: any) => {
@@ -637,7 +1029,7 @@ ${result.regole_adattamento || '-'}
     }
     setDaysList(prev => prev.map(d => d === activeDay ? newName : d));
     setExercises(prev => prev.map(ex => 
-      (ex.day_name || 'Giorno A') === activeDay ? { ...ex, day_name: newName } : ex
+      (ex.day_name || 'Giorno A').trim().toLowerCase() === activeDay.trim().toLowerCase() ? { ...ex, day_name: newName } : ex
     ));
     setActiveDay(newName);
     setIsRenamingDay(false);
@@ -840,6 +1232,19 @@ ${result.regole_adattamento || '-'}
     showSuccess('Settimana Incollata', `Contenuto della Settimana ${copiedWeekNumber} incollato nella Settimana ${targetWeekNum} con progressione applicata.`);
   };
 
+  const swapWeeks = (weekA: number, weekB: number) => {
+    if (weekA === weekB || weekA < 1 || weekB < 1 || weekA > totalWeeks || weekB > totalWeeks) return;
+    setExercises((prev) =>
+      prev.map((ex) => {
+        const w = ex.week_number || 1;
+        if (w === weekA) return { ...ex, week_number: weekB };
+        if (w === weekB) return { ...ex, week_number: weekA };
+        return ex;
+      })
+    );
+    showSuccess('Settimane Scambiate', `Scambiati i contenuti tra Settimana ${weekA} e Settimana ${weekB}.`);
+  };
+
   const deleteWeek = (weekNum: number) => {
     if (totalWeeks <= 1) {
       showError('Il programma deve contenere almeno una settimana.');
@@ -859,6 +1264,51 @@ ${result.regole_adattamento || '-'}
       setActiveWeek(prev => Math.max(1, Math.min(prev === weekNum ? 1 : (prev > weekNum ? prev - 1 : prev), nextTotalWeeks)));
       showSuccess('Settimana Eliminata', `Settimana ${weekNum} rimossa.`);
     }
+  };
+
+  const deleteMultipleWeeks = (weeksToDelete: number[]) => {
+    if (weeksToDelete.length === 0) return;
+    if (weeksToDelete.length >= totalWeeks) {
+      showError('Il programma deve contenere almeno una settimana.');
+      return;
+    }
+
+    // 1. Calcola le settimane superstiti in ordine crescente
+    const remainingOldWeeks: number[] = [];
+    for (let w = 1; w <= totalWeeks; w++) {
+      if (!weeksToDelete.includes(w)) {
+        remainingOldWeeks.push(w);
+      }
+    }
+
+    // 2. Mappa da vecchio numero settimana a nuovo numero sequenziale
+    const weekNumberMapping = new Map<number, number>();
+    remainingOldWeeks.forEach((oldW, idx) => {
+      weekNumberMapping.set(oldW, idx + 1);
+    });
+
+    // 3. Riassegna gli esercizi alle nuove settimane
+    const newExercises = exercises
+      .filter((ex) => !weeksToDelete.includes(ex.week_number || 1))
+      .map((ex) => {
+        const oldW = ex.week_number || 1;
+        const newW = weekNumberMapping.get(oldW) || 1;
+        return { ...ex, week_number: newW };
+      });
+
+    const nextTotalWeeks = remainingOldWeeks.length;
+    const newActiveWeek = weekNumberMapping.get(activeWeek) || 1;
+
+    setTotalWeeks(nextTotalWeeks);
+    setExercises(newExercises);
+    setActiveWeek(newActiveWeek);
+    setIsBulkDeleteWeeksModalOpen(false);
+    setSelectedWeeksToDelete([]);
+
+    showSuccess(
+      'Settimane Rimosse',
+      `Eliminate ${weeksToDelete.length} settimane con successo. Il programma ora ha ${nextTotalWeeks} settimana/e.`
+    );
   };
 
   // --- GESTIONE E DUPLICAZIONE GIORNI ---
@@ -935,26 +1385,53 @@ ${result.regole_adattamento || '-'}
       return;
     }
 
-    // Salva un backup completo di tutti gli esercizi associati a questo giorno per tutte le settimane
-    const dayExercises = exercises.filter(ex => (ex.day_name || 'Giorno A') === dayName);
+    const exCountActiveWeek = exercises.filter(
+      (ex) => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A') === dayName
+    ).length;
+    const exCountAllWeeks = exercises.filter(
+      (ex) => (ex.day_name || 'Giorno A') === dayName
+    ).length;
+
+    // Se ci sono più settimane nel programma, apri la modale di scelta ambito
+    if (totalWeeks > 1) {
+      setDayToDeletePrompt({
+        dayName,
+        weekNumber: activeWeek,
+        exCountActiveWeek,
+        exCountAllWeeks,
+      });
+      return;
+    }
+
+    // Se c'è solo 1 settimana, elimina direttamente dal programma
+    confirmDeleteDayAllWeeks(dayName);
+  };
+
+  const confirmDeleteDayCurrentWeekOnly = (dayName: string, weekNum: number) => {
+    const targetExercises = exercises.filter(
+      (ex) => (ex.week_number || 1) === weekNum && (ex.day_name || 'Giorno A') === dayName
+    );
     const dayIndex = daysList.indexOf(dayName);
 
     const record: DeletedDayRecord = {
-      id: `del-day-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: `del-day-w${weekNum}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       dayName,
-      exercises: JSON.parse(JSON.stringify(dayExercises)),
+      scope: 'single_week',
+      weekNumber: weekNum,
+      exercises: JSON.parse(JSON.stringify(targetExercises)),
       dayIndex: dayIndex >= 0 ? dayIndex : daysList.length - 1,
       deletedAt: Date.now(),
     };
 
-    // Rimuovi il giorno e i relativi esercizi
-    setExercises(prev => prev.filter(ex => (ex.day_name || 'Giorno A') !== dayName));
-    const nextDays = daysList.filter(d => d !== dayName);
-    setDaysList(nextDays);
-    setActiveDay(nextDays[0] || 'Giorno A');
+    // Rimuovi solo gli esercizi di questo giorno per questa specifica settimana
+    setExercises((prev) =>
+      prev.filter(
+        (ex) => !((ex.week_number || 1) === weekNum && (ex.day_name || 'Giorno A') === dayName)
+      )
+    );
 
     // Aggiungi alla cronologia giorni eliminati
-    setDeletedDaysHistory(prev => [record, ...prev]);
+    setDeletedDaysHistory((prev) => [record, ...prev]);
 
     // Mostra banner di ripristino rapido (10 secondi)
     if (undoBanner?.timerId) {
@@ -965,7 +1442,51 @@ ${result.regole_adattamento || '-'}
     }, 10000);
 
     setUndoBanner({ record, timerId: timer });
-    showSuccess('Giorno Rimosso', `"${dayName}" eliminato. Puoi ripristinarlo in qualsiasi momento.`);
+    setDayToDeletePrompt(null);
+
+    showSuccess(
+      `Giorno Svuotato per Settimana ${weekNum}`,
+      `Rimossi ${targetExercises.length} esercizi da "${dayName}" solo per la Settimana ${weekNum}. Le altre ${totalWeeks - 1} settimane sono rimaste invariate.`
+    );
+  };
+
+  const confirmDeleteDayAllWeeks = (dayName: string) => {
+    const dayExercises = exercises.filter((ex) => (ex.day_name || 'Giorno A') === dayName);
+    const dayIndex = daysList.indexOf(dayName);
+
+    const record: DeletedDayRecord = {
+      id: `del-day-all-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      dayName,
+      scope: 'all_weeks',
+      exercises: JSON.parse(JSON.stringify(dayExercises)),
+      dayIndex: dayIndex >= 0 ? dayIndex : daysList.length - 1,
+      deletedAt: Date.now(),
+    };
+
+    // Rimuovi il giorno e tutti i suoi esercizi da tutte le settimane
+    setExercises((prev) => prev.filter((ex) => (ex.day_name || 'Giorno A') !== dayName));
+    const nextDays = daysList.filter((d) => d !== dayName);
+    setDaysList(nextDays);
+    setActiveDay(nextDays[0] || 'Giorno A');
+
+    // Aggiungi alla cronologia giorni eliminati
+    setDeletedDaysHistory((prev) => [record, ...prev]);
+
+    // Mostra banner di ripristino rapido (10 secondi)
+    if (undoBanner?.timerId) {
+      clearTimeout(undoBanner.timerId);
+    }
+    const timer = setTimeout(() => {
+      setUndoBanner(null);
+    }, 10000);
+
+    setUndoBanner({ record, timerId: timer });
+    setDayToDeletePrompt(null);
+
+    showSuccess(
+      'Giorno Eliminato da Tutto il Programma',
+      `"${dayName}" e ${dayExercises.length} esercizi rimossi da tutte le ${totalWeeks} settimane.`
+    );
   };
 
   const restoreDay = (record: DeletedDayRecord) => {
@@ -974,7 +1495,44 @@ ${result.regole_adattamento || '-'}
     }
     setUndoBanner(null);
 
-    // Se il giorno esiste già nella scheda (es. è stato ricreato), usa suffisso
+    if (record.scope === 'single_week' && record.weekNumber) {
+      // Ripristino per singola settimana
+      let targetName = record.dayName;
+      if (!daysList.includes(targetName)) {
+        const newDaysList = [...daysList];
+        const insertIndex = Math.min(record.dayIndex, newDaysList.length);
+        newDaysList.splice(insertIndex, 0, targetName);
+        setDaysList(newDaysList);
+      }
+
+      const restoredExercises = record.exercises.map((ex, idx) => ({
+        ...ex,
+        day_name: targetName,
+        week_number: record.weekNumber,
+        id: `restored-w-ex-${Date.now()}-${idx}`,
+      }));
+
+      // Rimuovi eventuali duplicati prima di aggiungere
+      setExercises((prev) => [
+        ...prev.filter(
+          (ex) => !((ex.week_number || 1) === record.weekNumber && (ex.day_name || 'Giorno A') === targetName)
+        ),
+        ...restoredExercises,
+      ]);
+
+      setActiveWeek(record.weekNumber);
+      setActiveDay(targetName);
+      setDeletedDaysHistory((prev) => prev.filter((d) => d.id !== record.id));
+      setIsRestoreDropdownOpen(false);
+
+      showSuccess(
+        'Giorno Ripristinato',
+        `"${targetName}" è stato ripristinato nella Settimana ${record.weekNumber} con ${record.exercises.length} esercizi.`
+      );
+      return;
+    }
+
+    // Ripristino globale su tutte le settimane
     let targetName = record.dayName;
     if (daysList.includes(targetName)) {
       targetName = `${record.dayName} (Ripristinato)`;
@@ -993,15 +1551,15 @@ ${result.regole_adattamento || '-'}
       id: `restored-d-ex-${Date.now()}-${idx}`,
     }));
 
-    setExercises(prev => [...prev, ...restoredExercises]);
+    setExercises((prev) => [...prev, ...restoredExercises]);
     setActiveDay(targetName);
 
     // Rimuovi dal registro eliminati
-    setDeletedDaysHistory(prev => prev.filter(d => d.id !== record.id));
+    setDeletedDaysHistory((prev) => prev.filter((d) => d.id !== record.id));
     setIsRestoreDropdownOpen(false);
 
     showSuccess(
-      'Giorno Ripristinato',
+      'Giorno Ripristinato in Tutto il Programma',
       `"${targetName}" è stato ripristinato con tutti i suoi ${record.exercises.length} esercizi.`
     );
   };
@@ -1020,7 +1578,6 @@ ${result.regole_adattamento || '-'}
     const next = [...exercises];
     next.splice(globalIndex + 1, 0, cloned);
     setExercises(next);
-    setExpandedExerciseIndex(globalIndex + 1);
     showSuccess('Esercizio Duplicato', `"${cloned.name}" aggiunto alla seduta.`);
   };
 
@@ -1068,6 +1625,11 @@ ${result.regole_adattamento || '-'}
 
     setIsSaving(true);
 
+    const exercisesToSave = validExercises.map((ex) => ({
+      ...ex,
+      notes: encodeGroupTagInNotes(ex.notes, ex.group_tag),
+    }));
+
     try {
       if (initialWorkout) {
         if (athleteId && initialWorkout.is_template) {
@@ -1076,7 +1638,7 @@ ${result.regole_adattamento || '-'}
             initialWorkout.id,
             athleteId,
             { title, description, total_weeks: totalWeeks, estimated_duration_minutes: estimatedTime.display },
-            validExercises
+            exercisesToSave
           );
           if (!success) throw new Error(error);
           showSuccess('Copia locale creata e assegnata all\'atleta con successo!');
@@ -1088,7 +1650,7 @@ ${result.regole_adattamento || '-'}
           const { success, error } = await updateWorkoutTemplate(
             initialWorkout.id,
             { title, description, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display },
-            validExercises
+            exercisesToSave
           );
           if (!success) throw new Error(error);
 
@@ -1103,7 +1665,7 @@ ${result.regole_adattamento || '-'}
         // Creazione nuova scheda
         const { success, error, workoutId } = await createWorkoutTemplate(
           { title, description, is_template: !athleteId, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display }, 
-          validExercises
+          exercisesToSave
         );
 
         if (!success) throw new Error(error);
@@ -1128,8 +1690,8 @@ ${result.regole_adattamento || '-'}
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4">
-      <div className="w-full max-w-[1520px] bg-[#090d14] border border-slate-800 rounded-3xl shadow-2xl flex flex-col h-[95vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#090d14] w-screen h-screen overflow-hidden">
+      <div className="w-full h-full flex flex-col overflow-hidden bg-[#090d14]">
         
         {/* Header */}
         <div className="flex items-center justify-between p-5 sm:p-6 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-[#0d121c] to-[#090d14]">
@@ -1561,14 +2123,37 @@ ${result.regole_adattamento || '-'}
                 )}
 
                 {totalWeeks > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => deleteWeek(activeWeek)}
-                    className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                    title={`Elimina Settimana ${activeWeek}`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Preseleziona le settimane vuote (0 es.) se presenti, senza selezionarle tutte
+                        const emptyWeeks = Array.from({ length: totalWeeks }, (_, idx) => idx + 1).filter(
+                          (w) => exercises.filter((e) => (e.week_number || 1) === w).length === 0
+                        );
+                        if (emptyWeeks.length > 0 && emptyWeeks.length < totalWeeks) {
+                          setSelectedWeeksToDelete(emptyWeeks);
+                        } else {
+                          setSelectedWeeksToDelete([]);
+                        }
+                        setIsBulkDeleteWeeksModalOpen(true);
+                      }}
+                      className="px-2.5 py-1 text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm"
+                      title="Elimina più settimane contemporaneamente"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Elimina Settimane</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => deleteWeek(activeWeek)}
+                      className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                      title={`Elimina solo Settimana ${activeWeek}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1618,6 +2203,42 @@ ${result.regole_adattamento || '-'}
                     >
                       {countEx} es.
                     </span>
+
+                    {/* Frecce veloci per scambiare / invertire la settimana */}
+                    {totalWeeks > 1 && isCurrent && (
+                      <div className="flex items-center gap-0.5 ml-1 pl-1 border-l border-black/30">
+                        {wNum > 1 && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              swapWeeks(wNum, wNum - 1);
+                              setActiveWeek(wNum - 1);
+                            }}
+                            className="p-0.5 hover:bg-black/20 text-slate-950 rounded transition-colors"
+                            title={`Scambia Settimana ${wNum} con Settimana ${wNum - 1}`}
+                          >
+                            <ChevronLeft className="w-3 h-3" />
+                          </span>
+                        )}
+                        {wNum < totalWeeks && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              swapWeeks(wNum, wNum + 1);
+                              setActiveWeek(wNum + 1);
+                            }}
+                            className="p-0.5 hover:bg-black/20 text-slate-950 rounded transition-colors"
+                            title={`Scambia Settimana ${wNum} con Settimana ${wNum + 1}`}
+                          >
+                            <ChevronRight className="w-3 h-3" />
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -1639,9 +2260,9 @@ ${result.regole_adattamento || '-'}
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
                 <span className="text-[11px] font-bold text-slate-400 mr-1">Giorni:</span>
                 {daysList.map((dName, dIdx) => {
-                  const isCurrentDay = activeDay === dName;
+                  const isCurrentDay = activeDay.trim().toLowerCase() === dName.trim().toLowerCase();
                   const exCountDay = exercises.filter(
-                    e => (e.week_number || 1) === activeWeek && (e.day_name || 'Giorno A') === dName
+                    e => (e.week_number || 1) === activeWeek && (e.day_name || 'Giorno A').trim().toLowerCase() === dName.trim().toLowerCase()
                   ).length;
 
                   // Calcolo avanzamento giorno per la settimana attiva
@@ -1862,7 +2483,33 @@ ${result.regole_adattamento || '-'}
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-2 sm:mt-0">
+              <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-wrap">
+                {/* Toggle Vista Compatta Scheda */}
+                <button
+                  type="button"
+                  onClick={() => setIsCompactMode(prev => !prev)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border cursor-pointer min-h-[36px] sm:min-h-0 ${
+                    isCompactMode
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm font-black'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
+                  }`}
+                  title="Attiva/disattiva la vista compatta ad alta densità per compilare rapidamente le schede senza scroll eccessivo"
+                >
+                  <Sliders className={`w-3.5 h-3.5 ${isCompactMode ? 'text-amber-400' : 'text-slate-400'}`} />
+                  <span>{isCompactMode ? 'Vista Compatta: ON' : 'Vista Compatta'}</span>
+                </button>
+
+                {currentWeekDayExercises.length >= 2 && (
+                  <button
+                    type="button"
+                    onClick={invertExercisesOrderInDay}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors border border-slate-700 shadow-sm cursor-pointer min-h-[36px] sm:min-h-0"
+                    title="Inverti l'ordine di tutti gli esercizi di questo giorno (es. da 1..N a N..1)"
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Inverti Ordine</span>
+                  </button>
+                )}
                 <button 
                   onClick={fetchAiSuggestions}
                   disabled={aiSuggestionsLoading}
@@ -1952,482 +2599,642 @@ ${result.regole_adattamento || '-'}
             )}
 
             {currentWeekDayExercises.length === 0 ? (
-              <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-xl p-8 text-center">
-                <p className="text-sm text-slate-400 mb-3">Nessun esercizio inserito per {activeDay} nella Settimana {activeWeek}.</p>
+              <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-10 text-center">
+                <p className="text-sm text-slate-400 mb-3 font-medium">Nessun esercizio inserito per {activeDay} nella Settimana {activeWeek}.</p>
                 <button
                   type="button"
                   onClick={addExercise}
-                  className="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer"
+                  className="px-5 py-2.5 bg-[var(--color-primary)] text-black text-xs font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors cursor-pointer shadow-md"
                 >
                   + Inserisci Primo Esercizio
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
-                {exercises.map((ex, globalIdx) => {
-                  if ((ex.week_number || 1) !== activeWeek || (ex.day_name || 'Giorno A') !== activeDay) {
-                    return null;
-                  }
+              <div className="w-full overflow-x-auto pb-4">
+                <div className="min-w-[1180px] space-y-2">
+                  {/* INTESTAZIONE TABELLA COLONNE */}
+                  <div className="grid grid-cols-[minmax(260px,2fr)_120px_64px_95px_85px_85px_70px_70px_85px_minmax(180px,1.5fr)_155px] gap-2 px-3.5 py-2 text-[10px] font-black text-slate-400 uppercase tracking-wider bg-slate-950/70 border border-slate-800/90 rounded-xl items-center select-none shadow-sm">
+                    <div>ESERCIZIO</div>
+                    <div>TIPO</div>
+                    <div className="text-center">SERIE</div>
+                    <div className="text-center">RIP / TEMPO</div>
+                    <div className="text-center">REC</div>
+                    <div className="text-center">PESO (KG)</div>
+                    <div className="text-center">RPE</div>
+                    <div className="text-center">RIR</div>
+                    <div className="text-center">TUT</div>
+                    <div>NOTE</div>
+                    <div className="text-right pr-2">AZIONI</div>
+                  </div>
 
-                  const isExpanded = expandedExerciseIndex === globalIdx;
+                  {/* RIGHE ESERCIZI CON CALCOLO SUPER SERIE / CIRCUITI */}
+                  {(() => {
+                    const currentDayIndices = exercises.reduce<number[]>((acc, e, i) => {
+                      if (
+                        (e.week_number || 1) === activeWeek && 
+                        (e.day_name || 'Giorno A').trim().toLowerCase() === activeDay.trim().toLowerCase()
+                      ) {
+                        acc.push(i);
+                      }
+                      return acc;
+                    }, []);
 
-                  return (
-                    <div 
-                      key={globalIdx} 
-                      className={`bg-slate-900 border rounded-2xl transition-all overflow-hidden ${isExpanded ? 'border-[var(--color-primary)]/60 shadow-lg shadow-[var(--color-primary)]/5' : 'border-slate-800 hover:border-slate-700'}`}
-                    >
-                      {/* LIVELLO B: Intestazione Esercizio & Parametri Primari */}
-                      <div className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-800/40">
-                        <div className="flex items-center gap-2 flex-1 w-full">
-                          <div className="cursor-move text-slate-500 hover:text-white p-1.5 hover:bg-slate-700/50 rounded-lg transition-colors hidden sm:flex items-center justify-center shrink-0">
-                            <GripVertical className="w-4 h-4" />
-                          </div>
-                          
-                          <div className="flex-1 space-y-1">
-                            <input
-                              type="text"
-                              placeholder="Nome esercizio (es. Panca Piana o Riccio Squat)"
-                              value={ex.name || ''}
-                              onChange={e => {
-                                const val = e.target.value;
-                                const matched = libraryExercises.find(libEx => libEx.name.trim().toLowerCase() === val.trim().toLowerCase());
-                                if (matched && matched.instructions) {
-                                  updateExerciseFields(globalIdx, { name: val, notes: matched.instructions });
-                                } else {
-                                  updateExerciseFields(globalIdx, { name: val });
-                                }
-                              }}
-                              list="exercises-library-list"
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm font-bold text-white focus:outline-none focus:border-[var(--color-primary)]"
-                            />
+                    const currentDayExercises = currentDayIndices.map(idx => exercises[idx]);
+                    const dayGroupInfos = computeDayExerciseGroups(currentDayExercises);
 
-                            {/* Badge & Azione Rapida se Esercizio Personalizzato non presente nella Libreria */}
-                            {ex.name && ex.name.trim().length > 1 && !libraryExercises.some(libEx => libEx.name.trim().toLowerCase() === ex.name!.trim().toLowerCase()) && (
-                              <div className="flex items-center justify-between gap-2 pt-1 flex-wrap animate-in fade-in duration-150">
-                                <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 flex items-center gap-1">
-                                  <Sparkles className="w-3 h-3 text-amber-400" />
-                                  Esercizio personalizzato (incluso nella programmazione)
+                    return exercises.map((ex, globalIdx) => {
+                      if (
+                        (ex.week_number || 1) !== activeWeek || 
+                        (ex.day_name || 'Giorno A').trim().toLowerCase() !== activeDay.trim().toLowerCase()
+                      ) {
+                        return null;
+                      }
+
+                      const posInDay = currentDayIndices.indexOf(globalIdx);
+                      const totalInDay = currentDayIndices.length;
+                      const groupInfo = dayGroupInfos[posInDay] || {
+                        label: indexToLetter(posInDay),
+                        baseLetter: indexToLetter(posInDay),
+                        isGrouped: false,
+                        groupSize: 1,
+                        positionInGroup: 0,
+                        isFirstInGroup: true,
+                        isLastInGroup: true,
+                        groupType: 'single' as const,
+                      };
+
+                      const isDragging = draggedExerciseGlobalIndex === globalIdx;
+                      const isDragOver = dragOverExerciseGlobalIndex === globalIdx && !isDragging;
+                      const isProgressionOpen = activeProgressionExerciseIndex === globalIdx;
+
+                      const workMode: 'reps' | 'minutes' | 'seconds' = !ex.is_time_based
+                        ? 'reps'
+                        : (ex.reps_target && ex.reps_target.includes('min')) || (ex.duration_seconds && ex.duration_seconds >= 60 && ex.duration_seconds % 30 === 0 && !ex.reps_target?.includes('s'))
+                        ? 'minutes'
+                        : 'seconds';
+
+                      return (
+                        <React.Fragment key={globalIdx}>
+                          {/* BANNER RAGGRUPPAMENTO SUPER SERIE / CIRCUITO (MOSTRATO SOPRA IL PRIMO ELEMENTO DEL BLOCCO) */}
+                          {groupInfo.isFirstInGroup && groupInfo.isGrouped && (
+                            <div className={`flex items-center justify-between px-3.5 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider shadow-sm mt-3 mb-1 ${
+                              groupInfo.groupType === 'superset'
+                                ? 'bg-purple-950/40 border-purple-800/60 text-purple-300'
+                                : 'bg-cyan-950/40 border-cyan-800/60 text-cyan-300'
+                            }`}>
+                              <div className="flex items-center gap-2">
+                                {groupInfo.groupType === 'superset' ? (
+                                  <Layers className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                ) : (
+                                  <Repeat className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                )}
+                                <span>
+                                  {groupInfo.groupType === 'superset' ? 'Super Serie' : 'Circuito'} {groupInfo.baseLetter} ({groupInfo.groupSize} Esercizi a rotazione continua)
                                 </span>
-
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const res = await createExercise({
-                                      name: ex.name!.trim(),
-                                      category: 'Altro',
-                                      equipment: 'Corpo Libero',
-                                    });
-                                    if (res.success) {
-                                      showSuccess('Aggiunto alla Libreria!', `"${ex.name}" è ora salvato anche nella libreria generale.`);
-                                    } else {
-                                      showError('Impossibile salvare in libreria: ' + (res.error || ''));
-                                    }
-                                  }}
-                                  className="text-[10px] font-black text-amber-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-0.5 rounded-lg border border-slate-600 transition-colors flex items-center gap-1 cursor-pointer"
-                                  title="Salva questo esercizio anche nel catalogo/database generale"
-                                >
-                                  <Plus className="w-3 h-3" />
-                                  <span>Salva in Libreria Esercizi</span>
-                                </button>
                               </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Parametri di base in riga */}
-                        {ex.progression_rule_id ? (
-                          /* SE PROGRESSIONE ATTIVA: Mostra badge integrato elegante del target della settimana corrente */
-                          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-950/50 border border-cyan-500/30 rounded-xl text-xs font-bold text-cyan-300 shadow-sm">
-                              <Zap className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                              <span className="text-cyan-400 font-extrabold">Settimana {activeWeek}:</span>
-                              <span className="text-white">{ex.sets || 3} Set</span>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-white">{ex.is_time_based ? (ex.reps_target?.includes('min') ? ex.reps_target : (ex.duration_seconds && ex.duration_seconds >= 60 ? `${(ex.duration_seconds / 60).toFixed(1).replace('.0', '')} min` : `${ex.duration_seconds || 45}s`)) : `${ex.reps_target || '8-10'} Rep`}</span>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-amber-400 font-black">{ex.target_weight ? `${ex.target_weight} kg` : 'Progressione'}</span>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-slate-300">{ex.rest_seconds || 90}s Rec</span>
-                            </div>
-
-                            {/* Duplica Singolo Esercizio */}
-                            <button
-                              type="button"
-                              onClick={() => duplicateExercise(globalIdx)}
-                              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-700 cursor-pointer"
-                              title="Duplica questo esercizio"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* Toggle Espansione Dettagli (Note / Alternativo) */}
-                            <button
-                              type="button"
-                              onClick={() => setExpandedExerciseIndex(isExpanded ? null : globalIdx)}
-                              className={`p-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isExpanded ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-                              title="Mostra note tecniche ed esercizio alternativo"
-                            >
-                              <Sliders className="w-4 h-4" />
-                            </button>
-
-                            {/* Elimina Esercizio */}
-                            <button
-                              type="button"
-                              onClick={() => removeExercise(globalIdx)}
-                              className="p-2 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors rounded-lg cursor-pointer"
-                              title="Elimina esercizio"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          /* SE NESSUNA PROGRESSIONE (MODALITÀ MANUALE FISSA): Mostra i campi di input modificabili standard */
-                          <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-end mt-2 sm:mt-0">
-                            {/* Toggle Tipo Lavoro: Reps vs Minuti vs Secondi */}
-                            {(() => {
-                              const workMode: 'reps' | 'minutes' | 'seconds' = !ex.is_time_based
-                                ? 'reps'
-                                : (ex.reps_target && ex.reps_target.includes('min')) || (ex.duration_seconds && ex.duration_seconds >= 60 && ex.duration_seconds % 30 === 0 && !ex.reps_target?.includes('s'))
-                                ? 'minutes'
-                                : 'seconds';
-
-                              const cycleMode = () => {
-                                if (workMode === 'reps') {
-                                  // Da Reps a Minuti
-                                  const prev = parseFloat(ex.reps_target || '') || 1;
-                                  const mins = prev > 10 ? 1 : prev;
-                                  updateExerciseFields(globalIdx, {
-                                    is_time_based: true,
-                                    duration_seconds: Math.round(mins * 60),
-                                    reps_target: `${mins} min`,
-                                  });
-                                } else if (workMode === 'minutes') {
-                                  // Da Minuti a Secondi
-                                  const secs = ex.duration_seconds || 45;
-                                  updateExerciseFields(globalIdx, {
-                                    is_time_based: true,
-                                    duration_seconds: secs,
-                                    reps_target: `${secs}s`,
-                                  });
-                                } else {
-                                  // Da Secondi a Reps
-                                  updateExerciseFields(globalIdx, {
-                                    is_time_based: false,
-                                    reps_target: '10-12',
-                                  });
-                                }
-                              };
-
-                              return (
-                                <>
-                                  {/* Bottone Ciclo Unità: Reps / Minuti / Secondi */}
+                              <div className="flex items-center gap-3">
+                                {posInDay + groupInfo.groupSize < currentDayIndices.length && (
                                   <button
                                     type="button"
-                                    onClick={cycleMode}
-                                    className={`p-2 rounded-lg text-xs font-bold flex items-center gap-1 border transition-colors cursor-pointer ${
-                                      workMode === 'minutes'
-                                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 shadow-sm'
-                                        : workMode === 'seconds'
-                                        ? 'bg-sky-500/15 text-sky-300 border-sky-500/40 shadow-sm'
-                                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                                    }`}
-                                    title="Clicca per alternare: Ripetizioni (Reps) ➔ Minuti (Min) ➔ Secondi (Sec)"
+                                    tabIndex={-1}
+                                    onClick={() => linkWithNextExercise(currentDayIndices[posInDay + groupInfo.groupSize - 1])}
+                                    className="hover:underline flex items-center gap-1 text-slate-300 hover:text-white cursor-pointer"
+                                    title="Aggiungi il prossimo esercizio a questo circuito"
                                   >
-                                    {workMode === 'minutes' ? (
-                                      <>
-                                        <Clock className="w-3.5 h-3.5 text-amber-400" />
-                                        <span>Minuti</span>
-                                      </>
-                                    ) : workMode === 'seconds' ? (
-                                      <>
-                                        <Clock className="w-3.5 h-3.5 text-sky-400" />
-                                        <span>Secondi</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Repeat className="w-3.5 h-3.5 text-slate-400" />
-                                        <span>Reps</span>
-                                      </>
-                                    )}
+                                    <Plus className="w-3 h-3" />
+                                    <span>Aggiungi al Circuito</span>
                                   </button>
-
-                                  {/* Sets */}
-                                  <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
-                                    <span className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2">Set</span>
-                                    <input
-                                      type="number"
-                                      value={ex.sets === 0 ? '' : (ex.sets || 3)}
-                                      onChange={e => updateExercise(globalIdx, 'sets', e.target.value === '' ? 0 : (parseInt(e.target.value) || 1))}
-                                      className="w-12 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
-                                      min="1"
-                                    />
-                                  </div>
-
-                                  {/* Target Reps / Minuti / Secondi */}
-                                  {workMode === 'minutes' ? (
-                                    <div className="flex items-center border border-amber-500/40 rounded-lg overflow-hidden bg-slate-950 ring-1 ring-amber-500/20">
-                                      <button
-                                        type="button"
-                                        onClick={cycleMode}
-                                        className="px-2 text-[10px] text-amber-300 font-black uppercase bg-amber-500/20 py-2 hover:bg-amber-500/30 transition-colors cursor-pointer"
-                                        title="Cambia unità: Reps / Min / Sec"
-                                      >
-                                        Min
-                                      </button>
-                                      <input
-                                        type="text"
-                                        placeholder="1"
-                                        value={
-                                          ex.reps_target?.includes('min')
-                                            ? ex.reps_target.replace('min', '').trim()
-                                            : ex.duration_seconds
-                                            ? (ex.duration_seconds / 60).toString()
-                                            : '1'
-                                        }
-                                        onChange={e => {
-                                          const val = e.target.value;
-                                          const num = parseFloat(val) || 0;
-                                          updateExerciseFields(globalIdx, {
-                                            is_time_based: true,
-                                            duration_seconds: Math.round(num * 60),
-                                            reps_target: `${val} min`,
-                                          });
-                                        }}
-                                        className="w-16 px-1 py-1.5 bg-transparent text-xs text-amber-200 font-black text-center focus:outline-none"
-                                      />
-                                    </div>
-                                  ) : workMode === 'seconds' ? (
-                                    <div className="flex items-center border border-sky-500/40 rounded-lg overflow-hidden bg-slate-950 ring-1 ring-sky-500/20">
-                                      <button
-                                        type="button"
-                                        onClick={cycleMode}
-                                        className="px-2 text-[10px] text-sky-300 font-black uppercase bg-sky-500/20 py-2 hover:bg-sky-500/30 transition-colors cursor-pointer"
-                                        title="Cambia unità: Reps / Min / Sec"
-                                      >
-                                        Sec
-                                      </button>
-                                      <input
-                                        type="number"
-                                        placeholder="45"
-                                        value={ex.duration_seconds === 0 ? '' : (ex.duration_seconds || 45)}
-                                        onChange={e => {
-                                          const num = e.target.value === '' ? 0 : (parseInt(e.target.value) || 0);
-                                          updateExerciseFields(globalIdx, {
-                                            is_time_based: true,
-                                            duration_seconds: num,
-                                            reps_target: `${num}s`,
-                                          });
-                                        }}
-                                        className="w-14 px-1 py-1.5 bg-transparent text-xs text-sky-200 font-black text-center focus:outline-none"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
-                                      <button
-                                        type="button"
-                                        onClick={cycleMode}
-                                        className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2 hover:bg-slate-700 hover:text-white transition-colors cursor-pointer"
-                                        title="Cambia unità: Reps / Min / Sec"
-                                      >
-                                        Rep
-                                      </button>
-                                      <input
-                                        type="text"
-                                        placeholder="8-10"
-                                        value={ex.reps_target || ''}
-                                        onChange={e => updateExercise(globalIdx, 'reps_target', e.target.value)}
-                                        className="w-16 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
-                                      />
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            })()}
-
-                            {/* Target Carico (kg) */}
-                            <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
-                              <span className="px-2 text-[10px] text-sky-400 font-bold uppercase bg-slate-800 py-2">Kg</span>
-                              <input
-                                type="number"
-                                step="0.5"
-                                placeholder="60"
-                                value={ex.target_weight || ''}
-                                onChange={e => updateExercise(globalIdx, 'target_weight', e.target.value)}
-                                className="w-14 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
-                              />
+                                )}
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  onClick={() => unlinkEntireGroup(groupInfo.groupTag)}
+                                  className="hover:underline flex items-center gap-1 text-rose-400 hover:text-rose-300 cursor-pointer"
+                                  title="Separa tutti gli esercizi di questo gruppo in singoli"
+                                >
+                                  <Unlink2 className="w-3 h-3" />
+                                  <span>Scollega Gruppo</span>
+                                </button>
+                              </div>
                             </div>
+                          )}
 
-                            {/* Rest Seconds */}
-                            <div className="flex items-center border border-slate-700 rounded-lg overflow-hidden bg-slate-950">
-                              <span className="px-2 text-[10px] text-slate-400 font-bold uppercase bg-slate-800 py-2">Rec</span>
-                              <input
-                                type="number"
-                                placeholder="60"
-                                value={ex.rest_seconds || 60}
-                                onChange={e => updateExercise(globalIdx, 'rest_seconds', parseInt(e.target.value) || 0)}
-                                className="w-12 px-1 py-1.5 bg-transparent text-xs text-white font-bold text-center focus:outline-none"
-                              />
-                            </div>
-
-                            {/* Duplica Singolo Esercizio */}
-                            <button
-                              type="button"
-                              onClick={() => duplicateExercise(globalIdx)}
-                              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-700 cursor-pointer"
-                              title="Duplica questo esercizio"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* Toggle Espansione Parametri Avanzati */}
-                            <button
-                              type="button"
-                              onClick={() => setExpandedExerciseIndex(isExpanded ? null : globalIdx)}
-                              className={`p-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isExpanded ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-                              title="Mostra parametri avanzati (RIR, TUT, Note)"
-                            >
-                              <Sliders className="w-4 h-4" />
-                            </button>
-
-                            {/* Elimina Esercizio */}
-                            <button
-                              type="button"
-                              onClick={() => removeExercise(globalIdx)}
-                              className="p-2 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors rounded-lg cursor-pointer"
-                              title="Elimina esercizio"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* LIVELLO C: Progressione Contestuale Separata */}
-                      {ex.name && (
-                        <div className="px-4 pb-3 bg-slate-800/20">
-                          <ExerciseProgressionControl
-                            exercise={ex}
-                            exerciseIndex={globalIdx}
-                            athleteId={athleteId}
-                            athleteName={currentAthlete?.fullName}
-                            programId={initialWorkout?.id}
-                            programName={title}
-                            onUpdateExercise={(fields) => updateExerciseFields(globalIdx, fields)}
-                          />
-                        </div>
-                      )}
-
-                      {/* Advanced Fields Section (Expanded) */}
-                      {isExpanded && (
-                        <div className="p-4 bg-slate-950/80 border-t border-slate-800 space-y-3">
-                          {ex.progression_rule_id ? (
-                            <>
-                              <div className="flex items-center gap-2 p-2.5 bg-cyan-950/30 border border-cyan-800/40 rounded-xl text-cyan-300 text-xs font-semibold">
-                                <Zap className="w-4 h-4 text-cyan-400 shrink-0" />
-                                <span>Carico, ripetizioni, RIR e parametri di questa scheda sono automatizzati dalla progressione settimanale attiva.</span>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {/* Esercizio Alternativo */}
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Esercizio Alternativo</label>
-                                  <input
-                                    type="text"
-                                    placeholder="es. Leg Press se occupato"
-                                    value={ex.alternative_exercise || ''}
-                                    onChange={e => updateExercise(globalIdx, 'alternative_exercise', e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-[var(--color-primary)]"
-                                  />
-                                </div>
-
-                                {/* Note Tecniche */}
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Note Tecniche per l'Atleta</label>
-                                  <input
-                                    type="text"
-                                    placeholder="es. Fermo al petto di 1 secondo, discesa controllata"
-                                    value={ex.notes || ''}
-                                    onChange={e => updateExercise(globalIdx, 'notes', e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-[var(--color-primary)]"
-                                  />
-                                </div>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                                {/* Carico Target */}
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Carico Target / Peso</label>
-                                  <input
-                                    type="text"
-                                    placeholder="es. 80 kg o 75% 1RM"
-                                    value={ex.target_weight || ''}
-                                    onChange={e => updateExercise(globalIdx, 'target_weight', e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-[var(--color-primary)] font-bold focus:outline-none focus:border-[var(--color-primary)]"
-                                  />
-                                </div>
-
-                                {/* RIR / RPE */}
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">RIR / RPE Target</label>
-                                  <input
-                                    type="text"
-                                    placeholder="es. RIR 2 o RPE 8"
-                                    value={ex.rir_target || ''}
-                                    onChange={e => updateExercise(globalIdx, 'rir_target', e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-bold focus:outline-none focus:border-[var(--color-primary)]"
-                                  />
-                                </div>
-
-                                {/* TUT (Time Under Tension) */}
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">TUT (Tempo Esecuzione)</label>
-                                  <input
-                                    type="text"
-                                    placeholder="es. 3-0-1-0"
-                                    value={ex.tut || ''}
-                                    onChange={e => updateExercise(globalIdx, 'tut', e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-[var(--color-primary)]"
-                                  />
-                                </div>
-
-                                {/* Esercizio Alternativo */}
-                                <div>
-                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Esercizio Alternativo</label>
-                                  <input
-                                    type="text"
-                                    placeholder="es. Leg Press se occupato"
-                                    value={ex.alternative_exercise || ''}
-                                    onChange={e => updateExercise(globalIdx, 'alternative_exercise', e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-[var(--color-primary)]"
-                                  />
-                                </div>
+                          <div 
+                            draggable={true}
+                            onDragStart={(e) => handleExerciseDragStart(globalIdx, e)}
+                            onDragOver={(e) => handleExerciseDragOver(globalIdx, e)}
+                            onDrop={(e) => handleExerciseDrop(globalIdx, e)}
+                            onDragEnd={handleExerciseDragEnd}
+                            className={`grid grid-cols-[minmax(260px,2fr)_120px_64px_95px_85px_85px_70px_70px_85px_minmax(180px,1.5fr)_155px] gap-2 px-3 py-2.5 rounded-xl border transition-all items-center ${
+                              isDragging 
+                                ? 'opacity-40 border-amber-500 bg-amber-500/5' 
+                                : isDragOver
+                                ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-slate-800/80'
+                                : isProgressionOpen
+                                ? 'bg-slate-900 border-cyan-500/60 shadow-lg shadow-cyan-500/5'
+                                : groupInfo.isGrouped
+                                ? groupInfo.groupType === 'superset'
+                                  ? 'bg-purple-950/15 border-purple-900/50 border-l-4 border-l-purple-500 hover:border-purple-700/70 shadow-sm'
+                                  : 'bg-cyan-950/15 border-cyan-900/50 border-l-4 border-l-cyan-500 hover:border-cyan-700/70 shadow-sm'
+                                : ex.progression_rule_id
+                                ? 'bg-slate-900/90 border-cyan-900/50 hover:border-cyan-700/60'
+                                : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            {/* 1. ESERCIZIO: Grip + Lettera Gruppo + Frecce + Nome */}
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {/* Grip handle */}
+                              <div 
+                                className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-white p-0.5 hover:bg-slate-800 rounded transition-colors shrink-0"
+                                title="Trascina per riordinare"
+                              >
+                                <GripVertical className="w-3.5 h-3.5" />
                               </div>
 
-                              {/* Note Tecniche */}
-                              <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Note Tecniche per l'Atleta</label>
+                              {/* Lettera Ordine / Gruppo: A, B1, B2, C... */}
+                              <span 
+                                className={`w-7 h-6 rounded-md text-xs font-black flex items-center justify-center font-mono border shrink-0 shadow-sm ${
+                                  groupInfo.isGrouped
+                                    ? groupInfo.groupType === 'superset'
+                                      ? 'bg-purple-500/25 text-purple-300 border-purple-500/60 shadow-[0_0_8px_rgba(168,85,247,0.2)]'
+                                      : 'bg-cyan-500/25 text-cyan-300 border-cyan-500/60 shadow-[0_0_8px_rgba(6,182,212,0.2)]'
+                                    : 'bg-slate-800/90 text-amber-400 border-slate-700/80'
+                                }`}
+                                title={`Esercizio ${groupInfo.label}${groupInfo.isGrouped ? ` (${groupInfo.groupType === 'superset' ? 'Super Serie' : 'Circuito'})` : ''}`}
+                              >
+                                {groupInfo.label}
+                              </span>
+
+                              {/* Frecce veloci Sposta Su / Giù */}
+                              {totalInDay > 1 && (
+                                <div className="flex flex-col gap-0.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    tabIndex={-1}
+                                    disabled={posInDay === 0}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      moveExerciseWithinDay(globalIdx, 'up');
+                                    }}
+                                    className="p-0.5 text-slate-500 hover:text-white disabled:opacity-20 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                                    title="Sposta esercizio prima (su)"
+                                  >
+                                    <ArrowUp className="w-2.5 h-2.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    tabIndex={-1}
+                                    disabled={posInDay === totalInDay - 1}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      moveExerciseWithinDay(globalIdx, 'down');
+                                    }}
+                                    className="p-0.5 text-slate-500 hover:text-white disabled:opacity-20 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                                    title="Sposta esercizio dopo (giù)"
+                                  >
+                                    <ArrowDown className="w-2.5 h-2.5" />
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Input Nome Esercizio */}
+                              <div className="flex-1 min-w-0 relative">
                                 <input
                                   type="text"
-                                  placeholder="es. Fermo al petto di 1 secondo, discesa controllata"
-                                  value={ex.notes || ''}
-                                  onChange={e => updateExercise(globalIdx, 'notes', e.target.value)}
-                                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-[var(--color-primary)]"
+                                  placeholder="es. Panca Piana"
+                                  value={ex.name || ''}
+                                  onKeyDown={handleNumericKeyDown}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    const matched = libraryExercises.find(libEx => libEx.name.trim().toLowerCase() === val.trim().toLowerCase());
+                                    if (matched && matched.instructions) {
+                                      updateExerciseFields(globalIdx, { name: val, notes: matched.instructions });
+                                    } else {
+                                      updateExerciseFields(globalIdx, { name: val });
+                                    }
+                                  }}
+                                  list="exercises-library-list"
+                                  className="workout-cell-input w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[var(--color-primary)] truncate"
                                 />
+                                {ex.progression_rule_id && (
+                                  <span title="Progressione settimanale attiva" className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    <Zap className="w-3 h-3 text-cyan-400" />
+                                  </span>
+                                )}
                               </div>
-                            </>
+                            </div>
+
+                            {/* 2. TIPO: Ripetizioni / Minuti / Secondi */}
+                            <div>
+                              <select
+                                tabIndex={-1}
+                                value={workMode}
+                                onChange={e => {
+                                  const mode = e.target.value;
+                                  if (mode === 'reps') {
+                                    updateExerciseFields(globalIdx, {
+                                      is_time_based: false,
+                                      reps_target: '10-12',
+                                    });
+                                  } else if (mode === 'minutes') {
+                                    updateExerciseFields(globalIdx, {
+                                      is_time_based: true,
+                                      duration_seconds: 60,
+                                      reps_target: '1 min',
+                                    });
+                                  } else {
+                                    updateExerciseFields(globalIdx, {
+                                      is_time_based: true,
+                                      duration_seconds: 45,
+                                      reps_target: '45s',
+                                    });
+                                  }
+                                }}
+                                className="w-full px-2 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+                              >
+                                <option value="reps">Ripetizioni</option>
+                                <option value="minutes">Minuti (Tempo)</option>
+                                <option value="seconds">Secondi (Tempo)</option>
+                              </select>
+                            </div>
+
+                            {/* 3. SERIE (Sets) */}
+                            <div>
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="3"
+                                value={ex.sets === 0 ? '' : (ex.sets || 3)}
+                                onKeyDown={handleNumericKeyDown}
+                                onChange={e => updateExercise(globalIdx, 'sets', e.target.value === '' ? 0 : (parseInt(e.target.value) || 1))}
+                                className="workout-cell-input w-full px-1.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-bold text-center focus:outline-none focus:border-[var(--color-primary)]"
+                              />
+                            </div>
+
+                            {/* 4. RIP / TEMPO */}
+                            <div>
+                              <input
+                                type="text"
+                                placeholder={workMode === 'reps' ? '10-12' : workMode === 'minutes' ? '1 min' : '45s'}
+                                value={
+                                  ex.is_time_based
+                                    ? (ex.reps_target?.includes('min') ? ex.reps_target : ex.duration_seconds ? `${ex.duration_seconds}s` : ex.reps_target || '45s')
+                                    : (ex.reps_target || '')
+                                }
+                                onKeyDown={handleNumericKeyDown}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  if (ex.is_time_based) {
+                                    if (val.includes('min')) {
+                                      const num = parseFloat(val.replace('min', '')) || 1;
+                                      updateExerciseFields(globalIdx, {
+                                        duration_seconds: Math.round(num * 60),
+                                        reps_target: val,
+                                      });
+                                    } else {
+                                      const num = parseInt(val.replace('s', '')) || 45;
+                                      updateExerciseFields(globalIdx, {
+                                        duration_seconds: num,
+                                        reps_target: val.endsWith('s') ? val : `${val}s`,
+                                      });
+                                    }
+                                  } else {
+                                    updateExercise(globalIdx, 'reps_target', val);
+                                  }
+                                }}
+                                className="workout-cell-input w-full px-1.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-bold text-center focus:outline-none focus:border-[var(--color-primary)]"
+                              />
+                            </div>
+
+                            {/* 5. REC (Recupero) */}
+                            <div>
+                              <input
+                                type="text"
+                                placeholder="01:30"
+                                value={
+                                  ex.rest_seconds !== undefined
+                                    ? ex.rest_seconds >= 60 && ex.rest_seconds % 60 === 0
+                                      ? `${String(Math.floor(ex.rest_seconds / 60)).padStart(2, '0')}:00`
+                                      : ex.rest_seconds >= 60
+                                      ? `${String(Math.floor(ex.rest_seconds / 60)).padStart(2, '0')}:${String(ex.rest_seconds % 60).padStart(2, '0')}`
+                                      : `${ex.rest_seconds}s`
+                                    : '01:00'
+                                }
+                                onKeyDown={handleNumericKeyDown}
+                                onChange={e => {
+                                  const val = e.target.value.trim();
+                                  if (val.includes(':')) {
+                                    const parts = val.split(':');
+                                    const mins = parseInt(parts[0]) || 0;
+                                    const secs = parseInt(parts[1]) || 0;
+                                    updateExercise(globalIdx, 'rest_seconds', mins * 60 + secs);
+                                  } else {
+                                    const secs = parseInt(val.replace('s', '')) || 0;
+                                    updateExercise(globalIdx, 'rest_seconds', secs);
+                                  }
+                                }}
+                                className="workout-cell-input w-full px-1.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-bold text-center focus:outline-none focus:border-[var(--color-primary)]"
+                              />
+                            </div>
+
+                            {/* 6. PESO (Carico Target kg) */}
+                            <div>
+                              <input
+                                type="text"
+                                placeholder="es. 60"
+                                value={ex.target_weight || ''}
+                                onKeyDown={handleNumericKeyDown}
+                                onChange={e => updateExercise(globalIdx, 'target_weight', e.target.value)}
+                                className="workout-cell-input w-full px-1.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-[var(--color-primary)] font-black text-center focus:outline-none focus:border-[var(--color-primary)]"
+                              />
+                            </div>
+
+                            {/* 7. RPE Target */}
+                            <div>
+                              <input
+                                type="text"
+                                placeholder="8"
+                                value={ex.rir_target?.startsWith('RPE') ? ex.rir_target.replace('RPE', '').trim() : ''}
+                                onKeyDown={handleNumericKeyDown}
+                                onChange={e => {
+                                  const val = e.target.value.trim();
+                                  updateExercise(globalIdx, 'rir_target', val ? `RPE ${val}` : '');
+                                }}
+                                className="workout-cell-input w-full px-1.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-bold text-center focus:outline-none focus:border-[var(--color-primary)]"
+                              />
+                            </div>
+
+                            {/* 8. RIR Target */}
+                            <div>
+                              <input
+                                type="text"
+                                placeholder="2"
+                                value={ex.rir_target?.startsWith('RIR') ? ex.rir_target.replace('RIR', '').trim() : (!ex.rir_target?.startsWith('RPE') ? (ex.rir_target || '') : '')}
+                                onKeyDown={handleNumericKeyDown}
+                                onChange={e => {
+                                  const val = e.target.value.trim();
+                                  updateExercise(globalIdx, 'rir_target', val ? (val.toLowerCase().startsWith('rir') ? val : `RIR ${val}`) : '');
+                                }}
+                                className="workout-cell-input w-full px-1.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-bold text-center focus:outline-none focus:border-[var(--color-primary)]"
+                              />
+                            </div>
+
+                            {/* 9. TUT (Tempo) */}
+                            <div>
+                              <input
+                                type="text"
+                                placeholder="3-0-1-0"
+                                value={ex.tut || ''}
+                                onKeyDown={handleNumericKeyDown}
+                                onChange={e => updateExercise(globalIdx, 'tut', e.target.value)}
+                                className="workout-cell-input w-full px-1.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-mono text-center focus:outline-none focus:border-[var(--color-primary)]"
+                              />
+                            </div>
+
+                            {/* 10. NOTE */}
+                            <div className="min-w-0">
+                              {ex.notes && ex.notes.trim() ? (
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  onClick={() => {
+                                    setEditingNoteIndex(globalIdx);
+                                    setNoteDraftText(ex.notes || '');
+                                  }}
+                                  className="w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition text-xs text-amber-200 truncate cursor-pointer group"
+                                  title={ex.notes}
+                                >
+                                  <Pencil className="w-3 h-3 text-amber-400 shrink-0 group-hover:scale-110 transition-transform" />
+                                  <span className="truncate">{ex.notes}</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  onClick={() => {
+                                    setEditingNoteIndex(globalIdx);
+                                    setNoteDraftText('');
+                                  }}
+                                  className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-slate-500 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                  <span>Aggiungi nota</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* 11. AZIONI: Super Serie/Circuito + Alternativo + Duplica + Progressione + Elimina */}
+                            <div className="flex items-center justify-end gap-1 shrink-0">
+                              {/* Super Serie / Circuito Link / Unlink */}
+                              {groupInfo.isGrouped ? (
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  onClick={() => unlinkExerciseFromGroup(globalIdx)}
+                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                    groupInfo.groupType === 'superset'
+                                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30'
+                                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30'
+                                  }`}
+                                  title={`Scollega ${groupInfo.label} da ${groupInfo.groupType === 'superset' ? 'Super Serie' : 'Circuito'}`}
+                                >
+                                  <Unlink2 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : posInDay < totalInDay - 1 ? (
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  onClick={() => linkWithNextExercise(globalIdx)}
+                                  className="p-1.5 text-slate-400 hover:text-purple-300 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                  title="Collega in Super Serie con l'esercizio successivo (es. A1 + A2)"
+                                >
+                                  <Link2 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : null}
+
+                              {/* Esercizio Alternativo */}
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => {
+                                  setEditingAltIndex(globalIdx);
+                                  setAltDraftText(ex.alternative_exercise || '');
+                                }}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  ex.alternative_exercise && ex.alternative_exercise.trim()
+                                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                }`}
+                                title={ex.alternative_exercise ? `Alternativo: ${ex.alternative_exercise}` : 'Imposta esercizio alternativo'}
+                              >
+                                <User className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Duplica */}
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => duplicateExercise(globalIdx)}
+                                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                title="Duplica esercizio"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Progressione */}
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => setActiveProgressionExerciseIndex(isProgressionOpen ? null : globalIdx)}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  isProgressionOpen
+                                    ? 'bg-cyan-500 text-black font-bold shadow-md'
+                                    : ex.progression_rule_id
+                                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                                    : 'text-slate-400 hover:text-cyan-400 hover:bg-slate-800'
+                                }`}
+                                title="Gestisci progressione settimanale (IA / Modelli)"
+                              >
+                                <TrendingUp className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Elimina */}
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => removeExercise(globalIdx)}
+                                className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                                title="Elimina esercizio"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Pannello Inline Progressione Contestuale (se aperto) */}
+                          {isProgressionOpen && ex.name && (
+                            <div className="p-3.5 bg-slate-950/95 rounded-xl border border-cyan-500/30 shadow-xl space-y-2 animate-in fade-in">
+                              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                                <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                                  <Zap className="w-3.5 h-3.5 text-cyan-400" /> Progressione per "{ex.name}"
+                                </span>
+                                <button 
+                                  type="button"
+                                  onClick={() => setActiveProgressionExerciseIndex(null)}
+                                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 text-xs"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <ExerciseProgressionControl
+                                exercise={ex}
+                                exerciseIndex={globalIdx}
+                                athleteId={athleteId}
+                                athleteName={currentAthlete?.fullName}
+                                programId={initialWorkout?.id}
+                                programName={title}
+                                onUpdateExercise={(fields) => updateExerciseFields(globalIdx, fields)}
+                              />
+                            </div>
                           )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* Modal Rapido Note Tecniche */}
+            {editingNoteIndex !== null && (
+              <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+                <div className="bg-slate-900 border border-slate-700 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Pencil className="w-4 h-4 text-amber-400" />
+                      Note Tecniche: {exercises[editingNoteIndex]?.name || 'Esercizio'}
+                    </h4>
+                    <button onClick={() => setEditingNoteIndex(null)} className="text-slate-400 hover:text-white">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={noteDraftText}
+                    onChange={(e) => setNoteDraftText(e.target.value)}
+                    placeholder="es. Fermo al petto di 1 secondo, discesa lenta e controllata..."
+                    autoFocus
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-[var(--color-primary)] resize-y leading-relaxed"
+                  />
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingNoteIndex(null)}
+                      className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white rounded-lg"
+                    >
+                      Annulla
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateExercise(editingNoteIndex, 'notes', noteDraftText);
+                        setEditingNoteIndex(null);
+                      }}
+                      className="px-4 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-black rounded-lg hover:bg-[var(--color-primary-hover)] shadow-sm"
+                    >
+                      Salva Nota
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Rapido Esercizio Alternativo */}
+            {editingAltIndex !== null && (
+              <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+                <div className="bg-slate-900 border border-slate-700 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <User className="w-4 h-4 text-purple-400" />
+                      Esercizio Alternativo: {exercises[editingAltIndex]?.name || 'Esercizio'}
+                    </h4>
+                    <button onClick={() => setEditingAltIndex(null)} className="text-slate-400 hover:text-white">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={altDraftText}
+                    onChange={(e) => setAltDraftText(e.target.value)}
+                    placeholder="es. Leg Press se Squat occupato o dolore al ginocchio"
+                    autoFocus
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-purple-400"
+                  />
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingAltIndex(null)}
+                      className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white rounded-lg"
+                    >
+                      Annulla
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateExercise(editingAltIndex, 'alternative_exercise', altDraftText);
+                        setEditingAltIndex(null);
+                      }}
+                      className="px-4 py-1.5 text-xs font-bold bg-purple-500 text-white rounded-lg hover:bg-purple-400 shadow-sm"
+                    >
+                      Salva Alternativo
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
       )}
-
     </div>
 
         {/* Footer */}
@@ -2499,7 +3306,7 @@ ${result.regole_adattamento || '-'}
                 const exCount = exercises.filter(
                   e => (e.week_number || 1) === activeWeek && (e.day_name || 'Giorno A') === dName
                 ).length;
-                const isSelected = activeDay === dName;
+                const isSelected = activeDay.trim().toLowerCase() === dName.trim().toLowerCase();
 
                 return (
                   <div
@@ -2552,11 +3359,25 @@ ${result.regole_adattamento || '-'}
               })}
             </div>
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex items-center gap-2">
+              {daysList.length >= 2 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDaysList((prev) => [...prev].reverse());
+                    showSuccess('Sequenza Giorni Invertita', 'L\'ordine di tutti i giorni è stato invertito.');
+                  }}
+                  className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                  title="Inverte l'ordine dei giorni (es. da 1..N a N..1)"
+                >
+                  <Repeat className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Inverti Giorni</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsReorderDaysModalOpen(false)}
-                className="w-full py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs rounded-xl shadow transition-all cursor-pointer text-center"
+                className="flex-1 py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs rounded-xl shadow transition-all cursor-pointer text-center"
               >
                 Conferma Ordine Giorni
               </button>
@@ -2564,6 +3385,167 @@ ${result.regole_adattamento || '-'}
           </div>
         </div>
       )}
+
+      {/* Modale Eliminazione Multipla Settimane */}
+      {isBulkDeleteWeeksModalOpen && (() => {
+        const emptyWeeks = Array.from({ length: totalWeeks }, (_, idx) => idx + 1).filter(
+          (w) => exercises.filter((e) => (e.week_number || 1) === w).length === 0
+        );
+        const isAllSelected = selectedWeeksToDelete.length === totalWeeks;
+        const isNoneSelected = selectedWeeksToDelete.length === 0;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+            <div className="bg-[#0c1017] border border-slate-700/80 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white">Elimina Più Settimane</h3>
+                    <p className="text-[11px] text-slate-400">Seleziona le settimane da rimuovere dal programma</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsBulkDeleteWeeksModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Quick selection toolbar */}
+              <div className="flex items-center justify-between gap-2 text-xs">
+                {emptyWeeks.length > 0 && emptyWeeks.length < totalWeeks && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWeeksToDelete(emptyWeeks)}
+                    className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg font-bold text-[11px] transition-colors cursor-pointer"
+                  >
+                    Seleziona {emptyWeeks.length} vuote (0 es.)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedWeeksToDelete.length > 0) {
+                      setSelectedWeeksToDelete([]);
+                    } else {
+                      // Seleziona tutte tranne una
+                      const allExceptOne = Array.from({ length: totalWeeks }, (_, idx) => idx + 1).filter(
+                        (w) => w !== (activeWeek || 1)
+                      );
+                      setSelectedWeeksToDelete(allExceptOne);
+                    }
+                  }}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-bold text-[11px] border border-slate-700 transition-colors ml-auto cursor-pointer"
+                >
+                  {selectedWeeksToDelete.length > 0 ? 'Deseleziona Tutto' : 'Seleziona Altre'}
+                </button>
+              </div>
+
+              {/* Elenco Settimane con Checkbox */}
+              <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar pr-1">
+                {Array.from({ length: totalWeeks }).map((_, idx) => {
+                  const wNum = idx + 1;
+                  const countEx = exercises.filter((e) => (e.week_number || 1) === wNum).length;
+                  const isChecked = selectedWeeksToDelete.includes(wNum);
+                  const isCurrent = activeWeek === wNum;
+
+                  return (
+                    <div
+                      key={wNum}
+                      onClick={() => {
+                        setSelectedWeeksToDelete((prev) =>
+                          prev.includes(wNum) ? prev.filter((w) => w !== wNum) : [...prev, wNum]
+                        );
+                      }}
+                      className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 transition-all cursor-pointer select-none ${
+                        isChecked
+                          ? 'bg-rose-950/30 border-rose-500/60 text-white shadow-sm'
+                          : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}} // Gestito dal container onClick
+                          className="w-4 h-4 rounded text-rose-500 bg-slate-900 border-slate-700 focus:ring-rose-500 focus:ring-offset-slate-950 cursor-pointer"
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm">Settimana {wNum}</span>
+                            {isCurrent && (
+                              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-[var(--color-primary)] text-slate-950">
+                                Attiva
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-slate-400">
+                            {countEx === 0 ? '0 esercizi (Vuota)' : `${countEx} esercizi`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`text-xs font-mono font-bold px-2 py-0.5 rounded-lg border ${
+                          countEx === 0
+                            ? 'bg-slate-900 text-slate-500 border-slate-800'
+                            : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                        }`}
+                      >
+                        {countEx} es.
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Warning se tutte selezionate */}
+              {isAllSelected && (
+                <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>Devi mantenere almeno una settimana nel programma.</span>
+                </div>
+              )}
+
+              {/* Footer Azioni */}
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkDeleteWeeksModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition-colors cursor-pointer"
+                >
+                  Annulla
+                </button>
+                <button
+                  type="button"
+                  disabled={isNoneSelected || isAllSelected}
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `Sei sicuro di voler eliminare ${selectedWeeksToDelete.length} settimane e tutti i relativi esercizi? Le settimane rimanenti verranno riordinate automaticamente.`
+                      )
+                    ) {
+                      deleteMultipleWeeks(selectedWeeksToDelete);
+                    }
+                  }}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:hover:bg-rose-600 text-white font-black text-xs rounded-xl transition-all shadow-lg shadow-rose-900/30 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>
+                    Elimina {selectedWeeksToDelete.length > 0 ? `(${selectedWeeksToDelete.length})` : ''}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modale Conferma Modifica Template */}
       {showTemplateUpdatePrompt && (
@@ -2685,6 +3667,114 @@ ${result.regole_adattamento || '-'}
                 className="px-5 py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black text-xs font-black rounded-xl transition-all shadow-md cursor-pointer"
               >
                 Salva & Chiudi Note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODALE DI CONFERMA ELIMINAZIONE GIORNO (AMBITO SETTIMANA VS TUTTO IL PROGRAMMA) ─── */}
+      {dayToDeletePrompt && (
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Elimina Giorno di Allenamento</h3>
+                  <p className="text-xs text-slate-400">
+                    Giorno: <strong className="text-amber-400 font-mono">{dayToDeletePrompt.dayName}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDayToDeletePrompt(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Informazioni di contesto */}
+            <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs space-y-2">
+              <div className="flex items-center justify-between text-slate-300">
+                <span>Settimana Attualmente Visualizzata:</span>
+                <span className="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  Settimana {dayToDeletePrompt.weekNumber}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-slate-300">
+                <span>Esercizi in Settimana {dayToDeletePrompt.weekNumber}:</span>
+                <span className="font-mono font-bold text-white">
+                  {dayToDeletePrompt.exCountActiveWeek} {dayToDeletePrompt.exCountActiveWeek === 1 ? 'esercizio' : 'esercizi'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-slate-300">
+                <span>Esercizi Totali nel Programma ({totalWeeks} sett.):</span>
+                <span className="font-mono font-bold text-slate-400">
+                  {dayToDeletePrompt.exCountAllWeeks} esercizi
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Puoi scegliere se svuotare/eliminare gli esercizi solo da <strong className="text-white">Settimana {dayToDeletePrompt.weekNumber}</strong> (preservando intatte le altre {totalWeeks - 1} settimane), oppure cancellare definitivamente il giorno da <strong className="text-rose-400">tutte le {totalWeeks} settimane</strong> del programma.
+            </p>
+
+            {/* Opzioni di eliminazione */}
+            <div className="space-y-2.5 pt-1">
+              {/* Opzione 1: Solo Settimana Attiva */}
+              <button
+                type="button"
+                onClick={() =>
+                  confirmDeleteDayCurrentWeekOnly(
+                    dayToDeletePrompt.dayName,
+                    dayToDeletePrompt.weekNumber
+                  )
+                }
+                className="w-full p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/40 text-left transition flex items-center justify-between group cursor-pointer"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-sm font-black text-white group-hover:text-amber-400 transition">
+                    <Calendar className="w-4 h-4 text-amber-400" />
+                    <span>Elimina solo da Settimana {dayToDeletePrompt.weekNumber}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Rimuove i {dayToDeletePrompt.exCountActiveWeek} esercizi di "{dayToDeletePrompt.dayName}" solo da questa settimana. Le altre {totalWeeks - 1} settimane non vengono toccate.
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-white transition shrink-0 ml-2" />
+              </button>
+
+              {/* Opzione 2: Tutte le Settimane */}
+              <button
+                type="button"
+                onClick={() => confirmDeleteDayAllWeeks(dayToDeletePrompt.dayName)}
+                className="w-full p-3.5 rounded-2xl bg-rose-950/20 hover:bg-rose-950/40 border border-rose-500/30 hover:border-rose-500/60 text-left transition flex items-center justify-between group cursor-pointer"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-sm font-black text-rose-300 group-hover:text-rose-200 transition">
+                    <Flame className="w-4 h-4 text-rose-400" />
+                    <span>Elimina da TUTTE le {totalWeeks} Settimane</span>
+                  </div>
+                  <p className="text-[11px] text-rose-300/70">
+                    Rimuove completamente la colonna "{dayToDeletePrompt.dayName}" e tutti i suoi {dayToDeletePrompt.exCountAllWeeks} esercizi dall'intero mesociclo.
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-rose-400 group-hover:text-rose-200 transition shrink-0 ml-2" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDayToDeletePrompt(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
+              >
+                Annulla
               </button>
             </div>
           </div>

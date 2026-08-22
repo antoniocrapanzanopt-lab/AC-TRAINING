@@ -44,3 +44,27 @@ export function cleanExecutiveNotes(rawNotes?: string): string {
     .map(s => s.charAt(0).toUpperCase() + s.slice(1))
     .join('. ') + '.';
 }
+
+/**
+ * Estrae l'eventuale tag di raggruppamento Super Serie / Circuito codificato nelle note (es. [GROUP:A] o [SS:1])
+ */
+export function extractGroupTagFromNotes(rawNotes?: string): { groupTag?: string; cleanNotes: string } {
+  if (!rawNotes) return { cleanNotes: '' };
+  const match = rawNotes.match(/^\[(?:GROUP|SS):([a-zA-Z0-9_\-]+)\]\s*/i);
+  if (match) {
+    const groupTag = match[1];
+    const cleanNotes = rawNotes.slice(match[0].length).trim();
+    return { groupTag, cleanNotes };
+  }
+  return { cleanNotes: rawNotes };
+}
+
+/**
+ * Codifica il tag del gruppo Super Serie / Circuito nelle note per la persistenza sicura e retrocompatibile
+ */
+export function encodeGroupTagInNotes(cleanNotes?: string, groupTag?: string): string {
+  const baseNotes = (cleanNotes || '').trim();
+  if (!groupTag) return baseNotes;
+  return `[GROUP:${groupTag}] ${baseNotes}`.trim();
+}
+
