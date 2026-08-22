@@ -390,11 +390,12 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       }
 
       if (!effectiveSessionId) {
-        effectiveSessionId = crypto.randomUUID ? crypto.randomUUID() : `sess-${Date.now()}`;
+        effectiveSessionId = crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
       }
 
       const logsToSave: any[] = [];
       const prResults: string[] = [];
+      const bestLoadsMap = new Map<string, { exerciseId: string; exerciseName: string; weightKg: number; reps: number }>();
 
       for (const ex of exercises) {
         const exLogs = logs[ex.id] || [];
@@ -408,7 +409,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           let repsNum = setLog.reps ? parseInt(setLog.reps, 10) : 0;
           let weightNum = setLog.weight ? parseFloat(setLog.weight) : 0;
 
-          // Se la serie è stata spuntata/completata o ha note ma non sono stati digitati i numeri a mano
+          // Se la serie è stata spuntata/completata ma non sono stati digitati i numeri a mano
           if (isCompleted && repsNum === 0) {
             repsNum = parseInt(ex.reps_target, 10) || 10;
           }
@@ -430,17 +431,35 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               notes: noteParts.length > 0 ? noteParts.join(' | ') : null,
             });
 
-            // Calcolo PR
-            if (athleteId && weightNum > 0 && repsNum > 0 && navigator.onLine) {
-              try {
-                const prRes = await checkAndUpdateAutoPR(athleteId, ex.id, ex.name, weightNum, repsNum);
-                if (prRes.isNewPR) {
-                  prResults.push(`${ex.name}: ${prRes.calculated1RM} kg 1RM!`);
-                }
-              } catch (_) {}
+            // Raggruppa i migliori carichi per il check PR veloce
+            if (weightNum > 0 && repsNum > 0) {
+              const prevBest = bestLoadsMap.get(ex.id);
+              if (!prevBest || weightNum > prevBest.weightKg || (weightNum === prevBest.weightKg && repsNum > prevBest.reps)) {
+                bestLoadsMap.set(ex.id, {
+                  exerciseId: ex.id,
+                  exerciseName: ex.name,
+                  weightKg: weightNum,
+                  reps: repsNum,
+                });
+              }
             }
           }
         }
+      }
+
+      // Check PR in parallelo non bloccante (1 sola chiamata per esercizio)
+      if (athleteId && athleteId !== 'ath-local' && bestLoadsMap.size > 0 && navigator.onLine) {
+        try {
+          const prPromises = Array.from(bestLoadsMap.values()).map((item) =>
+            checkAndUpdateAutoPR(athleteId, item.exerciseId, item.exerciseName, item.weightKg, item.reps)
+              .then((res) => (res.isNewPR ? `${item.exerciseName}: ${res.calculated1RM} kg 1RM!` : null))
+              .catch(() => null)
+          );
+          const prOutputs = await Promise.all(prPromises);
+          prOutputs.forEach((res) => {
+            if (res) prResults.push(res);
+          });
+        } catch (_) {}
       }
 
       const questionnaireNotes = `Questionario: Fatica ${difficulty}/5, Dolore Articolare ${jointPain}/5, Pump ${pump}/5${
@@ -458,8 +477,47 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         localStorage.setItem('builder_completed_session_logs', JSON.stringify(localLogsMap));
       } catch (_) {}
 
-      // SE OFFLINE: Salva in coda di sincronizzazione
-      if (!navigator.onLine) {
+      // SE ONLINE: Esegui il salvataggio con protezione Timeout di 3.5s per evitare qualsiasi attesa all'atleta
+      if (navigator.onLine) {
+        try {
+          const serverSaveTask = (async () => {
+            if (logsToSave.length > 0) {
+              await saveExerciseLogs(logsToSave);
+            }
+            await endWorkoutSession(effectiveSessionId, questionnaireNotes, difficulty * 2);
+          })();
+
+          await Promise.race([
+            serverSaveTask,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Network Timeout')), 3500)),
+          ]);
+        } catch (netErr) {
+          console.warn('Salvataggio server lento o in timeout, salvataggio in coda offline:', netErr);
+          const pendingItem: PendingCompletedWorkout = {
+            id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            sessionId: effectiveSessionId,
+            athleteId,
+            athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
+            workoutId: workout.id,
+            workoutTitle: workout.title,
+            weekNumber: weekNum,
+            dayName,
+            startTime: startIso,
+            endTime: nowIso,
+            durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
+            rpe: difficulty * 2,
+            notes: questionnaireNotes,
+            difficulty,
+            jointPain,
+            pump,
+            jointPainNotes,
+            logsToSave,
+            createdAt: Date.now(),
+          };
+          queueCompletedWorkoutForSync(pendingItem);
+        }
+      } else {
+        // SE OFFLINE
         const pendingItem: PendingCompletedWorkout = {
           id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           sessionId: effectiveSessionId,
@@ -481,42 +539,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           logsToSave,
           createdAt: Date.now(),
         };
-
         queueCompletedWorkoutForSync(pendingItem);
-        clearActiveWorkoutDraft(athleteId);
-
-        // Aggiorna progresso locale
-        try {
-          const progressKey = `builder_progress_${athleteId}_${workout.id}`;
-          const existing = JSON.parse(localStorage.getItem(progressKey) || '{}');
-          existing[`${weekNum}-${dayName}`] = true;
-          localStorage.setItem(progressKey, JSON.stringify(existing));
-        } catch (_) {}
-
-        showSuccess(
-          'Allenamento salvato sul dispositivo! 💾',
-          'Sei offline: i dati sono al sicuro e verranno sincronizzati automaticamente col coach appena tornerà la connessione.'
-        );
-
-        setIsSaving(false);
-        onClose();
-        return;
       }
 
-      // SE ONLINE: Procedi con il salvataggio normale su Supabase
-      if (logsToSave.length > 0) {
-        const { error: logsError } = await saveExerciseLogs(logsToSave);
-        if (logsError) {
-          console.warn(`Errore salvataggio esercizi: ${logsError}`);
-        }
-      }
-
-      const { error: sessionError } = await endWorkoutSession(effectiveSessionId, questionnaireNotes, difficulty * 2);
-      if (sessionError) {
-        console.warn(`Errore chiusura sessione: ${sessionError}`);
-      }
-
-      // Alert questionario per il coach
+      // Alert questionario per il coach se presente dolore o fatica estrema
       if (jointPain >= 3 || jointPainNotes.trim() !== '' || difficulty >= 4) {
         try {
           const existingAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]');
@@ -585,71 +611,16 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         earnedXP: 100 + (prResults.length * 50),
       });
     } catch (err: any) {
-      console.warn('Errore salvataggio server, salvataggio in fallback offline:', err);
-
-      // Calcola Volume Totale per fallback
-      let calculatedVolumeKg = 0;
-      let completedSetsTotal = 0;
-      let totalSetsPlanned = 0;
-
-      exercises.forEach((ex) => {
-        totalSetsPlanned += ex.sets;
-        const exLogs = logs[ex.id] || [];
-        const exSetsMap = completedSets[ex.id] || [];
-        exLogs.forEach((l, sIdx) => {
-          const r = parseInt(l.reps, 10) || 0;
-          const w = parseFloat(l.weight) || 0;
-          if (r > 0 && w > 0) {
-            calculatedVolumeKg += r * w;
-          }
-          if (exSetsMap[sIdx] || (r > 0 && w > 0)) {
-            completedSetsTotal++;
-          }
-        });
-      });
-
-      // Fallback offline anche in caso di eccezione network
-      const nowIso = new Date().toISOString();
-      const startIso = new Date(startTimestampRef.current).toISOString();
-      const weekNum = (exercises[0] as any)?.week_number || 1;
-      const dayName = (exercises[0] as any)?.day_name || 'Giorno A';
-      const questionnaireNotes = `Questionario: Fatica ${difficulty}/5, Dolore Articolare ${jointPain}/5, Pump ${pump}/5${
-        jointPainNotes ? ` — Note: ${jointPainNotes}` : ''
-      }`;
-
-      const pendingItem: PendingCompletedWorkout = {
-        id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        sessionId,
-        athleteId,
-        athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
-        workoutId: workout.id,
-        workoutTitle: workout.title,
-        weekNumber: weekNum,
-        dayName,
-        startTime: startIso,
-        endTime: nowIso,
-        durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
-        rpe: difficulty * 2,
-        notes: questionnaireNotes,
-        difficulty,
-        jointPain,
-        pump,
-        jointPainNotes,
-        logsToSave: [],
-        createdAt: Date.now(),
-      };
-
-      queueCompletedWorkoutForSync(pendingItem);
+      console.warn('Errore in executeWorkoutSave, fallback completamento immediato:', err);
       clearActiveWorkoutDraft(athleteId);
       setIsSaving(false);
 
-      // Apri Celebration Screen
       setCelebrationData({
         workoutTitle: workout.title,
         durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
-        totalVolumeKg: Math.round(calculatedVolumeKg),
-        completedSetsCount: completedSetsTotal,
-        totalSetsCount: totalSetsPlanned,
+        totalVolumeKg: 0,
+        completedSetsCount: 0,
+        totalSetsCount: exercises.reduce((acc, e) => acc + e.sets, 0),
         newPRs: [],
         earnedXP: 100,
       });
@@ -663,7 +634,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              flushAutosave();
+              onClose();
+            }}
             className="p-2 -ml-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800/50 cursor-pointer"
             title="Chiudi sessione"
           >
