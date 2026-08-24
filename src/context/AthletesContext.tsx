@@ -110,6 +110,7 @@ interface AthletesContextType {
     authorName?: string,
     metadata?: Record<string, string | number | boolean>
   ) => Promise<boolean>;
+  updateTimelineForBroadcast: (broadcastTitle: string, message: string, broadcastId?: string) => void;
   bulkSetAthletes: (newAthletes: Athlete[]) => void;
   exportCsv: () => string;
 }
@@ -386,6 +387,38 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return true;
   }, [user]);
 
+  const updateTimelineForBroadcast = useCallback((broadcastTitle: string, message: string, broadcastId?: string) => {
+    const normTarget = broadcastTitle.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
+    setTimeline(prev => {
+      const next: Record<string, TimelineEvent[]> = {};
+      Object.keys(prev).forEach(athId => {
+        next[athId] = (prev[athId] || []).map(evt => {
+          if (evt.type === 'communication') {
+            const normEvtTitle = (evt.title || '').replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
+            if (normEvtTitle === normTarget || (broadcastId && evt.metadata?.broadcastId === broadcastId)) {
+              const updatedMetadata: Record<string, string | number | boolean> = {
+                ...(evt.metadata || {}),
+                message,
+              };
+              if (broadcastId) {
+                updatedMetadata.broadcastId = broadcastId;
+              }
+
+              return {
+                ...evt,
+                title: `Broadcast: ${broadcastTitle.replace(/^broadcast:\s*/i, '')}`,
+                description: message,
+                metadata: updatedMetadata,
+              };
+            }
+          }
+          return evt;
+        });
+      });
+      return next;
+    });
+  }, []);
+
   const bulkSetAthletes = useCallback((_newAthletes: Athlete[]) => {
     // Disable bulk replace for cloud
   }, []);
@@ -445,6 +478,7 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deleteNote,
         togglePinNote,
         addTimelineEvent,
+        updateTimelineForBroadcast,
         bulkSetAthletes,
         exportCsv,
       }}

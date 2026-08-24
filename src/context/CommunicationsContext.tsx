@@ -94,7 +94,7 @@ const defaultApiConfig: ApiIntegrationConfig = {
 };
 
 export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { athletes, addTimelineEvent } = useAthletes();
+  const { athletes, addTimelineEvent, updateTimelineForBroadcast } = useAthletes();
 
   const [broadcasts, setBroadcasts] = useState<BroadcastCommunication[]>([]);
   const [quickTemplates, setQuickTemplates] = useState<QuickMessageTemplate[]>([]);
@@ -184,8 +184,23 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
 
     // Inizializza o carica i broadcast rimuovendo qualsiasi residuo mock
     const cleanBroadcasts = savedBroadcasts.filter(b => !b.id.startsWith('bc-init-'));
-    setBroadcasts(cleanBroadcasts);
-    try { setStorageItem(STORAGE_KEYS.BROADCAST_COMMUNICATIONS, cleanBroadcasts); } catch {}
+    
+    // Ripristina il testo reale del messaggio se era rimasto il placeholder "Canali:"
+    const fixedBroadcasts = cleanBroadcasts.map(b => {
+      if (!b.message || b.message.trim().startsWith('Canali:')) {
+        const matchingComm = cleanComms.find(c => 
+          c.subject?.trim().toLowerCase() === b.title.trim().toLowerCase() ||
+          c.id?.includes(b.id)
+        );
+        if (matchingComm?.messageText && !matchingComm.messageText.trim().startsWith('Canali:')) {
+          return { ...b, message: matchingComm.messageText };
+        }
+      }
+      return b;
+    });
+
+    setBroadcasts(fixedBroadcasts);
+    try { setStorageItem(STORAGE_KEYS.BROADCAST_COMMUNICATIONS, fixedBroadcasts); } catch {}
 
     // Idratazione da Supabase athlete_timeline (per sincronizzare finestre in incognito / nuovi dispositivi)
     supabase
@@ -201,6 +216,8 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
             const rawTitle = t.title || '';
             const title = rawTitle.startsWith('Broadcast: ') ? rawTitle.replace('Broadcast: ', '') : rawTitle;
             const broadcastId = t.metadata?.broadcastId || `bc-db-${t.id}`;
+            const realMessage = (t.metadata?.message as string) || 
+              (t.description && !t.description.startsWith('Canali:') ? t.description : '');
 
             if (!dbMap.has(title)) {
               dbMap.set(title, {
@@ -212,7 +229,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
                 audienceFilter: { type: 'all_active' },
                 totalRecipientsCount: 30,
                 channels: t.metadata?.channels || ['in_app'],
-                message: t.description || '',
+                message: realMessage,
                 attachments: t.metadata?.attachments || [],
                 cta: t.metadata?.cta,
                 metrics: { sent: 30, delivered: 30, read: 0, clicked: 0, confirmed: 0, replied: 0 },
@@ -227,10 +244,22 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
           const dbList = Array.from(dbMap.values());
           if (dbList.length > 0) {
             setBroadcasts(prev => {
-              const existingTitles = new Set(prev.map(b => b.title.trim().toLowerCase()));
-              const missingFromDb = dbList.filter(b => !existingTitles.has(b.title.trim().toLowerCase()));
-              if (missingFromDb.length === 0) return prev;
-              const merged = [...missingFromDb, ...prev];
+              const existingMap = new Map(prev.map(b => [b.title.trim().toLowerCase(), b]));
+              
+              dbList.forEach(dbItem => {
+                const key = dbItem.title.trim().toLowerCase();
+                if (!existingMap.has(key)) {
+                  existingMap.set(key, dbItem);
+                } else {
+                  const localItem = existingMap.get(key)!;
+                  // Se il locale ha message vuoto o "Canali:", usa quello del DB se valido
+                  if ((!localItem.message || localItem.message.startsWith('Canali:')) && dbItem.message) {
+                    existingMap.set(key, { ...localItem, message: dbItem.message });
+                  }
+                }
+              });
+
+              const merged = Array.from(existingMap.values());
               try { setStorageItem(STORAGE_KEYS.BROADCAST_COMMUNICATIONS, merged); } catch {}
               return merged;
             });
@@ -375,7 +404,13 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
           r.id,
           'communication',
           `Broadcast: ${formData.title}`,
-          `Canali: ${formData.channels.join(', ')}`
+          formData.message,
+          owner?.id,
+          owner?.fullName || 'Antonio Crapanzano',
+          {
+            broadcastId: newBroadcast.id,
+            broadcastType: formData.type,
+          }
         );
 
         newComms.unshift({
@@ -435,22 +470,106 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
     return newBroadcast;
   }, [broadcasts, communications, resolveRecipients, saveBroadcastsToStorage, saveCommsToStorage, addTimelineEvent, athletes]);
 
-  // Aggiorna un broadcast
+  // Aggiorna un broadcast con sincronizzazione completa e immediata
   const updateBroadcast = useCallback((id: string, updates: Partial<BroadcastCommunication>): boolean => {
     const nowIso = new Date().toISOString();
     let found = false;
 
+    const normTitle = (t?: string) =>
+      t ? t.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase() : '';
+    const normUpdateTitle = normTitle(updates.title);
+
     const updated = broadcasts.map(b => {
-      if (b.id === id) {
+      const matchId = b.id === id;
+      const matchTitle = Boolean(normUpdateTitle && normTitle(b.title) === normUpdateTitle);
+      if (matchId || matchTitle) {
         found = true;
-        return { ...b, ...updates, updatedAt: nowIso };
+        return { ...b, ...updates, id: b.id, updatedAt: nowIso };
       }
       return b;
     });
 
-    if (found) return saveBroadcastsToStorage(updated);
-    return false;
-  }, [broadcasts, saveBroadcastsToStorage]);
+    let finalBroadcasts = updated;
+    if (!found && updates.title) {
+      const newBc: BroadcastCommunication = {
+        id,
+        title: updates.title,
+        type: updates.type || 'update',
+        status: updates.status || 'sent',
+        sentAt: updates.sentAt || nowIso,
+        audienceFilter: updates.audienceFilter || { type: 'all_active' },
+        totalRecipientsCount: 30,
+        channels: updates.channels || ['in_app'],
+        message: updates.message || '',
+        attachments: updates.attachments || [],
+        cta: updates.cta,
+        metrics: { sent: 30, delivered: 30, read: 0, clicked: 0, confirmed: 0, replied: 0 },
+        recipients: [],
+        author: 'Coach Antonio Crapanzano',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      finalBroadcasts = [newBc, ...broadcasts];
+    }
+
+    saveBroadcastsToStorage(finalBroadcasts);
+
+    const targetTitle = updates.title || '';
+    const targetMessage = updates.message || '';
+
+    // 1. Sincronizzazione immediata della timeline in memoria per tutti gli atleti
+    if (targetTitle || targetMessage) {
+      updateTimelineForBroadcast(targetTitle, targetMessage, id);
+    }
+
+    // 2. Sincronizzazione log comunicazioni
+    if (targetMessage || targetTitle) {
+      const updatedComms = communications.map(c => {
+        const matchLog = c.id.includes(id) || (normUpdateTitle && normTitle(c.subject) === normUpdateTitle);
+        if (matchLog) {
+          return {
+            ...c,
+            subject: targetTitle || c.subject,
+            messageText: targetMessage || c.messageText,
+            summary: (targetMessage || c.messageText || '').slice(0, 120),
+            updatedAt: nowIso,
+          };
+        }
+        return c;
+      });
+      saveCommsToStorage(updatedComms);
+    }
+
+    // 3. Sincronizzazione persistente su Supabase (athlete_timeline & notifications)
+    if (targetMessage || targetTitle) {
+      supabase
+        .from('athlete_timeline')
+        .update({
+          description: targetMessage,
+          metadata: {
+            broadcastId: id,
+            broadcastType: updates.type || 'update',
+            message: targetMessage,
+          }
+        })
+        .eq('type', 'communication')
+        .then(({ error }) => {
+          if (error) console.warn('Supabase timeline sync:', error);
+        });
+
+      supabase
+        .from('notifications')
+        .update({
+          body: targetMessage,
+        })
+        .eq('type', 'coach_message')
+        .then(({ error }) => {
+          if (error) console.warn('Supabase notifications sync:', error);
+        });
+    }
+
+    return true;
+  }, [broadcasts, communications, saveBroadcastsToStorage, saveCommsToStorage, updateTimelineForBroadcast]);
 
   // Elimina un broadcast
   const deleteBroadcast = useCallback((id: string): boolean => {

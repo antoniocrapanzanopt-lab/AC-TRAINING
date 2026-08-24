@@ -104,6 +104,22 @@ export const CommunicationsPage: React.FC = () => {
     setIsWizardOpen(true);
   };
 
+  const handleEditBroadcast = (broadcast: BroadcastCommunication) => {
+    setWizardInitialData({
+      title: broadcast.title,
+      type: broadcast.type,
+      audienceFilter: broadcast.audienceFilter,
+      channels: broadcast.channels,
+      message: broadcast.message,
+      attachments: broadcast.attachments,
+      cta: broadcast.cta,
+      scheduledFor: broadcast.scheduledFor,
+    });
+    setEditingBroadcastId(broadcast.id);
+    setIsWizardOpen(true);
+    setSelectedBroadcastForDetails(null);
+  };
+
   const handleUseTemplate = (template: QuickMessageTemplate) => {
     setWizardInitialData({
       title: template.subject || template.title,
@@ -280,6 +296,7 @@ export const CommunicationsPage: React.FC = () => {
         <BroadcastsListView
           broadcasts={sentBroadcasts}
           onOpenDetails={(b) => setSelectedBroadcastForDetails(b)}
+          onEditBroadcast={handleEditBroadcast}
           onDeleteBroadcast={handleDeleteBroadcast}
           onCreateNew={handleOpenNewWizard}
         />
@@ -325,6 +342,7 @@ export const CommunicationsPage: React.FC = () => {
         isOpen={Boolean(selectedBroadcastForDetails)}
         onClose={() => setSelectedBroadcastForDetails(null)}
         broadcast={selectedBroadcastForDetails}
+        onEdit={handleEditBroadcast}
       />
 
     </div>

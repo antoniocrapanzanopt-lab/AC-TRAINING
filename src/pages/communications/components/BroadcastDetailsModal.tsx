@@ -18,6 +18,7 @@ import {
   Bell,
   User,
   Check,
+  Edit3,
 } from 'lucide-react';
 import {
   BroadcastCommunication,
@@ -30,6 +31,7 @@ interface BroadcastDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   broadcast: BroadcastCommunication | null;
+  onEdit?: (broadcast: BroadcastCommunication) => void;
 }
 
 const typeConfig: Record<BroadcastType, { label: string; icon: React.FC<{ className?: string }>; badgeCls: string }> = {
@@ -45,6 +47,7 @@ export const BroadcastDetailsModal: React.FC<BroadcastDetailsModalProps> = ({
   isOpen,
   onClose,
   broadcast: initialBroadcast,
+  onEdit,
 }) => {
   const { broadcasts, confirmRecipientRead, openWhatsApp, openMailto } = useCommunications();
   const { showSuccess } = useToast();
@@ -112,12 +115,26 @@ export const BroadcastDetailsModal: React.FC<BroadcastDetailsModalProps> = ({
             </h2>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all shrink-0"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onEdit && (
+              <button
+                type="button"
+                onClick={() => onEdit(broadcast)}
+                className="px-3.5 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-300 font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+              >
+                <Edit3 className="w-4 h-4" />
+                <span>Modifica Annuncio</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all shrink-0 cursor-pointer"
+              title="Chiudi"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}

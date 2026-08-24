@@ -17,6 +17,7 @@ import {
   MessageCircle,
   Check,
   Plus,
+  Edit3,
 } from 'lucide-react';
 import {
   BroadcastCommunication,
@@ -27,6 +28,7 @@ import {
 interface BroadcastsListViewProps {
   broadcasts: BroadcastCommunication[];
   onOpenDetails: (broadcast: BroadcastCommunication) => void;
+  onEditBroadcast?: (broadcast: BroadcastCommunication) => void;
   onDeleteBroadcast: (id: string) => void;
   onCreateNew: () => void;
 }
@@ -43,6 +45,7 @@ const typeConfig: Record<BroadcastType, { label: string; icon: React.FC<{ classN
 export const BroadcastsListView: React.FC<BroadcastsListViewProps> = ({
   broadcasts,
   onOpenDetails,
+  onEditBroadcast,
   onDeleteBroadcast,
   onCreateNew,
 }) => {
@@ -243,10 +246,22 @@ export const BroadcastsListView: React.FC<BroadcastsListViewProps> = ({
                       {/* Azioni */}
                       <td className="py-3.5 px-4 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {onEditBroadcast && (
+                            <button
+                              type="button"
+                              onClick={() => onEditBroadcast(b)}
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-200 font-bold text-xs hover:bg-slate-700 hover:text-white transition-all flex items-center gap-1 border border-slate-700 cursor-pointer shadow-sm"
+                              title="Modifica contenuto comunicazione"
+                            >
+                              <Edit3 className="w-3 h-3 text-amber-400" />
+                              <span>Modifica</span>
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => onOpenDetails(b)}
-                            className="px-3 py-1.5 rounded-lg bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-sm"
+                            className="px-3 py-1.5 rounded-lg bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-sm cursor-pointer"
                           >
                             Dettagli
                           </button>

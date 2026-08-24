@@ -373,8 +373,8 @@ export const BroadcastWizardModal: React.FC<BroadcastWizardModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-4xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-7xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[94vh] min-h-[75vh]">
         
         {/* Header Modale */}
         <div className="p-4 sm:p-6 border-b border-[var(--color-panel-border)] flex items-center justify-between gap-4 bg-slate-950/60">
@@ -781,35 +781,59 @@ export const BroadcastWizardModal: React.FC<BroadcastWizardModalProps> = ({
 
                 {/* Messaggio + Variabili */}
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      Messaggio *
+                      Messaggio Comunicazione *
                     </label>
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-                      <span>Inserisci:</span>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400 flex-wrap">
+                      <span className="text-[11px]">Scorciatoie:</span>
                       <button
                         type="button"
                         onClick={() => handleInsertVariable('nome_atleta')}
-                        className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[var(--color-primary)] hover:bg-slate-800 font-mono font-bold"
+                        className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[var(--color-primary)] hover:bg-slate-800 font-mono font-bold text-xs cursor-pointer"
+                        title="Inserisce il nome dell'atleta"
                       >
                         + Atleta
                       </button>
                       <button
                         type="button"
                         onClick={() => handleInsertVariable('nome_proprietario')}
-                        className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[var(--color-primary)] hover:bg-slate-800 font-mono font-bold"
+                        className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[var(--color-primary)] hover:bg-slate-800 font-mono font-bold text-xs cursor-pointer"
+                        title="Inserisce il nome del coach"
                       >
                         + Coach
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMessage(prev => prev + '\n* ')}
+                        className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 font-bold text-xs cursor-pointer"
+                        title="Aggiungi punto elenco"
+                      >
+                        • Elenco
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMessage(prev => prev + ' **testo in grassetto** ')}
+                        className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 font-bold text-xs cursor-pointer"
+                        title="Aggiungi grassetto"
+                      >
+                        B Grassetto
                       </button>
                     </div>
                   </div>
                   <textarea
-                    rows={6}
-                    placeholder="Scrivi qui il testo della comunicazione..."
+                    rows={12}
+                    placeholder="Scrivi qui il testo della comunicazione... (supporta elenchi puntati *, titoli ####, paragrafi ed emoji)"
                     value={message}
                     onChange={e => setMessage(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs leading-relaxed focus:outline-none focus:border-[var(--color-primary)]"
+                    className="w-full min-h-[300px] sm:min-h-[360px] p-4 rounded-2xl bg-slate-950 border border-slate-800 text-white text-sm sm:text-base leading-relaxed focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]/40 font-normal font-sans shadow-inner"
                   />
+                  <div className="flex justify-between items-center text-[11px] text-slate-500 mt-1 px-1">
+                    <span>Supporta formattazione Markdown (* elenco, **grassetto**, #### titolo)</span>
+                    <span>
+                      {message.trim() ? message.trim().split(/\s+/).length : 0} parole • {message.length} caratteri
+                    </span>
+                  </div>
                 </div>
 
                 {/* Allegati */}
@@ -1043,7 +1067,7 @@ export const BroadcastWizardModal: React.FC<BroadcastWizardModalProps> = ({
                     onClick={() => handleSendOrSchedule(true)}
                     className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(234,179,8,0.3)]"
                   >
-                    <Send className="w-4 h-4" /> Invia Ora ({resolvedRecipients.length} atleti)
+                    <Send className="w-4 h-4" /> {editingBroadcastId ? 'Salva Modifiche & Sincronizza Atleti 🚀' : `Invia Ora (${resolvedRecipients.length} atleti)`}
                   </button>
                 )}
               </div>
