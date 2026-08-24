@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -9,7 +9,8 @@ import {
   Video,
   Activity,
   Layers,
-  ShieldAlert
+  ShieldAlert,
+  ExternalLink
 } from 'lucide-react';
 import { WorkoutExercise } from '../../types/workout';
 import { resolveExerciseAnatomy } from '../../utils/exerciseAnatomyResolver';
@@ -26,24 +27,32 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<'anatomy' | 'technique' | 'video'>('anatomy');
+  const [activeTab, setActiveTab] = useState<'anatomy' | 'technique' | 'video'>('technique');
+  const prevIsOpenRef = useRef(false);
 
+  // Inizializza la tab solo al momento dell'apertura (transizione isOpen da false a true)
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') onClose();
-      };
-      window.addEventListener('keydown', handleKeyDown);
-      return () => {
-        document.body.style.overflow = 'unset';
-        window.removeEventListener('keydown', handleKeyDown);
-      };
+    if (isOpen && !prevIsOpenRef.current) {
+      setActiveTab(exercise.video_url ? 'video' : 'technique');
     }
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, exercise.video_url]);
+
+  // Gestione blocco scroll del body e chiusura con tasto Escape
+  useEffect(() => {
+    if (!isOpen) return;
+
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
       document.body.style.overflow = 'unset';
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -110,18 +119,6 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
         <div className="px-4 pt-3 pb-2 bg-slate-900/60 border-b border-slate-800/80 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
           <button
             type="button"
-            onClick={() => setActiveTab('anatomy')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
-              activeTab === 'anatomy'
-                ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span>Mappa Anatomica</span>
-          </button>
-          <button
-            type="button"
             onClick={() => setActiveTab('technique')}
             className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'technique'
@@ -134,6 +131,18 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab('anatomy')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+              activeTab === 'anatomy'
+                ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            <span>Mappa Anatomica</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('video')}
             className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'video'
@@ -143,6 +152,11 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
           >
             <Video className="w-3.5 h-3.5" />
             <span>Video Tutorial</span>
+            {!exercise.video_url && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 font-bold border border-slate-700 ml-0.5">
+                In arrivo
+              </span>
+            )}
           </button>
         </div>
 
@@ -308,22 +322,26 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto">
-                    <Video className="w-6 h-6" />
+                <div className="p-8 rounded-3xl bg-slate-900/60 border border-slate-800 flex flex-col items-center justify-center text-center space-y-4 shadow-xl">
+                  <div className="w-14 h-14 rounded-2xl bg-red-600/15 border border-red-500/30 text-red-400 flex items-center justify-center shadow-lg">
+                    <Video className="w-7 h-7" />
                   </div>
-                  <h4 className="text-sm font-black text-white">Video Tutorial in Aggiornamento</h4>
-                  <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-                    Il coach sta registrando il video per questo specifico esercizio. Consulta la <strong>Guida Tecnica</strong> e la <strong>Mappa Anatomica</strong> per visualizzare il setup e i muscoli target.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('technique')}
-                    className="px-4 py-2 bg-[var(--color-primary)] text-slate-950 text-xs font-black rounded-xl hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer inline-flex items-center gap-1.5"
+                  <div className="space-y-1 max-w-md">
+                    <h4 className="text-sm font-black text-white">Video Tutorial su YouTube</h4>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Non è ancora stato assegnato un video specifico per <strong>{exercise.name}</strong>. Puoi consultare i migliori video tutorial di esecuzione direttamente su YouTube.
+                    </p>
+                  </div>
+
+                  <a
+                    href={`https://www.youtube.com/results?search_query=${encodeURIComponent(exercise.name + ' esecuzione corretta tutorial')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 cursor-pointer"
                   >
-                    <span>Vai alla Guida Tecnica</span>
-                    <span>→</span>
-                  </button>
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Cerca Tutorial su YouTube</span>
+                  </a>
                 </div>
               )}
             </div>

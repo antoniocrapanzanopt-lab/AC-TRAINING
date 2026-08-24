@@ -95,6 +95,17 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
       );
     }
 
+    const hasPreviousData = athleteReport.completedSessions.previous > 0 || athleteReport.totalVolumeKg.previous > 0;
+
+    if (!hasPreviousData && athleteReport.completedSessions.current > 0) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-amber-500/10 shadow-md">
+          <Activity className="w-3.5 h-3.5 text-amber-400" />
+          <span>Nuova Baseline Iniziale</span>
+        </span>
+      );
+    }
+
     switch (athleteReport.trend) {
       case 'positive':
         return (
@@ -121,8 +132,8 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
     }
   };
 
-  const getScoreColor = (score: number) => {
-    if (isUnassigned) return 'text-slate-400 border-slate-700 bg-slate-900';
+  const getScoreColor = (score: number, isUnstarted?: boolean) => {
+    if (isUnassigned || isUnstarted || score === 0) return 'text-slate-400 border-slate-700 bg-slate-900';
     if (score >= 80) return 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10';
     if (score >= 60) return 'text-amber-400 border-amber-500/40 bg-amber-500/10';
     return 'text-rose-400 border-rose-500/40 bg-rose-500/10';
@@ -182,39 +193,31 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
               className={`py-2.5 px-3 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 ${
                 timeframe === btn.id
                   ? 'bg-[var(--color-primary)] text-slate-950 shadow-lg shadow-amber-500/20 scale-[1.01]'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-850'
               }`}
             >
               <span>{btn.label}</span>
-              <span
-                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-                  timeframe === btn.id ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-900 text-slate-400'
-                }`}
-              >
-                {btn.short}
-              </span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* ─── 2. SINTESI IMMEDIATA: HERO CARD ATLETA + SCORE + SINTESI IA ─── */}
-      <div className={`p-6 sm:p-7 rounded-3xl border shadow-2xl space-y-6 relative overflow-hidden ${
-        isUnassigned
-          ? 'bg-gradient-to-br from-indigo-950/40 via-slate-950 to-slate-950 border-indigo-500/30'
-          : 'bg-gradient-to-br from-slate-900/90 via-slate-950 to-slate-950 border-slate-800'
-      }`}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 border-b border-slate-800/80 pb-5">
-          {/* Avatar, Nome e Scheda */}
-          <div className="flex items-center gap-4 min-w-0">
-            <div className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center font-black text-xl shadow-lg shrink-0 ${
-              isUnassigned
-                ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
-                : 'bg-gradient-to-br from-amber-500/20 to-orange-600/10 border-amber-500/40 text-amber-400'
-            }`}>
-              {athleteReport.athleteName.substring(0, 2).toUpperCase()}
+      {/* ─── 3. HEADER ATLETA: NOME, SCHEDA, HEALTH SCORE, SINTESI ─── */}
+      <div className="p-5 sm:p-7 rounded-3xl bg-slate-950/90 border border-slate-800 shadow-2xl space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 flex items-center justify-center text-amber-300 font-black text-xl sm:text-2xl shadow-lg shrink-0">
+              {athleteReport.avatarUrl ? (
+                <img
+                  src={athleteReport.avatarUrl}
+                  alt={athleteReport.athleteName}
+                  className="w-full h-full object-cover rounded-2xl"
+                />
+              ) : (
+                athleteReport.athleteName.substring(0, 2).toUpperCase()
+              )}
             </div>
-            <div className="min-w-0 space-y-1">
+            <div className="space-y-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                   {athleteReport.athleteName}
@@ -230,7 +233,9 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
                   <>
                     <span>•</span>
                     <span>
-                      Settimana {athleteReport.currentWeek} di {athleteReport.totalWeeks} ({athleteReport.blockProgressPercent}% Blocco)
+                      {athleteReport.blockProgressPercent === 0
+                        ? `Settimana 1 di ${athleteReport.totalWeeks} (0% Blocco • In attesa di avvio)`
+                        : `Settimana ${athleteReport.currentWeek} di ${athleteReport.totalWeeks} (${athleteReport.blockProgressPercent}% Blocco)`}
                     </span>
                   </>
                 )}
@@ -246,9 +251,9 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
               </span>
               <span className="text-xs text-slate-500 font-medium">Performance & Salute</span>
             </div>
-            <div className={`text-2xl sm:text-3xl font-black font-mono px-3.5 py-1 rounded-xl border ${getScoreColor(athleteReport.overallScore)}`}>
-              {isUnassigned ? (
-                <span className="text-slate-400 text-lg">N.D.</span>
+            <div className={`text-2xl sm:text-3xl font-black font-mono px-3.5 py-1 rounded-xl border ${getScoreColor(athleteReport.overallScore, athleteReport.completedSessions.current === 0)}`}>
+              {isUnassigned || athleteReport.completedSessions.current === 0 ? (
+                <span className="text-slate-400 text-lg">--/100</span>
               ) : (
                 <>
                   {athleteReport.overallScore}<span className="text-xs text-slate-400 font-normal">/100</span>
@@ -319,14 +324,20 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
               </div>
               <div className="flex items-baseline justify-between">
                 <span className="text-2xl font-black text-white font-mono">{athleteReport.attendance.current}%</span>
-                <span
-                  className={`text-xs font-bold ${
-                    athleteReport.attendance.deltaPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                  }`}
-                >
-                  {athleteReport.attendance.deltaPercent >= 0 ? '+' : ''}
-                  {athleteReport.attendance.deltaPercent}% vs prec.
-                </span>
+                {athleteReport.completedSessions.previous > 0 ? (
+                  <span
+                    className={`text-xs font-bold ${
+                      athleteReport.attendance.deltaPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                    }`}
+                  >
+                    {athleteReport.attendance.deltaPercent >= 0 ? '+' : ''}
+                    {athleteReport.attendance.deltaPercent}% vs prec.
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-bold text-slate-500">
+                    Baseline
+                  </span>
+                )}
               </div>
               <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-900">
                 <span>Sessioni: {athleteReport.completedSessions.current}</span>
@@ -342,13 +353,19 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
           </div>
           <div className="flex items-baseline justify-between">
             <span className="text-2xl font-black text-white font-mono">{athleteReport.avgRpe.current}</span>
-            <span
-              className={`text-xs font-bold ${
-                athleteReport.avgRpe.deltaRaw <= 0 ? 'text-emerald-400' : 'text-amber-400'
-              }`}
-            >
-              {athleteReport.avgRpe.deltaRaw > 0 ? `+${athleteReport.avgRpe.deltaRaw}` : athleteReport.avgRpe.deltaRaw} RPE
-            </span>
+            {athleteReport.completedSessions.previous > 0 ? (
+              <span
+                className={`text-xs font-bold ${
+                  athleteReport.avgRpe.deltaRaw <= 0 ? 'text-emerald-400' : 'text-amber-400'
+                }`}
+              >
+                {athleteReport.avgRpe.deltaRaw > 0 ? `+${athleteReport.avgRpe.deltaRaw}` : athleteReport.avgRpe.deltaRaw} RPE
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold text-slate-500">
+                Target RPE
+              </span>
+            )}
           </div>
           <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-900">
             <span>Dolori: {athleteReport.painReportsCount.current}</span>
@@ -366,14 +383,20 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
             <span className="text-2xl font-black text-white font-mono">
               {(athleteReport.totalVolumeKg.current / 1000).toFixed(1)}t
             </span>
-            <span
-              className={`text-xs font-bold ${
-                athleteReport.totalVolumeKg.deltaPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'
-              }`}
-            >
-              {athleteReport.totalVolumeKg.deltaPercent >= 0 ? '+' : ''}
-              {athleteReport.totalVolumeKg.deltaPercent}%
-            </span>
+            {athleteReport.totalVolumeKg.previous > 0 ? (
+              <span
+                className={`text-xs font-bold ${
+                  athleteReport.totalVolumeKg.deltaPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
+                {athleteReport.totalVolumeKg.deltaPercent >= 0 ? '+' : ''}
+                {athleteReport.totalVolumeKg.deltaPercent}%
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold text-slate-500">
+                1° periodo
+              </span>
+            )}
           </div>
           <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-900">
             <span>{athleteReport.totalVolumeKg.current.toLocaleString('it-IT')} kg</span>
@@ -482,28 +505,42 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-900">
-                  {athleteReport.keyExercises.map((ex, idx) => (
-                    <tr key={idx} className="hover:bg-slate-900/40">
-                      <td className="py-2.5 font-bold text-white">{ex.name}</td>
-                      <td className="py-2.5 text-right font-mono text-slate-200">
-                        {ex.currentAvgKg} kg <span className="text-slate-500 text-[10px]">({ex.previousAvgKg} prec.)</span>
-                      </td>
-                      <td className="py-2.5 text-right font-mono font-bold text-amber-400">
-                        {ex.currentMaxKg} kg
-                      </td>
-                      <td className="py-2.5 text-right font-bold">
-                        <span
-                          className={`px-2 py-0.5 rounded-md ${
-                            ex.deltaPercent >= 0
-                              ? 'text-emerald-400 bg-emerald-500/10'
-                              : 'text-rose-400 bg-rose-500/10'
-                          }`}
-                        >
-                          {ex.deltaPercent >= 0 ? `+${ex.deltaPercent}%` : `${ex.deltaPercent}%`}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {athleteReport.keyExercises.map((ex, idx) => {
+                    const hasExPrev = ex.previousAvgKg > 0 || ex.previousMaxKg > 0;
+                    return (
+                      <tr key={idx} className="hover:bg-slate-900/40">
+                        <td className="py-2.5 font-bold text-white">{ex.name}</td>
+                        <td className="py-2.5 text-right font-mono text-slate-200">
+                          {ex.currentAvgKg} kg{' '}
+                          {hasExPrev ? (
+                            <span className="text-slate-500 text-[10px]">({ex.previousAvgKg} prec.)</span>
+                          ) : (
+                            <span className="text-slate-500 text-[10px]">(baseline)</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 text-right font-mono font-bold text-amber-400">
+                          {ex.currentMaxKg} kg
+                        </td>
+                        <td className="py-2.5 text-right font-bold">
+                          {hasExPrev ? (
+                            <span
+                              className={`px-2 py-0.5 rounded-md ${
+                                ex.deltaPercent >= 0
+                                  ? 'text-emerald-400 bg-emerald-500/10'
+                                  : 'text-rose-400 bg-rose-500/10'
+                              }`}
+                            >
+                              {ex.deltaPercent >= 0 ? `+${ex.deltaPercent}%` : `${ex.deltaPercent}%`}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md text-amber-400/90 bg-amber-500/10 text-[10px] font-bold tracking-wide">
+                              Baseline
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

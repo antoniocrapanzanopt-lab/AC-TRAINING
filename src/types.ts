@@ -498,6 +498,12 @@ export type TaskCategory =
   | 'administrative'
   | 'other';
 
+/** Tipologia di task per il workspace personale del coach */
+export type TaskType = 'personal' | 'athlete' | 'content' | 'admin' | 'system';
+
+/** Stato kanban per la vista Board */
+export type KanbanStatus = 'inbox' | 'todo' | 'doing' | 'done' | 'archived';
+
 export interface AthleteTask {
   id: string;
   title: string;
@@ -519,6 +525,13 @@ export interface AthleteTask {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  // ── Nuovi campi Coach Workspace (tutti opzionali per backward compat) ──
+  task_type?: TaskType;           // derivato da category/origin se assente
+  kanban_status?: KanbanStatus;   // per la vista Board
+  tags?: string[];                // etichette libere
+  sort_order?: number;            // ordinamento manuale
+  recurring_rule?: string;        // es. "weekly:mon,wed" (future use)
+  linked_content_id?: string;     // link a contenuto/post
 }
 
 export type TaskFormData = Omit<AthleteTask, 'id' | 'createdAt' | 'updatedAt' | 'completedAt'>;
@@ -859,7 +872,7 @@ export interface DecisionPriorityItem {
   athleteName: string;
   title: string;
   rationale: string;
-  type: 'pain' | 'plateau' | 'penultimate_week' | 'unassigned';
+  type: 'pain' | 'plateau' | 'penultimate_week' | 'unassigned' | 'inactivity' | 'missing_weights';
   urgency: 'high' | 'medium' | 'low';
   ctaLabel: string;
   targetAction: 'copilot' | 'assign' | 'renew';
@@ -884,7 +897,7 @@ export interface AthleteReportSummary {
   // Singola decisione consigliata per card
   singleDecisionTitle: string;
   singleDecisionRationale: string;
-  singleDecisionType: 'pain' | 'plateau' | 'penultimate_week' | 'unassigned' | 'overload' | 'stimulus' | 'maintain';
+  singleDecisionType: 'pain' | 'plateau' | 'penultimate_week' | 'unassigned' | 'inactivity' | 'missing_weights' | 'overload' | 'stimulus' | 'maintain';
   singleDecisionCtaLabel: string;
   
   // Comparazioni Periodo Corrente vs Precedente

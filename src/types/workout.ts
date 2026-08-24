@@ -65,6 +65,7 @@ export interface AthleteAssignedWorkout {
   workout_id: string;
   assigned_by: string;
   assigned_date: string;
+  start_date?: string;
   is_active: boolean;
   workout?: WorkoutTemplate; // joined data
   athlete?: {

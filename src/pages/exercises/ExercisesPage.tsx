@@ -34,6 +34,7 @@ import {
 import { ExerciseModal } from '../../components/exercises/ExerciseModal';
 import { ExerciseDetailDrawer } from '../../components/exercises/ExerciseDetailDrawer';
 import { AIExerciseGeneratorModal } from '../../components/exercises/AIExerciseGeneratorModal';
+import { ExerciseBiomechanicsOptimizerModal } from '../../components/exercises/ExerciseBiomechanicsOptimizerModal';
 
 // ─── Gruppi Macro per il Menu a Tendina dei Distretti ───────────────────────────
 
@@ -218,6 +219,8 @@ export const ExercisesPage: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
+  const [isBiomechanicsOptimizerOpen, setIsBiomechanicsOptimizerOpen] = useState(false);
+  const [optimizerTargetExercise, setOptimizerTargetExercise] = useState<ExerciseItem | null>(null);
   const [editingExercise, setEditingExercise] = useState<ExerciseItem | null>(null);
   const [deletingExercise, setDeletingExercise] = useState<ExerciseItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -396,7 +399,16 @@ export const ExercisesPage: React.FC = () => {
         </div>
 
         {/* CTA Buttons */}
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+          <button
+            onClick={() => { setOptimizerTargetExercise(null); setIsBiomechanicsOptimizerOpen(true); }}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-white border border-amber-500/30 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+            title="Ottimizza e rigenera la biomeccanica degli esercizi con Google Gemini 3.7 Flash"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Biomeccanica Gemini 3.7</span>
+          </button>
+
           <button
             onClick={() => setIsAIGeneratorOpen(true)}
             className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-bold rounded-xl transition-all cursor-pointer"
@@ -947,6 +959,11 @@ export const ExercisesPage: React.FC = () => {
         onClose={() => { setIsDrawerOpen(false); setDrawerExercise(null); }}
         onEdit={drawerExercise ? () => handleEdit(drawerExercise) : undefined}
         onDelete={drawerExercise?.coach_id ? () => setDeletingExercise(drawerExercise) : undefined}
+        onOptimizeBiomechanics={drawerExercise ? () => {
+          setIsDrawerOpen(false);
+          setOptimizerTargetExercise(drawerExercise);
+          setIsBiomechanicsOptimizerOpen(true);
+        } : undefined}
       />
 
       {/* ── MODAL WIZARD CREAZIONE / MODIFICA ───────────────────────────────── */}
@@ -954,6 +971,22 @@ export const ExercisesPage: React.FC = () => {
         <ExerciseModal
           initialExercise={editingExercise}
           onClose={() => { setIsModalOpen(false); setEditingExercise(null); }}
+        />
+      )}
+
+      {/* ── MODAL OTTIMIZZATORE BIOMECCANICA GEMINI 3.7 ──────────────────────── */}
+      {isBiomechanicsOptimizerOpen && (
+        <ExerciseBiomechanicsOptimizerModal
+          initialExercise={optimizerTargetExercise}
+          onClose={() => {
+            setIsBiomechanicsOptimizerOpen(false);
+            setOptimizerTargetExercise(null);
+          }}
+          onSaved={(updated) => {
+            if (drawerExercise?.id === updated.id) {
+              setDrawerExercise(updated);
+            }
+          }}
         />
       )}
 

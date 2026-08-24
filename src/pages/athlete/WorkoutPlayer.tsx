@@ -7,6 +7,8 @@ import {
   Sparkles,
   WifiOff,
   Info,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
@@ -94,7 +96,26 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [difficulty, setDifficulty] = useState<number>(3);
   const [jointPain, setJointPain] = useState<number>(1);
   const [pump, setPump] = useState<number>(3);
-  const [jointPainNotes, setJointPainNotes] = useState<string>('');
+  const [painReports, setPainReports] = useState<Array<{ id: string; exercise: string; bodyPart: string }>>([
+    { id: 'pain-1', exercise: '', bodyPart: '' },
+  ]);
+
+  const handleAddPainReport = () => {
+    setPainReports((prev) => [
+      ...prev,
+      { id: `pain-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, exercise: '', bodyPart: '' },
+    ]);
+  };
+
+  const handleRemovePainReport = (id: string) => {
+    setPainReports((prev) => (prev.length > 1 ? prev.filter((p) => p.id !== id) : prev));
+  };
+
+  const handleUpdatePainReport = (id: string, field: 'exercise' | 'bodyPart', value: string) => {
+    setPainReports((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    );
+  };
 
   const startTimestampRef = useRef<number>(Date.now());
   const restEndTimestampRef = useRef<number | null>(null);
@@ -111,7 +132,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     difficulty,
     jointPain,
     pump,
-    jointPainNotes,
+    painReports,
   });
 
   useEffect(() => {
@@ -124,9 +145,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       difficulty,
       jointPain,
       pump,
-      jointPainNotes,
+      painReports,
     };
-  }, [logs, completedSets, exerciseNotes, elapsedTime, sessionId, difficulty, jointPain, pump, jointPainNotes]);
+  }, [logs, completedSets, exerciseNotes, elapsedTime, sessionId, difficulty, jointPain, pump, painReports]);
 
   // ── 1. GESTIONE STATO ONLINE/OFFLINE & AUTO-SYNC ──
   useEffect(() => {
@@ -225,7 +246,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       difficulty: current.difficulty,
       jointPain: current.jointPain,
       pump: current.pump,
-      jointPainNotes: current.jointPainNotes,
+      jointPainNotes: current.painReports ? current.painReports.map(p => `${p.exercise}: ${p.bodyPart}`).join(', ') : '',
       syncStatus: navigator.onLine ? 'local_saved' : 'pending_sync',
     };
 
@@ -462,8 +483,13 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         } catch (_) {}
       }
 
+      const validPainReports = painReports.filter((p) => p.exercise.trim() || p.bodyPart.trim());
+      const painDetailsFormatted = validPainReports
+        .map((p, idx) => `[#${idx + 1} Esercizio: ${p.exercise || 'Non specificato'} — Zona: ${p.bodyPart || 'Non specificata'}]`)
+        .join('; ');
+
       const questionnaireNotes = `Questionario: Fatica ${difficulty}/5, Dolore Articolare ${jointPain}/5, Pump ${pump}/5${
-        jointPainNotes ? ` — Note: ${jointPainNotes}` : ''
+        painDetailsFormatted ? ` — Fastidi: ${painDetailsFormatted}` : ''
       }`;
       const nowIso = new Date().toISOString();
       const startIso = new Date(startTimestampRef.current).toISOString();
@@ -510,7 +536,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             difficulty,
             jointPain,
             pump,
-            jointPainNotes,
+            jointPainNotes: painDetailsFormatted,
             logsToSave,
             createdAt: Date.now(),
           };
@@ -535,7 +561,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           difficulty,
           jointPain,
           pump,
-          jointPainNotes,
+          jointPainNotes: painDetailsFormatted,
           logsToSave,
           createdAt: Date.now(),
         };
@@ -543,27 +569,62 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       }
 
       // Alert questionario per il coach se presente dolore o fatica estrema
-      if (jointPain >= 3 || jointPainNotes.trim() !== '' || difficulty >= 4) {
+      if (jointPain >= 3 || validPainReports.length > 0 || difficulty >= 4) {
         try {
           const existingAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]');
-          const isHighSeverity = jointPain >= 4 || /dolore|pizzico|infortunio|male|strappo/i.test(jointPainNotes);
-          const questionnaireSummary = `Questionario Fine Workout — Fatica: ${difficulty}/5 | Dolori Articolari: ${jointPain}/5 | Pump: ${pump}/5${
-            jointPainNotes.trim() ? ` | Dettagli: "${jointPainNotes.trim()}"` : ''
-          }`;
+          const isHighSeverity = jointPain >= 4 || validPainReports.some((p) => /dolore|pizzico|infortunio|male|strappo/i.test(p.bodyPart));
 
-          const questionnaireAlert = {
-            id: `cn-q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          const newAlerts = validPainReports.length > 0
+            ? validPainReports.map((p, pIdx) => ({
+                id: `cn-q-${Date.now()}-${pIdx}-${Math.random().toString(36).slice(2, 6)}`,
+                athleteId,
+                athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
+                workoutTitle: workout.title,
+                weekNumber: weekNum,
+                dayName,
+                exerciseName: p.exercise || 'Esercizio con fastidio',
+                noteText: `Questionario Fine Workout — Dolori Articolari: ${jointPain}/5 | Esercizio: "${p.exercise || 'Non specificato'}" | Zona: "${p.bodyPart || 'Non specificata'}"`,
+                severity: isHighSeverity ? 'high' : 'medium',
+                date: 'Oggi',
+                category: 'pain',
+              }))
+            : [{
+                id: `cn-q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                athleteId,
+                athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
+                workoutTitle: workout.title,
+                weekNumber: weekNum,
+                dayName,
+                exerciseName: 'Questionario Fine Workout',
+                noteText: `Questionario Fine Workout — Fatica: ${difficulty}/5 | Dolori Articolari: ${jointPain}/5`,
+                severity: isHighSeverity ? 'high' : 'medium',
+                date: 'Oggi',
+                category: 'pain',
+              }];
+
+          localStorage.setItem('builder_copilot_critical_notes', JSON.stringify([...newAlerts, ...existingAlerts]));
+          window.dispatchEvent(new Event('copilot_notes_updated'));
+        } catch (_) {}
+      }
+
+      // Alert se sessione completata senza carichi registrati (Volume 0 kg)
+      if (logsToSave.length === 0 || logsToSave.every(l => !l.weight_kg || l.weight_kg === 0)) {
+        try {
+          const existingAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]');
+          const missingWeightsAlert = {
+            id: `cn-mw-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             athleteId,
             athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
             workoutTitle: workout.title,
             weekNumber: weekNum,
             dayName,
-            exerciseName: 'Questionario Fine Workout',
-            noteText: questionnaireSummary,
-            severity: isHighSeverity ? 'high' : 'medium',
+            exerciseName: 'Log Incompleto (Volume 0 kg)',
+            noteText: `Sessione completata senza carichi registrati. Invia promemoria compilazione.`,
+            severity: 'medium',
             date: 'Oggi',
+            category: 'missing_weights',
           };
-          localStorage.setItem('builder_copilot_critical_notes', JSON.stringify([questionnaireAlert, ...existingAlerts]));
+          localStorage.setItem('builder_copilot_critical_notes', JSON.stringify([missingWeightsAlert, ...existingAlerts]));
           window.dispatchEvent(new Event('copilot_notes_updated'));
         } catch (_) {}
       }
@@ -578,13 +639,11 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         const exLogs = logs[ex.id] || [];
         const exSetsMap = completedSets[ex.id] || [];
         exLogs.forEach((l, sIdx) => {
-          const r = parseInt(l.reps, 10) || 0;
-          const w = parseFloat(l.weight) || 0;
-          if (r > 0 && w > 0) {
-            calculatedVolumeKg += r * w;
-          }
-          if (exSetsMap[sIdx] || (r > 0 && w > 0)) {
-            completedSetsTotal++;
+          if (exSetsMap[sIdx]) {
+            completedSetsTotal += 1;
+            const w = parseFloat(l.weight) || 0;
+            const r = parseInt(l.reps, 10) || 0;
+            calculatedVolumeKg += w * r;
           }
         });
       });
@@ -724,16 +783,33 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
       {/* ── QUESTIONARIO POST-ALLENAMENTO MODAL ── */}
       {showQuestionnaireModal && (() => {
-        let filledSetsCount = 0;
+        let totalSetsPlanned = 0;
+        let setsWithWeightAndReps = 0;
+        let emptyExercisesCount = 0;
+
         exercises.forEach((ex) => {
+          totalSetsPlanned += ex.sets;
           const exLogs = logs[ex.id] || [];
-          const completedMap = completedSets[ex.id] || [];
+          let exerciseHasAnyWeight = false;
+
           for (let i = 0; i < ex.sets; i++) {
-            if (completedMap[i] || (exLogs[i]?.reps && exLogs[i]?.reps !== '') || (exLogs[i]?.weight && exLogs[i]?.weight !== '')) {
-              filledSetsCount++;
+            const l = exLogs[i];
+            const w = parseFloat(l?.weight || '') || 0;
+            const r = parseInt(l?.reps || '', 10) || 0;
+            if (w > 0 && r > 0) {
+              setsWithWeightAndReps++;
+              exerciseHasAnyWeight = true;
             }
           }
+
+          if (!exerciseHasAnyWeight) {
+            emptyExercisesCount++;
+          }
         });
+
+        const isCompletelyEmpty = setsWithWeightAndReps === 0;
+        const isPartiallyEmpty = setsWithWeightAndReps > 0 && setsWithWeightAndReps < totalSetsPlanned;
+        const hasMissingData = isCompletelyEmpty || isPartiallyEmpty;
 
         return (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -748,39 +824,22 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                 </p>
               </div>
 
-              {/* Avviso Serie / Carichi Non Registrati */}
-              {filledSetsCount === 0 && (
-                <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-2 text-xs animate-in fade-in">
+              {/* Avviso Serie / Carichi Non Registrati o Parziali */}
+              {hasMissingData && (
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-1.5 text-xs animate-in fade-in">
                   <div className="flex items-center gap-1.5 text-amber-400 font-bold">
                     <Info className="w-4 h-4 shrink-0" />
-                    <span>Nessun carico registrato nelle serie</span>
+                    <span>
+                      {isCompletelyEmpty
+                        ? 'Non hai inserito i carichi usati oggi'
+                        : `Compilazione incompleta (${setsWithWeightAndReps}/${totalSetsPlanned} serie registrate)`}
+                    </span>
                   </div>
                   <p className="text-slate-300 text-[11px] leading-relaxed">
-                    Non hai inserito i kg per i singoli esercizi. Vuoi completare la sessione registrando i carichi target previsti dal coach?
+                    {isCompletelyEmpty
+                      ? 'Non hai inserito i carichi usati oggi. Inserire i pesi e le ripetizioni aiuta il tuo coach a monitorare i tuoi progressi!'
+                      : `Hai lasciato ${emptyExercisesCount > 0 ? `${emptyExercisesCount} esercizio/i` : 'alcune serie'} senza carichi o ripetizioni. Completa tutti gli esercizi per consentire al coach di tracciare l'andamento reale!`}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newCompleted: Record<string, boolean[]> = {};
-                      const newLogs: Record<string, { reps: string; weight: string; rpe: string }[]> = {};
-                      exercises.forEach((ex) => {
-                        newCompleted[ex.id] = Array(ex.sets).fill(true);
-                        newLogs[ex.id] = Array(ex.sets).fill(null).map(() => ({
-                          reps: ex.reps_target || '10',
-                          weight: ex.target_weight || '',
-                          rpe: ex.rir_target?.startsWith('RPE') ? ex.rir_target.replace('RPE', '').trim() : '',
-                        }));
-                      });
-                      setCompletedSets(newCompleted);
-                      setLogs(newLogs);
-                      scheduleAutosave(true);
-                      showSuccess('Carichi target confermati su tutte le serie! 💪');
-                    }}
-                    className="w-full py-2.5 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-xl font-black text-xs border border-amber-500/40 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Conferma tutti i carichi target della scheda</span>
-                  </button>
                 </div>
               )}
 
@@ -839,19 +898,102 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               </div>
             </div>
 
-            {/* Dettaglio Dolore */}
+            {/* Dettaglio Dolore: Supporto Multi-Esercizio */}
             {jointPain >= 2 && (
-              <div className="space-y-1 animate-in fade-in duration-150">
-                <label className="text-[11px] font-bold text-rose-300 block">
-                  Specifica dove hai sentito fastidio:
-                </label>
-                <input
-                  type="text"
-                  value={jointPainNotes}
-                  onChange={(e) => setJointPainNotes(e.target.value)}
-                  placeholder="Es: lombare su stacco, spalla destra su panca..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-rose-500/40 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-rose-400"
-                />
+              <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-3 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400">
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>Dettaglio Fastidi Articolari ({painReports.length})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddPainReport}
+                    className="px-2.5 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[11px] font-bold border border-rose-500/40 flex items-center gap-1 transition-all cursor-pointer active:scale-95 shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Aggiungi esercizio</span>
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {painReports.map((report, rIdx) => (
+                    <div
+                      key={report.id}
+                      className="p-3 bg-slate-950/80 border border-rose-500/30 rounded-xl space-y-2 relative group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-rose-300">
+                          Esercizio #{rIdx + 1}
+                        </span>
+                        {painReports.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePainReport(report.id)}
+                            className="text-slate-500 hover:text-rose-400 p-1 rounded-lg transition-colors cursor-pointer"
+                            title="Rimuovi questo esercizio"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Dropdown Esercizio */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Su quale esercizio?
+                        </label>
+                        <select
+                          value={report.exercise}
+                          onChange={(e) => handleUpdatePainReport(report.id, 'exercise', e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-rose-500/40 text-white text-xs focus:outline-none focus:border-rose-400 cursor-pointer"
+                        >
+                          <option value="">-- Seleziona esercizio --</option>
+                          {exercises.map((ex) => (
+                            <option key={ex.id} value={ex.name}>
+                              {ex.name}
+                            </option>
+                          ))}
+                          <option value="Generale / Più esercizi">Generale / Più esercizi</option>
+                        </select>
+                      </div>
+
+                      {/* Input Zona / Articolazione */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Dove hai sentito fastidio?
+                        </label>
+                        <input
+                          type="text"
+                          value={report.bodyPart}
+                          onChange={(e) => handleUpdatePainReport(report.id, 'bodyPart', e.target.value)}
+                          placeholder="Es: spalla anteriore destra, gomito interno..."
+                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-rose-500/40 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-rose-400"
+                        />
+                        {/* Chip Rapidi */}
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {['Spalla', 'Gomito', 'Lombare', 'Ginocchio', 'Anca', 'Polso'].map((chip) => (
+                            <button
+                              key={chip}
+                              type="button"
+                              onClick={() => {
+                                const cur = report.bodyPart;
+                                handleUpdatePainReport(
+                                  report.id,
+                                  'bodyPart',
+                                  cur ? `${cur}, ${chip}` : chip
+                                );
+                              }}
+                              className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold hover:bg-rose-500/30 cursor-pointer"
+                            >
+                              +{chip}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

@@ -37,6 +37,7 @@ interface RawAssignment {
   athlete_id: string;
   workout_id: string;
   assigned_date?: string;
+  start_date?: string;
   workout?: { title?: string; total_weeks?: number };
   workout_title?: string;
 }
@@ -80,8 +81,9 @@ export function calculateDelta(current: number, previous: number): ComparisonMet
   let deltaPercent = 0;
   if (previous > 0) {
     deltaPercent = Math.round(((current - previous) / previous) * 1000) / 10;
-  } else if (current > 0) {
-    deltaPercent = 100;
+  } else {
+    // Se non ci sono dati nel periodo precedente, non è un incremento del 100% ma la baseline iniziale
+    deltaPercent = 0;
   }
   return {
     current: Math.round(current * 10) / 10,
@@ -133,13 +135,31 @@ export function buildAthleteReport(
   const currentStartMs = now - days * 24 * 60 * 60 * 1000;
   const previousStartMs = now - 2 * days * 24 * 60 * 60 * 1000;
 
-  // Filtra sessioni atleta
-  const athleteSessions = sessions.filter((s) => s.athlete_id === athlete.id);
-  const currentSessions = athleteSessions.filter((s) => {
+  // Filtra sessioni atleta (solo sessioni completate con end_time o con effettivi log di serie registrati)
+  const athleteSessions = sessions.filter((s) => {
+    if (s.athlete_id !== athlete.id) return false;
+    const hasLogs = logs.some((l) => l.session_id === s.id && (l.reps_completed > 0 || l.weight_kg > 0));
+    return Boolean(s.end_time || hasLogs);
+  });
+
+  // Deduplica eventuali sessioni doppie avviate entro 30 minuti
+  const deduplicatedSessions: RawSession[] = [];
+  athleteSessions.forEach((sess) => {
+    const sessTime = new Date(sess.start_time).getTime();
+    const isDuplicate = deduplicatedSessions.some((existing) => {
+      const existingTime = new Date(existing.start_time).getTime();
+      return Math.abs(sessTime - existingTime) < 30 * 60 * 1000 && sess.workout_id === existing.workout_id;
+    });
+    if (!isDuplicate) {
+      deduplicatedSessions.push(sess);
+    }
+  });
+
+  const currentSessions = deduplicatedSessions.filter((s) => {
     const t = new Date(s.start_time).getTime();
     return t >= currentStartMs && t <= now;
   });
-  const previousSessions = athleteSessions.filter((s) => {
+  const previousSessions = deduplicatedSessions.filter((s) => {
     const t = new Date(s.start_time).getTime();
     return t >= previousStartMs && t < currentStartMs;
   });
@@ -156,39 +176,52 @@ export function buildAthleteReport(
   const hasAssignment = Boolean(assignment && (assignment.workout_id || assignment.workout?.title || assignment.workout_title));
   const workoutTitle = assignment?.workout?.title || assignment?.workout_title || 'Nessuna Scheda Assegnata';
   const totalWeeks = assignment?.workout?.total_weeks || 5;
-  const assignedDate = assignment?.assigned_date;
+
+  const totalCompletedInHistory = currentSessions.length + previousSessions.length;
+  const targetSessionsPerWeek = 3;
+  const totalPlannedInBlock = Math.max(1, totalWeeks * targetSessionsPerWeek);
 
   let currentWeek = 1;
-  let elapsedDays = 0;
-  if (assignedDate) {
-    elapsedDays = Math.max(0, Math.floor((now - new Date(assignedDate).getTime()) / (24 * 60 * 60 * 1000)));
-    const elapsedWeeks = Math.ceil(elapsedDays / 7);
-    currentWeek = Math.min(totalWeeks, Math.max(1, elapsedWeeks));
-  } else {
-    currentWeek = Math.min(totalWeeks, Math.max(1, Math.ceil(currentSessions.length / 3)));
+  let blockProgressPercent = 0;
+
+  if (hasAssignment) {
+    if (totalCompletedInHistory === 0) {
+      // Nessun workout svolto: avanzamento blocco a 0%
+      currentWeek = 1;
+      blockProgressPercent = 0;
+    } else {
+      currentWeek = Math.min(totalWeeks, Math.max(1, Math.ceil(totalCompletedInHistory / targetSessionsPerWeek)));
+      blockProgressPercent = Math.min(100, Math.max(5, Math.round((totalCompletedInHistory / totalPlannedInBlock) * 100)));
+    }
   }
-  const blockProgressPercent = hasAssignment ? Math.round((currentWeek / totalWeeks) * 100) : 0;
+
+  // Data Inizio / Assegnazione e Giorni Trascorsi
+  const effectiveStartDateStr = assignment?.start_date || assignment?.assigned_date;
+  let daysSinceStart = 999;
+  if (effectiveStartDateStr) {
+    const startMs = new Date(effectiveStartDateStr).getTime();
+    daysSinceStart = Math.floor((now - startMs) / (24 * 60 * 60 * 1000));
+  }
+  const isFutureStart = daysSinceStart < 0;
 
   // ── DETERMINAZIONE DELLO STATO DEL PROGRAMMA E PENULTIMA SETTIMANA ──
-  const isPenultimateWeek = hasAssignment && totalWeeks > 1 && currentWeek === totalWeeks - 1;
+  const isPenultimateWeek = hasAssignment && totalWeeks > 1 && totalCompletedInHistory > 0 && currentWeek === totalWeeks - 1;
   let programStatus: AthleteReportSummary['programStatus'] = 'active';
   let programStatusLabel = 'Programma Attivo';
 
   if (!hasAssignment) {
     programStatus = 'unassigned';
     programStatusLabel = 'Programma non assegnato';
+  } else if (isFutureStart) {
+    programStatus = 'pending_start';
+    programStatusLabel = `In partenza ${new Date(effectiveStartDateStr!).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}`;
+  } else if (totalCompletedInHistory === 0) {
+    programStatus = 'pending_start';
+    programStatusLabel = 'In attesa di inizio';
   } else if (isPenultimateWeek) {
     programStatus = 'penultimate_week';
     programStatusLabel = 'Penultima Settimana';
-  } else if (currentSessions.length === 0 && previousSessions.length === 0) {
-    if (elapsedDays <= 4) {
-      programStatus = 'pending_start';
-      programStatusLabel = 'In attesa di inizio';
-    } else {
-      programStatus = 'inactive';
-      programStatusLabel = 'Inattivo (Nessun Workout)';
-    }
-  } else if (currentWeek >= totalWeeks && elapsedDays > totalWeeks * 7) {
+  } else if (currentWeek >= totalWeeks && blockProgressPercent >= 100) {
     programStatus = 'completed';
     programStatusLabel = 'Blocco Terminato';
   } else {
@@ -196,12 +229,29 @@ export function buildAthleteReport(
     programStatusLabel = 'Programma Attivo';
   }
 
-  // 1. Sessioni & Aderenza
-  const targetSessionsPerWeek = 3;
-  const targetSessionsInPeriod = Math.max(1, Math.round((days / 7) * targetSessionsPerWeek));
-  const currentAttendancePct = hasAssignment
-    ? Math.min(100, Math.round((currentSessions.length / targetSessionsInPeriod) * 100))
-    : 0;
+  // 1. Sessioni & Aderenza con Pro-Rata Intelligente
+  let targetSessionsInPeriod = Math.max(1, Math.round((days / 7) * targetSessionsPerWeek));
+  if (hasAssignment && daysSinceStart >= 0 && daysSinceStart < 7) {
+    if (daysSinceStart <= 2) {
+      targetSessionsInPeriod = 1;
+    } else if (daysSinceStart <= 4) {
+      targetSessionsInPeriod = 2;
+    } else {
+      targetSessionsInPeriod = 3;
+    }
+  }
+
+  let currentAttendancePct = 0;
+  if (hasAssignment) {
+    if (isFutureStart) {
+      currentAttendancePct = 100;
+    } else if (totalCompletedInHistory === 0) {
+      currentAttendancePct = 0;
+    } else {
+      currentAttendancePct = Math.min(100, Math.round((currentSessions.length / targetSessionsInPeriod) * 100));
+    }
+  }
+
   const previousAttendancePct = hasAssignment
     ? Math.min(100, Math.round((previousSessions.length / targetSessionsInPeriod) * 100))
     : 0;
@@ -263,7 +313,7 @@ export function buildAthleteReport(
       groupName: grp,
       currentKg: Math.round(curGVol),
       previousKg: Math.round(prevGVol),
-      deltaPercent: prevGVol > 0 ? Math.round(((curGVol - prevGVol) / prevGVol) * 1000) / 10 : curGVol > 0 ? 100 : 0,
+      deltaPercent: prevGVol > 0 ? Math.round(((curGVol - prevGVol) / prevGVol) * 1000) / 10 : 0,
     };
   });
 
@@ -281,7 +331,8 @@ export function buildAthleteReport(
     const cAvg = cLogs.length > 0 ? cLogs.reduce((s, l) => s + l.weight_kg, 0) / cLogs.length : 0;
     const pAvg = pLogs.length > 0 ? pLogs.reduce((s, l) => s + l.weight_kg, 0) / pLogs.length : 0;
 
-    const deltaPct = pMax > 0 ? Math.round(((cMax - pMax) / pMax) * 1000) / 10 : cMax > 0 ? 100 : 0;
+    const hasPrev = pLogs.length > 0 && pMax > 0;
+    const deltaPct = hasPrev ? Math.round(((cMax - pMax) / pMax) * 1000) / 10 : 0;
 
     keyExercises.push({
       name: exName,
@@ -294,19 +345,20 @@ export function buildAthleteReport(
   });
 
   // 6. Calcolo Score Complessivo (0-100)
+  const hasPreviousPeriod = previousSessions.length > 0 && prevVol > 0;
   let overallScore = 75;
-  if (!hasAssignment) {
+  if (!hasAssignment || totalCompletedInHistory === 0) {
     overallScore = 0;
-  } else if (currentSessions.length === 0) {
-    overallScore = 40;
   } else {
     let score = 70;
     if (currentAttendancePct >= 90) score += 15;
     else if (currentAttendancePct >= 75) score += 8;
     else score -= 12;
 
-    if (totalVolumeKg.deltaPercent > 5) score += 10;
-    else if (totalVolumeKg.deltaPercent < -10) score -= 10;
+    if (hasPreviousPeriod) {
+      if (totalVolumeKg.deltaPercent > 5) score += 10;
+      else if (totalVolumeKg.deltaPercent < -10) score -= 10;
+    }
 
     if (currentPainCount > 0) score -= Math.min(25, currentPainCount * 12);
     if (currentAvgRpe >= 7 && currentAvgRpe <= 8.5) score += 5;
@@ -317,8 +369,10 @@ export function buildAthleteReport(
 
   // 7. Trend
   let trend: ReportTrend = 'neutral';
-  if (!hasAssignment) {
+  if (!hasAssignment || totalCompletedInHistory === 0) {
     trend = 'neutral';
+  } else if (!hasPreviousPeriod && currentSessions.length > 0) {
+    trend = 'stable';
   } else if (overallScore >= 80 && totalVolumeKg.deltaPercent >= 0) {
     trend = 'positive';
   } else if (overallScore < 60 || totalVolumeKg.deltaPercent < -15 || currentPainCount > 1) {
@@ -333,16 +387,35 @@ export function buildAthleteReport(
   let singleDecisionType: AthleteReportSummary['singleDecisionType'] = 'maintain';
   let singleDecisionCtaLabel = 'Apri Copilot';
 
+  const isMissingWeights = hasAssignment && currentSessions.length > 0 && curVol === 0;
+
   if (!hasAssignment) {
     singleDecisionTitle = 'Assegna Scheda di Allenamento';
     singleDecisionRationale = 'Nessun programma attivo. Crea o assegna un mesociclo per avviare il percorso.';
     singleDecisionType = 'unassigned';
     singleDecisionCtaLabel = 'Assegna Programma';
+  } else if (currentSessions.length === 0) {
+    singleDecisionTitle = 'In Attesa di Inizio Scheda';
+    singleDecisionRationale = `Scheda "${workoutTitle}" pronta. In attesa del primo allenamento registrato da parte di ${athlete.fullName}.`;
+    singleDecisionType = 'inactivity';
+    singleDecisionCtaLabel = 'Contatta Atleta';
+  } else if (isMissingWeights && currentPainCount === 0) {
+    singleDecisionTitle = 'Sollecita Compilazione Carichi';
+    singleDecisionRationale = 'Sessione completata ma senza carichi registrati (Volume 0 kg). Sollecita l\'inserimento dei dati per tracciare la progressione.';
+    singleDecisionType = 'missing_weights';
+    singleDecisionCtaLabel = 'Sollecita Compilazione';
   } else if (currentPainCount > 0) {
-    singleDecisionTitle = 'Sostituisci Esercizio a Rischio';
-    singleDecisionRationale = `${currentPainCount} segnalazione/i di fastidio articolare rilevata nelle ultime sessioni.`;
-    singleDecisionType = 'pain';
-    singleDecisionCtaLabel = 'Apri Decisione';
+    if (currentPainCount === 1 && totalCompletedInHistory <= 2) {
+      singleDecisionTitle = 'Richiedi Video o Check Tecnico';
+      singleDecisionRationale = '1° segnalazione di fastidio: richiedi un video esecutivo o verifica la tecnica prima di modificare la scheda.';
+      singleDecisionType = 'pain';
+      singleDecisionCtaLabel = 'Verifica Tecnica';
+    } else {
+      singleDecisionTitle = 'Sostituisci Esercizio a Rischio';
+      singleDecisionRationale = `${currentPainCount} segnalazione/i di fastidio articolare rilevata nelle ultime sessioni.`;
+      singleDecisionType = 'pain';
+      singleDecisionCtaLabel = 'Apri Decisione';
+    }
   } else if (isPenultimateWeek) {
     singleDecisionTitle = 'Prepara Prossimo Mesociclo';
     singleDecisionRationale = `L'atleta è alla settimana ${currentWeek} di ${totalWeeks}. Prepara il prossimo blocco per dare continuità.`;
@@ -358,7 +431,7 @@ export function buildAthleteReport(
     singleDecisionRationale = `RPE medio molto alto (${avgRpe.current}). Riduci volume del -30% per 1 settimana.`;
     singleDecisionType = 'overload';
     singleDecisionCtaLabel = 'Apri Copilot';
-  } else if (overallScore >= 82 && totalVolumeKg.deltaPercent >= 5) {
+  } else if (overallScore >= 82 && hasPreviousPeriod && totalVolumeKg.deltaPercent >= 5) {
     singleDecisionTitle = 'Incrementa Sovraccarico (+2.5%)';
     singleDecisionRationale = 'Ottima risposta ipertrofica: aumenta i carichi target sui fondamentali.';
     singleDecisionType = 'stimulus';
@@ -394,8 +467,10 @@ export function buildAthleteReport(
     if (currentAttendancePct >= 85) {
       whatIsWorking.push(`Ottima costanza e frequenza negli allenamenti (${currentAttendancePct}% aderenza).`);
     }
-    if (totalVolumeKg.deltaPercent > 0) {
+    if (hasPreviousPeriod && totalVolumeKg.deltaPercent > 0) {
       whatIsWorking.push(`Volume di lavoro in crescita (+${totalVolumeKg.deltaPercent}% rispetto al periodo precedente).`);
+    } else if (!hasPreviousPeriod && currentSessions.length > 0) {
+      whatIsWorking.push(`Sessione iniziale registrata con successo: baseline carichi e volumi impostata (${curVol.toLocaleString('it-IT')} kg).`);
     }
     if (currentPainCount === 0) {
       whatIsWorking.push('Nessun fastidio articolare o infortunio segnalato.');
@@ -505,7 +580,9 @@ export function buildTeamOverviewReport(
   const positiveCount = eligibleReports.filter((a) => a.trend === 'positive').length;
   const stableCount = eligibleReports.filter((a) => a.trend === 'stable').length;
   const negativeCount = eligibleReports.filter((a) => a.trend === 'negative').length;
-  const activeAlertsCount = eligibleReports.filter((a) => a.painReportsCount.current > 0 || (a.attendance.current < 65 && a.programStatus === 'active')).length;
+  const activeAlertsCount = eligibleReports.filter(
+    (a) => a.painReportsCount.current > 0 || (a.programStatus === 'active' && (a.attendance.current < 70 || a.trend === 'negative'))
+  ).length;
 
   const todayPriorities: DecisionPriorityItem[] = [];
 

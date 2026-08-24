@@ -82,7 +82,9 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
       if (activeFilter === 'penultimate') return ath.isPenultimateWeek;
       if (activeFilter === 'positive') return ath.trend === 'positive';
       if (activeFilter === 'stable') return ath.trend === 'stable';
-      if (activeFilter === 'monitor') return ath.trend === 'negative' || ath.painReportsCount.current > 0 || ath.attendance.current < 70;
+      if (activeFilter === 'monitor') {
+        return ath.painReportsCount.current > 0 || (ath.programStatus === 'active' && (ath.attendance.current < 70 || ath.trend === 'negative'));
+      }
       if (activeFilter === 'unassigned') return false;
       return true;
     });
@@ -117,10 +119,16 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
     if (prio.targetAction === 'assign' && onAssignProgram) {
       onAssignProgram(prio.athleteId);
     } else if (onOpenCopilot) {
+      let category = 'progression';
+      if (prio.type === 'pain') category = 'pain';
+      else if (prio.type === 'penultimate_week') category = 'penultimate_week';
+      else if (prio.type === 'inactivity') category = 'inactivity';
+      else if (prio.type === 'plateau') category = 'stagnation';
+
       onOpenCopilot(prio.athleteId, {
         athleteId: prio.athleteId,
         athleteName: prio.athleteName,
-        category: prio.type === 'pain' ? 'pain' : prio.type === 'penultimate_week' ? 'penultimate_week' : 'stagnation',
+        category,
         summary: prio.title,
         severity: prio.urgency === 'high' ? 'high' : 'medium',
       });
@@ -130,6 +138,14 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
   };
 
   const getTrendBadge = (ath: AthleteReportSummary) => {
+    if (ath.programStatus === 'pending_start' || ath.completedSessions.current === 0) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-sky-500/15 text-sky-300 border border-sky-500/30">
+          <Clock className="w-3 h-3 text-sky-400" />
+          <span>In Attesa</span>
+        </span>
+      );
+    }
     if (ath.isPenultimateWeek) {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-300 border border-amber-500/30">
@@ -172,7 +188,8 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
     }
   };
 
-  const getScoreColor = (score: number) => {
+  const getScoreColor = (score: number, isUnstarted?: boolean) => {
+    if (isUnstarted || score === 0) return 'text-slate-400 bg-slate-800/60 border-slate-700/80';
     if (score >= 80) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
     if (score >= 60) return 'text-amber-400 bg-amber-500/10 border-amber-500/30';
     return 'text-rose-400 bg-rose-500/10 border-rose-500/30';
@@ -494,7 +511,13 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">
-              Atleti con Programma ({filteredActiveAthletes.length})
+              {activeFilter === 'monitor'
+                ? `Atleti da Monitorare (${filteredActiveAthletes.length})`
+                : activeFilter === 'penultimate'
+                ? `Atleti a Penultima Settimana (${filteredActiveAthletes.length})`
+                : activeFilter === 'positive'
+                ? `Atleti in Crescita (${filteredActiveAthletes.length})`
+                : `Atleti con Programma (${filteredActiveAthletes.length})`}
             </h3>
           </div>
 
@@ -531,11 +554,12 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
                         {getTrendBadge(ath)}
                         <span
                           className={`text-xs font-mono font-black px-2 py-0.5 rounded-lg border ${getScoreColor(
-                            ath.overallScore
+                            ath.overallScore,
+                            ath.completedSessions.current === 0
                           )}`}
-                          title="Punteggio Performance"
+                          title={ath.completedSessions.current === 0 ? 'In attesa del primo allenamento' : 'Punteggio Performance'}
                         >
-                          {ath.overallScore}/100
+                          {ath.completedSessions.current === 0 ? '--/100' : `${ath.overallScore}/100`}
                         </span>
                       </div>
                     </div>
@@ -545,7 +569,9 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
                       <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
                         <span>Avanzamento Mesociclo</span>
                         <strong className="text-white">
-                          Settimana {ath.currentWeek} di {ath.totalWeeks} ({ath.blockProgressPercent}%)
+                          {ath.blockProgressPercent === 0
+                            ? `Settimana 1 di ${ath.totalWeeks} (0%)`
+                            : `Settimana ${ath.currentWeek} di ${ath.totalWeeks} (${ath.blockProgressPercent}%)`}
                         </strong>
                       </div>
                       <div className="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden">
@@ -595,10 +621,17 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           if (onOpenCopilot) {
+                            let category = 'progression';
+                            if (ath.singleDecisionType === 'pain') category = 'pain';
+                            else if (ath.singleDecisionType === 'penultimate_week') category = 'penultimate_week';
+                            else if (ath.singleDecisionType === 'missing_weights') category = 'missing_weights';
+                            else if (ath.singleDecisionType === 'inactivity' || ath.programStatus === 'pending_start' || ath.programStatus === 'inactive' || ath.completedSessions.current === 0) category = 'inactivity';
+                            else if (ath.singleDecisionType === 'plateau') category = 'stagnation';
+
                             onOpenCopilot(ath.athleteId, {
                               athleteId: ath.athleteId,
                               athleteName: ath.athleteName,
-                              category: ath.singleDecisionType === 'pain' ? 'pain' : ath.singleDecisionType === 'penultimate_week' ? 'penultimate_week' : 'stagnation',
+                              category,
                               summary: ath.singleDecisionTitle,
                               severity: ath.singleDecisionType === 'pain' ? 'high' : 'medium',
                             });

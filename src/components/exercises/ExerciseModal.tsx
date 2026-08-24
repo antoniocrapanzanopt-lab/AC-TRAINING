@@ -20,8 +20,9 @@ import { useExercises } from '../../context/ExercisesContext';
 import { useToast } from '../../context/ToastContext';
 import { validateAndInspectVideoFile } from '../../utils/fileCompressor';
 import { uploadExerciseVideoToStorage } from '../../lib/storage';
-import { suggestExerciseWithAI } from '../../lib/ai/aiExerciseGenerator';
+import { optimizeExerciseBiomechanicsWithGemini } from '../../lib/ai/biomechanicsGeminiAssistant';
 import { AI_CONFIG } from '../../config/aiConfig';
+import { AnatomicalMuscleMap } from './AnatomicalMuscleMap';
 
 interface ExerciseModalProps {
   initialExercise?: ExerciseItem | null;
@@ -116,6 +117,8 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
   const [pianoMovimento, setPianoMovimento] = useState<MovementPlane | ''>(initialExercise?.piano_movimento || '');
   const [catenaСinetica, setCatenaCinetica] = useState<KineticChain | ''>(initialExercise?.catena_cinetica || '');
   const [gradiLiberta, setGradiLiberta] = useState<number | ''>(initialExercise?.gradi_liberta || '');
+  const [patternMovimento, setPatternMovimento] = useState<string>(initialExercise?.pattern_movimento || '');
+  const [targetSpecifico, setTargetSpecifico] = useState<string>(initialExercise?.target_specifico || '');
 
   // ── Tab 1: Muscoli ───────────────────────────────────────────────────────
   const [muscoli, setMuscoli] = useState<MuscleInvolvement[]>(
@@ -170,11 +173,16 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
     }
     setIsSuggestingAI(true);
     try {
-      const result = await suggestExerciseWithAI(name.trim(), category || undefined, equipment || undefined);
+      const result = await optimizeExerciseBiomechanicsWithGemini(name.trim(), {
+        currentCategory: category || undefined,
+        currentEquipment: equipment || undefined,
+      });
 
       if (result.category) setCategory(result.category);
       if (result.equipment) setEquipment(result.equipment);
       if (result.instructions) setInstructions(result.instructions);
+      if (result.pattern_movimento) setPatternMovimento(result.pattern_movimento);
+      if (result.target_specifico) setTargetSpecifico(result.target_specifico);
       if (result.tipo) setTipo(result.tipo);
       if (result.bilateralita) setBilateralita(result.bilateralita);
       if (result.piano_movimento) setPianoMovimento(result.piano_movimento);
@@ -215,7 +223,7 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
       }
 
       setAiSuggested(true);
-      showSuccess(`✨ Scheda compilata al 100% con ${AI_CONFIG.GEMINI.DISPLAY_NAME}!`, 'I dati biomeccanici, clinici e istruzioni sono stati inseriti in tutti i tab.');
+      showSuccess(`✨ Scheda compilata al 100% con ${result.modelUsed || AI_CONFIG.GEMINI.DISPLAY_NAME}!`, 'I dati biomeccanici, clinici e istruzioni sono stati inseriti in tutti i tab.');
     } catch (err: unknown) {
       showError('Errore IA', err instanceof Error ? err.message : 'Impossibile completare la richiesta.');
     } finally {
@@ -292,6 +300,8 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
       const payload: Partial<ExerciseItem> = {
         name: name.trim(), category, equipment,
         video_url: videoUrl.trim() || null, instructions: instructions.trim() || null,
+        pattern_movimento: patternMovimento.trim() || null,
+        target_specifico: targetSpecifico.trim() || null,
         tipo: (tipo as ExerciseType) || null, bilateralita: (bilateralita as Bilaterality) || null,
         piano_movimento: (pianoMovimento as MovementPlane) || null, catena_cinetica: (catenaСinetica as KineticChain) || null,
         gradi_liberta: gradiLiberta !== '' ? Number(gradiLiberta) : null,
@@ -552,6 +562,23 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
                     <Check className="w-3 h-3" /> Video salvato: {videoStats.duration}s ({videoStats.sizeMB} MB)
                   </p>
                 )}
+                {videoUrl && (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) && (
+                  <div className="mt-2.5 aspect-video w-full max-w-sm rounded-xl overflow-hidden bg-black border border-slate-800 shadow-md">
+                    <iframe
+                      src={
+                        videoUrl.includes('youtube.com/watch?v=')
+                          ? videoUrl.replace('watch?v=', 'embed/')
+                          : videoUrl.includes('youtu.be/')
+                          ? videoUrl.replace('youtu.be/', 'youtube.com/embed/')
+                          : videoUrl
+                      }
+                      title="Anteprima Video YouTube"
+                      className="w-full h-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                )}
               </div>
 
               <div>
@@ -654,39 +681,43 @@ export const ExerciseModal: React.FC<ExerciseModalProps> = ({ initialExercise, o
 
               {/* Mappa muscoli selezionati */}
               {muscoli.length > 0 ? (
-                <div className="space-y-3 bg-[#0f141c]/60 border border-slate-800 rounded-2xl p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-black text-white uppercase tracking-wider">
-                      Attivazione Mappata ({muscoli.length} muscoli coinvolti)
-                    </p>
-                    <span className="text-[10px] text-slate-400">Clicca sul cestino o sul tag rapido per rimuovere</span>
-                  </div>
+                <div className="space-y-4 bg-[#0f141c]/60 border border-slate-800 rounded-2xl p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                    <div className="md:col-span-4 bg-slate-950 p-2 rounded-2xl border border-slate-800 flex items-center justify-center">
+                      <AnatomicalMuscleMap muscles={muscoli} compact={true} interactive={false} />
+                    </div>
+                    <div className="md:col-span-8 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-black text-white uppercase tracking-wider">
+                          Attivazione Mappata ({muscoli.length} muscoli coinvolti)
+                        </p>
+                        <span className="text-[10px] text-slate-400">Clicca sul cestino o sul tag rapido per rimuovere</span>
+                      </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1">
-                    {muscoli.map((m, i) => {
-                      const roleColor = m.ruolo === 'Target' ? 'bg-amber-500' : m.ruolo === 'Sinergico' ? 'bg-sky-400' : m.ruolo === 'Stabilizzatore' ? 'bg-emerald-400' : 'bg-violet-400';
-                      return (
-                        <div key={i} className="flex items-center gap-2.5 bg-slate-900/90 border border-slate-800/90 rounded-xl px-3.5 py-2.5 hover:border-slate-700 transition-colors">
-                          <div className={`w-2.5 h-2.5 rounded-full ${roleColor} shrink-0`} />
-                          <div className="flex-1 min-w-0">
-                            <span className="text-xs font-bold text-white block truncate">{m.muscolo}</span>
-                            <span className="text-[10px] font-semibold text-slate-400">{m.ruolo}</span>
-                          </div>
-                          <div className="w-16 sm:w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden shrink-0">
-                            <div className={`h-full rounded-full ${roleColor}`} style={{ width: `${m.percentuale}%` }} />
-                          </div>
-                          <span className="text-xs font-mono font-bold text-slate-300 w-8 text-right shrink-0">{m.percentuale}%</span>
-                          <button
-                            type="button"
-                            onClick={() => setMuscoli(muscoli.filter((_, idx) => idx !== i))}
-                            className="p-1 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-                            title="Rimuovi muscolo"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                        {muscoli.map((m, i) => {
+                          const roleColor = m.ruolo === 'Target' ? 'bg-amber-500' : m.ruolo === 'Sinergico' ? 'bg-sky-400' : m.ruolo === 'Stabilizzatore' ? 'bg-emerald-400' : 'bg-violet-400';
+                          return (
+                            <div key={i} className="flex items-center gap-2.5 bg-slate-900/90 border border-slate-800/90 rounded-xl px-3 py-2 hover:border-slate-700 transition-colors">
+                              <div className={`w-2.5 h-2.5 rounded-full ${roleColor} shrink-0`} />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs font-bold text-white block truncate">{m.muscolo}</span>
+                                <span className="text-[10px] font-semibold text-slate-400">{m.ruolo}</span>
+                              </div>
+                              <span className="text-xs font-mono font-bold text-slate-300 w-8 text-right shrink-0">{m.percentuale}%</span>
+                              <button
+                                type="button"
+                                onClick={() => setMuscoli(muscoli.filter((_, idx) => idx !== i))}
+                                className="p-1 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                                title="Rimuovi muscolo"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (

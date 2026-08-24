@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target, RotateCcw, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Flame, TrendingUp, User, Link2, Unlink2, Layers, AlertTriangle } from 'lucide-react';
+import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target, RotateCcw, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Flame, TrendingUp, User, Link2, Unlink2, Layers, AlertTriangle, FastForward } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { generateAISmartSuggestions, CoPilotActionableSuggestion } from '../../lib/ai/workoutGenerator';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
@@ -117,7 +117,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const { exercises: libraryExercises, createExercise } = useExercises();
   const { athletes } = useAthletes();
   const { rules } = useProgressions();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess, showError, showInfo } = useToast();
   
   const currentAthlete = athleteId ? athletes.find(a => a.id === athleteId) : null;
 
@@ -129,6 +129,30 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const [activeWeek, setActiveWeek] = useState<number>(1);
   const [activeDay, setActiveDay] = useState<string>('Giorno A');
   const [daysList, setDaysList] = useState<string[]>(['Giorno A', 'Giorno B']);
+
+  // Opzione: Propagazione automatica di ogni modifica alle settimane successive
+  const [autoPropagateToFutureWeeks, setAutoPropagateToFutureWeeks] = useState<boolean>(() => {
+    return localStorage.getItem('builder_auto_propagate_future_weeks') === 'true';
+  });
+
+  const toggleAutoPropagate = () => {
+    setAutoPropagateToFutureWeeks((prev) => {
+      const next = !prev;
+      localStorage.setItem('builder_auto_propagate_future_weeks', String(next));
+      if (next) {
+        showSuccess(
+          'Sincronizzazione Attiva ⚡',
+          'Ogni modifica applicata a un esercizio in questa settimana si rifletterà in automatico nelle settimane successive.'
+        );
+      } else {
+        showInfo(
+          'Sincronizzazione Disattivata',
+          'Le modifiche agli esercizi influenzeranno solo la settimana corrente.'
+        );
+      }
+      return next;
+    });
+  };
 
   // Registro e stato di ripristino per i giorni eliminati accidentalmente
   const [deletedDaysHistory, setDeletedDaysHistory] = useState<DeletedDayRecord[]>([]);
@@ -866,7 +890,38 @@ ${result.regole_adattamento || '-'}
   const updateExercise = (globalIndex: number, field: keyof WorkoutExercise, value: any) => {
     setExercises(prev => {
       const copy = [...prev];
-      copy[globalIndex] = { ...copy[globalIndex], [field]: value };
+      const targetEx = copy[globalIndex];
+      if (!targetEx) return copy;
+
+      copy[globalIndex] = { ...targetEx, [field]: value };
+
+      if (autoPropagateToFutureWeeks && totalWeeks > 1) {
+        const targetWeek = targetEx.week_number || 1;
+        const targetDay = targetEx.day_name || 'Giorno A';
+        if (targetWeek < totalWeeks) {
+          const dayExercises = prev.filter(
+            ex => (ex.week_number || 1) === targetWeek && (ex.day_name || 'Giorno A') === targetDay
+          );
+          const posInDay = dayExercises.indexOf(targetEx);
+
+          for (let w = targetWeek + 1; w <= totalWeeks; w++) {
+            const futureDayExercises = copy.filter(
+              ex => (ex.week_number || 1) === w && (ex.day_name || 'Giorno A') === targetDay
+            );
+            const matchingEx = (posInDay >= 0 && posInDay < futureDayExercises.length)
+              ? futureDayExercises[posInDay]
+              : futureDayExercises.find(ex => ex.name?.trim().toLowerCase() === (targetEx.name || '').trim().toLowerCase());
+
+            if (matchingEx) {
+              const matchIdx = copy.findIndex(ex => ex === matchingEx || (ex.id && ex.id === matchingEx.id));
+              if (matchIdx !== -1) {
+                copy[matchIdx] = { ...copy[matchIdx], [field]: value };
+              }
+            }
+          }
+        }
+      }
+
       return copy;
     });
   };
@@ -938,9 +993,189 @@ ${result.regole_adattamento || '-'}
 
     setExercises(prev => {
       const copy = [...prev];
-      copy[globalIndex] = { ...copy[globalIndex], ...fields };
+      const exToUpdate = copy[globalIndex];
+      if (!exToUpdate) return copy;
+
+      copy[globalIndex] = { ...exToUpdate, ...fields };
+
+      if (autoPropagateToFutureWeeks && totalWeeks > 1) {
+        const targetWeek = exToUpdate.week_number || 1;
+        const targetDay = exToUpdate.day_name || 'Giorno A';
+        if (targetWeek < totalWeeks) {
+          const dayExercises = prev.filter(
+            ex => (ex.week_number || 1) === targetWeek && (ex.day_name || 'Giorno A') === targetDay
+          );
+          const posInDay = dayExercises.indexOf(exToUpdate);
+
+          for (let w = targetWeek + 1; w <= totalWeeks; w++) {
+            const futureDayExercises = copy.filter(
+              ex => (ex.week_number || 1) === w && (ex.day_name || 'Giorno A') === targetDay
+            );
+            const matchingEx = (posInDay >= 0 && posInDay < futureDayExercises.length)
+              ? futureDayExercises[posInDay]
+              : futureDayExercises.find(ex => ex.name?.trim().toLowerCase() === (exToUpdate.name || '').trim().toLowerCase());
+
+            if (matchingEx) {
+              const matchIdx = copy.findIndex(ex => ex === matchingEx || (ex.id && ex.id === matchingEx.id));
+              if (matchIdx !== -1) {
+                copy[matchIdx] = { ...copy[matchIdx], ...fields };
+              }
+            }
+          }
+        }
+      }
+
       return copy;
     });
+  };
+
+  // Funzione: Propaga un singolo esercizio a tutte le settimane successive
+  const propagateExerciseToFutureWeeks = (globalIndex: number) => {
+    const targetEx = exercises[globalIndex];
+    if (!targetEx) return;
+    const targetWeek = targetEx.week_number || 1;
+    const targetDay = targetEx.day_name || 'Giorno A';
+
+    if (totalWeeks <= 1 || targetWeek >= totalWeeks) {
+      showInfo('Nessuna settimana successiva', 'Questa è già l\'ultima settimana del programma.');
+      return;
+    }
+
+    const dayExercises = exercises.filter(
+      ex => (ex.week_number || 1) === targetWeek && (ex.day_name || 'Giorno A') === targetDay
+    );
+    const posInDay = dayExercises.indexOf(targetEx);
+
+    setExercises(prev => {
+      let next = [...prev];
+
+      for (let w = targetWeek + 1; w <= totalWeeks; w++) {
+        const futureDayExercises = next.filter(
+          ex => (ex.week_number || 1) === w && (ex.day_name || 'Giorno A') === targetDay
+        );
+
+        const matchingEx = (posInDay >= 0 && posInDay < futureDayExercises.length)
+          ? futureDayExercises[posInDay]
+          : futureDayExercises.find(ex => ex.name?.trim().toLowerCase() === (targetEx.name || '').trim().toLowerCase());
+
+        if (matchingEx) {
+          const matchIdx = next.findIndex(ex => ex === matchingEx || (ex.id && ex.id === matchingEx.id));
+          if (matchIdx !== -1) {
+            next[matchIdx] = {
+              ...next[matchIdx],
+              name: targetEx.name,
+              sets: targetEx.sets,
+              reps_target: targetEx.reps_target,
+              rest_seconds: targetEx.rest_seconds,
+              target_weight: targetEx.target_weight,
+              rir_target: targetEx.rir_target,
+              tut: targetEx.tut,
+              notes: targetEx.notes,
+              is_time_based: targetEx.is_time_based,
+              duration_seconds: targetEx.duration_seconds,
+              alternative_exercise: targetEx.alternative_exercise,
+              video_url: targetEx.video_url,
+              group_tag: targetEx.group_tag,
+              order_label: targetEx.order_label,
+            };
+          }
+        } else {
+          const newFutureEx: Partial<WorkoutExercise> = {
+            ...targetEx,
+            id: `w${w}-prop-ex-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            week_number: w,
+            day_name: targetDay,
+          };
+          next.push(newFutureEx);
+        }
+      }
+
+      return next;
+    });
+
+    showSuccess(
+      'Modifiche Esercizio Propagate! ⚡',
+      `"${targetEx.name || 'Esercizio'}" applicato alle settimane da W${targetWeek + 1} a W${totalWeeks}.`
+    );
+  };
+
+  // Funzione: Propaga un intero giorno a tutte le settimane successive
+  const propagateDayToFutureWeeks = (dayName: string) => {
+    if (totalWeeks <= 1 || activeWeek >= totalWeeks) {
+      showInfo('Nessuna settimana successiva', 'Questa è già l\'ultima settimana del programma.');
+      return;
+    }
+
+    const currentDayExercises = exercises.filter(
+      ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A') === dayName
+    );
+
+    if (currentDayExercises.length === 0) {
+      showError(`Il ${dayName} non contiene esercizi da propagare.`);
+      return;
+    }
+
+    setExercises(prev => {
+      const filtered = prev.filter(
+        ex => !((ex.week_number || 1) > activeWeek && (ex.day_name || 'Giorno A') === dayName)
+      );
+
+      const clonedFutureExercises: Partial<WorkoutExercise>[] = [];
+
+      for (let w = activeWeek + 1; w <= totalWeeks; w++) {
+        currentDayExercises.forEach((ex, idx) => {
+          clonedFutureExercises.push({
+            ...ex,
+            id: `w${w}-${dayName}-prop-${Date.now()}-${idx}`,
+            week_number: w,
+            day_name: dayName,
+          });
+        });
+      }
+
+      return [...filtered, ...clonedFutureExercises];
+    });
+
+    showSuccess(
+      'Giorno Propagato! ⚡',
+      `Tutti gli esercizi di ${dayName} sono stati copiati nelle settimane da W${activeWeek + 1} a W${totalWeeks}.`
+    );
+  };
+
+  // Funzione: Propaga l'intera settimana a tutte le settimane successive
+  const propagateEntireWeekToFutureWeeks = (sourceWeek: number) => {
+    if (totalWeeks <= 1 || sourceWeek >= totalWeeks) {
+      showInfo('Nessuna settimana successiva', 'Questa è già l\'ultima settimana del programma.');
+      return;
+    }
+
+    const sourceExercises = exercises.filter(ex => (ex.week_number || 1) === sourceWeek);
+    if (sourceExercises.length === 0) {
+      showError(`La Settimana ${sourceWeek} non contiene esercizi da propagare.`);
+      return;
+    }
+
+    setExercises(prev => {
+      const filtered = prev.filter(ex => (ex.week_number || 1) <= sourceWeek);
+      const clonedFutureExercises: Partial<WorkoutExercise>[] = [];
+
+      for (let w = sourceWeek + 1; w <= totalWeeks; w++) {
+        sourceExercises.forEach((ex, idx) => {
+          clonedFutureExercises.push({
+            ...ex,
+            id: `w${w}-fullprop-${Date.now()}-${idx}`,
+            week_number: w,
+          });
+        });
+      }
+
+      return [...filtered, ...clonedFutureExercises];
+    });
+
+    showSuccess(
+      'Intera Settimana Propagata! ⚡',
+      `La configurazione della Settimana ${sourceWeek} è stata applicata a tutte le settimane da W${sourceWeek + 1} a W${totalWeeks}.`
+    );
   };
 
   // Auto-sincronizzazione iniziale o su cambio settimane:
@@ -2091,6 +2326,38 @@ ${result.regole_adattamento || '-'}
 
               {/* Azioni Struttura Settimana */}
               <div className="flex items-center gap-1.5 flex-wrap">
+                {totalWeeks > 1 && (
+                  <button
+                    type="button"
+                    onClick={toggleAutoPropagate}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 border cursor-pointer ${
+                      autoPropagateToFutureWeeks
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-[0_0_12px_rgba(6,182,212,0.25)] font-black'
+                        : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border-slate-700'
+                    }`}
+                    title={
+                      autoPropagateToFutureWeeks
+                        ? 'Auto-sincronizzazione attiva: ogni modifica a un esercizio in questa settimana si applica automaticamente anche nelle settimane successive'
+                        : 'Attiva per applicare automaticamente ogni modifica alle settimane successive'
+                    }
+                  >
+                    <FastForward className={`w-3.5 h-3.5 ${autoPropagateToFutureWeeks ? 'text-cyan-400 animate-pulse' : 'text-slate-500'}`} />
+                    <span>Auto-propaga a W+: {autoPropagateToFutureWeeks ? 'ON' : 'OFF'}</span>
+                  </button>
+                )}
+
+                {totalWeeks > 1 && activeWeek < totalWeeks && (
+                  <button
+                    type="button"
+                    onClick={() => propagateEntireWeekToFutureWeeks(activeWeek)}
+                    className="px-2.5 py-1 text-xs font-bold bg-cyan-600/15 hover:bg-cyan-600/25 text-cyan-300 border border-cyan-500/40 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                    title={`Applica la configurazione della Settimana ${activeWeek} a tutte le settimane da W${activeWeek + 1} a W${totalWeeks}`}
+                  >
+                    <FastForward className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Propaga Sett. {activeWeek} a W+</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => duplicateWeek(activeWeek)}
@@ -2510,6 +2777,18 @@ ${result.regole_adattamento || '-'}
                     <span>Inverti Ordine</span>
                   </button>
                 )}
+                {totalWeeks > 1 && activeWeek < totalWeeks && currentWeekDayExercises.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => propagateDayToFutureWeeks(activeDay)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-lg transition-colors shadow-sm cursor-pointer min-h-[36px] sm:min-h-0"
+                    title={`Copia tutti gli esercizi di ${activeDay} alle settimane da W${activeWeek + 1} a W${totalWeeks}`}
+                  >
+                    <FastForward className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Propaga {activeDay} a W+</span>
+                  </button>
+                )}
+
                 <button 
                   onClick={fetchAiSuggestions}
                   disabled={aiSuggestionsLoading}
@@ -3069,6 +3348,19 @@ ${result.regole_adattamento || '-'}
                               >
                                 <User className="w-3.5 h-3.5" />
                               </button>
+
+                              {/* Propaga Esercizio a Settimane Successive */}
+                              {totalWeeks > 1 && (ex.week_number || 1) < totalWeeks && (
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  onClick={() => propagateExerciseToFutureWeeks(globalIdx)}
+                                  className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-cyan-950/40 rounded-lg transition-colors cursor-pointer"
+                                  title={`Applica questo esercizio a tutte le settimane successive (W${(ex.week_number || 1) + 1}..W${totalWeeks})`}
+                                >
+                                  <FastForward className="w-3.5 h-3.5 text-cyan-400" />
+                                </button>
+                              )}
 
                               {/* Duplica */}
                               <button

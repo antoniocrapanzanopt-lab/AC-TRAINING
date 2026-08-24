@@ -218,9 +218,9 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Function Error:", error)
-    return new Response(JSON.stringify({ error: error.message || 'Errore interno del server.' }), {
+    return new Response(JSON.stringify({ error: error?.message || 'Errore interno del server.' }), {
       status: 400,
       headers: { ...getCorsHeaders(req), 'Content-Type': 'application/json' },
     })

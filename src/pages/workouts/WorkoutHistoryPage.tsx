@@ -78,7 +78,7 @@ export const WorkoutHistoryPage: React.FC = () => {
     try {
       const athleteMap = new Map(athletes.map((a) => [a.id, a]));
 
-      // 1. Recupero sessioni allenamento
+      // 1. Recupero sessioni allenamento completate con join relazionale completa su exercise_logs e workout_exercises
       const { data: sessionsData, error: sessError } = await supabase
         .from('workout_sessions')
         .select(`
@@ -89,8 +89,19 @@ export const WorkoutHistoryPage: React.FC = () => {
           end_time,
           rpe,
           notes,
-          workouts ( id, title, total_weeks )
+          workouts ( id, title, total_weeks ),
+          exercise_logs (
+            id,
+            session_id,
+            exercise_id,
+            set_number,
+            reps_completed,
+            weight_kg,
+            notes,
+            workout_exercises ( id, name, day_name, week_number )
+          )
         `)
+        .not('end_time', 'is', null)
         .order('start_time', { ascending: false })
         .limit(250);
 
@@ -99,72 +110,24 @@ export const WorkoutHistoryPage: React.FC = () => {
       }
 
       const sessionsRaw = sessionsData || [];
-
-      // 2. Recupero tutti gli exercise_logs collegati
-      const sessionIds = sessionsRaw.map((s: any) => s.id);
-      const workoutIds = Array.from(new Set(sessionsRaw.map((s: any) => s.workout_id).filter(Boolean)));
       const logsBySession = new Map<string, any[]>();
       const exercisesById = new Map<string, { name: string; day_name?: string; week_number?: number; workout_id?: string }>();
 
-      // Caricamento dizionario esercizi delle schede
-      if (workoutIds.length > 0) {
-        const { data: weData } = await supabase
-          .from('workout_exercises')
-          .select('id, workout_id, name, day_name, week_number')
-          .in('workout_id', workoutIds);
-
-        if (weData) {
-          weData.forEach((we: any) => {
-            exercisesById.set(we.id, {
-              name: we.name,
-              day_name: we.day_name,
-              week_number: we.week_number,
-              workout_id: we.workout_id,
-            });
-          });
-        }
-      }
-
-      if (sessionIds.length > 0) {
-        const { data: logsData, error: logsError } = await supabase
-          .from('exercise_logs')
-          .select('id, session_id, exercise_id, set_number, reps_completed, weight_kg, notes')
-          .in('session_id', sessionIds);
-
-        if (logsError) {
-          console.warn('Errore query exercise_logs:', logsError);
-        } else if (logsData && logsData.length > 0) {
-          // Identifica eventuali exercise_id non ancora presenti nel dizionario
-          const missingIds = Array.from(
-            new Set(logsData.map((l: any) => l.exercise_id).filter((id: string) => id && !exercisesById.has(id)))
-          );
-
-          if (missingIds.length > 0) {
-            const { data: extraWe } = await supabase
-              .from('workout_exercises')
-              .select('id, workout_id, name, day_name, week_number')
-              .in('id', missingIds);
-
-            if (extraWe) {
-              extraWe.forEach((we: any) => {
-                exercisesById.set(we.id, {
-                  name: we.name,
-                  day_name: we.day_name,
-                  week_number: we.week_number,
-                  workout_id: we.workout_id,
-                });
+      // Popolamento dei log nidificati dalla query principale
+      sessionsRaw.forEach((s: any) => {
+        if (s.exercise_logs && Array.isArray(s.exercise_logs) && s.exercise_logs.length > 0) {
+          logsBySession.set(s.id, s.exercise_logs);
+          s.exercise_logs.forEach((log: any) => {
+            if (log.workout_exercises && log.exercise_id) {
+              exercisesById.set(log.exercise_id, {
+                name: log.workout_exercises.name,
+                day_name: log.workout_exercises.day_name,
+                week_number: log.workout_exercises.week_number,
               });
             }
-          }
-
-          logsData.forEach((l: any) => {
-            if (!logsBySession.has(l.session_id)) {
-              logsBySession.set(l.session_id, []);
-            }
-            logsBySession.get(l.session_id)!.push(l);
           });
         }
-      }
+      });
 
       // Unione con backup locale istantaneo se presente sul client
       try {

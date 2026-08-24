@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
-import { AthleteTask, TaskFormData, TaskStatus } from '../types';
+import { AthleteTask, TaskFormData, TaskStatus, TaskCategory, TaskType, KanbanStatus } from '../types';
 import { STORAGE_KEYS } from '../config/storageKeys';
 import { getStorageItem, setStorageItem } from '../lib/storage';
 import { useAthletes } from './AthletesContext';
@@ -8,11 +8,27 @@ import { usePayments } from './PaymentsContext';
 import { getLocalOwnerProfile } from '../lib/ownerProfile';
 import { generateSystemAutomatedTasks } from '../lib/taskAutomations';
 
+/** Deriva task_type da category e origin quando non esplicitamente impostato */
+export function deriveTaskType(category: TaskCategory, origin?: 'system' | 'manual'): TaskType {
+  if (origin === 'system') return 'system';
+  const athleteCategories: TaskCategory[] = [
+    'checkin', 'measurements', 'workout_plan', 'training', 'assessment',
+    'follow_up', 'call', 'appointment', 'checkup', 'nutrition',
+  ];
+  const adminCategories: TaskCategory[] = ['payment', 'document', 'administrative'];
+  if (athleteCategories.includes(category)) return 'athlete';
+  if (adminCategories.includes(category)) return 'admin';
+  return 'personal';
+}
+
 interface TasksContextType {
   tasks: AthleteTask[];
   isLoading: boolean;
+  dayFocus: string;
+  setDayFocus: (focus: string) => void;
   addTask: (data: TaskFormData) => AthleteTask;
   updateTask: (id: string, updates: Partial<AthleteTask>) => boolean;
+  updateTaskKanban: (id: string, kanban_status: KanbanStatus) => boolean;
   completeTask: (id: string) => boolean;
   rescheduleTask: (id: string, newDueDate: string) => boolean;
   cancelTask: (id: string) => boolean;
@@ -31,6 +47,14 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return getStorageItem<string[]>('builder_dismissed_system_tasks', []);
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [dayFocus, setDayFocusState] = useState<string>(() => {
+    return getStorageItem<string>('builder_day_focus', '');
+  });
+
+  const setDayFocus = useCallback((focus: string) => {
+    setDayFocusState(focus);
+    setStorageItem('builder_day_focus', focus);
+  }, []);
 
   const { athletes, addTimelineEvent } = useAthletes();
   const { subscriptions } = useSubscriptions();
@@ -275,13 +299,23 @@ export const TasksProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [customTasks, dismissedSystemTaskIds, persist]
   );
 
+  const updateTaskKanban = useCallback(
+    (id: string, kanban_status: KanbanStatus): boolean => {
+      return updateTask(id, { kanban_status });
+    },
+    [updateTask]
+  );
+
   return (
     <TasksContext.Provider
       value={{
         tasks: allTasks,
         isLoading,
+        dayFocus,
+        setDayFocus,
         addTask,
         updateTask,
+        updateTaskKanban,
         completeTask,
         rescheduleTask,
         cancelTask,

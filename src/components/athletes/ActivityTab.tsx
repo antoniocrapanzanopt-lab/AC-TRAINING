@@ -103,7 +103,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
           }
         }
 
-        // 2. Recupera sessioni dell'atleta
+        // 2. Recupera sessioni completate dell'atleta
         const { data: rawSessions, error } = await supabase
           .from('workout_sessions')
           .select(`
@@ -116,6 +116,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
             workouts ( id, title, total_weeks )
           `)
           .eq('athlete_id', athleteId)
+          .not('end_time', 'is', null)
           .order('start_time', { ascending: false });
 
         if (error) throw error;

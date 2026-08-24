@@ -104,16 +104,19 @@ export const AnalysisReportsPage: React.FC = () => {
         `)
         .in('athlete_id', athleteIds)
         .gte('start_time', twoYearsAgoIso)
+        .not('end_time', 'is', null)
         .order('start_time', { ascending: false });
 
-      // Carica sessioni da backup locale se presenti
+      // Carica sessioni da backup locale se presenti (solo completate con end_time)
       let localSessionList: any[] = [];
       try {
         localSessionList = JSON.parse(localStorage.getItem('builder_local_sessions_backup') || '[]');
       } catch (_) {}
 
+      const completedLocalSessions = localSessionList.filter((ls) => ls && ls.end_time);
+
       const allSessions = (sessionData || []).concat(
-        localSessionList.filter((ls) => !(sessionData || []).some((sd) => sd.id === ls.id))
+        completedLocalSessions.filter((ls) => !(sessionData || []).some((sd) => sd.id === ls.id))
       );
       setSessions(allSessions);
 
@@ -220,7 +223,9 @@ export const AnalysisReportsPage: React.FC = () => {
 
     let type: CopilotAlertContext['type'] = 'progression';
     if (customAlert?.category === 'pain') type = 'critical_note';
-    else if (customAlert?.category === 'stagnation') type = 'plateau';
+    else if (customAlert?.category === 'inactivity') type = 'inactivity';
+    else if (customAlert?.category === 'missing_weights') type = 'missing_weights';
+    else if (customAlert?.category === 'stagnation' || customAlert?.category === 'plateau') type = 'plateau';
 
     setCopilotContext({
       athleteId,
@@ -331,9 +336,14 @@ export const AnalysisReportsPage: React.FC = () => {
           onBackToOverview={handleBackToOverview}
           onNavigateToChat={handleNavigateToChat}
           onNavigateToWorkouts={handleNavigateToWorkouts}
-          onOpenCopilot={(athleteId, athleteName, workoutTitle) =>
-            handleOpenCopilotModal(athleteId, { athleteId, athleteName, workoutTitle })
-          }
+          onOpenCopilot={(athleteId, athleteName, workoutTitle) => {
+            const athReport = selectedAthleteReport;
+            let category = 'progression';
+            if (athReport?.singleDecisionType === 'pain') category = 'pain';
+            else if (athReport?.singleDecisionType === 'inactivity' || athReport?.completedSessions.current === 0 || athReport?.programStatus === 'pending_start') category = 'inactivity';
+            else if (athReport?.singleDecisionType === 'plateau') category = 'stagnation';
+            handleOpenCopilotModal(athleteId, { athleteId, athleteName, workoutTitle, category, summary: athReport?.singleDecisionTitle });
+          }}
         />
       ) : (
         /* VISTA GENERALE SQUADRA & CENTRO DECISIONALE */

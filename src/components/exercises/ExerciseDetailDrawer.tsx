@@ -24,6 +24,7 @@ interface ExerciseDetailDrawerProps {
   onClose: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onOptimizeBiomechanics?: () => void;
 }
 
 const MUSCLE_ROLE_COLORS: Record<MuscleRole, { dot: string; bar: string; badge: string }> = {
@@ -74,6 +75,7 @@ export const ExerciseDetailDrawer: React.FC<ExerciseDetailDrawerProps> = ({
   onClose,
   onEdit,
   onDelete,
+  onOptimizeBiomechanics,
 }) => {
   // Chiusura con tasto Escape
   useEffect(() => {
@@ -163,6 +165,16 @@ export const ExerciseDetailDrawer: React.FC<ExerciseDetailDrawerProps> = ({
 
           {/* Azioni Header */}
           <div className="flex items-center gap-2 shrink-0">
+            {onOptimizeBiomechanics && (
+              <button
+                onClick={onOptimizeBiomechanics}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30 text-xs font-black rounded-xl transition-all shadow-sm cursor-pointer"
+                title="Ottimizza e rigenera la biomeccanica con Google Gemini 3.7"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Ottimizza Biomeccanica 3.7</span>
+              </button>
+            )}
             {onEdit && (
               <button
                 onClick={onEdit}
@@ -195,25 +207,55 @@ export const ExerciseDetailDrawer: React.FC<ExerciseDetailDrawerProps> = ({
         {/* ── BODY SCROLLABILE ─────────────────────────────────────────── */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
 
-          {/* ── Video Tutorial Prominente se Presente ──────────────────── */}
-          {exercise.video_url && (
-            <section className="bg-gradient-to-br from-blue-950/30 to-indigo-950/20 border border-blue-800/40 rounded-2xl p-4 flex items-center justify-between gap-4">
+          {/* ── Video Tutorial YouTube Prominente ─────────────────────── */}
+          {exercise.video_url ? (
+            <section className="space-y-3 bg-[#0d121c] border border-slate-800 rounded-2xl p-4">
+              <div className="flex items-center justify-between">
+                <SectionTitle icon={<Video className="w-4 h-4 text-red-400" />} title="Video Tutorial Esecuzione" />
+                <a
+                  href={exercise.video_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-300 hover:text-white border border-red-500/30 text-[11px] font-bold rounded-xl transition-all"
+                >
+                  <span>Apri su YouTube</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+              <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800 shadow-xl">
+                <iframe
+                  src={
+                    exercise.video_url.includes('youtube.com/watch?v=')
+                      ? exercise.video_url.replace('watch?v=', 'embed/')
+                      : exercise.video_url.includes('youtu.be/')
+                      ? exercise.video_url.replace('youtu.be/', 'youtube.com/embed/')
+                      : exercise.video_url
+                  }
+                  title={`Tutorial ${exercise.name}`}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </section>
+          ) : (
+            <section className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
-                  <Video className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center shrink-0">
+                  <Video className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-white">Video Tutorial Esecuzione</h4>
-                  <p className="text-[11px] text-slate-400 truncate max-w-xs">{exercise.video_url}</p>
+                  <h4 className="text-xs font-bold text-white">Nessun Video Linkato</h4>
+                  <p className="text-[11px] text-slate-400">Cerca un tutorial per questo esercizio su YouTube</p>
                 </div>
               </div>
               <a
-                href={exercise.video_url}
+                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(exercise.name + ' esecuzione corretta tutorial')}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition-all shrink-0 shadow-md shadow-blue-600/20"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-300 hover:text-white border border-red-500/30 text-xs font-bold rounded-xl transition-all"
               >
-                <span>Guarda</span>
+                <span>Cerca su YouTube</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </section>

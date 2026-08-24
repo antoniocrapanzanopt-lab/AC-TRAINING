@@ -18,8 +18,8 @@ interface WorkoutsContextType {
   updateWorkoutTemplate: (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
   duplicateWorkoutTemplate: (workoutId: string, customTitle?: string) => Promise<{ success: boolean; newWorkoutId?: string; error?: string }>;
   deleteWorkoutTemplate: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
-  assignWorkoutToAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
-  assignWorkoutToAthletes: (athleteIds: string[], workoutId: string) => Promise<{ success: boolean; error?: string }>;
+  assignWorkoutToAthlete: (athleteId: string, workoutId: string, startDate?: string) => Promise<{ success: boolean; error?: string }>;
+  assignWorkoutToAthletes: (athleteIds: string[], workoutId: string, startDate?: string) => Promise<{ success: boolean; error?: string }>;
   unassignWorkoutFromAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
   getAssignedWorkoutsForAthlete: (athleteId: string) => Promise<AthleteAssignedWorkout[]>;
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
@@ -417,18 +417,20 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const assignWorkoutToAthlete = async (athleteId: string, workoutId: string) => {
-    return assignWorkoutToAthletes([athleteId], workoutId);
+  const assignWorkoutToAthlete = async (athleteId: string, workoutId: string, startDate?: string) => {
+    return assignWorkoutToAthletes([athleteId], workoutId, startDate);
   };
 
-  const assignWorkoutToAthletes = async (athleteIds: string[], workoutId: string) => {
+  const assignWorkoutToAthletes = async (athleteIds: string[], workoutId: string, startDate?: string) => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     if (athleteIds.length === 0) return { success: true };
     try {
+      const assignedTimestamp = startDate ? new Date(startDate).toISOString() : new Date().toISOString();
       const rowsToInsert = athleteIds.map((athId) => ({
         athlete_id: athId,
         workout_id: workoutId,
         assigned_by: user.id,
+        assigned_date: assignedTimestamp,
       }));
 
       const { error } = await supabase
