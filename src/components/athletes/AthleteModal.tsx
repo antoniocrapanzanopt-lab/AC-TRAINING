@@ -513,15 +513,22 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
 
               {/* Note interne */}
               <div className="border-t border-slate-800 pt-4 space-y-2">
-                <label className={labelClass}>Note interne riservate</label>
+                <div className="flex items-center justify-between">
+                  <label className={labelClass}>🔒 Note Interne Riservate</label>
+                  <span className="text-[10px] font-black uppercase text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                    Solo per il Coach (Privato)
+                  </span>
+                </div>
                 <textarea
                   value={form.notes ?? ''}
                   onChange={e => set('notes', e.target.value)}
                   rows={4}
                   className={`${inputClass()} resize-none`}
-                  placeholder="Note visibili solo ai coach — comportamento, limitazioni, contesto personale…"
+                  placeholder="Appunti confidenziali, anamnesi personale, orari di lavoro, note private sul cliente… (Strettamente riservato)"
                 />
-                <p className="text-[11px] text-slate-500">🔒 Non visibili all'atleta</p>
+                <p className="text-[11px] text-amber-300/80 font-medium">
+                  🔒 Questo campo non viene MAI mostrato né inviato all'atleta o al suo portale.
+                </p>
               </div>
             </div>
           )}

@@ -527,27 +527,37 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         return;
       }
 
-      let filtered = allExercises;
+      // Estrai tutti i giorni unici presenti negli esercizi
+      const uniqueDays = Array.from(
+        new Set(allExercises.map((e) => (e.day_name || 'Giorno A').trim()))
+      ).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
-      // 1. Filtra per settimana
-      if (selectedWeek) {
-        const weekFiltered = allExercises.filter(
-          (ex) => !ex.week_number || ex.week_number === selectedWeek
-        );
-        if (weekFiltered.length > 0) {
-          filtered = weekFiltered;
-        }
+      // 1. Determina la settimana target
+      const targetWeek = selectedWeek || 1;
+
+      // 2. Determina il giorno target (se non passato, usa il primo giorno disponibile, es. Giorno A)
+      const targetDay = (selectedDay && selectedDay.trim()) || (uniqueDays.length > 0 ? uniqueDays[0] : 'Giorno A');
+      const targetDayNorm = targetDay.trim().toLowerCase();
+
+      // 3. Filtra gli esercizi: SOLO ed ESCLUSIVAMENTE quelli di questa specifica settimana e di questo specifico giorno
+      let filtered = allExercises.filter((ex) => {
+        const exWeek = ex.week_number || 1;
+        const exDay = (ex.day_name || 'Giorno A').trim().toLowerCase();
+        return exWeek === targetWeek && exDay === targetDayNorm;
+      });
+
+      // Fallback 1: se non ci sono esercizi per la settimana specifica (es. week_number assente), filtra solo per giorno
+      if (filtered.length === 0) {
+        filtered = allExercises.filter((ex) => {
+          const exDay = (ex.day_name || 'Giorno A').trim().toLowerCase();
+          return exDay === targetDayNorm;
+        });
       }
 
-      // 2. Filtra per giorno (case-insensitive)
-      if (selectedDay && selectedDay.trim()) {
-        const targetDayNorm = selectedDay.trim().toLowerCase();
-        const dayFiltered = filtered.filter(
-          (ex) => !ex.day_name || ex.day_name.trim().toLowerCase() === targetDayNorm
-        );
-        if (dayFiltered.length > 0) {
-          filtered = dayFiltered;
-        }
+      // Fallback 2: se ancora vuoto, prendi solo gli esercizi del primo giorno disponibile per evitare assolutamente il dump di 25 esercizi
+      if (filtered.length === 0 && allExercises.length > 0) {
+        const firstDay = (allExercises[0].day_name || 'Giorno A').trim().toLowerCase();
+        filtered = allExercises.filter((ex) => (ex.day_name || 'Giorno A').trim().toLowerCase() === firstDay);
       }
 
       const workoutObj = assigned.workout || {
@@ -580,6 +590,31 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
   // Identifica la prima scheda attiva e il prossimo allenamento di oggi
   const firstAssigned = myAssignedWorkouts[0];
+
+  // Calcolo dinamico della settimana attiva e del prossimo giorno da svolgere per la scheda primaria (Hero)
+  const { heroActiveWeek, heroNextDay } = useMemo(() => {
+    if (!firstAssigned) return { heroActiveWeek: 1, heroNextDay: 'Giorno A' };
+    const athId = firstAssigned.athlete_id;
+    const wId = firstAssigned.workout_id;
+    const progressKey = `builder_progress_${athId}_${wId}`;
+    let completedMap: Record<string, boolean> = {};
+    try {
+      completedMap = JSON.parse(localStorage.getItem(progressKey) || '{}');
+    } catch (_) {}
+
+    const totalWeeks = firstAssigned.workout?.total_weeks || 4;
+    const dayList = ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
+
+    // Trova la prima settimana con giorni non completati
+    for (let w = 1; w <= totalWeeks; w++) {
+      const pendingDay = dayList.find((d) => !completedMap[`${w}-${d}`]);
+      if (pendingDay) {
+        return { heroActiveWeek: w, heroNextDay: pendingDay };
+      }
+    }
+
+    return { heroActiveWeek: 1, heroNextDay: 'Giorno A' };
+  }, [firstAssigned]);
 
   const draftCompletedSetsPercent = useMemo(() => {
     if (!activeDraft) return null;
@@ -704,21 +739,21 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
                   {firstAssigned.workout?.title}
                 </h3>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  Preparati per la tua seduta di oggi. Raggiungi il tuo massimo!
+                  Seduta pronta: <strong className="text-white">{heroNextDay}</strong> (Settimana {heroActiveWeek}) • Raggiungi il tuo massimo!
                 </p>
               </div>
             </div>
           </div>
 
-          {/* CTA Primaria per avviare il primo giorno */}
+          {/* CTA Primaria per avviare il giorno corretto */}
           <div className="pt-1">
             <button
               type="button"
-              onClick={() => handleStartWorkout(firstAssigned, 1)}
+              onClick={() => handleStartWorkout(firstAssigned, heroActiveWeek, heroNextDay)}
               className="w-full py-3.5 px-5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-[var(--color-primary)]/20 transition-all cursor-pointer active:scale-95"
             >
               <Play className="w-4 h-4 fill-black" />
-              <span>Inizia Allenamento</span>
+              <span>Inizia {heroNextDay || 'Allenamento'}</span>
             </button>
           </div>
         </div>

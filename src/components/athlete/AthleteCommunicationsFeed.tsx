@@ -21,6 +21,8 @@ import {
   BroadcastType,
   BroadcastCommunication,
 } from '../../types';
+import { STORAGE_KEYS } from '../../config/storageKeys';
+import { getStorageItem } from '../../lib/storage';
 import { useCommunications } from '../../context/CommunicationsContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useToast } from '../../context/ToastContext';
@@ -195,9 +197,24 @@ export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps>
       return '';
     };
 
+    // Blacklist dei broadcast eliminati
+    const deletedIds = getStorageItem<string[]>(STORAGE_KEYS.DELETED_BROADCAST_IDS, []);
+    const deletedTitles = getStorageItem<string[]>(STORAGE_KEYS.DELETED_BROADCAST_TITLES, []).map(t => t.toLowerCase().trim());
+    const deletedIdSet = new Set(deletedIds);
+    const deletedTitleSet = new Set(deletedTitles);
+
+    const isBroadcastDeleted = (id?: string, title?: string): boolean => {
+      if (id && deletedIdSet.has(id)) return true;
+      if (title) {
+        const clean = title.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').toLowerCase().trim();
+        if (deletedTitleSet.has(clean) || deletedTitleSet.has(title.toLowerCase().trim())) return true;
+      }
+      return false;
+    };
+
     // 1. Broadcast dalla console (hanno il messaggio completo)
     const fromBroadcasts = broadcasts
-      .filter(b => b.status === 'sent')
+      .filter(b => b.status === 'sent' && !isBroadcastDeleted(b.id, b.title))
       .map(b => ({
         ...b,
         title: b.title.replace(/^broadcast:\s*/i, ''),
@@ -207,7 +224,7 @@ export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps>
     // 2. Eventi da timeline Supabase
     const myTimeline = (athleteId && timeline[athleteId]) ? timeline[athleteId] : [];
     const fromTimeline: BroadcastCommunication[] = myTimeline
-      .filter(t => t.type === 'communication')
+      .filter(t => t.type === 'communication' && !isBroadcastDeleted(t.id, t.title) && !isBroadcastDeleted(t.metadata?.broadcastId as string, t.title))
       .map(t => {
         const cleanTitle = (t.title || '').replace(/^broadcast:\s*/i, '');
         const realMessage = findRealMessage(cleanTitle, t.metadata?.broadcastId as string, t.description);
@@ -253,7 +270,9 @@ export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps>
       }
     });
 
-    return Array.from(map.values()).sort((a, b) => new Date(b.sentAt || b.createdAt).getTime() - new Date(a.sentAt || a.createdAt).getTime());
+    return Array.from(map.values())
+      .filter(b => !isBroadcastDeleted(b.id, b.title))
+      .sort((a, b) => new Date(b.sentAt || b.createdAt).getTime() - new Date(a.sentAt || a.createdAt).getTime());
   }, [broadcasts, communications, athleteId, timeline]);
 
   // Segna automaticamente le comunicazioni come lette quando l'atleta accede al feed

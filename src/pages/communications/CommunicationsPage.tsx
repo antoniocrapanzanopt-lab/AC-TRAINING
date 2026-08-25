@@ -133,9 +133,9 @@ export const CommunicationsPage: React.FC = () => {
     setIsWizardOpen(true);
   };
 
-  const handleDeleteBroadcast = (id: string) => {
-    deleteBroadcast(id);
-    showInfo('Eliminato', 'Trasmissione rimossa dallo storico.');
+  const handleDeleteBroadcast = async (id: string) => {
+    await deleteBroadcast(id);
+    showInfo('Eliminato', 'Trasmissione rimossa dallo storico e dal cloud.');
   };
 
   return (
@@ -343,6 +343,7 @@ export const CommunicationsPage: React.FC = () => {
         onClose={() => setSelectedBroadcastForDetails(null)}
         broadcast={selectedBroadcastForDetails}
         onEdit={handleEditBroadcast}
+        onDelete={handleDeleteBroadcast}
       />
 
     </div>

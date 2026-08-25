@@ -31,7 +31,7 @@ interface CommunicationsContextType {
   // Broadcast Actions
   createBroadcast: (formData: BroadcastFormData, isDraft?: boolean, scheduleDate?: string) => BroadcastCommunication;
   updateBroadcast: (id: string, updates: Partial<BroadcastCommunication>) => boolean;
-  deleteBroadcast: (id: string) => boolean;
+  deleteBroadcast: (id: string) => Promise<boolean>;
   sendDraft: (id: string) => boolean;
   saveQuickTemplate: (template: Omit<QuickMessageTemplate, 'id' | 'createdAt'> & { id?: string }) => QuickMessageTemplate;
   deleteQuickTemplate: (id: string) => boolean;
@@ -93,8 +93,41 @@ const defaultApiConfig: ApiIntegrationConfig = {
   notes: 'Canali di comunicazione attivi e configurati.',
 };
 
+function getDeletedBroadcastIds(): Set<string> {
+  const ids = getStorageItem<string[]>(STORAGE_KEYS.DELETED_BROADCAST_IDS, []);
+  return new Set(ids);
+}
+
+function getDeletedBroadcastTitles(): Set<string> {
+  const titles = getStorageItem<string[]>(STORAGE_KEYS.DELETED_BROADCAST_TITLES, []);
+  return new Set(titles.map(t => t.toLowerCase().trim()));
+}
+
+function addDeletedBroadcastToStorage(id: string, title?: string) {
+  const idSet = getDeletedBroadcastIds();
+  if (id) idSet.add(id);
+  try { setStorageItem(STORAGE_KEYS.DELETED_BROADCAST_IDS, Array.from(idSet)); } catch {}
+
+  if (title) {
+    const titleSet = getDeletedBroadcastTitles();
+    const clean = title.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').toLowerCase().trim();
+    if (clean) titleSet.add(clean);
+    titleSet.add(title.toLowerCase().trim());
+    try { setStorageItem(STORAGE_KEYS.DELETED_BROADCAST_TITLES, Array.from(titleSet)); } catch {}
+  }
+}
+
+function removeDeletedBroadcastFromStorage(title?: string) {
+  if (!title) return;
+  const clean = title.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').toLowerCase().trim();
+  const titleSet = getDeletedBroadcastTitles();
+  titleSet.delete(clean);
+  titleSet.delete(title.toLowerCase().trim());
+  try { setStorageItem(STORAGE_KEYS.DELETED_BROADCAST_TITLES, Array.from(titleSet)); } catch {}
+}
+
 export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { athletes, addTimelineEvent, updateTimelineForBroadcast } = useAthletes();
+  const { athletes, addTimelineEvent, updateTimelineForBroadcast, deleteTimelineForBroadcast } = useAthletes();
 
   const [broadcasts, setBroadcasts] = useState<BroadcastCommunication[]>([]);
   const [quickTemplates, setQuickTemplates] = useState<QuickMessageTemplate[]>([]);
@@ -103,6 +136,18 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [apiConfig, setApiConfig] = useState<ApiIntegrationConfig>(defaultApiConfig);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Helper per verificare se un broadcast è stato eliminato
+  const isDeleted = useCallback((id?: string, title?: string): boolean => {
+    const deletedIds = getDeletedBroadcastIds();
+    const deletedTitles = getDeletedBroadcastTitles();
+    if (id && deletedIds.has(id)) return true;
+    if (title) {
+      const clean = title.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').toLowerCase().trim();
+      if (deletedTitles.has(clean) || deletedTitles.has(title.toLowerCase().trim())) return true;
+    }
+    return false;
+  }, []);
 
   // Helper per risolvere i destinatari in base al filtro
   const resolveRecipients = useCallback((
@@ -175,15 +220,14 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
       setQuickTemplates(defaultQuickTemplates);
       try { setStorageItem(STORAGE_KEYS.BROADCAST_TEMPLATES, defaultQuickTemplates); } catch {}
     } else {
-      // Merge with default if new templates were added
       const existingIds = new Set(savedQuickTpls.map(t => t.id));
       const missingDefaults = defaultQuickTemplates.filter(d => !existingIds.has(d.id));
       const merged = [...savedQuickTpls, ...missingDefaults];
       setQuickTemplates(merged);
     }
 
-    // Inizializza o carica i broadcast rimuovendo qualsiasi residuo mock
-    const cleanBroadcasts = savedBroadcasts.filter(b => !b.id.startsWith('bc-init-'));
+    // Inizializza o carica i broadcast rimuovendo qualsiasi residuo mock o cancellato
+    const cleanBroadcasts = savedBroadcasts.filter(b => !b.id.startsWith('bc-init-') && !isDeleted(b.id, b.title));
     
     // Ripristina il testo reale del messaggio se era rimasto il placeholder "Canali:"
     const fixedBroadcasts = cleanBroadcasts.map(b => {
@@ -219,6 +263,11 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
             const realMessage = (t.metadata?.message as string) || 
               (t.description && !t.description.startsWith('Canali:') ? t.description : '');
 
+            // Salta i broadcast cancellati
+            if (isDeleted(broadcastId, title) || isDeleted(t.id, rawTitle)) {
+              return;
+            }
+
             if (!dbMap.has(title)) {
               dbMap.set(title, {
                 id: broadcastId,
@@ -248,18 +297,17 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
               
               dbList.forEach(dbItem => {
                 const key = dbItem.title.trim().toLowerCase();
-                if (!existingMap.has(key)) {
+                if (!existingMap.has(key) && !isDeleted(dbItem.id, dbItem.title)) {
                   existingMap.set(key, dbItem);
-                } else {
+                } else if (existingMap.has(key)) {
                   const localItem = existingMap.get(key)!;
-                  // Se il locale ha message vuoto o "Canali:", usa quello del DB se valido
                   if ((!localItem.message || localItem.message.startsWith('Canali:')) && dbItem.message) {
                     existingMap.set(key, { ...localItem, message: dbItem.message });
                   }
                 }
               });
 
-              const merged = Array.from(existingMap.values());
+              const merged = Array.from(existingMap.values()).filter(b => !isDeleted(b.id, b.title));
               try { setStorageItem(STORAGE_KEYS.BROADCAST_COMMUNICATIONS, merged); } catch {}
               return merged;
             });
@@ -268,7 +316,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
       });
 
     setIsLoading(false);
-  }, []);
+  }, [isDeleted]);
 
   // Sincronizzazione in tempo reale cross-tab / cross-window e Supabase Realtime
   useEffect(() => {
@@ -291,6 +339,29 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
             try { setStorageItem(STORAGE_KEYS.BROADCAST_COMMUNICATIONS, updated); } catch {}
             return updated;
           });
+        }
+      })
+      .on('broadcast', { event: 'sync_delete' }, ({ payload }) => {
+        if (payload) {
+          const deleteId = payload.id;
+          const deleteTitle = (payload.title || '').replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
+          
+          setBroadcasts(prev => {
+            const filtered = prev.filter(b => {
+              if (deleteId && b.id === deleteId) return false;
+              if (deleteTitle) {
+                const normB = b.title.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
+                if (normB === deleteTitle) return false;
+              }
+              return true;
+            });
+            try { setStorageItem(STORAGE_KEYS.BROADCAST_COMMUNICATIONS, filtered); } catch {}
+            return filtered;
+          });
+
+          if (deleteTitle || deleteId) {
+            deleteTimelineForBroadcast(payload.title || '', deleteId);
+          }
         }
       })
       .subscribe();
@@ -346,6 +417,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
   ): BroadcastCommunication => {
     const nowIso = new Date().toISOString();
     const owner = getLocalOwnerProfile();
+    removeDeletedBroadcastFromStorage(formData.title);
     const resolvedRecipients = resolveRecipients(
       formData.audienceFilter.type,
       formData.audienceFilter.tag,
@@ -542,6 +614,9 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
 
     // 3. Sincronizzazione persistente su Supabase (athlete_timeline & notifications)
     if (targetMessage || targetTitle) {
+      const cleanTarget = targetTitle.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim();
+
+      // Update per broadcastId in metadata
       supabase
         .from('athlete_timeline')
         .update({
@@ -553,9 +628,34 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
           }
         })
         .eq('type', 'communication')
+        .filter('metadata->>broadcastId', 'eq', id)
         .then(({ error }) => {
-          if (error) console.warn('Supabase timeline sync:', error);
+          if (error) console.warn('Supabase timeline sync by id:', error);
         });
+
+      // Update per varianti titolo
+      if (cleanTarget) {
+        supabase
+          .from('athlete_timeline')
+          .update({
+            description: targetMessage,
+            metadata: {
+              broadcastId: id,
+              broadcastType: updates.type || 'update',
+              message: targetMessage,
+            }
+          })
+          .eq('type', 'communication')
+          .in('title', [
+            targetTitle,
+            cleanTarget,
+            `Broadcast: ${cleanTarget}`,
+            `Comunicazione: ${cleanTarget}`
+          ])
+          .then(({ error }) => {
+            if (error) console.warn('Supabase timeline sync by title:', error);
+          });
+      }
 
       supabase
         .from('notifications')
@@ -563,6 +663,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
           body: targetMessage,
         })
         .eq('type', 'coach_message')
+        .filter('metadata->>broadcastId', 'eq', id)
         .then(({ error }) => {
           if (error) console.warn('Supabase notifications sync:', error);
         });
@@ -571,14 +672,72 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
     return true;
   }, [broadcasts, communications, saveBroadcastsToStorage, saveCommsToStorage, updateTimelineForBroadcast]);
 
-  // Elimina un broadcast
-  const deleteBroadcast = useCallback((id: string): boolean => {
-    const updated = broadcasts.filter(b => b.id !== id);
-    if (updated.length !== broadcasts.length) {
-      return saveBroadcastsToStorage(updated);
-    }
-    return false;
-  }, [broadcasts, saveBroadcastsToStorage]);
+  // Elimina un broadcast con sincronizzazione completa e definitiva
+  const deleteBroadcast = useCallback(async (id: string): Promise<boolean> => {
+    const targetBc = broadcasts.find(b => b.id === id);
+    const targetTitle = targetBc?.title || '';
+    const cleanTargetTitle = targetTitle.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
+
+    // 0. Salva nella blacklist persistente per bloccare re-idratazione da database
+    addDeletedBroadcastToStorage(id, targetTitle);
+
+    // 1. Rimuovi dai broadcast in memoria e localStorage
+    const updated = broadcasts.filter(b => {
+      if (b.id === id) return false;
+      if (cleanTargetTitle) {
+        const normB = b.title.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
+        if (normB === cleanTargetTitle) return false;
+      }
+      return true;
+    });
+    saveBroadcastsToStorage(updated);
+
+    // 2. Rimuovi dai log comunicazioni locali
+    const updatedComms = communications.filter(c => {
+      if (c.id.includes(id)) return false;
+      if (cleanTargetTitle) {
+        const normSubject = (c.subject || '').replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
+        if (normSubject === cleanTargetTitle) return false;
+      }
+      return true;
+    });
+    saveCommsToStorage(updatedComms);
+
+    // 3. Cancella in modo persistente dalla timeline di tutti gli atleti (in memoria + database Supabase)
+    await deleteTimelineForBroadcast(targetTitle, id);
+
+    // 4. Cancella notifiche correlate su database Supabase (se presenti)
+    try {
+      if (id) {
+        supabase
+          .from('notifications')
+          .delete()
+          .eq('type', 'coach_message')
+          .filter('metadata->>broadcastId', 'eq', id)
+          .then(() => {});
+      }
+      if (targetTitle) {
+        supabase
+          .from('notifications')
+          .delete()
+          .eq('type', 'coach_message')
+          .eq('title', targetTitle)
+          .then(() => {});
+      }
+    } catch (_) {}
+
+    // 5. Invia segnale realtime a tutte le altre finestre / schede / portale atleta
+    try {
+      supabase.channel('realtime:broadcasts_sync').send({
+        type: 'broadcast',
+        event: 'sync_delete',
+        payload: { id, title: targetTitle },
+      });
+    } catch (_) {}
+
+    window.dispatchEvent(new CustomEvent('broadcasts_updated'));
+    return true;
+  }, [broadcasts, communications, saveBroadcastsToStorage, saveCommsToStorage, deleteTimelineForBroadcast]);
 
   // Invia una bozza salvata
   const sendDraft = useCallback((id: string): boolean => {

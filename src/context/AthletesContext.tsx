@@ -111,6 +111,7 @@ interface AthletesContextType {
     metadata?: Record<string, string | number | boolean>
   ) => Promise<boolean>;
   updateTimelineForBroadcast: (broadcastTitle: string, message: string, broadcastId?: string) => void;
+  deleteTimelineForBroadcast: (broadcastTitle: string, broadcastId?: string) => Promise<boolean>;
   bulkSetAthletes: (newAthletes: Athlete[]) => void;
   exportCsv: () => string;
 }
@@ -419,6 +420,88 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   }, []);
 
+  const deleteTimelineForBroadcast = useCallback(async (broadcastTitle: string, broadcastId?: string): Promise<boolean> => {
+    const cleanTitle = broadcastTitle.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim();
+    const normTarget = cleanTitle.toLowerCase();
+
+    // 1. Aggiorna lo stato in memoria immediatamente per tutti gli atleti
+    setTimeline(prev => {
+      const next: Record<string, TimelineEvent[]> = {};
+      Object.keys(prev).forEach(athId => {
+        next[athId] = (prev[athId] || []).filter(evt => {
+          if (evt.type === 'communication') {
+            if (broadcastId && evt.metadata?.broadcastId === broadcastId) return false;
+            if (broadcastId && (evt.id === broadcastId || evt.id === broadcastId.replace('bc-db-', ''))) return false;
+            const normEvtTitle = (evt.title || '').replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
+            if (normTarget && (normEvtTitle === normTarget || normEvtTitle.includes(normTarget) || normTarget.includes(normEvtTitle))) return false;
+          }
+          return true;
+        });
+      });
+      return next;
+    });
+
+    // 2. Cancella i record reali dal database Supabase (athlete_timeline)
+    try {
+      const deletePromises: PromiseLike<unknown>[] = [];
+
+      // A. Per broadcastId in metadata
+      if (broadcastId) {
+        deletePromises.push(
+          supabase
+            .from('athlete_timeline')
+            .delete()
+            .eq('type', 'communication')
+            .filter('metadata->>broadcastId', 'eq', broadcastId)
+        );
+
+        const rawDbId = broadcastId.startsWith('bc-db-') ? broadcastId.replace('bc-db-', '') : broadcastId;
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawDbId)) {
+          deletePromises.push(
+            supabase.from('athlete_timeline').delete().eq('id', rawDbId)
+          );
+        }
+      }
+
+      // B. Per varianti esatte del titolo
+      if (cleanTitle) {
+        deletePromises.push(
+          supabase
+            .from('athlete_timeline')
+            .delete()
+            .eq('type', 'communication')
+            .in('title', [
+              broadcastTitle,
+              cleanTitle,
+              `Broadcast: ${cleanTitle}`,
+              `Comunicazione: ${cleanTitle}`,
+              `Broadcast: ${broadcastTitle}`,
+              `Comunicazione: ${broadcastTitle}`
+            ])
+        );
+
+        // Se il titolo era troncato con ... o …
+        const isTruncated = broadcastTitle.includes('...') || broadcastTitle.includes('…');
+        const prefix = cleanTitle.replace(/[\.…]+$/, '').trim();
+        if (isTruncated && prefix.length > 5) {
+          deletePromises.push(
+            supabase
+              .from('athlete_timeline')
+              .delete()
+              .eq('type', 'communication')
+              .ilike('title', `%${prefix}%`)
+          );
+        }
+      }
+
+      await Promise.allSettled(deletePromises);
+      return true;
+    } catch (err) {
+      console.warn('Errore cancellazione timeline broadcast da DB:', err);
+      return false;
+    }
+  }, []);
+
   const bulkSetAthletes = useCallback((_newAthletes: Athlete[]) => {
     // Disable bulk replace for cloud
   }, []);
@@ -479,6 +562,7 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         togglePinNote,
         addTimelineEvent,
         updateTimelineForBroadcast,
+        deleteTimelineForBroadcast,
         bulkSetAthletes,
         exportCsv,
       }}

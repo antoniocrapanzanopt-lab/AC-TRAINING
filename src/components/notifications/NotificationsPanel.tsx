@@ -15,18 +15,22 @@ import {
 import { useNotifications } from '../../context/NotificationsContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useCommunications } from '../../context/CommunicationsContext';
+import { NavigationTab } from '../../types';
 import { AppNotification } from '../../types/notification';
+import { resolveNotificationNavigation } from '../../utils/notificationNavigator';
 
 interface NotificationsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   onNavigateToAll?: () => void;
+  onNavigateTab?: (tab: NavigationTab) => void;
 }
 
 export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
   isOpen,
   onClose,
   onNavigateToAll,
+  onNavigateTab,
 }) => {
   const { notifications, unreadCount, unreadTrophiesCount, markAsRead, markAllAsRead } =
     useNotifications();
@@ -89,9 +93,16 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
       markRecipientRead(item.metadata.broadcastId as string, item.athlete_id);
     }
 
-    if (item.athlete_id) {
-      setSelectedAthleteId(item.athlete_id);
+    // Risoluzione intelligente della navigazione per scheda/copilot/atleta
+    const target = resolveNotificationNavigation(item);
+    if (target.athleteId) {
+      setSelectedAthleteId(target.athleteId);
     }
+
+    if (onNavigateTab) {
+      onNavigateTab(target.tab);
+    }
+
     onClose();
   };
 

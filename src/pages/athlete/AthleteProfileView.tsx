@@ -298,7 +298,7 @@ export const AthleteProfileView: React.FC = () => {
             </div>
             <div className="flex justify-between py-1.5">
               <span className="text-slate-400">Note medico:</span>
-              <span className="text-slate-400 italic">{currentAthlete?.medicalNotes || currentAthlete?.notes || 'Nessuna nota medica'}</span>
+              <span className="text-slate-400 italic">{currentAthlete?.medicalNotes || 'Nessuna limitazione medica registrata'}</span>
             </div>
           </div>
         </div>

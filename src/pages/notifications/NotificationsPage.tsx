@@ -23,9 +23,11 @@ import {
   NotificationFilterOptions,
   NotificationPriority,
 } from '../../types/notification';
+import { NavigationTab } from '../../types';
+import { resolveNotificationNavigation } from '../../utils/notificationNavigator';
 
 interface NotificationsPageProps {
-  onNavigateToTab?: (tab: any) => void;
+  onNavigateToTab?: (tab: NavigationTab) => void;
 }
 
 export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigateToTab }) => {
@@ -116,11 +118,13 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
       markAsRead(item.id);
     }
 
-    if (item.athlete_id) {
-      setSelectedAthleteId(item.athlete_id);
-      if (onNavigateToTab) {
-        onNavigateToTab('atleti');
-      }
+    const target = resolveNotificationNavigation(item);
+    if (target.athleteId) {
+      setSelectedAthleteId(target.athleteId);
+    }
+
+    if (onNavigateToTab) {
+      onNavigateToTab(target.tab);
     }
   };
 

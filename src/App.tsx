@@ -22,7 +22,8 @@ import { ProgressionsProvider } from './context/ProgressionsContext';
 import { NutritionProvider } from './context/NutritionContext';
 import { InboxProvider } from './context/InboxContext';
 import { ContentsProvider } from './context/ContentsContext';
-
+import { PwaUpdateProvider } from './context/PwaUpdateContext';
+import { PwaUpdateBanner } from './components/pwa/PwaUpdateBanner';
 
 import { AuthPage } from './pages/auth/AuthPage';
 import { InvitePage } from './pages/auth/InvitePage';
@@ -72,6 +73,7 @@ const AppContent: React.FC = () => {
         isOpen={showDisclaimer}
         onConfirm={markDisclaimerAsSeen}
       />
+      <PwaUpdateBanner />
     </RequireAAL2>
   );
 };
@@ -82,51 +84,54 @@ export const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <AppProvider>
-        <AuthProvider>
-          <ToastProvider>
-            <SettingsProvider>
-              <PackagesProvider>
-                <AthletesProvider>
-                  <SubscriptionsProvider>
-                    <PaymentsProvider>
-                      <RenewalsProvider>
-                        <TasksProvider>
-                          <CalendarProvider>
-                            <DocumentsProvider>
-                              <CommunicationsProvider>
-                                <WorkoutsProvider>
-                                  <ExercisesProvider>
-                                    <MessagesProvider>
-                                      <MetricsProvider>
-                                        <NotificationsProvider>
-                                          <ProgressionsProvider>
-                                            <NutritionProvider>
-                                              <InboxProvider>
-                                                <ContentsProvider>
-                                                  <AppContent />
-                                                </ContentsProvider>
-                                              </InboxProvider>
-                                            </NutritionProvider>
-                                          </ProgressionsProvider>
-                                        </NotificationsProvider>
-                                      </MetricsProvider>
-                                    </MessagesProvider>
-                                  </ExercisesProvider>
-                                </WorkoutsProvider>
-                              </CommunicationsProvider>
-                            </DocumentsProvider>
-                          </CalendarProvider>
-                        </TasksProvider>
-                      </RenewalsProvider>
-                    </PaymentsProvider>
-                  </SubscriptionsProvider>
-                </AthletesProvider>
-              </PackagesProvider>
-            </SettingsProvider>
-          </ToastProvider>
-        </AuthProvider>
-      </AppProvider>
+        <PwaUpdateProvider>
+          <AppProvider>
+            <AuthProvider>
+              <ToastProvider>
+                <SettingsProvider>
+                  <PackagesProvider>
+                    <AthletesProvider>
+                      <SubscriptionsProvider>
+                        <PaymentsProvider>
+                          <RenewalsProvider>
+                            <TasksProvider>
+                              <CalendarProvider>
+                                <DocumentsProvider>
+                                  <CommunicationsProvider>
+                                    <WorkoutsProvider>
+                                      <ExercisesProvider>
+                                        <MessagesProvider>
+                                          <MetricsProvider>
+                                            <NotificationsProvider>
+                                              <ProgressionsProvider>
+                                                <NutritionProvider>
+                                                  <InboxProvider>
+                                                    <ContentsProvider>
+                                                      <AppContent />
+                                                      <PwaUpdateBanner />
+                                                    </ContentsProvider>
+                                                  </InboxProvider>
+                                                </NutritionProvider>
+                                              </ProgressionsProvider>
+                                            </NotificationsProvider>
+                                          </MetricsProvider>
+                                        </MessagesProvider>
+                                      </ExercisesProvider>
+                                    </WorkoutsProvider>
+                                  </CommunicationsProvider>
+                                </DocumentsProvider>
+                              </CalendarProvider>
+                            </TasksProvider>
+                          </RenewalsProvider>
+                        </PaymentsProvider>
+                      </SubscriptionsProvider>
+                    </AthletesProvider>
+                  </PackagesProvider>
+                </SettingsProvider>
+              </ToastProvider>
+            </AuthProvider>
+          </AppProvider>
+        </PwaUpdateProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

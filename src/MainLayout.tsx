@@ -31,8 +31,10 @@ import { InboxAIPage } from './pages/inbox/InboxAIPage';
 import { ContentsHubPage } from './pages/contents/ContentsHubPage';
 import { NotificationToast } from './components/notifications/NotificationToast';
 import { useNotifications } from './context/NotificationsContext';
+import { useAthletes } from './context/AthletesContext';
 import { useApp } from './context/AppContext';
 import { NavigationTab } from './types';
+import { resolveNotificationNavigation } from './utils/notificationNavigator';
 
 const tabTitles: Record<NavigationTab, string> = {
   dashboard: 'Dashboard Generale',
@@ -123,6 +125,7 @@ const renderPage = (tab: NavigationTab, onNavigateToTab: (t: NavigationTab) => v
 
 export const MainLayout: React.FC = () => {
   const { activeTab, setActiveTab } = useApp();
+  const { setSelectedAthleteId } = useAthletes();
   const { activeToast, clearActiveToast } = useNotifications();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -151,7 +154,14 @@ export const MainLayout: React.FC = () => {
       <NotificationToast
         notification={activeToast}
         onClose={clearActiveToast}
-        onOpenAction={() => setActiveTab('notifiche')}
+        onOpenAction={() => {
+          if (!activeToast) return;
+          const target = resolveNotificationNavigation(activeToast);
+          if (target.athleteId) {
+            setSelectedAthleteId(target.athleteId);
+          }
+          setActiveTab(target.tab);
+        }}
       />
     </div>
   );

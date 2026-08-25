@@ -1,6 +1,7 @@
 /**
  * Risolutore Storico Sessioni Precedenti (Ghost Log / Previous Performance)
- * Recupera l'ultimo allenamento registrato per ciascun esercizio per dare il riferimento all'atleta.
+ * Recupera l'ultimo allenamento registrato per ciascun esercizio e l'intero storico
+ * per consentire all'atleta di consultare e applicare i carichi con 1 solo tap.
  */
 
 import { supabase } from '../lib/supabase';
@@ -13,16 +14,37 @@ export interface PreviousSetData {
   notes?: string | null;
 }
 
+export interface PastSessionHistoryEntry {
+  sessionId: string;
+  sessionDate: string;
+  formattedDate: string;
+  sets: PreviousSetData[];
+  notes?: string | null;
+}
+
 export interface PreviousExerciseHistory {
   exerciseId: string;
   exerciseName: string;
   sessionDate: string;
   formattedDate: string;
   sets: PreviousSetData[];
+  allPastSessions: PastSessionHistoryEntry[];
 }
 
 /**
- * Recupera l'ultimo storico di prestazioni registrate per ciascun esercizio dell'atleta
+ * Normalizza il nome dell'esercizio per massimizzare il matching storico
+ */
+function normalizeName(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+/**
+ * Recupera lo storico completo di prestazioni registrate per ciascun esercizio dell'atleta
  */
 export async function fetchAthletePreviousExerciseHistory(
   athleteId: string
@@ -36,6 +58,7 @@ export async function fetchAthletePreviousExerciseHistory(
         id,
         start_time,
         created_at,
+        notes,
         exercise_logs (
           id,
           exercise_id,
@@ -51,24 +74,33 @@ export async function fetchAthletePreviousExerciseHistory(
       `)
       .eq('athlete_id', athleteId)
       .order('start_time', { ascending: false })
-      .limit(10);
+      .limit(60);
 
-    if (error || !data) {
-      console.warn('Impossibile recuperare lo storico precedente:', error?.message);
-      return {};
+    if (error) {
+      console.warn('Impossibile recuperare lo storico precedente da Supabase:', error.message);
     }
 
-    const historyMap: Record<string, PreviousExerciseHistory> = {};
+    const sessionsData = data || [];
+
+    // Mappa accumulatori per ogni esercizio
+    const accumulatorMap = new Map<string, {
+      name: string;
+      latestDate: string;
+      latestFormattedDate: string;
+      latestSets: PreviousSetData[];
+      pastSessions: PastSessionHistoryEntry[];
+    }>();
 
     // Scansiona le sessioni dalla più recente alla più vecchia
-    for (const session of data) {
+    for (const session of sessionsData) {
       const sessionDate = session.start_time || session.created_at;
       if (!sessionDate) continue;
 
       const dateObj = new Date(sessionDate);
       const formattedDate = dateObj.toLocaleDateString('it-IT', {
-        day: '2-digit',
+        day: 'numeric',
         month: 'short',
+        year: dateObj.getFullYear() !== new Date().getFullYear() ? '2-digit' : undefined,
       });
 
       const logs = (session.exercise_logs as unknown as Array<{
@@ -81,19 +113,19 @@ export async function fetchAthletePreviousExerciseHistory(
         workout_exercises?: { id?: string; name?: string } | null;
       }>) || [];
 
-      // Raggruppa i log per esercizio
-      const exerciseGroupMap = new Map<string, { name: string; sets: PreviousSetData[] }>();
+      // Raggruppa i log di QUESTA sessione per esercizio
+      const sessionExMap = new Map<string, { name: string; sets: PreviousSetData[]; notes?: string | null }>();
 
       for (const log of logs) {
         const exId = log.exercise_id || log.workout_exercises?.id || '';
         const exName = log.exercise_name || log.workout_exercises?.name || 'Esercizio';
-        const key = (exId || exName.toLowerCase().trim());
+        const key = exId || normalizeName(exName);
 
-        if (!exerciseGroupMap.has(key)) {
-          exerciseGroupMap.set(key, { name: exName, sets: [] });
+        if (!sessionExMap.has(key)) {
+          sessionExMap.set(key, { name: exName, sets: [], notes: session.notes });
         }
 
-        exerciseGroupMap.get(key)!.sets.push({
+        sessionExMap.get(key)!.sets.push({
           setNumber: log.set_number || 1,
           reps: log.reps_completed,
           weightKg: log.weight_kg,
@@ -101,27 +133,58 @@ export async function fetchAthletePreviousExerciseHistory(
         });
       }
 
-      // Inserisce nella historyMap se non è già stato salvato un log più recente
-      for (const [key, val] of exerciseGroupMap.entries()) {
-        if (!historyMap[key] && val.sets.length > 0) {
-          // Ordina i set per setNumber
-          val.sets.sort((a, b) => a.setNumber - b.setNumber);
+      // Aggiorna l'accumulatore
+      for (const [key, val] of sessionExMap.entries()) {
+        val.sets.sort((a, b) => a.setNumber - b.setNumber);
 
-          const historyItem: PreviousExerciseHistory = {
-            exerciseId: key,
-            exerciseName: val.name,
-            sessionDate,
-            formattedDate,
-            sets: val.sets,
-          };
+        const entry: PastSessionHistoryEntry = {
+          sessionId: session.id,
+          sessionDate,
+          formattedDate,
+          sets: val.sets,
+          notes: val.notes,
+        };
 
-          historyMap[key] = historyItem;
-          // Mappa anche per nome normalizzato per fallback
-          const nameKey = val.name.toLowerCase().trim();
-          if (!historyMap[nameKey]) {
-            historyMap[nameKey] = historyItem;
-          }
+        if (!accumulatorMap.has(key)) {
+          accumulatorMap.set(key, {
+            name: val.name,
+            latestDate: sessionDate,
+            latestFormattedDate: formattedDate,
+            latestSets: val.sets,
+            pastSessions: [entry],
+          });
+        } else {
+          accumulatorMap.get(key)!.pastSessions.push(entry);
         }
+      }
+    }
+
+    // Costruzione dizionario finale con chiavi multiple per matching infallibile (UUID, nome raw, nome normalizzato)
+    const historyMap: Record<string, PreviousExerciseHistory> = {};
+
+    for (const [key, acc] of accumulatorMap.entries()) {
+      const historyItem: PreviousExerciseHistory = {
+        exerciseId: key,
+        exerciseName: acc.name,
+        sessionDate: acc.latestDate,
+        formattedDate: acc.latestFormattedDate,
+        sets: acc.latestSets,
+        allPastSessions: acc.pastSessions,
+      };
+
+      // 1. Per chiave primaria (UUID o nome)
+      historyMap[key] = historyItem;
+
+      // 2. Per nome lowercase
+      const lowerKey = acc.name.toLowerCase().trim();
+      if (!historyMap[lowerKey]) {
+        historyMap[lowerKey] = historyItem;
+      }
+
+      // 3. Per nome normalizzato
+      const normKey = normalizeName(acc.name);
+      if (!historyMap[normKey]) {
+        historyMap[normKey] = historyItem;
       }
     }
 

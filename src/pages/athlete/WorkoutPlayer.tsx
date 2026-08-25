@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   X,
   Check,
@@ -9,6 +9,8 @@ import {
   Info,
   Plus,
   Trash2,
+  History,
+  Zap,
 } from 'lucide-react';
 
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
@@ -58,6 +60,22 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     ? athletes.find((a) => a.email && a.email.toLowerCase() === user.email.toLowerCase())
     : null;
   const athleteId = targetAthleteId || currentAthlete?.id || user?.athleteId || user?.id || 'ath-local';
+
+  // Sanitizzazione di sicurezza: una sessione di allenamento appartiene a 1 solo Giorno e 1 sola Settimana
+  const activeExercises = React.useMemo(() => {
+    if (!exercises || exercises.length === 0) return [];
+
+    const targetDay = (exercises[0].day_name || 'Giorno A').trim().toLowerCase();
+    const targetWeek = exercises[0].week_number || 1;
+
+    const singleDayExercises = exercises.filter((ex) => {
+      const exDay = (ex.day_name || 'Giorno A').trim().toLowerCase();
+      const exWeek = ex.week_number || 1;
+      return exDay === targetDay && exWeek === targetWeek;
+    });
+
+    return singleDayExercises.length > 0 ? singleDayExercises : exercises;
+  }, [exercises]);
 
   // Stato Connessione Realtime
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
@@ -198,7 +216,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     } else {
       // Inizializza log vuoti per gli esercizi
       const initialLogs: Record<string, { reps: string; weight: string; rpe: string }[]> = {};
-      exercises.forEach((ex) => {
+      activeExercises.forEach((ex) => {
         initialLogs[ex.id] = Array(ex.sets).fill({ reps: '', weight: '', rpe: '' });
       });
       setLogs(initialLogs);
@@ -219,7 +237,55 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         });
       }
     }
-  }, [athleteId, workout, exercises, sessionId, startWorkoutSession, targetAthleteId]);
+  }, [athleteId, workout, activeExercises, sessionId, startWorkoutSession, targetAthleteId]);
+
+  // Carica SEMPRE lo storico delle prestazioni precedenti dell'atleta (Ghost Log)
+  useEffect(() => {
+    if (athleteId && athleteId !== 'ath-local') {
+      fetchAthletePreviousExerciseHistory(athleteId).then((history) => {
+        setPreviousHistoryMap(history);
+      });
+    }
+  }, [athleteId]);
+
+  const hasAnyPreviousHistory = useMemo(() => {
+    return activeExercises.some((ex) => {
+      const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
+      return Boolean(hist?.sets && hist.sets.length > 0);
+    });
+  }, [activeExercises, previousHistoryMap]);
+
+  // Applica in 1 solo tap i carichi e le ripetizioni dell'ultima volta su tutti gli esercizi del workout
+  const handleApplyAllPreviousLoads = useCallback(() => {
+    let appliedCount = 0;
+    setLogs((prevLogs) => {
+      const updatedLogs = { ...prevLogs };
+      activeExercises.forEach((ex) => {
+        const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
+        if (hist?.sets && hist.sets.length > 0) {
+          const currentSets = updatedLogs[ex.id] || Array(ex.sets).fill({ reps: '', weight: '', rpe: '' });
+          const newSets = currentSets.map((s, sIdx) => {
+            const histSet = hist.sets[sIdx] || hist.sets[hist.sets.length - 1];
+            return {
+              ...s,
+              reps: histSet?.reps !== null && histSet?.reps !== undefined ? String(histSet.reps) : s.reps,
+              weight: histSet?.weightKg !== null && histSet?.weightKg !== undefined ? String(histSet.weightKg) : s.weight,
+              rpe: histSet?.rpe !== null && histSet?.rpe !== undefined ? String(histSet.rpe) : s.rpe,
+            };
+          });
+          updatedLogs[ex.id] = newSets;
+          appliedCount++;
+        }
+      });
+      return updatedLogs;
+    });
+
+    if (appliedCount > 0) {
+      showSuccess('Carichi applicati', `Pre-compilati i carichi precedenti per ${appliedCount} esercizio/i!`);
+    } else {
+      showSuccess('Nessun dato precedente', 'Non sono presenti sessioni registrate per gli esercizi di oggi.');
+    }
+  }, [activeExercises, previousHistoryMap, showSuccess]);
 
   // ── 3. AUTOSAVE LOCALE DEBOUNCED ANTI-FREEZE ──
   const flushAutosave = useCallback(() => {
@@ -234,7 +300,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       sessionId: current.sessionId,
       athleteId,
       workout,
-      exercises,
+      exercises: activeExercises,
       targetAthleteId,
       startTimestamp: startTimestampRef.current,
       lastSavedTimestamp: Date.now(),
@@ -253,7 +319,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     saveActiveWorkoutDraft(draft);
     const timeStr = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
     setLastSavedText(`Salvato alle ${timeStr}`);
-  }, [athleteId, workout, exercises, targetAthleteId]);
+  }, [athleteId, workout, activeExercises, targetAthleteId]);
 
   const scheduleAutosave = useCallback((immediate = false) => {
     if (immediate) {
@@ -418,7 +484,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       const prResults: string[] = [];
       const bestLoadsMap = new Map<string, { exerciseId: string; exerciseName: string; weightKg: number; reps: number }>();
 
-      for (const ex of exercises) {
+      for (const ex of activeExercises) {
         const exLogs = logs[ex.id] || [];
         const userFeedback = exerciseNotes[ex.id]?.trim();
         const completedMap = completedSets[ex.id] || [];
@@ -493,8 +559,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       }`;
       const nowIso = new Date().toISOString();
       const startIso = new Date(startTimestampRef.current).toISOString();
-      const weekNum = (exercises[0] as any)?.week_number || 1;
-      const dayName = (exercises[0] as any)?.day_name || 'Giorno A';
+      const weekNum = (activeExercises[0] as any)?.week_number || 1;
+      const dayName = (activeExercises[0] as any)?.day_name || 'Giorno A';
 
       // Backup locale istantaneo dei log completati
       try {
@@ -634,7 +700,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       let completedSetsTotal = 0;
       let totalSetsPlanned = 0;
 
-      exercises.forEach((ex) => {
+      activeExercises.forEach((ex) => {
         totalSetsPlanned += ex.sets;
         const exLogs = logs[ex.id] || [];
         const exSetsMap = completedSets[ex.id] || [];
@@ -679,7 +745,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
         totalVolumeKg: 0,
         completedSetsCount: 0,
-        totalSetsCount: exercises.reduce((acc, e) => acc + e.sets, 0),
+        totalSetsCount: activeExercises.reduce((acc, e) => acc + e.sets, 0),
         newPRs: [],
         earnedXP: 100,
       });
@@ -754,9 +820,28 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         />
       )}
 
+      {/* QUICK ACTIONS BANNER: APPLICA TUTTI I CARICHI PRECEDENTI */}
+      {hasAnyPreviousHistory && (
+        <div className="bg-gradient-to-r from-blue-950/60 via-slate-900 to-slate-950 border-b border-blue-500/30 px-4 py-2.5 flex items-center justify-between gap-3 text-xs shadow-md shrink-0">
+          <div className="flex items-center gap-2 text-blue-300 font-bold min-w-0">
+            <History className="w-4 h-4 text-blue-400 shrink-0" />
+            <span className="truncate">Storico carichi precedenti disponibile</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleApplyAllPreviousLoads}
+            className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-200 hover:text-white border border-blue-500/40 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 transition-all active:scale-95 cursor-pointer shadow-sm"
+            title="Pre-compila automaticamente i carichi dell'ultima volta su tutti gli esercizi di oggi"
+          >
+            <Zap className="w-3.5 h-3.5 fill-current text-blue-400" />
+            <span>Pre-compila tutti i carichi</span>
+          </button>
+        </div>
+      )}
+
       {/* SCROLLABLE EXERCISES LIST */}
       <div className="flex-1 overflow-y-auto p-4 pb-32 space-y-4 bg-slate-950">
-        {exercises.map((ex, idx) => {
+        {activeExercises.map((ex, idx) => {
           const isExpanded = Boolean(expandedExerciseMap[idx]);
           const isCompleted = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
 
@@ -787,7 +872,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         let setsWithWeightAndReps = 0;
         let emptyExercisesCount = 0;
 
-        exercises.forEach((ex) => {
+        activeExercises.forEach((ex) => {
           totalSetsPlanned += ex.sets;
           const exLogs = logs[ex.id] || [];
           let exerciseHasAnyWeight = false;
@@ -949,7 +1034,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                           className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-rose-500/40 text-white text-xs focus:outline-none focus:border-rose-400 cursor-pointer"
                         >
                           <option value="">-- Seleziona esercizio --</option>
-                          {exercises.map((ex) => (
+                          {activeExercises.map((ex) => (
                             <option key={ex.id} value={ex.name}>
                               {ex.name}
                             </option>

@@ -119,6 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
               isOpen={isNotificationsPanelOpen}
               onClose={() => setIsNotificationsPanelOpen(false)}
               onNavigateToAll={() => onTabChange('notifiche')}
+              onNavigateTab={onTabChange}
             />
           </div>
         )}

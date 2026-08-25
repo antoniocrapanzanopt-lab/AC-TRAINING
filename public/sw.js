@@ -1,16 +1,49 @@
 // =====================================================================================
-// SERVICE WORKER - AC COACHING WEB PUSH & BACKGROUND NOTIFICATIONS
+// SERVICE WORKER - AC COACHING & ATHLETE MANAGER (PWA ENGINE)
+// Build Version: __BUILD_VERSION__
 // =====================================================================================
 
+const CACHE_NAME = 'ac-coach-cache-__BUILD_VERSION__';
+
+// ─── 1. INSTALL LIFECYCLE ─────────────────────────────────────────────────────────────
+// IMPORTANTE: NON chiamare skipWaiting() automaticamente qui.
+// Il nuovo Service Worker resta nello stato 'waiting' finché il client non invia il segnale.
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  console.log('[ServiceWorker] Installed new version:', '__BUILD_VERSION__');
+  // Non forziamo skipWaiting() per non interrompere sessioni attive o compilazione form
 });
 
+// ─── 2. CLIENT MESSAGE HANDLER ────────────────────────────────────────────────────────
+// Ascolta il comando 'SKIP_WAITING' inviato dal client quando l'utente clicca "Aggiorna ora"
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[ServiceWorker] Received SKIP_WAITING signal from client. Activating now...');
+    self.skipWaiting();
+  }
+});
+
+// ─── 3. ACTIVATE LIFECYCLE ────────────────────────────────────────────────────────────
+// Pulisce tutte le vecchie cache eccetto l'attuale CACHE_NAME e reclama i client attivi
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  console.log('[ServiceWorker] Activated version:', '__BUILD_VERSION__');
+  event.waitUntil(
+    caches
+      .keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName !== CACHE_NAME) {
+              console.log('[ServiceWorker] Deleting obsolete cache:', cacheName);
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      })
+      .then(() => self.clients.claim())
+  );
 });
 
-// Ricezione Notifica Push da Server / Supabase Web Push
+// ─── 4. WEB PUSH NOTIFICATIONS ────────────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   let data = {
     title: 'AC COACHING',
@@ -51,12 +84,10 @@ self.addEventListener('push', (event) => {
     ],
   };
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
+  event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
-// Click sulla Notifica Push
+// ─── 5. PUSH NOTIFICATION CLICK ───────────────────────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -69,7 +100,6 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Se c'è già una finestra aperta del portale, portala in primo piano e naviga
       for (const client of clientList) {
         if (client.url && 'focus' in client) {
           if (client.navigate) {
@@ -78,7 +108,6 @@ self.addEventListener('notificationclick', (event) => {
           return client.focus();
         }
       }
-      // Altrimenti apri una nuova finestra del browser
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }

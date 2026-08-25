@@ -593,11 +593,16 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                     </button>
                   </div>
                 )}
-                {/* Note interne - compatte */}
+                {/* Note interne coach - strettamente riservate */}
                 {athlete.notes && (
-                  <div className="pt-3 border-t border-[var(--color-primary)]/15">
-                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">🔒 Note interne</p>
-                    <p className="text-sm text-slate-400 leading-relaxed">{athlete.notes}</p>
+                  <div className="pt-3 border-t border-[var(--color-primary)]/15 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800 space-y-1.5">
+                    <div className="flex items-center gap-2 text-[11px] font-black text-amber-400 uppercase tracking-wider">
+                      <span>🔒 Note Interne Riservate (Solo Coach)</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        MAI VISIBILI ALL'ATLETA
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">{athlete.notes}</p>
                   </div>
                 )}
               </div>

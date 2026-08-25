@@ -37,6 +37,8 @@ export const STORAGE_KEYS = {
   NUTRITION_CHECKINS: 'builder_athlete_nutrition_checkins',
   CHECK_SCHEDULES: 'builder_athlete_check_schedules',
   PROGRESS_PHOTOS: 'builder_athlete_progress_photos',
+  DELETED_BROADCAST_IDS: 'builder_athlete_deleted_broadcast_ids',
+  DELETED_BROADCAST_TITLES: 'builder_athlete_deleted_broadcast_titles',
 } as const;
 
 export type AppStorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];

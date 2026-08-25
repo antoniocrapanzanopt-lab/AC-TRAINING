@@ -19,6 +19,7 @@ import {
   User,
   Check,
   Edit3,
+  Trash2,
 } from 'lucide-react';
 import {
   BroadcastCommunication,
@@ -32,6 +33,7 @@ interface BroadcastDetailsModalProps {
   onClose: () => void;
   broadcast: BroadcastCommunication | null;
   onEdit?: (broadcast: BroadcastCommunication) => void;
+  onDelete?: (id: string) => void;
 }
 
 const typeConfig: Record<BroadcastType, { label: string; icon: React.FC<{ className?: string }>; badgeCls: string }> = {
@@ -48,12 +50,14 @@ export const BroadcastDetailsModal: React.FC<BroadcastDetailsModalProps> = ({
   onClose,
   broadcast: initialBroadcast,
   onEdit,
+  onDelete,
 }) => {
   const { broadcasts, confirmRecipientRead, openWhatsApp, openMailto } = useCommunications();
   const { showSuccess } = useToast();
 
   const [query, setQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'delivered' | 'read' | 'confirmed' | 'replied'>('all');
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   if (!isOpen || !initialBroadcast) return null;
 
@@ -387,17 +391,54 @@ export const BroadcastDetailsModal: React.FC<BroadcastDetailsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 sm:p-5 border-t border-[var(--color-panel-border)] bg-slate-950/80 flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-t border-[var(--color-panel-border)] bg-slate-950/80 flex flex-wrap items-center justify-between gap-3">
           <div className="text-xs text-slate-400">
             Autore: <span className="font-bold text-white">{broadcast.author}</span>
           </div>
 
-          <button
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs border border-slate-800 transition-all"
-          >
-            Chiudi
-          </button>
+          <div className="flex items-center gap-2">
+            {onDelete && (
+              isConfirmingDelete ? (
+                <div className="flex items-center gap-1.5 bg-red-950/80 p-1 rounded-xl border border-red-500/50">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDelete(broadcast.id);
+                      setIsConfirmingDelete(false);
+                      onClose();
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-black text-xs transition-colors shadow-sm"
+                  >
+                    Conferma Eliminazione
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmingDelete(false)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
+                  >
+                    Annulla
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingDelete(true)}
+                  className="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  title="Elimina definitivamente questa comunicazione"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Elimina Comunicazione</span>
+                </button>
+              )
+            )}
+
+            <button
+              onClick={onClose}
+              className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs border border-slate-800 transition-all cursor-pointer"
+            >
+              Chiudi
+            </button>
+          </div>
         </div>
 
       </div>

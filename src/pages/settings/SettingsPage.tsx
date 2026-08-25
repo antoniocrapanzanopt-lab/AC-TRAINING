@@ -22,6 +22,7 @@ import {
   Trash2,
   ExternalLink,
   ChevronRight,
+  Smartphone,
 } from 'lucide-react';
 import { useSettings } from '../../context/SettingsContext';
 import { useToast } from '../../context/ToastContext';
@@ -42,6 +43,7 @@ import { BackupSettingsTab } from './components/BackupSettingsTab';
 import { ThemeCustomizer } from '../../components/settings/ThemeCustomizer';
 import { SecuritySettingsPage } from './SecuritySettingsPage';
 import { NotificationSettingsTab } from '../../components/settings/NotificationSettingsTab';
+import { PwaDiagnosticsTab } from './components/PwaDiagnosticsTab';
 
 export type SettingsTab =
   | 'owner'
@@ -55,7 +57,8 @@ export type SettingsTab =
   | 'security'
   | 'reminders'
   | 'backup'
-  | 'audit';
+  | 'audit'
+  | 'pwa_diagnostics';
 
 interface SectionMeta {
   id: SettingsTab;
@@ -77,6 +80,7 @@ const SETTINGS_SECTIONS: SectionMeta[] = [
   { id: 'reminders', label: 'Promemoria', icon: Bell, description: 'Soglie di notifica scadenze visite e rinnovi' },
   { id: 'backup', label: 'Backup & Esportazione', icon: Download, description: 'Salvataggio, esportazione e ripristino dati' },
   { id: 'audit', label: 'Audit Log Generale', icon: History, description: 'Registro cronologico di tutte le azioni di sistema' },
+  { id: 'pwa_diagnostics', label: 'PWA, Versioning & Cache', icon: Smartphone, description: 'Stato build, aggiornamenti PWA e diagnostica cache' },
 ];
 
 export const SettingsPage: React.FC = () => {
@@ -943,6 +947,11 @@ export const SettingsPage: React.FC = () => {
                 )}
               </div>
             </div>
+          )}
+
+          {/* SEZIONE 13: PWA, VERSIONING & DIAGNOSTICA CACHE */}
+          {activeSubTab === 'pwa_diagnostics' && (
+            <PwaDiagnosticsTab />
           )}
 
         </main>

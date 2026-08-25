@@ -32,6 +32,8 @@ export class WebPushService {
         this.swRegistration = await navigator.serviceWorker.register('/sw.js', {
           scope: '/',
         });
+      } else {
+        this.swRegistration.update().catch(() => {});
       }
       return this.swRegistration;
     } catch (err) {
