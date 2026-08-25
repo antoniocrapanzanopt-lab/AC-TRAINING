@@ -46,15 +46,22 @@ const typeConfig: Record<BroadcastType, { label: string; icon: React.FC<{ classN
  * Normalizza il nome del coach evitando che compaiano UUID o "Coach Coach"
  */
 function getCleanAuthorName(rawAuthor?: string): string {
-  if (!rawAuthor) return 'Coach Antonio Crapanzano';
+  if (!rawAuthor || !rawAuthor.trim()) return 'Coach Antonio Crapanzano';
   const trimmed = rawAuthor.trim();
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === 'local-owner' || 
+    lower.includes('local-owner') || 
+    lower === 'owner' || 
+    lower === 'admin' || 
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)
+  ) {
     return 'Coach Antonio Crapanzano';
   }
-  if (trimmed.toLowerCase().startsWith('coach coach')) {
+  if (lower.startsWith('coach coach')) {
     return trimmed.replace(/^coach\s+coach\s+/i, 'Coach ');
   }
-  if (trimmed.toLowerCase().startsWith('coach ')) {
+  if (lower.startsWith('coach ')) {
     return trimmed;
   }
   if (trimmed === 'Coach' || trimmed === 'Sistema') {
@@ -219,63 +226,73 @@ export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps>
       return false;
     };
 
-    // 1. Broadcast dalla console (hanno il messaggio completo)
+    // 1. Broadcast ufficiali inviati dal Coach
     const fromBroadcasts = broadcasts
       .filter(b => b.status === 'sent' && !isBroadcastDeleted(b.id, b.title))
       .map(b => ({
         ...b,
         title: b.title.replace(/^broadcast:\s*/i, ''),
         message: findRealMessage(b.title, b.id, b.message),
+        author: getCleanAuthorName(b.author),
       }));
 
-    // 2. Eventi da timeline Supabase
-    const myTimeline = (athleteId && timeline[athleteId]) ? timeline[athleteId] : [];
-    const fromTimeline: BroadcastCommunication[] = myTimeline
-      .filter(t => t.type === 'communication' && !isBroadcastDeleted(t.id, t.title) && !isBroadcastDeleted(t.metadata?.broadcastId as string, t.title))
-      .map(t => {
-        const cleanTitle = (t.title || '').replace(/^broadcast:\s*/i, '');
-        const realMessage = findRealMessage(cleanTitle, t.metadata?.broadcastId as string, t.description);
-
-        return {
-          id: (t.metadata?.broadcastId as string) || `bc-${t.id}`,
-          title: cleanTitle,
-          type: (t.metadata?.broadcastType as BroadcastType) || 'update',
-          status: 'sent' as const,
-          sentAt: (t.metadata?.sentAt as string) || t.createdAt,
-          audienceFilter: { type: 'all_active' as const },
-          totalRecipientsCount: 30,
-          channels: (t.metadata?.channels as any) || ['in_app'],
-          message: realMessage,
-          attachments: (t.metadata?.attachments as any) || [],
-          cta: (t.metadata?.cta as any),
-          metrics: { sent: 30, delivered: 30, read: 0, clicked: 0, confirmed: 0, replied: 0 },
-          recipients: [],
-          author: t.authorName || 'Coach Antonio Crapanzano',
-          createdAt: t.createdAt,
-          updatedAt: t.createdAt,
-        };
-      });
-
-    // Unione evitando duplicati per titolo normalizzato
+    // Mappa per unione evitando duplicati per titolo normalizzato
     const map = new Map<string, BroadcastCommunication>();
     
-    // Inserisci prima i broadcast che hanno il messaggio completo
+    // Inserisci i broadcast validi e attivi
     fromBroadcasts.forEach(b => {
       const key = normalizeTitle(b.title);
       map.set(key, b);
     });
 
-    fromTimeline.forEach(t => {
-      const key = normalizeTitle(t.title);
-      if (!map.has(key)) {
-        map.set(key, t);
-      } else {
-        const existing = map.get(key)!;
-        if ((!existing.message || existing.message.trim().startsWith('Canali:')) && t.message) {
-          map.set(key, { ...existing, message: t.message });
+    // Se broadcasts è vuoto (es. prima idratazione / offline), fallback su timeline
+    if (fromBroadcasts.length === 0) {
+      const myTimeline = (athleteId && timeline[athleteId]) ? timeline[athleteId] : [];
+      const fromTimeline = myTimeline
+        .filter(t => t.type === 'communication' && !isBroadcastDeleted(t.id, t.title) && !isBroadcastDeleted(t.metadata?.broadcastId as string, t.title))
+        .map(t => {
+          const cleanTitle = (t.title || '').replace(/^broadcast:\s*/i, '');
+          const realMessage = findRealMessage(cleanTitle, t.metadata?.broadcastId as string, t.description);
+
+          return {
+            id: (t.metadata?.broadcastId as string) || `bc-${t.id}`,
+            title: cleanTitle,
+            type: (t.metadata?.broadcastType as BroadcastType) || 'update',
+            status: 'sent' as const,
+            sentAt: (t.metadata?.sentAt as string) || t.createdAt,
+            audienceFilter: { type: 'all_active' as const },
+            totalRecipientsCount: 30,
+            channels: (t.metadata?.channels as any) || ['in_app'],
+            message: realMessage,
+            attachments: (t.metadata?.attachments as any) || [],
+            cta: (t.metadata?.cta as any),
+            metrics: { sent: 30, delivered: 30, read: 0, clicked: 0, confirmed: 0, replied: 0 },
+            recipients: [],
+            author: getCleanAuthorName(t.authorName),
+            createdAt: t.createdAt,
+            updatedAt: t.createdAt,
+          };
+        });
+
+      fromTimeline.forEach(t => {
+        const key = normalizeTitle(t.title);
+        if (!map.has(key)) {
+          map.set(key, t);
         }
-      }
-    });
+      });
+    } else {
+      // Se ci sono già i broadcast ufficiali, arricchisci solo i messaggi se mancanti
+      const myTimeline = (athleteId && timeline[athleteId]) ? timeline[athleteId] : [];
+      myTimeline.forEach(t => {
+        const key = normalizeTitle(t.title || '');
+        if (map.has(key)) {
+          const existing = map.get(key)!;
+          if ((!existing.message || existing.message.trim().startsWith('Canali:')) && t.description && !t.description.startsWith('Canali:')) {
+            map.set(key, { ...existing, message: t.description });
+          }
+        }
+      });
+    }
 
     return Array.from(map.values())
       .filter(b => !isBroadcastDeleted(b.id, b.title))

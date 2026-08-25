@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target, RotateCcw, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Flame, TrendingUp, User, Link2, Unlink2, Layers, AlertTriangle, FastForward } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { generateAISmartSuggestions, CoPilotActionableSuggestion } from '../../lib/ai/workoutGenerator';
@@ -18,6 +18,192 @@ import { MuscleVolumeSummary } from './MuscleVolumeSummary';
 import { AIVolumeCoach } from './AIVolumeCoach';
 import { calculateMuscleVolumeSummary } from '../../utils/muscleVolumeCalculator';
 import { analyzeVolumeWithAI, ActionPayload } from '../../utils/aiVolumeCoach';
+
+// Helper di formattazione e parsing per i tempi di recupero (REC)
+export function formatRestSeconds(seconds?: number): string {
+  if (seconds === undefined || seconds === null || isNaN(seconds) || seconds < 0) return '01:00';
+  const total = Math.max(0, Math.round(seconds));
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+export function parseRestInput(input: string): number {
+  const clean = input.trim().toLowerCase();
+  if (!clean) return 60;
+
+  // Formato mm:ss o m:s o m.s o m,s o m's (es. 1:30, 01:30, 1.30, 1,30, 1'30)
+  const colonMatch = clean.match(/^(\d+)[.:',](\d+)$/);
+  if (colonMatch) {
+    const mins = parseInt(colonMatch[1], 10) || 0;
+    const secs = parseInt(colonMatch[2], 10) || 0;
+    return mins * 60 + secs;
+  }
+
+  // Formato con minuti es. 2m, 2min, 2', 1.5m
+  const minMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(?:m|min|')$/);
+  if (minMatch) {
+    const mins = parseFloat(minMatch[1]) || 0;
+    return Math.round(mins * 60);
+  }
+
+  // Formato con secondi es. 90s, 90", 45sec
+  const secMatch = clean.match(/^(\d+)\s*(?:s|sec|"|'')?$/);
+  if (secMatch) {
+    const num = parseInt(secMatch[1], 10) || 0;
+    return num;
+  }
+
+  // Fallback a numero puro (se <= 10 interpretato come minuti, altrimenti secondi)
+  const num = parseInt(clean, 10);
+  if (!isNaN(num)) {
+    return num;
+  }
+
+  return 60;
+}
+
+const REST_PRESETS = [
+  { label: '30"', sec: 30 },
+  { label: '45"', sec: 45 },
+  { label: '1\'00"', sec: 60 },
+  { label: '1\'15"', sec: 75 },
+  { label: '1\'30"', sec: 90 },
+  { label: '2\'00"', sec: 120 },
+  { label: '2\'30"', sec: 150 },
+  { label: '3\'00"', sec: 180 },
+];
+
+export const RestTimeCell: React.FC<{
+  restSeconds?: number;
+  onChange: (seconds: number) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+}> = ({ restSeconds = 60, onChange, onKeyDown }) => {
+  const [isFocused, setIsFocused] = useState(false);
+  const [localText, setLocalText] = useState('');
+  const [showPresets, setShowPresets] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const formattedValue = useMemo(() => {
+    return formatRestSeconds(restSeconds);
+  }, [restSeconds]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowPresets(false);
+      }
+    };
+    if (showPresets) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPresets]);
+
+  const handleFocus = () => {
+    setIsFocused(true);
+    setLocalText(formattedValue);
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    const parsed = parseRestInput(localText);
+    onChange(parsed);
+  };
+
+  const handleKeyDownInternal = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const parsed = parseRestInput(localText);
+      onChange(parsed);
+      (e.target as HTMLInputElement).blur();
+    }
+    if (onKeyDown) onKeyDown(e);
+  };
+
+  const adjustSeconds = (delta: number) => {
+    const next = Math.max(0, (restSeconds || 60) + delta);
+    onChange(next);
+  };
+
+  return (
+    <div className="relative group/rec" ref={containerRef}>
+      <div className="relative flex items-center">
+        <input
+          type="text"
+          placeholder="01:30"
+          value={isFocused ? localText : formattedValue}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onChange={(e) => setLocalText(e.target.value)}
+          onKeyDown={handleKeyDownInternal}
+          className="workout-cell-input w-full px-1 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-bold text-center focus:outline-none focus:border-[var(--color-primary)] font-mono tracking-tight"
+          title="Digita es. 90, 1:30, 45s o clicca l'orologio per opzioni rapide"
+        />
+        
+        {/* Pulsante rapido popover preset */}
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => setShowPresets(prev => !prev)}
+          className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-500 hover:text-amber-400 opacity-40 hover:opacity-100 transition cursor-pointer"
+          title="Apri tempi di recupero preimpostati (+/- 15s)"
+        >
+          <Clock className="w-2.5 h-2.5" />
+        </button>
+      </div>
+
+      {/* Popover dei preset rapidi */}
+      {showPresets && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 p-2 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl space-y-1.5 min-w-[175px] animate-in fade-in">
+          <div className="flex items-center justify-between gap-1 pb-1 border-b border-slate-800">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Recupero</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => adjustSeconds(-15)}
+                className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] font-bold text-slate-300 hover:text-white cursor-pointer"
+                title="-15 secondi"
+              >
+                -15s
+              </button>
+              <button
+                type="button"
+                onClick={() => adjustSeconds(15)}
+                className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] font-bold text-slate-300 hover:text-white cursor-pointer"
+                title="+15 secondi"
+              >
+                +15s
+              </button>
+            </div>
+          </div>
+
+          {/* Griglia Preset Rapidi */}
+          <div className="grid grid-cols-4 gap-1">
+            {REST_PRESETS.map((p) => (
+              <button
+                key={p.sec}
+                type="button"
+                onClick={() => {
+                  onChange(p.sec);
+                  setShowPresets(false);
+                }}
+                className={`py-1 px-0.5 rounded-md text-[10px] font-bold transition text-center cursor-pointer ${
+                  restSeconds === p.sec
+                    ? 'bg-amber-500 text-black font-black'
+                    : 'bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Helper per convertire l'indice numerico (0, 1, 2...) in lettere d'ordine (A, B, C... Z, AA)
 export const indexToLetter = (index: number): string => {
@@ -112,14 +298,45 @@ interface WorkoutBuilderModalProps {
   onBack?: () => void;
 }
 
-export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId, initialWorkout, onClose, onBack }) => {
-  const { createWorkoutTemplate, updateWorkoutTemplate, assignWorkoutToAthlete, getExercisesForWorkout, folders, forkWorkoutForAthlete, forkWorkoutForAllAssigned, forceSyncMasterTemplate } = useWorkouts();
+export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athleteId: initialAthleteIdProp, initialWorkout, onClose, onBack }) => {
+  const { 
+    createWorkoutTemplate, 
+    updateWorkoutTemplate, 
+    assignWorkoutToAthlete, 
+    unassignWorkoutFromAthlete,
+    allAssignedWorkouts,
+    getExercisesForWorkout, 
+    folders, 
+    forkWorkoutForAthlete, 
+    forkWorkoutForAllAssigned, 
+    forceSyncMasterTemplate 
+  } = useWorkouts();
   const { exercises: libraryExercises, createExercise } = useExercises();
   const { athletes } = useAthletes();
   const { rules } = useProgressions();
   const { showSuccess, showError, showInfo } = useToast();
   
-  const currentAthlete = athleteId ? athletes.find(a => a.id === athleteId) : null;
+  // Risoluzione atleta iniziale: dalla prop o dal record di assegnazione esistente
+  const initialFoundAthleteId = useMemo(() => {
+    if (initialAthleteIdProp) return initialAthleteIdProp;
+    if (initialWorkout?.id) {
+      const match = allAssignedWorkouts.find(a => a.workout_id === initialWorkout.id);
+      return match?.athlete_id;
+    }
+    return undefined;
+  }, [initialAthleteIdProp, initialWorkout?.id, allAssignedWorkouts]);
+
+  const [assignedAthleteId, setAssignedAthleteId] = useState<string | undefined>(initialFoundAthleteId);
+  const [initialAssignedAthleteId, setInitialAssignedAthleteId] = useState<string | undefined>(initialFoundAthleteId);
+
+  useEffect(() => {
+    if (initialFoundAthleteId) {
+      setAssignedAthleteId(initialFoundAthleteId);
+      setInitialAssignedAthleteId(initialFoundAthleteId);
+    }
+  }, [initialFoundAthleteId]);
+
+  const currentAthlete = assignedAthleteId ? athletes.find(a => a.id === assignedAthleteId) : null;
 
   const [title, setTitle] = useState(initialWorkout?.title || '');
   const [description, setDescription] = useState(initialWorkout?.description || '');
@@ -631,7 +848,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   });
 
   useEffect(() => {
-    if (!athleteId) return;
+    if (!assignedAthleteId) return;
 
     let isMounted = true;
 
@@ -661,7 +878,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
               )
             )
           `)
-          .eq('athlete_id', athleteId)
+          .eq('athlete_id', assignedAthleteId)
           .not('end_time', 'is', null)
           .order('start_time', { ascending: false });
 
@@ -678,113 +895,76 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
         let lastCompDay: string | null = null;
 
         if (sessionsData && sessionsData.length > 0) {
-          // Ultimo workout (più recente)
-          lastDateIso = sessionsData[0].end_time || sessionsData[0].start_time;
-          lastRpe = sessionsData[0].rpe ? Number(sessionsData[0].rpe) : null;
+          const first = sessionsData[0];
+          lastDateIso = first.end_time || first.start_time;
+          lastRpe = first.rpe || null;
 
-          // Mappa le sessioni dalla più vecchia alla più recente per simulare la progressione cronologica
-          const sortedChronological = [...sessionsData].reverse();
-
-          sortedChronological.forEach((sess) => {
-            let mappedThisSession = false;
-            const logs = sess.exercise_logs || [];
-
-            logs.forEach((log) => {
-              const weRaw = log.workout_exercises;
-              const weList = Array.isArray(weRaw) ? weRaw : weRaw ? [weRaw] : [];
-              weList.forEach((we) => {
+          sessionsData.forEach(session => {
+            const logs = session.exercise_logs;
+            if (Array.isArray(logs)) {
+              logs.forEach((log: any) => {
+                const we = log.workout_exercises;
                 if (we && we.week_number && we.day_name) {
-                  dbCompletedMap[`${we.week_number}-${we.day_name}`] = true;
-                  lastCompWeek = Number(we.week_number);
-                  lastCompDay = String(we.day_name);
-                  mappedThisSession = true;
-                }
-              });
-            });
-
-            // Se i log non avevano la foreign key esplicita, assegna la sessione al prossimo giorno non completato
-            if (!mappedThisSession) {
-              for (let w = 1; w <= totalWeeks; w++) {
-                for (const d of currentDays) {
-                  if (!dbCompletedMap[`${w}-${d}`]) {
-                    dbCompletedMap[`${w}-${d}`] = true;
-                    lastCompWeek = w;
-                    lastCompDay = d;
-                    mappedThisSession = true;
-                    break;
+                  const key = `${we.week_number}-${we.day_name}`;
+                  dbCompletedMap[key] = true;
+                  if (!lastCompWeek) {
+                    lastCompWeek = we.week_number;
+                    lastCompDay = we.day_name;
                   }
                 }
-                if (mappedThisSession) break;
-              }
+              });
             }
           });
         }
 
-        const completedKeys = Object.keys(dbCompletedMap).filter(k => dbCompletedMap[k]);
-        const completedCount = completedKeys.length;
+        const completedCount = Object.keys(dbCompletedMap).length;
+        const progressPct = Math.min(100, Math.round((completedCount / totalPlanned) * 100));
 
-        // Trova la prima settimana e giorno non ancora completati (prossimo allenamento da svolgere)
-        let detectedWeek = 1;
-        let detectedDay = currentDays[0] || 'Giorno A';
-        let foundActive = false;
+        let currentW = 1;
+        let currentD = currentDays[0] || 'Giorno A';
+        let foundPending = false;
 
         for (let w = 1; w <= totalWeeks; w++) {
           for (const d of currentDays) {
-            const isDone = Boolean(dbCompletedMap[`${w}-${d}`]);
-            if (!isDone && !foundActive) {
-              detectedWeek = w;
-              detectedDay = d;
-              foundActive = true;
+            if (!dbCompletedMap[`${w}-${d}`]) {
+              currentW = w;
+              currentD = d;
+              foundPending = true;
               break;
             }
           }
-          if (foundActive) break;
+          if (foundPending) break;
         }
 
-        if (!foundActive && completedCount > 0) {
-          detectedWeek = totalWeeks;
-          detectedDay = currentDays[currentDays.length - 1] || 'Giorno A';
+        if (!foundPending && completedCount > 0) {
+          currentW = totalWeeks;
+          currentD = currentDays[currentDays.length - 1] || 'Giorno A';
         }
 
-        let dateFormatted: string | null = null;
+        let formattedDate: string | null = null;
         if (lastDateIso) {
-          const dObj = new Date(lastDateIso);
-          const now = new Date();
-          const diffMs = now.getTime() - dObj.getTime();
-          const diffDays = Math.floor(diffMs / (24 * 3600 * 1000));
-          
-          if (diffDays === 0) {
-            dateFormatted = `Oggi, ${dObj.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
-          } else if (diffDays === 1) {
-            dateFormatted = `Ieri, ${dObj.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
-          } else if (diffDays < 7) {
-            dateFormatted = `${diffDays} gg fa`;
-          } else {
-            dateFormatted = dObj.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
-          }
+          const d = new Date(lastDateIso);
+          formattedDate = d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
         }
-
-        const hasStarted = completedCount > 0 || Boolean(lastDateIso);
-        const percent = Math.min(100, Math.round((completedCount / totalPlanned) * 100));
 
         if (isMounted) {
           setAthleteProgress({
             loading: false,
-            hasStarted,
-            currentWeek: detectedWeek,
-            currentDay: detectedDay,
-            lastSessionDateFormatted: dateFormatted,
+            hasStarted: completedCount > 0,
+            currentWeek: currentW,
+            currentDay: currentD,
+            lastSessionDateFormatted: formattedDate,
             lastSessionRpe: lastRpe,
-            lastCompletedWeek: lastCompWeek,
             lastCompletedDay: lastCompDay,
+            lastCompletedWeek: lastCompWeek,
             completedMap: dbCompletedMap,
             completedSessionsCount: completedCount,
             totalPlannedSessions: totalPlanned,
-            progressPercent: percent,
+            progressPercent: progressPct,
           });
         }
-      } catch (err) {
-        console.warn('Errore calcolo progresso atleta:', err);
+      } catch (err: any) {
+        console.error("Errore fetch avanzamento atleta:", err);
         if (isMounted) {
           setAthleteProgress(prev => ({ ...prev, loading: false }));
         }
@@ -796,7 +976,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     return () => {
       isMounted = false;
     };
-  }, [athleteId, initialWorkout?.id, totalWeeks, daysList]);
+  }, [assignedAthleteId, initialWorkout?.id, totalWeeks, daysList]);
 
   // Esercizi filtrati per la settimana ed il giorno correntemente selezionati
   const currentWeekDayExercises = exercises.filter(
@@ -806,11 +986,23 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
   const estimatedTime = calculateEstimatedWorkoutTime(currentWeekDayExercises);
 
-  const handleAIGenerated = (result: GeneratedWorkoutResponse) => {
+  const handleAIGenerated = (result: GeneratedWorkoutResponse, generatedAthleteId?: string) => {
     try {
       if (!result || !result.programma_giorno_per_giorno || result.programma_giorno_per_giorno.length === 0) {
         showError("Nessun esercizio generato dall'IA.");
         return;
+      }
+
+      // Se l'utente ha selezionato un atleta specifico nel wizard IA, assegnalo subito
+      if (generatedAthleteId) {
+        setAssignedAthleteId(generatedAthleteId);
+        const targetAthlete = athletes.find(a => a.id === generatedAthleteId);
+        if (targetAthlete) {
+          showSuccess(
+            'Scheda Assegnata con Successo 🎯',
+            `Il programma generato con l'IA è stato associato a ${targetAthlete.firstName} ${targetAthlete.lastName}.`
+          );
+        }
       }
 
       // Normalizzazione pulita e garantita dei giorni (es. Giorno 1 -> Giorno A, Push -> Giorno A, ecc.)
@@ -883,6 +1075,7 @@ ${result.regole_adattamento || '-'}
       week_number: activeWeek,
       day_name: activeDay,
       is_time_based: false,
+      notes: '',
     };
     setExercises([...exercises, newEx]);
   };
@@ -1816,6 +2009,44 @@ ${result.regole_adattamento || '-'}
     showSuccess('Esercizio Duplicato', `"${cloned.name}" aggiunto alla seduta.`);
   };
 
+  const handleUnassignAthlete = async () => {
+    const targetAthId = assignedAthleteId || initialAssignedAthleteId;
+    if (!targetAthId) return;
+
+    const targetAth = athletes.find(a => a.id === targetAthId);
+    const athleteName = targetAth ? `${targetAth.firstName} ${targetAth.lastName}` : 'questo atleta';
+
+    if (!window.confirm(`Vuoi rimuovere l'assegnazione della scheda da ${athleteName}? La scheda rimarrà salvata come Template Master nel catalogo.`)) {
+      return;
+    }
+
+    if (initialWorkout?.id) {
+      setIsSaving(true);
+      try {
+        const res = await unassignWorkoutFromAthlete(targetAthId, initialWorkout.id, false);
+        if (!res.success) throw new Error(res.error);
+        
+        await updateWorkoutTemplate(
+          initialWorkout.id,
+          { is_template: true },
+          exercises.filter(ex => ex.name?.trim() !== '')
+        );
+
+        setAssignedAthleteId(undefined);
+        setInitialAssignedAthleteId(undefined);
+        showSuccess('Assegnazione Rimossa!', `La scheda è stata scollegata da ${athleteName} ed è ora un Template Master.`);
+      } catch (err: any) {
+        showError('Errore durante la revoca: ' + (err.message || ''));
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      setAssignedAthleteId(undefined);
+      setInitialAssignedAthleteId(undefined);
+      showSuccess('Assegnazione Rimossa', 'La nuova scheda non verrà assegnata ad alcun atleta.');
+    }
+  };
+
   const handleSave = async (globalUpdateMode?: 'ALL' | 'NEW_ONLY') => {
     if (!title.trim()) {
       showError('Inserisci un titolo per la scheda');
@@ -1853,7 +2084,7 @@ ${result.regole_adattamento || '-'}
     });
 
     // Modalità "Edit Template" dal catalogo
-    if (initialWorkout && initialWorkout.is_template && !athleteId && !globalUpdateMode) {
+    if (initialWorkout && initialWorkout.is_template && !assignedAthleteId && !globalUpdateMode) {
       setShowTemplateUpdatePrompt(true);
       return;
     }
@@ -1867,11 +2098,11 @@ ${result.regole_adattamento || '-'}
 
     try {
       if (initialWorkout) {
-        if (athleteId && initialWorkout.is_template) {
+        if (assignedAthleteId && initialWorkout.is_template) {
           // Edit di un template dalla pagina di un singolo Atleta -> FORK!
           const { success, error } = await forkWorkoutForAthlete(
             initialWorkout.id,
-            athleteId,
+            assignedAthleteId,
             { title, description, total_weeks: totalWeeks, estimated_duration_minutes: estimatedTime.display },
             exercisesToSave
           );
@@ -1884,7 +2115,14 @@ ${result.regole_adattamento || '-'}
           }
           const { success, error } = await updateWorkoutTemplate(
             initialWorkout.id,
-            { title, description, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display },
+            { 
+              title, 
+              description, 
+              total_weeks: totalWeeks, 
+              folder_id: folderId, 
+              is_template: !assignedAthleteId,
+              estimated_duration_minutes: estimatedTime.display 
+            },
             exercisesToSave
           );
           if (!success) throw new Error(error);
@@ -1893,20 +2131,30 @@ ${result.regole_adattamento || '-'}
             const syncResult = await forceSyncMasterTemplate(initialWorkout.id);
             if (!syncResult.success) throw new Error(syncResult.error);
           }
+
+          // Sincronizzazione assegnazione se rimossa o modificata
+          if (initialAssignedAthleteId && !assignedAthleteId) {
+            await unassignWorkoutFromAthlete(initialAssignedAthleteId, initialWorkout.id, false);
+          } else if (initialAssignedAthleteId && assignedAthleteId && initialAssignedAthleteId !== assignedAthleteId) {
+            await unassignWorkoutFromAthlete(initialAssignedAthleteId, initialWorkout.id, false);
+            await assignWorkoutToAthlete(assignedAthleteId, initialWorkout.id);
+          } else if (!initialAssignedAthleteId && assignedAthleteId) {
+            await assignWorkoutToAthlete(assignedAthleteId, initialWorkout.id);
+          }
           
           showSuccess(globalUpdateMode === 'NEW_ONLY' ? 'Template aggiornato (le vecchie assegnazioni sono state congelate).' : 'Scheda e assegnazioni aggiornate con successo!');
         }
       } else {
         // Creazione nuova scheda
         const { success, error, workoutId } = await createWorkoutTemplate(
-          { title, description, is_template: !athleteId, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display }, 
+          { title, description, is_template: !assignedAthleteId, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display }, 
           exercisesToSave
         );
 
         if (!success) throw new Error(error);
 
-        if (workoutId && athleteId) {
-          await assignWorkoutToAthlete(athleteId, workoutId);
+        if (workoutId && assignedAthleteId) {
+          await assignWorkoutToAthlete(assignedAthleteId, workoutId);
           showSuccess('Scheda creata e assegnata con successo!');
         } else {
           showSuccess('Scheda salvata nel catalogo!');
@@ -1945,7 +2193,7 @@ ${result.regole_adattamento || '-'}
             </div>
             <div>
               <h2 className="text-xl font-black text-white flex flex-col sm:flex-row sm:items-center gap-2 tracking-tight">
-                {athleteId ? (
+                {assignedAthleteId ? (
                   <>
                     <span className="text-sm font-bold text-amber-400 uppercase tracking-wide">
                       Stai modificando la scheda di:
@@ -1961,10 +2209,10 @@ ${result.regole_adattamento || '-'}
                   </>
                 )}
               </h2>
-              {athleteId ? (
+              {assignedAthleteId ? (
                 <div className="space-y-1.5 mt-0.5">
                   <p className="text-xs text-slate-400">
-                    Le modifiche apportate influenzeranno solo ed esclusivamente la scheda di questo atleta.
+                    Le modifiche apportate influenzeranno la scheda di questo atleta.
                   </p>
                     {/* Badge Rapido di Avanzamento nell'Header */}
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-300">
@@ -1991,7 +2239,19 @@ ${result.regole_adattamento || '-'}
                 )}
               </div>
             </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {assignedAthleteId && (
+              <button
+                type="button"
+                onClick={handleUnassignAthlete}
+                className="flex items-center gap-1.5 px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Rimuovi l'assegnazione da questo atleta e converti in Template Master"
+              >
+                <Unlink2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Scollega da Atleta</span>
+                <span className="sm:hidden">Scollega</span>
+              </button>
+            )}
             <button
               onClick={() => setIsCoPilotOpen(true)}
               className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 text-indigo-300 hover:text-indigo-200 hover:bg-indigo-500/30 rounded-xl transition-all font-bold text-xs"
@@ -2009,7 +2269,7 @@ ${result.regole_adattamento || '-'}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 no-scrollbar">
           
           {/* BANNER PROMINENTE AVANZAMENTO ATLETA */}
-          {athleteId && (
+          {assignedAthleteId && (
             <div className="p-4 rounded-3xl bg-slate-950/90 border border-amber-500/30 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
               
@@ -2173,7 +2433,7 @@ ${result.regole_adattamento || '-'}
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end pt-1">
                 {/* Titolo Programma */}
-                <div className="md:col-span-6">
+                <div className="md:col-span-5">
                   <label className="block text-[11px] font-bold text-slate-300 mb-1 uppercase tracking-wider">
                     Titolo del Programma
                   </label>
@@ -2186,17 +2446,45 @@ ${result.regole_adattamento || '-'}
                   />
                 </div>
 
+                {/* Destinazione / Atleta Assegnato */}
+                <div className="md:col-span-3">
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1 uppercase tracking-wider flex items-center justify-between">
+                    <span>Assegnato a</span>
+                    {assignedAthleteId && (
+                      <button
+                        type="button"
+                        onClick={handleUnassignAthlete}
+                        className="text-[10px] text-rose-400 hover:text-rose-300 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                        title="Scollega da questo atleta"
+                      >
+                        <Unlink2 className="w-3 h-3" />
+                        <span>Scollega</span>
+                      </button>
+                    )}
+                  </label>
+                  <select
+                    value={assignedAthleteId || ''}
+                    onChange={e => setAssignedAthleteId(e.target.value || undefined)}
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500 font-bold text-xs cursor-pointer"
+                  >
+                    <option value="">📁 Template Master (Nessun Atleta)</option>
+                    {athletes.map(a => (
+                      <option key={a.id} value={a.id}>👤 {a.firstName} {a.lastName}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Cartella di Archiviazione */}
-                <div className="md:col-span-4">
+                <div className="md:col-span-2">
                   <label className="block text-[11px] font-bold text-slate-300 mb-1 uppercase tracking-wider">
-                    Cartella di Archiviazione
+                    Cartella
                   </label>
                   <select
                     value={folderId || ''}
                     onChange={e => setFolderId(e.target.value || null)}
                     className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:border-amber-500 font-bold text-xs cursor-pointer"
                   >
-                    <option value="">Nessuna Cartella (Principale)</option>
+                    <option value="">Nessuna (Principale)</option>
                     {folders.map(f => (
                       <option key={f.id} value={f.id}>📁 {f.name}</option>
                     ))}
@@ -2433,8 +2721,8 @@ ${result.regole_adattamento || '-'}
                 const countEx = exercises.filter(e => (e.week_number || 1) === wNum).length;
 
                 // Calcolo stato avanzamento atleta per questa settimana
-                const isWeekCompleted = athleteId && daysList.length > 0 && daysList.every(d => Boolean(athleteProgress.completedMap[`${wNum}-${d}`]));
-                const isAthleteCurrentWeek = athleteId && athleteProgress.currentWeek === wNum && athleteProgress.hasStarted;
+                const isWeekCompleted = assignedAthleteId && daysList.length > 0 && daysList.every(d => Boolean(athleteProgress.completedMap[`${wNum}-${d}`]));
+                const isAthleteCurrentWeek = assignedAthleteId && athleteProgress.currentWeek === wNum && athleteProgress.hasStarted;
 
                 return (
                   <button
@@ -2533,8 +2821,8 @@ ${result.regole_adattamento || '-'}
                   ).length;
 
                   // Calcolo avanzamento giorno per la settimana attiva
-                  const isDayDone = athleteId && Boolean(athleteProgress.completedMap[`${activeWeek}-${dName}`]);
-                  const isAthleteTargetDay = athleteId && athleteProgress.currentWeek === activeWeek && athleteProgress.currentDay === dName && athleteProgress.hasStarted;
+                  const isDayDone = assignedAthleteId && Boolean(athleteProgress.completedMap[`${activeWeek}-${dName}`]);
+                  const isAthleteTargetDay = assignedAthleteId && athleteProgress.currentWeek === activeWeek && athleteProgress.currentDay === dName && athleteProgress.hasStarted;
 
                   return (
                     <div key={dName} className="flex items-center group/day shrink-0">
@@ -3085,9 +3373,18 @@ ${result.regole_adattamento || '-'}
                                   onKeyDown={handleNumericKeyDown}
                                   onChange={e => {
                                     const val = e.target.value;
+                                    const oldName = ex.name || '';
                                     const matched = libraryExercises.find(libEx => libEx.name.trim().toLowerCase() === val.trim().toLowerCase());
-                                    if (matched && matched.instructions) {
-                                      updateExerciseFields(globalIdx, { name: val, notes: matched.instructions });
+                                    if (matched) {
+                                      updateExerciseFields(globalIdx, { 
+                                        name: matched.name, 
+                                        notes: matched.instructions || '',
+                                      });
+                                    } else if (val.trim().toLowerCase() !== oldName.trim().toLowerCase()) {
+                                      updateExerciseFields(globalIdx, { 
+                                        name: val, 
+                                        notes: '' 
+                                      });
                                     } else {
                                       updateExerciseFields(globalIdx, { name: val });
                                     }
@@ -3187,32 +3484,10 @@ ${result.regole_adattamento || '-'}
 
                             {/* 5. REC (Recupero) */}
                             <div>
-                              <input
-                                type="text"
-                                placeholder="01:30"
-                                value={
-                                  ex.rest_seconds !== undefined
-                                    ? ex.rest_seconds >= 60 && ex.rest_seconds % 60 === 0
-                                      ? `${String(Math.floor(ex.rest_seconds / 60)).padStart(2, '0')}:00`
-                                      : ex.rest_seconds >= 60
-                                      ? `${String(Math.floor(ex.rest_seconds / 60)).padStart(2, '0')}:${String(ex.rest_seconds % 60).padStart(2, '0')}`
-                                      : `${ex.rest_seconds}s`
-                                    : '01:00'
-                                }
+                              <RestTimeCell
+                                restSeconds={ex.rest_seconds}
+                                onChange={(secs) => updateExercise(globalIdx, 'rest_seconds', secs)}
                                 onKeyDown={handleNumericKeyDown}
-                                onChange={e => {
-                                  const val = e.target.value.trim();
-                                  if (val.includes(':')) {
-                                    const parts = val.split(':');
-                                    const mins = parseInt(parts[0]) || 0;
-                                    const secs = parseInt(parts[1]) || 0;
-                                    updateExercise(globalIdx, 'rest_seconds', mins * 60 + secs);
-                                  } else {
-                                    const secs = parseInt(val.replace('s', '')) || 0;
-                                    updateExercise(globalIdx, 'rest_seconds', secs);
-                                  }
-                                }}
-                                className="workout-cell-input w-full px-1.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-bold text-center focus:outline-none focus:border-[var(--color-primary)]"
                               />
                             </div>
 
@@ -3421,8 +3696,8 @@ ${result.regole_adattamento || '-'}
                               <ExerciseProgressionControl
                                 exercise={ex}
                                 exerciseIndex={globalIdx}
-                                athleteId={athleteId}
-                                athleteName={currentAthlete?.fullName}
+                                athleteId={assignedAthleteId}
+                                athleteName={currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : undefined}
                                 programId={initialWorkout?.id}
                                 programName={title}
                                 onUpdateExercise={(fields) => updateExerciseFields(globalIdx, fields)}
@@ -3458,24 +3733,39 @@ ${result.regole_adattamento || '-'}
                     autoFocus
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-[var(--color-primary)] resize-y leading-relaxed"
                   />
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingNoteIndex(null)}
-                      className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white rounded-lg"
-                    >
-                      Annulla
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        updateExercise(editingNoteIndex, 'notes', noteDraftText);
-                        setEditingNoteIndex(null);
-                      }}
-                      className="px-4 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-black rounded-lg hover:bg-[var(--color-primary-hover)] shadow-sm"
-                    >
-                      Salva Nota
-                    </button>
+                  <div className="flex items-center justify-between gap-2 pt-2">
+                    {noteDraftText ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateExercise(editingNoteIndex, 'notes', '');
+                          setEditingNoteIndex(null);
+                        }}
+                        className="px-3 py-1.5 text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-950/30 border border-rose-500/20 rounded-lg cursor-pointer flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Rimuovi Nota</span>
+                      </button>
+                    ) : <div />}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingNoteIndex(null)}
+                        className="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white rounded-lg cursor-pointer"
+                      >
+                        Annulla
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateExercise(editingNoteIndex, 'notes', noteDraftText);
+                          setEditingNoteIndex(null);
+                        }}
+                        className="px-4 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-black rounded-lg hover:bg-[var(--color-primary-hover)] shadow-sm cursor-pointer"
+                      >
+                        Salva Nota
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3549,7 +3839,7 @@ ${result.regole_adattamento || '-'}
             ) : (
               <Save className="w-4 h-4" />
             )}
-            {isSaving ? 'Salvataggio...' : initialWorkout ? 'Salva Modifiche' : athleteId ? 'Salva e Assegna' : 'Salva Programma'}
+            {isSaving ? 'Salvataggio...' : initialWorkout ? 'Salva Modifiche' : assignedAthleteId ? 'Salva e Assegna' : 'Salva Programma'}
           </button>
         </div>
 
@@ -3567,6 +3857,7 @@ ${result.regole_adattamento || '-'}
         <AICoPilotModal
           onClose={() => setIsCoPilotOpen(false)}
           onGenerate={handleAIGenerated}
+          initialAthleteId={assignedAthleteId}
         />
       )}
 

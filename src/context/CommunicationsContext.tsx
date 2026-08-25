@@ -229,7 +229,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
     // Inizializza o carica i broadcast rimuovendo qualsiasi residuo mock o cancellato
     const cleanBroadcasts = savedBroadcasts.filter(b => !b.id.startsWith('bc-init-') && !isDeleted(b.id, b.title));
     
-    // Assicura che ogni broadcast abbia un ID univoco garantito e il testo reale del messaggio
+    // Assicura che ogni broadcast abbia un ID univoco garantito, il testo reale del messaggio e autore corretto
     const seenIds = new Set<string>();
     const fixedBroadcasts = cleanBroadcasts.map((b, idx) => {
       let uniqueId = (b.id && typeof b.id === 'string' && b.id.trim() !== '') ? b.id : `bc-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`;
@@ -248,7 +248,13 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
           msg = matchingComm.messageText;
         }
       }
-      return { ...b, id: uniqueId, message: msg || '' };
+
+      let author = b.author;
+      if (!author || author.toLowerCase().includes('local-owner') || author.toLowerCase() === 'owner' || author === 'Coach') {
+        author = 'Coach Antonio Crapanzano';
+      }
+
+      return { ...b, id: uniqueId, message: msg || '', author };
     });
 
     setBroadcasts(fixedBroadcasts);
@@ -468,7 +474,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
         replied: 0,
       },
       recipients: recipientEntries,
-      author: owner?.fullName || 'Antonio Crapanzano',
+      author: (owner?.fullName && !owner.fullName.toLowerCase().includes('local-owner') && owner.fullName.toLowerCase() !== 'owner') ? owner.fullName : 'Coach Antonio Crapanzano',
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -478,6 +484,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
 
     // Registra nella timeline degli atleti e nei log individuali se inviato
     if (status === 'sent') {
+      const cleanCoachName = (owner?.fullName && !owner.fullName.toLowerCase().includes('local-owner') && owner.fullName.toLowerCase() !== 'owner') ? owner.fullName : 'Coach Antonio Crapanzano';
       const newComms: CommunicationLog[] = [...communications];
       resolvedRecipients.forEach(r => {
         addTimelineEvent(
@@ -486,7 +493,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
           `Broadcast: ${formData.title}`,
           formData.message,
           owner?.id,
-          owner?.fullName || 'Antonio Crapanzano',
+          cleanCoachName,
           {
             broadcastId: newBroadcast.id,
             broadcastType: formData.type,
@@ -499,7 +506,7 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
           athleteName: r.fullName,
           dateTime: nowIso,
           channel: formData.channels.includes('whatsapp') ? 'whatsapp' : (formData.channels.includes('email') ? 'email' : 'app'),
-          author: owner?.fullName || 'Antonio Crapanzano',
+          author: cleanCoachName,
           subject: formData.title,
           summary: formData.message.slice(0, 120),
           outcome: 'delivered',

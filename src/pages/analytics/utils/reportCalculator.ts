@@ -10,6 +10,7 @@ import {
   Athlete,
   DecisionPriorityItem,
 } from '../../../types';
+import { isPainFeedback } from '../../../utils/painAnalysis';
 
 interface RawSession {
   id: string;
@@ -117,9 +118,7 @@ export function classifyMuscleGroup(exerciseName: string): string {
 }
 
 const isPainNote = (text?: string): boolean => {
-  return /dolore|fastidio|male|schiena|lombare|spalla|ginocchio|gomito|anca|collo|polso|caviglia|infortunio|strappo|infiammazione|tendine|contrattura|bloccato|rpe 10/i.test(
-    text || ''
-  );
+  return isPainFeedback(text);
 };
 
 export function buildAthleteReport(

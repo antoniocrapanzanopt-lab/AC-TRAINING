@@ -41,7 +41,16 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
 
+  const prevIsOpenRef = React.useRef(false);
+  const prevEditingLogIdRef = React.useRef<string | null | undefined>(undefined);
+
   useEffect(() => {
+    const isOpening = isOpen && !prevIsOpenRef.current;
+    const isChangingEditingLog = isOpen && (editingLog?.id !== prevEditingLogIdRef.current);
+    prevIsOpenRef.current = isOpen;
+    prevEditingLogIdRef.current = editingLog?.id;
+
+    if (!isOpening && !isChangingEditingLog) return;
     if (!isOpen) return;
 
     if (editingLog) {
@@ -66,7 +75,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       setSelectedTemplateId('');
     }
     setErrors([]);
-  }, [isOpen, editingLog, athletes]);
+  }, [isOpen, editingLog, preselectedAthleteId, athletes]);
 
   if (!isOpen) return null;
 

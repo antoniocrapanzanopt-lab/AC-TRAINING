@@ -16,6 +16,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useApp } from '../../context/AppContext';
+import { isPainFeedback } from '../../utils/painAnalysis';
 
 interface ActivityTabProps {
   athleteId: string;
@@ -71,9 +72,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
   const [alertFilter, setAlertFilter] = useState<'all' | 'pain_only' | 'high_rpe'>('all');
 
   const isPainText = (text: string): boolean => {
-    return /dolore|fastidio|male|schiena|lombare|spalla|ginocchio|gomito|anca|collo|polso|caviglia|pizzico|infortunio|strappo|infiammazione|tendine|contrattura|bloccato|dolor|articolare|rpe 10/i.test(
-      text || ''
-    );
+    return isPainFeedback(text);
   };
 
   // Scheda Attiva Assegnata

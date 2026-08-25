@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   X, 
   Sparkles, 
@@ -16,7 +16,10 @@ import {
   Clock,
   Award,
   TrendingUp,
-  MessageSquare
+  MessageSquare,
+  Search,
+  ChevronDown,
+  Layers
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useExercises } from '../../context/ExercisesContext';
@@ -25,10 +28,12 @@ import { generateWorkoutWithAI, GeneratedWorkoutResponse } from '../../lib/ai/wo
 import { AIDiagnosticPanel } from '../common/AIDiagnosticPanel';
 import { useToast } from '../../context/ToastContext';
 import { AI_CONFIG } from '../../config/aiConfig';
+import { Athlete } from '../../types';
 
 interface AICoPilotModalProps {
   onClose: () => void;
-  onGenerate: (result: GeneratedWorkoutResponse) => void;
+  onGenerate: (result: GeneratedWorkoutResponse, athleteId?: string) => void;
+  initialAthleteId?: string;
 }
 
 const STEPS = [
@@ -95,12 +100,13 @@ const EXPERIENCE_LEVELS = [
 
 const PROGRESSION_STYLES = [
   'RIR/RPE Progressivo (Overload + Scarico)',
-  'Aumento Carico Lineare',
-  'Onda / Wave Periodization',
+  'Linear Periodization (Aumento Carico % 1RM)',
+  'Double Progression (Range Ripetizioni + Carico)',
+  'Wave Loading / Onde di Carico',
   'Rampup + Backoff Sets'
 ];
 
-export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGenerate }) => {
+export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGenerate, initialAthleteId }) => {
   const { exercises: coachExercises } = useExercises();
   const { athletes } = useAthletes();
   const { showError, showSuccess } = useToast();
@@ -108,10 +114,64 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
   // Wizard state
   const [currentStep, setCurrentStep] = useState<number>(1);
 
-  // Step 1: Cliente
-  const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
+  // Step 1: Cliente & Selector State
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string>(initialAthleteId || '');
   const [customAthleteContext, setCustomAthleteContext] = useState<string>('');
   const [experienceLevel, setExperienceLevel] = useState<string>('Intermedio');
+  const [isAthleteDropdownOpen, setIsAthleteDropdownOpen] = useState<boolean>(false);
+  const [athleteSearchQuery, setAthleteSearchQuery] = useState<string>('');
+  const athleteDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close client dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (athleteDropdownRef.current && !athleteDropdownRef.current.contains(event.target as Node)) {
+        setIsAthleteDropdownOpen(false);
+      }
+    };
+
+    if (isAthleteDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAthleteDropdownOpen]);
+
+  // Filtered athletes list
+  const filteredAthletes = useMemo(() => {
+    const q = athleteSearchQuery.toLowerCase().trim();
+    if (!q) return athletes;
+    return athletes.filter(a => {
+      const fullName = (a.fullName || `${a.firstName || ''} ${a.lastName || ''}`).toLowerCase();
+      const email = (a.email || '').toLowerCase();
+      const goals = (a.goals || '').toLowerCase();
+      const tags = (a.tags || []).join(' ').toLowerCase();
+      return fullName.includes(q) || email.includes(q) || goals.includes(q) || tags.includes(q);
+    });
+  }, [athletes, athleteSearchQuery]);
+
+  // Recent/suggested athletes for quick chips (first 5 active athletes)
+  const quickSuggestedAthletes = useMemo(() => {
+    return athletes.filter(a => a.status !== 'archived').slice(0, 5);
+  }, [athletes]);
+
+  const getAthleteName = (a?: Athlete | null): string => {
+    if (!a) return 'Nessun cliente (Template generico)';
+    return a.fullName || [a.firstName, a.lastName].filter(Boolean).join(' ') || a.email || 'Atleta';
+  };
+
+  const getAthleteInitials = (a?: Athlete | null): string => {
+    if (!a) return 'AI';
+    const name = getAthleteName(a);
+    return name
+      .split(' ')
+      .map(part => part[0])
+      .filter(Boolean)
+      .join('')
+      .toUpperCase()
+      .slice(0, 2) || 'AT';
+  };;
 
   // Step 2: Struttura allenamento
   const [weeks, setWeeks] = useState<number>(4);
@@ -322,7 +382,7 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
       }
 
       showSuccess('Programma generato con successo!', 'La scheda è pronta nell\'editor.');
-      onGenerate(generated);
+      onGenerate(generated, selectedAthleteId || undefined);
       onClose();
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Impossibile generare la scheda.';
@@ -563,24 +623,292 @@ export const AICoPilotModal: React.FC<AICoPilotModalProps> = ({ onClose, onGener
           {currentStep === 1 && (
             <div className="space-y-5 animate-in fade-in duration-200">
               <div>
-                <h3 className="text-base font-bold text-white mb-1">Per chi stai creando questo programma?</h3>
-                <p className="text-xs text-slate-400 mb-4">Seleziona il cliente o lascia vuoto per un template generico.</p>
-                
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Cliente
-                </label>
-                <select
-                  value={selectedAthleteId}
-                  onChange={e => setSelectedAthleteId(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-[var(--color-primary)] transition-colors"
-                >
-                  <option value="">Nessun cliente (Template generico)</option>
-                  {athletes.map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.firstName} {a.lastName} {a.goals ? `(${a.goals})` : ''}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div>
+                    <h3 className="text-base font-bold text-white mb-0.5">Per chi stai creando questo programma?</h3>
+                    <p className="text-xs text-slate-400">Seleziona il cliente o lascia vuoto per un template generico.</p>
+                  </div>
+                  {selectedAthlete && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAthleteId('');
+                        setCustomAthleteContext('');
+                      }}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 font-bold transition-colors flex items-center gap-1 shrink-0 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-500/30 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" /> Resetta a Template
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Chips di Selezione Rapida */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-2 pt-1 mb-2.5 scrollbar-none">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider shrink-0 flex items-center gap-1 mr-1">
+                    <Sparkles className="w-3 h-3 text-amber-500" /> Rapidi:
+                  </span>
+                  
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedAthleteId('');
+                      setCustomAthleteContext('');
+                      setIsAthleteDropdownOpen(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5 cursor-pointer ${
+                      !selectedAthleteId
+                        ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)] text-[var(--color-primary)] shadow-sm'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    Template Generico
+                  </button>
+
+                  {quickSuggestedAthletes.map(a => {
+                    const isSelected = selectedAthleteId === a.id;
+                    const initials = getAthleteInitials(a);
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAthleteId(a.id);
+                          setIsAthleteDropdownOpen(false);
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all border flex items-center gap-1.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)] text-[var(--color-primary)] shadow-sm'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                        }`}
+                      >
+                        <span className="w-4 h-4 rounded-full bg-slate-800 text-[9px] font-black text-amber-400 flex items-center justify-center">
+                          {initials}
+                        </span>
+                        <span>{a.firstName} {a.lastName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Combobox Dropdown Custom */}
+                <div className="relative" ref={athleteDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsAthleteDropdownOpen(prev => !prev)}
+                    className={`w-full p-3.5 rounded-2xl bg-slate-950 border transition-all text-left flex items-center justify-between gap-3 cursor-pointer shadow-inner ${
+                      isAthleteDropdownOpen
+                        ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20 shadow-lg'
+                        : selectedAthlete
+                        ? 'border-amber-500/50 hover:border-amber-500 bg-amber-950/10'
+                        : 'border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {selectedAthlete ? (
+                        <>
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/40 text-amber-400 font-black text-sm flex items-center justify-center shrink-0 shadow-sm">
+                            {getAthleteInitials(selectedAthlete)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white text-sm truncate">
+                                {getAthleteName(selectedAthlete)}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                {selectedAthlete.status === 'active' ? 'Attivo' : selectedAthlete.status}
+                              </span>
+                              {selectedAthlete.medicalNotes && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/30 flex items-center gap-1">
+                                  <ShieldAlert className="w-3 h-3" /> Nota Medica
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-400 truncate flex items-center gap-2 mt-0.5">
+                              {selectedAthlete.goals ? (
+                                <span className="text-amber-400/90 font-medium truncate">🎯 {selectedAthlete.goals}</span>
+                              ) : (
+                                <span>{selectedAthlete.email || 'Nessuna email'}</span>
+                              )}
+                              {selectedAthlete.dateOfBirth && (
+                                <span className="text-slate-500">• {new Date().getFullYear() - new Date(selectedAthlete.dateOfBirth).getFullYear()} anni</span>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 font-black text-sm flex items-center justify-center shrink-0">
+                            <Layers className="w-5 h-5 text-slate-400" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-white text-sm">
+                              Nessun cliente (Template generico)
+                            </div>
+                            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                              Clicca per cercare e selezionare un atleta tra i tuoi iscritti
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {selectedAthlete && (
+                        <span className="hidden sm:inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold text-slate-300 bg-slate-900 border border-slate-800">
+                          Cambia
+                        </span>
+                      )}
+                      <div className={`p-1.5 rounded-lg text-slate-400 transition-transform duration-200 ${isAthleteDropdownOpen ? 'rotate-180 text-[var(--color-primary)]' : ''}`}>
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Menu a comparsa / Popover */}
+                  {isAthleteDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 z-50 rounded-2xl bg-slate-950 border border-slate-700/80 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                      {/* Barra di ricerca con autofocus */}
+                      <div className="p-3 border-b border-slate-800 bg-slate-900/90 flex items-center gap-2.5">
+                        <Search className="w-4 h-4 text-amber-500 shrink-0" />
+                        <input
+                          type="text"
+                          autoFocus
+                          value={athleteSearchQuery}
+                          onChange={e => setAthleteSearchQuery(e.target.value)}
+                          placeholder="Cerca per nome, cognome, email o obiettivo..."
+                          className="w-full bg-transparent text-white text-xs placeholder:text-slate-500 focus:outline-none font-medium"
+                        />
+                        {athleteSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setAthleteSearchQuery('')}
+                            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Lista Atleti Scrollabile */}
+                      <div className="max-h-72 overflow-y-auto p-1.5 space-y-1">
+                        {/* Opzione 1: Template Generico */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAthleteId('');
+                            setCustomAthleteContext('');
+                            setIsAthleteDropdownOpen(false);
+                            setAthleteSearchQuery('');
+                          }}
+                          className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between transition-all cursor-pointer ${
+                            !selectedAthleteId
+                              ? 'bg-[var(--color-primary)]/10 text-white border border-[var(--color-primary)]/40'
+                              : 'hover:bg-slate-900 text-slate-300 border border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0 text-slate-400">
+                              <Layers className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs text-white block truncate">
+                                Nessun cliente (Template generico)
+                              </span>
+                              <span className="text-[10px] text-slate-400 block truncate">
+                                Crea una scheda standard non assegnata a un atleta
+                              </span>
+                            </div>
+                          </div>
+                          {!selectedAthleteId && (
+                            <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-black flex items-center justify-center shrink-0 text-xs font-black">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Intestazione Sezione Atleti */}
+                        <div className="px-3 pt-2 pb-1 text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                          <span>Iscritti ({filteredAthletes.length})</span>
+                          {athleteSearchQuery && (
+                            <span className="text-amber-500/90 font-bold lowercase">filtro attivo</span>
+                          )}
+                        </div>
+
+                        {/* Risultati filtrati */}
+                        {filteredAthletes.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-slate-500">
+                            Nessun atleta trovato per <span className="text-white font-bold">"{athleteSearchQuery}"</span>
+                          </div>
+                        ) : (
+                          filteredAthletes.map(a => {
+                            const isSelected = selectedAthleteId === a.id;
+                            const initials = getAthleteInitials(a);
+                            const age = a.dateOfBirth ? new Date().getFullYear() - new Date(a.dateOfBirth).getFullYear() : null;
+
+                            return (
+                              <button
+                                key={a.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedAthleteId(a.id);
+                                  setIsAthleteDropdownOpen(false);
+                                  setAthleteSearchQuery('');
+                                }}
+                                className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between gap-3 transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-[var(--color-primary)]/15 text-white border border-[var(--color-primary)]/40 shadow-sm'
+                                    : 'hover:bg-slate-900 text-slate-300 border border-transparent'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <div className={`w-8 h-8 rounded-lg font-black text-xs flex items-center justify-center shrink-0 shadow-sm ${
+                                    isSelected
+                                      ? 'bg-[var(--color-primary)] text-slate-950'
+                                      : 'bg-slate-900 border border-slate-800 text-amber-400'
+                                  }`}>
+                                    {initials}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-xs text-white truncate">
+                                        {getAthleteName(a)}
+                                      </span>
+                                      {a.status && (
+                                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+                                          a.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'
+                                        }`}>
+                                          {a.status === 'active' ? 'Attivo' : a.status}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 truncate flex items-center gap-2 mt-0.5">
+                                      {a.goals ? (
+                                        <span className="text-amber-400/90 font-medium truncate">🎯 {a.goals}</span>
+                                      ) : (
+                                        <span>{a.email || 'Nessuna email'}</span>
+                                      )}
+                                      {age && <span className="text-slate-500">• {age} anni</span>}
+                                      {a.medicalNotes && (
+                                        <span className="text-red-400 font-bold">• ⚠️ Limitazione</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {isSelected && (
+                                  <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-black flex items-center justify-center shrink-0 text-xs font-black">
+                                    <Check className="w-3 h-3 stroke-[3]" />
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* LIVELlO ESPERIENZA */}

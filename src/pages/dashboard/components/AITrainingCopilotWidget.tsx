@@ -24,6 +24,7 @@ import { useWorkouts } from '../../../context/WorkoutsContext';
 import { useToast } from '../../../context/ToastContext';
 import { AICopilotActionModal, CopilotAlertContext } from './AICopilotActionModal';
 import { supabase } from '../../../lib/supabase';
+import { isPainFeedback } from '../../../utils/painAnalysis';
 
 export type AttentionCategory = 'all' | 'pain' | 'plateau' | 'inactivity' | 'penultimate_week' | 'unassigned';
 export type PriorityLevel = 'high' | 'medium' | 'low';
@@ -101,9 +102,7 @@ export const AITrainingCopilotWidget: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const isPainText = (text: string): boolean => {
-    return /dolore|fastidio|male|schiena|lombare|spalla|ginocchio|gomito|anca|collo|polso|caviglia|pizzico|infortunio|strappo|infiammazione|tendine|contrattura|bloccato|dolor|articolare|rpe 10/i.test(
-      text || ''
-    );
+    return isPainFeedback(text);
   };
 
   const fetchRealAttentionData = useCallback(async () => {

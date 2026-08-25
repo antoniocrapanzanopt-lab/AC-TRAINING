@@ -38,7 +38,16 @@ export const ConsentModal: React.FC<ConsentModalProps> = ({
 
   const [errors, setErrors] = useState<string[]>([]);
 
+  const prevIsOpenRef = React.useRef(false);
+  const prevConsentIdRef = React.useRef<string | null | undefined>(undefined);
+
   useEffect(() => {
+    const isOpening = isOpen && !prevIsOpenRef.current;
+    const isChangingConsent = isOpen && (editingConsent?.id !== prevConsentIdRef.current);
+    prevIsOpenRef.current = isOpen;
+    prevConsentIdRef.current = editingConsent?.id;
+
+    if (!isOpening && !isChangingConsent) return;
     if (!isOpen) return;
 
     if (editingConsent) {

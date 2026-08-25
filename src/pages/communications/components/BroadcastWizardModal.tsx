@@ -139,21 +139,20 @@ export const BroadcastWizardModal: React.FC<BroadcastWizardModalProps> = ({
   const [isScheduling, setIsScheduling] = useState(false);
   const [scheduledDateTime, setScheduledDateTime] = useState('');
 
-  // Raccolta tutti i tag disponibili negli atleti
-  const availableTags = useMemo(() => {
-    const set = new Set<string>();
-    athletes.forEach(a => {
-      if (a.tags) {
-        a.tags.forEach(t => {
-          if (t.trim()) set.add(t.trim());
-        });
-      }
-    });
-    return Array.from(set);
-  }, [athletes]);
 
-  // Caricamento dati iniziali / reset
+
+  // Riferimenti per rilevare l'apertura effettiva e prevenire reset durante la digitazione
+  const prevIsOpenRef = React.useRef(false);
+  const prevEditingIdRef = React.useRef<string | null | undefined>(undefined);
+
+  // Caricamento dati iniziali / reset: scatta SOLO quando il modale si apre o cambia la comunicazione in modifica
   useEffect(() => {
+    const isOpening = isOpen && !prevIsOpenRef.current;
+    const isChangingEditingId = isOpen && editingBroadcastId !== prevEditingIdRef.current;
+    prevIsOpenRef.current = isOpen;
+    prevEditingIdRef.current = editingBroadcastId;
+
+    if (!isOpening && !isChangingEditingId) return;
     if (!isOpen) return;
 
     if (initialData) {
@@ -175,7 +174,8 @@ export const BroadcastWizardModal: React.FC<BroadcastWizardModalProps> = ({
     } else {
       setSelectedType('update');
       setAudienceType('all_active');
-      setSelectedTag(availableTags.length > 0 ? availableTags[0] : '');
+      const firstTag = athletes.flatMap(a => a.tags || []).find(t => Boolean(t?.trim())) || '';
+      setSelectedTag(firstTag);
       setManualAthleteIds([]);
       setTitle('');
       setMessage('');
@@ -188,7 +188,7 @@ export const BroadcastWizardModal: React.FC<BroadcastWizardModalProps> = ({
       setScheduledDateTime('');
     }
     setCurrentStep(1);
-  }, [isOpen, initialData, availableTags]);
+  }, [isOpen, editingBroadcastId, initialData, athletes]);
 
   // Risoluzione destinatari dinamica
   const resolvedRecipients = useMemo(() => {

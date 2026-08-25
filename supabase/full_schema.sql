@@ -662,7 +662,8 @@ USING (
     EXISTS (
         SELECT 1 FROM public.athlete_assigned_workouts aaw
         JOIN public.athletes a ON a.id = aaw.athlete_id
-        WHERE aaw.workout_id = workouts.id AND a.auth_user_id = auth.uid()
+        WHERE aaw.workout_id = workouts.id 
+          AND (a.auth_user_id = auth.uid() OR LOWER(TRIM(COALESCE(a.email, ''))) = LOWER(TRIM(COALESCE(auth.jwt()->>'email', ''))))
     )
 );
 

@@ -534,11 +534,40 @@ export const WorkoutsPage: React.FC = () => {
 
               {/* SEZIONE 2: ARCHIVIO & STORICO SCHEDE DELL'ATLETA */}
               <div className="space-y-3 pt-4 border-t border-slate-800">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <h3 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
                     <Folder className="w-4 h-4 text-blue-400" />
                     Archivio & Programmi Storici ({selectedAthleteData.allAssignments.length})
                   </h3>
+
+                  {/* Pulsante Pulizia Rapida Copie Private Non Master */}
+                  {(() => {
+                    const privateNonMaster = selectedAthleteData.allAssignments.filter(
+                      a => a.workout && !a.workout.is_template && a.id !== selectedAthleteData.activeAssignment?.id
+                    );
+                    if (privateNonMaster.length === 0) return null;
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (confirm(`Vuoi eliminare tutte le ${privateNonMaster.length} schede private storiche non presenti nel Template Master dall'archivio di ${selectedAthleteData.athlete.firstName}?`)) {
+                            for (const pa of privateNonMaster) {
+                              if (pa.workout_id) {
+                                await unassignWorkoutFromAthlete(selectedAthleteData.athlete.id, pa.workout_id, true);
+                              }
+                            }
+                            showSuccess('Archivio ripulito!', `Rimosse ${privateNonMaster.length} schede non master.`);
+                          }
+                        }}
+                        className="px-3 py-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto active:scale-95"
+                        title="Elimina tutte le copie private storiche create per questo atleta che non sono template master"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Elimina Schede Non Master ({privateNonMaster.length})</span>
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 {selectedAthleteData.allAssignments.length > 0 ? (
@@ -547,6 +576,7 @@ export const WorkoutsPage: React.FC = () => {
                       const w = assignment.workout;
                       if (!w) return null;
                       const isCurrentActive = assignment.is_active;
+                      const isMasterTemplate = Boolean(w.is_template);
 
                       return (
                         <div
@@ -559,11 +589,20 @@ export const WorkoutsPage: React.FC = () => {
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <h4 className="text-sm font-black text-white line-clamp-1">{w.title}</h4>
                                 {isCurrentActive && (
                                   <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-[var(--color-primary)] text-slate-950">
                                     Attiva
+                                  </span>
+                                )}
+                                {isMasterTemplate ? (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/25">
+                                    Master
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/25">
+                                    Copia Privata
                                   </span>
                                 )}
                               </div>
@@ -600,6 +639,26 @@ export const WorkoutsPage: React.FC = () => {
                                 title="Duplica"
                               >
                                 <Copy className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const confirmMsg = isMasterTemplate
+                                    ? `Rimuovere l'assegnazione storica di "${w.title}" per ${selectedAthleteData.athlete.firstName}? (Il Template Master originale rimarrà nel catalogo)`
+                                    : `Eliminare definitivamente la scheda "${w.title}" (non presente nel catalogo master)?`;
+                                  if (confirm(confirmMsg)) {
+                                    const res = await unassignWorkoutFromAthlete(selectedAthleteData.athlete.id, w.id, !isMasterTemplate);
+                                    if (res.success) {
+                                      showSuccess(isMasterTemplate ? 'Assegnazione rimossa dall\'archivio' : 'Scheda privata eliminata con successo.');
+                                    } else {
+                                      showError('Errore durante l\'eliminazione: ' + (res.error || ''));
+                                    }
+                                  }
+                                }}
+                                className="p-1 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                                title={isMasterTemplate ? "Rimuovi assegnazione dall'archivio" : "Elimina definitivamente scheda non presente nei template master"}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </div>

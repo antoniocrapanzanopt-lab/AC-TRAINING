@@ -7,8 +7,9 @@ export function cleanExecutiveNotes(rawNotes?: string): string {
   if (!rawNotes) return '';
   let str = rawNotes;
 
-  // 1. Rimuovi marcatori di fine nota
+  // 1. Rimuovi marcatori di fine nota e tag di raggruppamento (es. [GROUP:...], [SS:...])
   str = str.replace(/fine note\.?/gi, ' ');
+  str = str.replace(/\[(?:GROUP|SS):[^\]]+\]\s*/gi, ' ');
 
   // 2. Rimuovi prefissi/marche tecniche
   str = str.replace(/\b(n_s|t_w|rir|tut|rir_target|target_weight)\s*:\s*[^.]+(\.|$)/gi, ' ');

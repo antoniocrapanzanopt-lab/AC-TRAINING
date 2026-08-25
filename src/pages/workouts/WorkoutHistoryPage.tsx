@@ -15,6 +15,7 @@ import {
 import { useAthletes } from '../../context/AthletesContext';
 import { useApp } from '../../context/AppContext';
 import { supabase } from '../../lib/supabase';
+import { isPainFeedback } from '../../utils/painAnalysis';
 
 export interface ExerciseSetDetail {
   setNumber: number;
@@ -68,9 +69,7 @@ export const WorkoutHistoryPage: React.FC = () => {
   const [alertFilter, setAlertFilter] = useState<'all' | 'pain_only' | 'high_rpe'>('all');
 
   const isPainText = (text: string): boolean => {
-    return /dolore|fastidio|male|schiena|lombare|spalla|ginocchio|gomito|anca|collo|polso|caviglia|pizzico|infortunio|strappo|infiammazione|tendine|contrattura|bloccato|dolor|articolare|rpe 10/i.test(
-      text || ''
-    );
+    return isPainFeedback(text);
   };
 
   const loadFeed = useCallback(async () => {

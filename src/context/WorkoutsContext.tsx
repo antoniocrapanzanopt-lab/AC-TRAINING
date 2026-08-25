@@ -20,7 +20,7 @@ interface WorkoutsContextType {
   deleteWorkoutTemplate: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
   assignWorkoutToAthlete: (athleteId: string, workoutId: string, startDate?: string) => Promise<{ success: boolean; error?: string }>;
   assignWorkoutToAthletes: (athleteIds: string[], workoutId: string, startDate?: string) => Promise<{ success: boolean; error?: string }>;
-  unassignWorkoutFromAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
+  unassignWorkoutFromAthlete: (athleteId: string, workoutId: string, deletePrivateWorkout?: boolean) => Promise<{ success: boolean; error?: string }>;
   getAssignedWorkoutsForAthlete: (athleteId: string) => Promise<AthleteAssignedWorkout[]>;
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
   forkWorkoutForAthlete: (workoutId: string, athleteId: string, newWorkoutData: Partial<WorkoutTemplate>, newExercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
@@ -60,7 +60,6 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         athlete:athletes(id, first_name, last_name, email, status),
         workout:workouts(*)
       `)
-      .eq('is_active', true)
       .order('assigned_date', { ascending: false });
 
     if (!error && data) {
@@ -267,16 +266,21 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
 
     try {
+      const updateData: Record<string, unknown> = {
+        title: workout.title,
+        description: workout.description,
+        folder_id: workout.folder_id !== undefined ? workout.folder_id : null,
+        total_weeks: workout.total_weeks || 1,
+        estimated_duration_minutes: workout.estimated_duration_minutes ? String(workout.estimated_duration_minutes) : null,
+        updated_at: new Date().toISOString(),
+      };
+      if (workout.is_template !== undefined) {
+        updateData.is_template = workout.is_template;
+      }
+
       const { error: workoutError } = await supabase
         .from('workouts')
-        .update({
-          title: workout.title,
-          description: workout.description,
-          folder_id: workout.folder_id !== undefined ? workout.folder_id : null,
-          total_weeks: workout.total_weeks || 1,
-          estimated_duration_minutes: workout.estimated_duration_minutes ? String(workout.estimated_duration_minutes) : null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', workoutId);
 
       if (workoutError) throw workoutError;
@@ -314,7 +318,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (exercisesError) throw exercisesError;
       }
 
-      await loadCoachTemplates();
+      await Promise.all([
+        loadCoachTemplates(),
+        loadAssignedWorkouts(),
+      ]);
       return { success: true };
     } catch (error: unknown) {
       console.error("Error updating workout:", error);
@@ -426,11 +433,21 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (athleteIds.length === 0) return { success: true };
     try {
       const assignedTimestamp = startDate ? new Date(startDate).toISOString() : new Date().toISOString();
+
+      // 1. Archivia le eventuali schede precedenti attualmente attive per questi atleti
+      await supabase
+        .from('athlete_assigned_workouts')
+        .update({ is_active: false })
+        .in('athlete_id', athleteIds)
+        .eq('is_active', true);
+
+      // 2. Inserisci la nuova assegnazione attiva
       const rowsToInsert = athleteIds.map((athId) => ({
         athlete_id: athId,
         workout_id: workoutId,
         assigned_by: user.id,
         assigned_date: assignedTimestamp,
+        is_active: true,
       }));
 
       const { error } = await supabase
@@ -438,7 +455,11 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .insert(rowsToInsert);
 
       if (error) throw error;
-      await loadAssignedWorkouts();
+      
+      await Promise.all([
+        loadAssignedWorkouts(),
+        loadCoachTemplates(),
+      ]);
       return { success: true };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -446,7 +467,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const unassignWorkoutFromAthlete = async (athleteId: string, workoutId: string) => {
+  const unassignWorkoutFromAthlete = async (athleteId: string, workoutId: string, deletePrivateWorkout: boolean = false) => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
       // 1. Elimina l'assegnazione
@@ -458,18 +479,29 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       if (error) throw error;
 
-      // 2. Se era una copia privata personalizzata dell'atleta (is_template = false), rimuovila
-      const { data: wk } = await supabase
-        .from('workouts')
-        .select('is_template')
-        .eq('id', workoutId)
-        .maybeSingle();
+      // 2. Se esplicitamente richiesto di eliminare il record privato dal catalogo
+      if (deletePrivateWorkout) {
+        const { data: wk } = await supabase
+          .from('workouts')
+          .select('is_template')
+          .eq('id', workoutId)
+          .maybeSingle();
 
-      if (wk && !wk.is_template) {
-        await supabase.from('workouts').delete().eq('id', workoutId);
+        if (wk && !wk.is_template) {
+          await supabase.from('workouts').delete().eq('id', workoutId);
+        }
+      } else {
+        // Altrimenti ci assicuriamo che rimanga accessibile nel catalogo template master
+        await supabase
+          .from('workouts')
+          .update({ is_template: true })
+          .eq('id', workoutId);
       }
 
-      await loadAssignedWorkouts();
+      await Promise.all([
+        loadAssignedWorkouts(),
+        loadCoachTemplates(),
+      ]);
       return { success: true };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Unknown error';

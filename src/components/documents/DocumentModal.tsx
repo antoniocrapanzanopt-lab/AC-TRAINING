@@ -38,7 +38,16 @@ export const DocumentModal: React.FC<DocumentModalProps> = ({
   const [errors, setErrors] = useState<string[]>([]);
   const [isReadingFile, setIsReadingFile] = useState(false);
 
+  const prevIsOpenRef = React.useRef(false);
+  const prevDocIdRef = React.useRef<string | null | undefined>(undefined);
+
   useEffect(() => {
+    const isOpening = isOpen && !prevIsOpenRef.current;
+    const isChangingDoc = isOpen && (editingDocument?.id !== prevDocIdRef.current);
+    prevIsOpenRef.current = isOpen;
+    prevDocIdRef.current = editingDocument?.id;
+
+    if (!isOpening && !isChangingDoc) return;
     if (!isOpen) return;
 
     if (editingDocument) {

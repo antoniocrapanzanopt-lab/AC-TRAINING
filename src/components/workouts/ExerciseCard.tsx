@@ -145,9 +145,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           : 'bg-[var(--color-panel)] border border-[var(--color-panel-border)] opacity-95 hover:opacity-100 hover:border-[var(--color-primary)]/40 shadow-sm'
       }`}
     >
-      {/* 1. Header: Numero progressivo, Nome Esercizio, Unico Pulsante Tutorial (con Anatomia & Guida) e Chevron */}
+      {/* 1. Header: Numero progressivo, Nome Esercizio (senza troncamento), Icona Compatta Tutorial e Chevron */}
       <div
-        className="p-4 sm:p-5 flex items-center justify-between cursor-pointer select-none"
+        className="p-4 sm:p-5 flex items-center justify-between cursor-pointer select-none gap-3"
         onClick={onToggleActive}
       >
         <div className="flex items-center gap-3.5 flex-1 min-w-0">
@@ -164,26 +164,26 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             {isCompleted ? <Check className="w-5 h-5 stroke-[2.5]" /> : index + 1}
           </div>
 
-          {/* Nome Esercizio */}
+          {/* Nome Esercizio: layout fluido a capo naturale per massima leggibilità su mobile */}
           <div className="min-w-0 flex-1">
             <h3
-              className={`font-black leading-tight tracking-tight truncate text-[var(--color-text)] ${
-                isActive ? 'text-lg sm:text-xl' : 'text-base sm:text-lg'
+              className={`font-black leading-snug tracking-tight text-[var(--color-text)] break-words ${
+                isActive ? 'text-base sm:text-lg' : 'text-sm sm:text-base'
               }`}
             >
               {exercise.name}
             </h3>
             {previousHistory && previousHistory.sets.length > 0 && !isActive && (
-              <span className="text-[11px] text-sky-600 flex items-center gap-1 font-mono mt-0.5 font-semibold">
-                <History className="w-3 h-3" />
+              <span className="text-[11px] text-sky-600 flex items-center gap-1 font-mono mt-0.5 font-semibold line-clamp-1">
+                <History className="w-3 h-3 shrink-0" />
                 Ultima volta ({previousHistory.formattedDate}): {previousHistory.sets[0]?.weightKg || 0}kg × {previousHistory.sets[0]?.reps || 0}
               </span>
             )}
           </div>
         </div>
 
-        {/* Azioni Header: Singolo Pulsante Tutorial + Storico + Chevron */}
-        <div className="flex items-center gap-2 shrink-0 ml-3">
+        {/* Azioni Header Compatte: Icona Tutorial + Storico + Chevron */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {previousHistory && previousHistory.sets.length > 0 && (
             <button
               type="button"
@@ -191,8 +191,8 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                 e.stopPropagation();
                 setShowHistoryModal(true);
               }}
-              className="p-2 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-600 hover:text-[var(--color-text)] hover:bg-sky-500/25 transition-all cursor-pointer shadow-sm"
-              title="Visualizza lo storico completo delle prestazioni su questo esercizio"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-600 hover:text-[var(--color-text)] hover:bg-sky-500/25 transition-all cursor-pointer shadow-sm flex items-center justify-center shrink-0"
+              title="Visualizza lo storico carichi su questo esercizio"
             >
               <History className="w-4 h-4" />
             </button>
@@ -204,11 +204,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
               e.stopPropagation();
               setShowAnatomyModal(true);
             }}
-            className="px-3.5 py-1.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-600 hover:text-[var(--color-text)] font-black text-xs flex items-center gap-1.5 hover:bg-sky-500/25 transition-all active:scale-95 cursor-pointer shadow-sm"
-            title="Apri Tutorial video, guida tecnica e mappa anatomica 3D"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-600 hover:text-[var(--color-text)] hover:bg-sky-500/25 transition-all active:scale-95 cursor-pointer shadow-sm flex items-center justify-center shrink-0"
+            title="Video Tutorial & Guida Esecuzione"
           >
             <Video className="w-4 h-4 text-sky-600" />
-            <span>Tutorial</span>
           </button>
 
           <button
@@ -216,13 +215,13 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             onClick={onToggleActive}
             className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
           >
-            <ChevronUp className={`w-6 h-6 text-[var(--color-primary)] shrink-0 transition-transform ${isActive ? '' : 'rotate-180'}`} />
+            <ChevronUp className={`w-5 h-5 sm:w-6 sm:h-6 text-[var(--color-primary)] shrink-0 transition-transform ${isActive ? '' : 'rotate-180'}`} />
           </button>
         </div>
       </div>
 
       {/* 2. Target Prescritto dal Coach (Reps, Sets, RPE, Rest) */}
-      <div className="px-4 sm:px-5 pb-4 grid grid-cols-4 gap-2 text-center text-xs">
+      <div className="px-4 sm:px-5 pb-3 grid grid-cols-4 gap-2 text-center text-xs">
         <div className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] p-2.5 rounded-2xl">
           <span className="text-[10px] uppercase font-bold text-[var(--color-text-muted)] block">Serie</span>
           <span className="text-sm sm:text-base font-black text-[var(--color-text)]">{exercise.sets}</span>
@@ -244,6 +243,23 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           <span className="text-sm sm:text-base font-black text-emerald-600 font-mono">{exercise.rest_seconds}s</span>
         </div>
       </div>
+
+      {/* 2.1 Barra Tutorial Estesa (visibile se attiva per accesso rapido su mobile) */}
+      {isActive && (
+        <div className="px-4 sm:px-5 pb-3">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowAnatomyModal(true);
+            }}
+            className="w-full py-2 px-3 rounded-2xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/25 text-sky-400 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer shadow-sm"
+          >
+            <Video className="w-4 h-4 text-sky-400" />
+            <span>Guarda Video Tutorial & Anatomia 3D</span>
+          </button>
+        </div>
+      )}
 
       {/* 3. Note Tecniche / Esecutive del Coach (se presenti) */}
       {cleanNotes && (
