@@ -99,5 +99,13 @@
     width: 0px;
     height: 0px;
   }
+
+  /* ─── Supporto Safe Area iOS (Notch, Dynamic Island & Home Bar) ─── */
+  .safe-top-header {
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  }
+  .safe-bottom-nav {
+    bottom: max(0.75rem, calc(env(safe-area-inset-bottom, 0px) + 0.5rem));
+  }
 }
 

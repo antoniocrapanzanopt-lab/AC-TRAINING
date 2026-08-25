@@ -24,13 +24,13 @@ export const ChangeLogTab: React.FC<ChangeLogTabProps> = ({ athleteId }) => {
 
   if (programEvents.length === 0) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-12 flex flex-col items-center justify-center text-center space-y-4 shadow-xl">
-        <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center">
-          <Activity className="w-8 h-8 text-slate-500" />
+      <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-12 flex flex-col items-center justify-center text-center space-y-4 shadow-md">
+        <div className="w-16 h-16 rounded-full bg-[var(--color-surface-strong)] flex items-center justify-center">
+          <Activity className="w-8 h-8 text-[var(--color-text-muted)]" />
         </div>
         <div className="space-y-1">
-          <h3 className="text-xl font-black text-white">Nessuna Variazione</h3>
-          <p className="text-sm text-slate-400 max-w-md mx-auto">
+          <h3 className="text-xl font-black text-[var(--color-text)]">Nessuna Variazione</h3>
+          <p className="text-sm text-[var(--color-text-muted)] max-w-md mx-auto">
             Non è presente alcuno storico di variazioni o assegnazioni di programmi per questo atleta.
           </p>
         </div>
@@ -40,15 +40,15 @@ export const ChangeLogTab: React.FC<ChangeLogTabProps> = ({ athleteId }) => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-900 border border-slate-800">
+      <div className="flex items-center justify-between p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-sm">
         <div>
-          <h3 className="text-base font-black text-white flex items-center gap-2">
+          <h3 className="text-base font-black text-[var(--color-text)] flex items-center gap-2">
             <History className="w-5 h-5 text-[var(--color-primary)]" />
             Storico Variazioni Programma (Change Log)
           </h3>
-          <p className="text-xs text-slate-400 mt-1">Tracciabilità completa delle modifiche manuali e IA.</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">Tracciabilità completa delle modifiche manuali e IA.</p>
         </div>
-        <span className="px-3 py-1 bg-slate-800 rounded-full text-xs font-bold text-slate-300 border border-slate-700">
+        <span className="px-3 py-1 bg-[var(--color-surface-strong)] rounded-full text-xs font-bold text-[var(--color-text-muted)] border border-[var(--color-border)]">
           {programEvents.length} Eventi
         </span>
       </div>
@@ -57,22 +57,22 @@ export const ChangeLogTab: React.FC<ChangeLogTabProps> = ({ athleteId }) => {
         {programEvents.map(evt => {
           const isAI = evt.description?.includes('IA') || evt.description?.includes('Gemini');
           return (
-            <div key={evt.id} className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-colors space-y-2">
+            <div key={evt.id} className="p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] hover:border-[var(--color-primary)]/40 transition-colors space-y-2 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <div className={`mt-0.5 w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
-                    isAI ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-sky-500/10 border-sky-500/30 text-sky-400'
+                    isAI ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-sky-500/10 border-sky-500/30 text-sky-500'
                   }`}>
                     {isAI ? <Sparkles className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">{evt.title}</h4>
-                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                    <h4 className="text-sm font-bold text-[var(--color-text)]">{evt.title}</h4>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">
                       {evt.description || 'Nessun dettaglio aggiuntivo.'}
                     </p>
                   </div>
                 </div>
-                <div className="text-[10px] font-bold text-slate-500 bg-slate-950 px-2 py-1 rounded-lg shrink-0 whitespace-nowrap">
+                <div className="text-[10px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-strong)] px-2 py-1 rounded-lg shrink-0 whitespace-nowrap border border-[var(--color-border)]">
                   {new Date(evt.createdAt).toLocaleDateString('it-IT')}
                 </div>
               </div>

@@ -109,22 +109,22 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
   }, [stats]);
 
   return (
-    <div className="p-4 sm:p-6 rounded-3xl bg-slate-900/50 backdrop-blur-xl border border-slate-800/80 shadow-xl space-y-4 sm:space-y-5 overflow-hidden">
+    <div className="p-4 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-md space-y-4 sm:space-y-5 overflow-hidden">
       
       {/* ─── HEADER & SELETTORE METRICHE CON SCORRIMENTO TOUCH ─── */}
-      <div className="space-y-3 border-b border-slate-800/80 pb-3 sm:pb-4">
+      <div className="space-y-3 border-b border-[var(--color-border)] pb-3 sm:pb-4">
         <div className="flex items-center justify-between gap-2">
           <div>
             <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5" />
               Trend & Progressione Corporea
             </span>
-            <h3 className="text-base sm:text-lg font-black text-white mt-0.5">
+            <h3 className="text-base sm:text-lg font-black text-[var(--color-text)] mt-0.5">
               Evoluzione {selectedMetric.label}
             </h3>
           </div>
 
-          <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800 shrink-0">
+          <span className="text-[11px] font-mono font-bold text-[var(--color-text-muted)] bg-[var(--color-surface-strong)] px-2.5 py-1 rounded-xl border border-[var(--color-border)] shrink-0">
             {chartData.length} {chartData.length === 1 ? 'rilevazione' : 'rilevazioni'}
           </span>
         </div>
@@ -141,7 +141,7 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none active:scale-95 ${
                   isSelected
                     ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20 ring-1 ring-[var(--color-primary)]'
-                    : 'bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+                    : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)]'
                 }`}
               >
                 <span className="text-xs">{opt.icon}</span>
@@ -156,56 +156,56 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
       {stats && (
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
           {/* Partenza */}
-          <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-0.5">
-            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] space-y-0.5">
+            <span className="text-[9px] sm:text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block">
               Iniziale
             </span>
-            <div className="text-sm sm:text-lg font-black font-mono text-slate-300">
-              {stats.first} <span className="text-[10px] sm:text-xs font-sans text-slate-500">{selectedMetric.unit}</span>
+            <div className="text-sm sm:text-lg font-black font-mono text-[var(--color-text)]">
+              {stats.first} <span className="text-[10px] sm:text-xs font-sans text-[var(--color-text-muted)]">{selectedMetric.unit}</span>
             </div>
-            <span className="text-[9px] text-slate-500 block truncate">
+            <span className="text-[9px] text-[var(--color-text-muted)] block truncate">
               {chartData[0]?.formattedDate}
             </span>
           </div>
 
           {/* Attuale */}
-          <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-0.5">
-            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] space-y-0.5">
+            <span className="text-[9px] sm:text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block">
               Attuale
             </span>
-            <div className="text-sm sm:text-lg font-black font-mono text-white">
+            <div className="text-sm sm:text-lg font-black font-mono text-[var(--color-text)]">
               {stats.current} <span className="text-[10px] sm:text-xs font-sans text-[var(--color-primary)] font-bold">{selectedMetric.unit}</span>
             </div>
-            <span className="text-[9px] text-slate-500 block truncate">
+            <span className="text-[9px] text-[var(--color-text-muted)] block truncate">
               {chartData[chartData.length - 1]?.formattedDate}
             </span>
           </div>
 
           {/* Variazione Netta (Delta) */}
-          <div className="p-3 sm:p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-0.5">
-            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] space-y-0.5">
+            <span className="text-[9px] sm:text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block">
               Delta
             </span>
             <div className="flex items-center gap-0.5">
               <span className={`text-sm sm:text-lg font-black font-mono flex items-center ${
                 stats.delta < 0
-                  ? 'text-sky-400'
+                  ? 'text-sky-500'
                   : stats.delta > 0
-                  ? 'text-amber-400'
-                  : 'text-slate-400'
+                  ? 'text-amber-500'
+                  : 'text-[var(--color-text-muted)]'
               }`}>
                 {stats.delta > 0 ? (
-                  <TrendingUp className="w-3.5 h-3.5 text-amber-400 shrink-0 mr-0.5" />
+                  <TrendingUp className="w-3.5 h-3.5 text-amber-500 shrink-0 mr-0.5" />
                 ) : stats.delta < 0 ? (
-                  <TrendingDown className="w-3.5 h-3.5 text-sky-400 shrink-0 mr-0.5" />
+                  <TrendingDown className="w-3.5 h-3.5 text-sky-500 shrink-0 mr-0.5" />
                 ) : (
-                  <Minus className="w-3.5 h-3.5 text-slate-400 shrink-0 mr-0.5" />
+                  <Minus className="w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0 mr-0.5" />
                 )}
                 {stats.delta > 0 ? `+${stats.delta}` : stats.delta}
               </span>
-              <span className="text-[10px] sm:text-xs font-sans text-slate-500 font-bold">{selectedMetric.unit}</span>
+              <span className="text-[10px] sm:text-xs font-sans text-[var(--color-text-muted)] font-bold">{selectedMetric.unit}</span>
             </div>
-            <span className="text-[9px] text-slate-500 block truncate">
+            <span className="text-[9px] text-[var(--color-text-muted)] block truncate">
               Su {stats.count} check
             </span>
           </div>

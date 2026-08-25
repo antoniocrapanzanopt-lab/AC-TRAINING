@@ -229,18 +229,26 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
     // Inizializza o carica i broadcast rimuovendo qualsiasi residuo mock o cancellato
     const cleanBroadcasts = savedBroadcasts.filter(b => !b.id.startsWith('bc-init-') && !isDeleted(b.id, b.title));
     
-    // Ripristina il testo reale del messaggio se era rimasto il placeholder "Canali:"
-    const fixedBroadcasts = cleanBroadcasts.map(b => {
-      if (!b.message || b.message.trim().startsWith('Canali:')) {
+    // Assicura che ogni broadcast abbia un ID univoco garantito e il testo reale del messaggio
+    const seenIds = new Set<string>();
+    const fixedBroadcasts = cleanBroadcasts.map((b, idx) => {
+      let uniqueId = (b.id && typeof b.id === 'string' && b.id.trim() !== '') ? b.id : `bc-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`;
+      if (seenIds.has(uniqueId)) {
+        uniqueId = `${uniqueId}-${idx}-${Math.random().toString(36).slice(2, 5)}`;
+      }
+      seenIds.add(uniqueId);
+
+      let msg = b.message;
+      if (!msg || msg.trim().startsWith('Canali:')) {
         const matchingComm = cleanComms.find(c => 
-          c.subject?.trim().toLowerCase() === b.title.trim().toLowerCase() ||
-          c.id?.includes(b.id)
+          (c.subject && b.title && c.subject.trim().toLowerCase() === b.title.trim().toLowerCase()) ||
+          (c.id && c.id.includes(uniqueId))
         );
         if (matchingComm?.messageText && !matchingComm.messageText.trim().startsWith('Canali:')) {
-          return { ...b, message: matchingComm.messageText };
+          msg = matchingComm.messageText;
         }
       }
-      return b;
+      return { ...b, id: uniqueId, message: msg || '' };
     });
 
     setBroadcasts(fixedBroadcasts);
@@ -674,37 +682,26 @@ export const CommunicationsProvider: React.FC<{ children: React.ReactNode }> = (
 
   // Elimina un broadcast con sincronizzazione completa e definitiva
   const deleteBroadcast = useCallback(async (id: string): Promise<boolean> => {
+    if (!id || typeof id !== 'string') return false;
+
     const targetBc = broadcasts.find(b => b.id === id);
     const targetTitle = targetBc?.title || '';
-    const cleanTargetTitle = targetTitle.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
 
     // 0. Salva nella blacklist persistente per bloccare re-idratazione da database
     addDeletedBroadcastToStorage(id, targetTitle);
 
-    // 1. Rimuovi dai broadcast in memoria e localStorage
-    const updated = broadcasts.filter(b => {
-      if (b.id === id) return false;
-      if (cleanTargetTitle) {
-        const normB = b.title.replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
-        if (normB === cleanTargetTitle) return false;
-      }
-      return true;
-    });
+    // 1. Rimuovi SOLO ed ESCLUSIVAMENTE il broadcast selezionato tramite ID
+    const updated = broadcasts.filter(b => b.id !== id);
     saveBroadcastsToStorage(updated);
 
-    // 2. Rimuovi dai log comunicazioni locali
-    const updatedComms = communications.filter(c => {
-      if (c.id.includes(id)) return false;
-      if (cleanTargetTitle) {
-        const normSubject = (c.subject || '').replace(/^broadcast:\s*/i, '').replace(/^comunicazione:\s*/i, '').trim().toLowerCase();
-        if (normSubject === cleanTargetTitle) return false;
-      }
-      return true;
-    });
+    // 2. Rimuovi dai log comunicazioni locali solo quelli strettamente collegati a questo ID
+    const updatedComms = communications.filter(c => !c.id.includes(id));
     saveCommsToStorage(updatedComms);
 
     // 3. Cancella in modo persistente dalla timeline di tutti gli atleti (in memoria + database Supabase)
-    await deleteTimelineForBroadcast(targetTitle, id);
+    if (targetTitle || id) {
+      await deleteTimelineForBroadcast(targetTitle, id);
+    }
 
     // 4. Cancella notifiche correlate su database Supabase (se presenti)
     try {

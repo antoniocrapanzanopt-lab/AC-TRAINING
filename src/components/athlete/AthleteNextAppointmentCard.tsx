@@ -105,9 +105,9 @@ export const AthleteNextAppointmentCard: React.FC<AthleteNextAppointmentCardProp
 
   return (
     <>
-      <div className="rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 p-4 sm:p-5 shadow-xl transition-all hover:border-slate-700/80 space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-800/70 pb-2.5">
-          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+      <div className="rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-4 sm:p-5 shadow-md transition-all hover:border-[var(--color-primary)]/40 space-y-3">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2.5">
+          <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-1.5">
             <Calendar className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             Prossimo Appuntamento
           </span>
@@ -127,20 +127,20 @@ export const AthleteNextAppointmentCard: React.FC<AthleteNextAppointmentCardProp
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="space-y-0.5 min-w-0">
-                <h4 className="text-sm sm:text-base font-black text-white capitalize truncate">
+                <h4 className="text-sm sm:text-base font-black text-[var(--color-text)] capitalize truncate">
                   {nextAppointment.title}
                 </h4>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-300">
-                  <span className="font-bold text-white capitalize flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--color-text-muted)]">
+                  <span className="font-bold text-[var(--color-text)] capitalize flex items-center gap-1">
                     <Calendar className="w-3 h-3 text-[var(--color-primary)]" />
                     {formatDate(nextAppointment.date)}
                   </span>
                   {nextAppointment.startTime && (
-                    <span className="text-slate-400 font-mono flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-500" />
+                    <span className="text-[var(--color-text-muted)] font-mono flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-[var(--color-text-muted)]" />
                       {nextAppointment.startTime}
                       {getDurationText(nextAppointment) && (
-                        <span className="text-[10px] text-slate-500 font-sans">
+                        <span className="text-[10px] text-[var(--color-text-muted)] font-sans">
                           ({getDurationText(nextAppointment)})
                         </span>
                       )}
@@ -152,18 +152,18 @@ export const AthleteNextAppointmentCard: React.FC<AthleteNextAppointmentCardProp
               {/* Badge Modalità & Stato */}
               <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-center">
                 {isOnline(nextAppointment) ? (
-                  <span className="px-2.5 py-1 rounded-xl bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[10px] font-black flex items-center gap-1">
+                  <span className="px-2.5 py-1 rounded-xl bg-purple-500/15 text-purple-600 border border-purple-500/30 text-[10px] font-black flex items-center gap-1">
                     <Video className="w-3 h-3" /> Online
                   </span>
                 ) : (
-                  <span className="px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-black flex items-center gap-1">
+                  <span className="px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 text-[10px] font-black flex items-center gap-1">
                     <MapPin className="w-3 h-3" /> In Presenza
                   </span>
                 )}
                 <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border flex items-center gap-1 ${
                   nextAppointment.status === 'scheduled' || nextAppointment.status === 'completed'
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                    : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                    : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                 }`}>
                   <CheckCircle2 className="w-3 h-3" />
                   {nextAppointment.status === 'scheduled' || nextAppointment.status === 'completed' ? 'Confermato' : 'Da confermare'}
@@ -188,7 +188,7 @@ export const AthleteNextAppointmentCard: React.FC<AthleteNextAppointmentCardProp
               <button
                 type="button"
                 onClick={() => setIsModalOpen(true)}
-                className={`py-2 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs border border-slate-700 transition-all cursor-pointer ${
+                className={`py-2 px-3 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text)] font-bold text-xs border border-[var(--color-border)] transition-all cursor-pointer ${
                   nextAppointment.htmlLink ? 'shrink-0' : 'flex-1 text-center'
                 }`}
               >
@@ -198,8 +198,8 @@ export const AthleteNextAppointmentCard: React.FC<AthleteNextAppointmentCardProp
           </div>
         ) : (
           <div className="py-2 text-center space-y-1">
-            <p className="text-xs font-bold text-slate-300">Nessun appuntamento programmato</p>
-            <p className="text-[11px] text-slate-500">Qui vedrai il tuo prossimo check o incontro con il coach.</p>
+            <p className="text-xs font-bold text-[var(--color-text)]">Nessun appuntamento programmato</p>
+            <p className="text-[11px] text-[var(--color-text-muted)]">Qui vedrai il tuo prossimo check o incontro con il coach.</p>
           </div>
         )}
       </div>

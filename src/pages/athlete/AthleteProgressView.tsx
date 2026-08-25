@@ -4,7 +4,6 @@ import {
   Award,
   User,
   Calendar,
-  Clock,
   Camera,
   Plus,
   Ruler,
@@ -148,23 +147,23 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
     <div className="space-y-4 sm:space-y-6 pb-32 font-sans">
       {/* Intestazione Pagina */}
       <div className="space-y-1">
-        <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">I Tuoi Progressi & Record</h2>
-        <p className="text-xs text-slate-400">
+        <h2 className="text-xl sm:text-2xl font-black text-[var(--color-text)] tracking-tight">I Tuoi Progressi & Record</h2>
+        <p className="text-xs text-[var(--color-text-muted)]">
           Monitora la tua evoluzione fisica, i check periodici, il piano nutrizionale e i record di forza.
         </p>
       </div>
 
       {/* SELETTORE ATLETA PER MODALITÀ COACH O ANTEPRIMA */}
       {(!user?.athleteId || user?.role === 'owner' || user?.role === 'coach') && athletes.length > 0 && !targetAthleteId && (
-        <div className="bg-slate-900 border border-[var(--color-primary)]/40 p-3 sm:p-3.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-lg">
+        <div className="bg-[var(--color-panel)] border border-[var(--color-primary)]/40 p-3 sm:p-3.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-md">
           <div className="flex items-center gap-2">
             <User className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
-            <span className="text-xs font-bold text-white">Visualizzazione Atleta:</span>
+            <span className="text-xs font-bold text-[var(--color-text)]">Visualizzazione Atleta:</span>
           </div>
           <select
             value={athleteId || ''}
             onChange={(e) => setOverrideAthleteId(e.target.value)}
-            className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:outline-none focus:border-[var(--color-primary)] w-full sm:w-auto cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] text-xs font-bold focus:outline-none focus:border-[var(--color-primary)] w-full sm:w-auto cursor-pointer"
           >
             {athletes.map((a) => (
               <option key={a.id} value={a.id}>
@@ -178,20 +177,20 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
       {/* RIEPILOGO RAPIDO CARD (KPI) PER SMARTPHONE */}
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
         {/* Peso Attuale */}
-        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 p-3.5 sm:p-4 rounded-2xl shadow-lg flex flex-col justify-between">
+        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-md flex flex-col justify-between">
           <div>
-            <div className="flex justify-between items-center text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-1">
+            <div className="flex justify-between items-center text-[var(--color-text-muted)] text-[11px] font-bold uppercase tracking-wider mb-1">
               <span>Peso Attuale</span>
               <Scale className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             </div>
             <div className="flex items-baseline gap-1.5 sm:gap-2">
-              <span className="text-xl sm:text-2xl font-black text-white font-mono">
+              <span className="text-xl sm:text-2xl font-black text-[var(--color-text)] font-mono">
                 {latestMetric?.weight_kg ? `${latestMetric.weight_kg} kg` : '—'}
               </span>
               {weightDelta !== null && (
                 <span
                   className={`text-[10px] sm:text-[11px] font-bold flex items-center ${
-                    weightDelta <= 0 ? 'text-emerald-400' : 'text-amber-400'
+                    weightDelta <= 0 ? 'text-emerald-500' : 'text-amber-500'
                   }`}
                 >
                   {weightDelta <= 0 ? <TrendingDown className="w-3 h-3 mr-0.5 inline" /> : <TrendingUp className="w-3 h-3 mr-0.5 inline" />}
@@ -201,8 +200,8 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
             </div>
           </div>
 
-          <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between">
-            <span className="text-[10px] text-slate-500 truncate">
+          <div className="mt-2 pt-2 border-t border-[var(--color-border)] flex items-center justify-between">
+            <span className="text-[10px] text-[var(--color-text-muted)] truncate">
               {latestMetric ? formatFriendlyDate(latestMetric.date) : 'Nessuna pesata'}
             </span>
             {!latestMetric && (
@@ -218,9 +217,9 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
         </div>
 
         {/* Miglior PR */}
-        <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 p-3.5 sm:p-4 rounded-2xl shadow-lg flex flex-col justify-between">
+        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-md flex flex-col justify-between">
           <div>
-            <div className="flex justify-between items-center text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-1">
+            <div className="flex justify-between items-center text-[var(--color-text-muted)] text-[11px] font-bold uppercase tracking-wider mb-1">
               <span>Miglior 1RM</span>
               <Award className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             </div>
@@ -229,8 +228,8 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
             </span>
           </div>
 
-          <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between">
-            <span className="text-[10px] text-slate-500 truncate max-w-[110px] sm:max-w-[140px]">
+          <div className="mt-2 pt-2 border-t border-[var(--color-border)] flex items-center justify-between">
+            <span className="text-[10px] text-[var(--color-text-muted)] truncate max-w-[110px] sm:max-w-[140px]">
               {topPRs.length > 0 ? topPRs[0].exercise_name : 'Nessun record'}
             </span>
             {topPRs.length === 0 && (
@@ -247,14 +246,14 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
       </div>
 
       {/* SOTTO-NAVIGAZIONE TAB SIMMETRICA & ERGONOMICA A 3 TAB */}
-      <div className="grid grid-cols-3 gap-1.5 bg-slate-900/80 backdrop-blur-xl p-1.5 rounded-2xl border border-slate-800/80 text-xs font-bold shadow-inner">
+      <div className="grid grid-cols-3 gap-1.5 bg-[var(--color-surface-strong)] p-1.5 rounded-2xl border border-[var(--color-border)] text-xs font-bold shadow-sm">
         <button
           type="button"
           onClick={() => setActiveTab('checkin')}
           className={`py-2.5 px-2 sm:px-3 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1.5 sm:gap-2 relative ${
             activeTab === 'checkin'
               ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
+              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-panel)]'
           }`}
         >
           <Ruler className="w-4 h-4 shrink-0" />
@@ -270,10 +269,10 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
           className={`py-2.5 px-2 sm:px-3 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1.5 sm:gap-2 ${
             activeTab === 'fabbisogno'
               ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
+              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-panel)]'
           }`}
         >
-          <Flame className="w-4 h-4 shrink-0 text-amber-400" />
+          <Flame className="w-4 h-4 shrink-0 text-amber-500" />
           <span className="truncate">Fabbisogno & Macro</span>
         </button>
 
@@ -283,7 +282,7 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
           className={`py-2.5 px-2 sm:px-3 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1.5 sm:gap-2 ${
             activeTab === 'records'
               ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
+              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-panel)]'
           }`}
         >
           <Award className="w-4 h-4 shrink-0" />
@@ -296,14 +295,14 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
         <div className="space-y-4 sm:space-y-6">
           
           {/* 1. CARD IN EVIDENZA: STATO DEL RITUALE CHECK MISURE */}
-          <div className={`p-4 sm:p-6 rounded-3xl border shadow-xl space-y-3.5 sm:space-y-4 relative overflow-hidden transition-all ${
+          <div className={`p-4 sm:p-6 rounded-3xl border shadow-lg space-y-3.5 sm:space-y-4 relative overflow-hidden transition-all ${
             scheduleState.isOverdue
-              ? 'bg-gradient-to-r from-rose-950/40 via-slate-900 to-rose-950/30 border-rose-500/50'
+              ? 'bg-rose-500/10 border-rose-500/40'
               : scheduleState.isDueToday
-              ? 'bg-gradient-to-r from-amber-950/40 via-slate-900 to-amber-950/30 border-amber-500/50'
+              ? 'bg-amber-500/10 border-amber-500/40'
               : scheduleState.status === 'completed'
-              ? 'bg-gradient-to-r from-emerald-950/40 via-slate-900 to-emerald-950/30 border-emerald-500/50'
-              : 'bg-gradient-to-r from-slate-950 via-[var(--color-panel)] to-slate-950 border-[var(--color-panel-border)]'
+              ? 'bg-emerald-500/10 border-emerald-500/40'
+              : 'bg-[var(--color-panel)] border-[var(--color-panel-border)]'
           }`}>
             
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
@@ -311,39 +310,37 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${
                     scheduleState.isOverdue
-                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      ? 'bg-rose-500/20 text-rose-500 border-rose-500/40'
                       : scheduleState.isDueToday
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      ? 'bg-amber-500/20 text-amber-600 border-amber-500/40'
                       : scheduleState.status === 'completed'
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                      ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/40'
+                      : 'bg-sky-500/20 text-sky-600 border-sky-500/40'
                   }`}>
-                    {scheduleState.isOverdue
-                      ? 'In Ritardo'
-                      : scheduleState.isDueToday
-                      ? 'Check Richiesto Oggi'
-                      : scheduleState.status === 'completed'
-                      ? 'Rituale Completato'
-                      : 'Programmato'}
+                    {scheduleState.statusLabel}
                   </span>
-
-                  <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
-                    <Clock className="w-3.5 h-3.5 text-slate-500" />
-                    Ogni {scheduleState.frequencyDays} giorni
+                  <span className="text-[10px] text-[var(--color-text-muted)] font-medium">
+                    {scheduleConfig?.frequency_days ? `Ogni ${scheduleConfig.frequency_days} giorni` : 'Ogni 7 giorni'}
                   </span>
                 </div>
 
-                <h3 className="text-base sm:text-xl font-black text-white leading-snug pt-0.5">
-                  {scheduleState.statusLabel}
+                <h3 className="text-base sm:text-lg font-black text-[var(--color-text)] tracking-tight">
+                  {scheduleState.isDueToday
+                    ? 'Check Misure Programmato per Oggi!'
+                    : scheduleState.isOverdue
+                    ? `Check in ritardo (${Math.abs(scheduleState.daysDiff)} gg fa)`
+                    : scheduleState.status === 'completed'
+                    ? 'Check completato regolarmente!'
+                    : `Prossimo check: ${scheduleState.nextCheckDate ? new Date(scheduleState.nextCheckDate).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Da definire'} (tra ${scheduleState.daysDiff} giorni)`}
                 </h3>
                 
-                <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
-                  {scheduleState.isOverdue
-                    ? 'Il tuo coach è in attesa dell\'aggiornamento delle misure e del peso per ottimizzare il tuo percorso.'
-                    : scheduleState.isDueToday
-                    ? 'Oggi è il momento ideale per rilevare il peso a digiuno e aggiornare le circonferenze corporee.'
+                <p className="text-xs text-[var(--color-text-muted)] max-w-xl leading-relaxed">
+                  {scheduleState.isDueToday
+                    ? 'È il momento di inserire peso, circonferenze e foto per monitorare i progressi con il tuo coach.'
+                    : scheduleState.isOverdue
+                    ? 'Non hai ancora inserito le misurazioni dell\'ultimo periodo. Bastano 2 minuti per rimettersi in pari!'
                     : scheduleState.status === 'completed'
-                    ? 'Hai completato con successo l\'ultimo check! I tuoi progressi sono stati registrati.'
+                    ? 'Ottimo lavoro! I tuoi dati sono stati registrati e sincronizzati.'
                     : 'Mantieni la costanza! Il sistema ti avviserà automaticamente quando sarà il momento di compilare il prossimo check.'}
                 </p>
               </div>
@@ -355,9 +352,7 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
                 className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer shrink-0 shadow-lg active:scale-95 ${
                   scheduleState.isOverdue
                     ? 'bg-rose-500 text-white hover:bg-rose-600 shadow-rose-500/30 animate-pulse'
-                    : scheduleState.isDueToday
-                    ? 'bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] shadow-[var(--color-primary)]/30'
-                    : 'bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] shadow-[var(--color-primary)]/20'
+                    : 'bg-[var(--color-primary)] text-slate-950 hover:bg-[var(--color-primary-hover)] shadow-[var(--color-primary)]/30'
                 }`}
               >
                 <Ruler className="w-4 h-4 stroke-[2.5]" />
@@ -374,24 +369,24 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
             </div>
 
             {/* Dettagli sintetici rituale (3 colonne compatte su mobile) */}
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/80 text-xs">
-              <div className="bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800/80 text-center sm:text-left">
-                <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase font-bold block truncate">Ultimo Check</span>
-                <span className="font-bold text-white text-[11px] sm:text-xs">
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[var(--color-border)] text-xs">
+              <div className="bg-[var(--color-surface-strong)] p-2 sm:p-2.5 rounded-xl border border-[var(--color-border)] text-center sm:text-left">
+                <span className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] uppercase font-bold block truncate">Ultimo Check</span>
+                <span className="font-bold text-[var(--color-text)] text-[11px] sm:text-xs">
                   {formatFriendlyDate(latestMetric?.date)}
                 </span>
               </div>
 
-              <div className="bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800/80 text-center sm:text-left">
-                <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase font-bold block truncate">Prossimo</span>
-                <span className="font-bold text-white text-[11px] sm:text-xs">
+              <div className="bg-[var(--color-surface-strong)] p-2 sm:p-2.5 rounded-xl border border-[var(--color-border)] text-center sm:text-left">
+                <span className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] uppercase font-bold block truncate">Prossimo</span>
+                <span className="font-bold text-[var(--color-text)] text-[11px] sm:text-xs">
                   {formatFriendlyDate(scheduleState.nextCheckDate)}
                 </span>
               </div>
 
-              <div className="bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-800/80 text-center sm:text-left">
-                <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase font-bold block truncate">Foto</span>
-                <span className="font-bold text-white text-[11px] sm:text-xs truncate block">
+              <div className="bg-[var(--color-surface-strong)] p-2 sm:p-2.5 rounded-xl border border-[var(--color-border)] text-center sm:text-left">
+                <span className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] uppercase font-bold block truncate">Foto</span>
+                <span className="font-bold text-[var(--color-text)] text-[11px] sm:text-xs truncate block">
                   {scheduleConfig?.photo_requirement === 'mandatory'
                     ? 'Richieste'
                     : scheduleConfig?.photo_requirement === 'optional'
@@ -410,18 +405,18 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
 
           {/* 3. Galleria Foto Progressi (Se presenti) */}
           {progressPhotos.length > 0 && (
-            <div className="p-4 sm:p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3.5 shadow-xl">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-purple-400" />
+            <div className="p-4 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] space-y-3.5 shadow-md">
+              <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+                <h4 className="text-xs sm:text-sm font-black text-[var(--color-text)] flex items-center gap-2">
+                  <Camera className="w-4 h-4 text-purple-500" />
                   Galleria Foto Progressi ({progressPhotos.length})
                 </h4>
-                <span className="text-[10px] text-slate-500">Confronto visivo</span>
+                <span className="text-[10px] text-[var(--color-text-muted)]">Confronto visivo</span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
                 {progressPhotos.map((photo) => (
-                  <div key={photo.id} className="relative rounded-2xl overflow-hidden aspect-[3/4] border border-slate-800 bg-slate-950 group">
+                  <div key={photo.id} className="relative rounded-2xl overflow-hidden aspect-[3/4] border border-[var(--color-border)] bg-[var(--color-surface-strong)] group">
                     <img
                       src={photo.image_url}
                       alt={`Foto ${photo.pose}`}
@@ -431,7 +426,7 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
                       <span className="text-[10px] font-black uppercase tracking-wider block text-[var(--color-primary)]">
                         {photo.pose === 'front' ? 'Frontale' : photo.pose === 'back' ? 'Posteriore' : 'Laterale'}
                       </span>
-                      <span className="text-[9px] text-slate-400 block">
+                      <span className="text-[9px] text-slate-300 block">
                         {new Date(photo.date).toLocaleDateString('it-IT')}
                       </span>
                     </div>
@@ -442,9 +437,9 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
           )}
 
           {/* 4. Storico Dettagliato dei Check */}
-          <div className="p-4 sm:p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3.5 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
+          <div className="p-4 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] space-y-3.5 shadow-md">
+            <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+              <h4 className="text-xs sm:text-sm font-black text-[var(--color-text)] flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-[var(--color-primary)]" />
                 Storico Misurazioni ({sortedMetrics.length})
               </h4>
@@ -459,9 +454,9 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
 
             {sortedMetrics.length === 0 ? (
               <div className="py-8 text-center space-y-2">
-                <Scale className="w-8 h-8 text-slate-600 mx-auto" />
-                <p className="text-xs sm:text-sm font-bold text-slate-400">Nessuna misurazione ancora registrata.</p>
-                <p className="text-[11px] text-slate-500">Clicca sul pulsante in alto per effettuare il tuo primo check.</p>
+                <Scale className="w-8 h-8 text-[var(--color-text-muted)] mx-auto" />
+                <p className="text-xs sm:text-sm font-bold text-[var(--color-text-muted)]">Nessuna misurazione ancora registrata.</p>
+                <p className="text-[11px] text-[var(--color-text-muted)]">Clicca sul pulsante in alto per effettuare il tuo primo check.</p>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -472,39 +467,45 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
                   return (
                     <div
                       key={m.id}
-                      className="bg-slate-950/70 border border-slate-800/80 p-3.5 sm:p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:border-slate-700 transition-colors"
+                      className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] p-3.5 sm:p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:border-[var(--color-primary)]/40 transition-colors"
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-black text-white text-xs sm:text-sm">
+                          <span className="font-black text-[var(--color-text)] text-xs sm:text-sm">
                             {new Date(m.date).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
                           </span>
+                          {idx === 0 && (
+                            <span className="text-[9px] font-black uppercase tracking-wider bg-[var(--color-primary)]/20 text-[var(--color-primary)] px-2 py-0.5 rounded-full border border-[var(--color-primary)]/30">
+                              Ultimo
+                            </span>
+                          )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] sm:text-xs text-slate-400">
-                          {m.waist_cm && <span>Vita: <strong className="text-white">{m.waist_cm} cm</strong></span>}
-                          {m.chest_cm && <span>Torace: <strong className="text-white">{m.chest_cm} cm</strong></span>}
-                          {m.hips_cm && <span>Fianchi: <strong className="text-white">{m.hips_cm} cm</strong></span>}
-                          {m.bicep_right_cm && <span>Braccio: <strong className="text-white">{m.bicep_right_cm} cm</strong></span>}
-                          {m.thigh_right_cm && <span>Coscia: <strong className="text-white">{m.thigh_right_cm} cm</strong></span>}
-                          {m.body_fat_percentage && <span>BF: <strong className="text-white">{m.body_fat_percentage}%</strong></span>}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--color-text-muted)]">
+                          {m.weight_kg && (
+                            <span className="font-bold text-[var(--color-text)]">
+                              Peso: <strong className="text-[var(--color-text)] font-mono">{m.weight_kg} kg</strong>
+                              {deltaW !== null && (
+                                <span className={`ml-1 text-[10px] font-bold ${deltaW <= 0 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                  ({deltaW > 0 ? `+${deltaW}` : deltaW} kg)
+                                </span>
+                              )}
+                            </span>
+                          )}
+                          {m.body_fat_percentage && (
+                            <span>
+                              Grasso: <strong className="text-[var(--color-text)] font-mono">{m.body_fat_percentage}%</strong>
+                            </span>
+                          )}
+                          {m.waist_cm && (
+                            <span>
+                              Vita: <strong className="text-[var(--color-text)] font-mono">{m.waist_cm} cm</strong>
+                            </span>
+                          )}
                         </div>
                         {m.notes && (
-                          <p className="text-[11px] text-slate-400 italic pt-0.5">
+                          <p className="text-[11px] text-[var(--color-text-muted)] italic line-clamp-1 mt-1">
                             "{m.notes}"
                           </p>
-                        )}
-                      </div>
-
-                      <div className="flex sm:flex-col items-baseline sm:items-end justify-between gap-1 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-800/50">
-                        <span className="text-base sm:text-xl font-black text-[var(--color-primary)] font-mono">
-                          {m.weight_kg ? `${m.weight_kg} kg` : '—'}
-                        </span>
-                        {deltaW !== null && (
-                          <span className={`text-[10px] font-bold ${
-                            deltaW <= 0 ? 'text-emerald-400' : 'text-amber-400'
-                          }`}>
-                            {deltaW > 0 ? `+${deltaW}` : deltaW} kg vs prec.
-                          </span>
                         )}
                       </div>
                     </div>
@@ -513,7 +514,6 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
               </div>
             )}
           </div>
-
         </div>
       )}
 
@@ -522,14 +522,14 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
         <div className="space-y-4 sm:space-y-6">
           {/* Switch interno: Piano Nutrizionale Attivo / Calcolatore Stima */}
           <div className="flex justify-center">
-            <div className="inline-flex bg-slate-950 p-1 rounded-2xl border border-slate-800 gap-1 text-xs shadow-md">
+            <div className="inline-flex bg-[var(--color-surface-strong)] p-1 rounded-2xl border border-[var(--color-border)] gap-1 text-xs shadow-sm">
               <button
                 type="button"
                 onClick={() => setNutritionSubView('piano')}
                 className={`px-3.5 sm:px-5 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-2 ${
                   nutritionSubView === 'piano'
                     ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                    : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
                 }`}
               >
                 <Flame className="w-4 h-4" />
@@ -542,7 +542,7 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
                 className={`px-3.5 sm:px-5 py-2 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-2 ${
                   nutritionSubView === 'stima'
                     ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                    : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
                 }`}
               >
                 <Scale className="w-4 h-4" />

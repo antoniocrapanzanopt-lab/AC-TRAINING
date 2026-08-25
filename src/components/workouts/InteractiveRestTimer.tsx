@@ -72,7 +72,7 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
   const strokeDashoffset = circumference - progressPercent * circumference;
 
   return (
-    <div className="sticky top-0 z-30 bg-slate-950/95 backdrop-blur-2xl border-b border-[var(--color-primary)]/40 p-3 sm:p-4 shadow-[0_10px_35px_rgba(0,0,0,0.85)] animate-in slide-in-from-top-2 duration-200">
+    <div className="sticky top-0 z-30 bg-[var(--color-surface)]/95 backdrop-blur-2xl border-b border-[var(--color-primary)]/40 p-3 sm:p-4 shadow-md animate-in slide-in-from-top-2 duration-200">
       <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
         
         {/* Sinistra: SVG Progress Ring + Cifre Grandi */}
@@ -84,7 +84,7 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
                 cx="26"
                 cy="26"
                 r={radius}
-                className="stroke-slate-800"
+                className="stroke-[var(--color-border)]"
                 strokeWidth="4"
                 fill="transparent"
               />
@@ -115,17 +115,17 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
               <button
                 type="button"
                 onClick={toggleAudio}
-                className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer transition-colors"
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] p-0.5 rounded cursor-pointer transition-colors"
                 title={isAudioEnabled ? 'Audio countdown attivo' : 'Audio disattivato'}
               >
                 {isAudioEnabled ? (
                   <Volume2 className="w-3.5 h-3.5 text-[var(--color-primary)]" />
                 ) : (
-                  <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+                  <VolumeX className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
                 )}
               </button>
             </div>
-            <p className="text-xl sm:text-2xl font-black font-mono text-white tracking-tight leading-tight">
+            <p className="text-xl sm:text-2xl font-black font-mono text-[var(--color-text)] tracking-tight leading-tight">
               {formatTime(remainingSeconds)}
             </p>
           </div>
@@ -137,7 +137,7 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
             type="button"
             onClick={() => onAddTime(-15)}
             disabled={remainingSeconds <= 15}
-            className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white text-xs font-bold border border-slate-800 transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer flex items-center gap-0.5 active:scale-95 shadow-sm"
+            className="px-2.5 py-1.5 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] text-[var(--color-text)] text-xs font-bold border border-[var(--color-border)] transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer flex items-center gap-0.5 active:scale-95 shadow-sm"
             title="Riduci di 15 secondi"
           >
             <Minus className="w-3 h-3" />
@@ -147,7 +147,7 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
           <button
             type="button"
             onClick={() => onAddTime(30)}
-            className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-[var(--color-primary)] hover:text-white text-xs font-bold border border-slate-800 hover:border-[var(--color-primary)]/40 transition-all cursor-pointer flex items-center gap-0.5 active:scale-95 shadow-sm"
+            className="px-2.5 py-1.5 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] text-[var(--color-primary)] text-xs font-bold border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 transition-all cursor-pointer flex items-center gap-0.5 active:scale-95 shadow-sm"
             title="Aggiungi 30 secondi"
           >
             <Plus className="w-3 h-3" />

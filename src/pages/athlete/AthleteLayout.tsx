@@ -8,12 +8,14 @@ import {
   User,
   Scale,
   MessageCircle,
+  Settings,
 } from 'lucide-react';
 import { AthleteDashboard } from './AthleteDashboard';
 import { WorkoutPlayer } from './WorkoutPlayer';
 import { AthleteChat } from './AthleteChat';
 import { AthleteProgressView } from './AthleteProgressView';
 import { AthleteProfileView } from './AthleteProfileView';
+import { AthleteSettingsView } from './AthleteSettingsView';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { AthleteMetric } from '../../types/metrics';
 import { getActiveWorkoutDraft } from '../../lib/offline/offlineWorkoutStorage';
@@ -25,7 +27,7 @@ export const AthleteLayout: React.FC = () => {
   const { messages } = useMessages();
   const { metrics, getAthleteScheduleState } = useMetrics();
 
-  const [activeTab, setActiveTab] = useState<'home' | 'progress' | 'messages' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'progress' | 'messages' | 'profile' | 'settings'>('home');
   const [activeWorkout, setActiveWorkout] = useState<{
     workout: WorkoutTemplate;
     exercises: WorkoutExercise[];
@@ -86,7 +88,7 @@ export const AthleteLayout: React.FC = () => {
   }
 
   const navItems: {
-    id: 'home' | 'progress' | 'messages' | 'profile';
+    id: 'home' | 'progress' | 'messages' | 'profile' | 'settings';
     label: string;
     icon: React.FC<{ className?: string }>;
     accentColor: string;
@@ -121,28 +123,34 @@ export const AthleteLayout: React.FC = () => {
       accentColor: 'text-[var(--color-primary)]',
       hasAlertDot: hasProfileAlert,
     },
+    {
+      id: 'settings',
+      label: 'Impostazioni',
+      icon: Settings,
+      accentColor: 'text-amber-400',
+    },
   ];
 
   return (
-    <div className="min-h-[100dvh] bg-slate-950 text-white flex flex-col font-sans relative overflow-x-hidden select-none touch-manipulation">
+    <div className="min-h-[100dvh] bg-[var(--color-bg)] text-[var(--color-text)] flex flex-col font-sans relative overflow-x-hidden select-none touch-manipulation transition-colors duration-200">
       {/* ─── GLOW AMBIENTALE DI SFONDO COORDINATO ─── */}
       <div className="absolute top-0 right-1/4 w-[500px] h-[250px] bg-[var(--color-primary)]/10 rounded-full blur-[100px] pointer-events-none" />
 
-      {/* ─── TOP APP BAR ATLETA ─── */}
-      <header className="sticky top-0 z-30 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-6 py-3 flex items-center justify-between shadow-lg">
+      {/* ─── TOP APP BAR ATLETA CON SUPPORTO SAFE AREA NOTCH / DYNAMIC ISLAND iOS ─── */}
+      <header className="sticky top-0 z-30 bg-[var(--color-surface)]/85 backdrop-blur-xl border-b border-[var(--color-border)] px-4 sm:px-6 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-3 flex items-center justify-between shadow-md transition-colors duration-200">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-full bg-slate-950 border-2 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/25 shrink-0 flex items-center justify-center relative overflow-hidden">
+          <div className="w-12 h-12 rounded-full bg-[var(--color-surface)] border-2 border-[var(--color-primary)] shadow-md shrink-0 flex items-center justify-center relative overflow-hidden">
             <img src="/ac-logo-transparent.png" alt="AC" className="w-full h-full object-contain scale-115" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <h1 className="font-black text-lg tracking-tight text-white">AC</h1>
+              <h1 className="font-black text-lg tracking-tight text-[var(--color-text)]">AC</h1>
               <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
                 App
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <p className="text-[10px] text-[var(--color-text-muted)] font-medium flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               {currentAthlete?.fullName || user?.name || user?.email || 'Portale Atleta'}
             </p>
           </div>
@@ -153,7 +161,7 @@ export const AthleteLayout: React.FC = () => {
           <button
             type="button"
             onClick={logout}
-            className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-900 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-800"
+            className="p-2 text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-[var(--color-surface-strong)] rounded-xl transition-all cursor-pointer border border-transparent hover:border-[var(--color-border)]"
             title="Esci dal portale"
           >
             <LogOut className="w-4 h-4" />
@@ -162,7 +170,7 @@ export const AthleteLayout: React.FC = () => {
       </header>
 
       {/* ─── CONTENUTO PRINCIPALE TAB ─── */}
-      <main className="flex-1 max-w-2xl w-full mx-auto p-4 sm:p-6 pb-28">
+      <main className="flex-1 max-w-2xl w-full mx-auto p-4 sm:p-6 pb-[calc(7rem+env(safe-area-inset-bottom,0px))]">
         {activeTab === 'home' && (
           <AthleteDashboard
             onStartWorkout={(workout, exercises, targetAthleteId) => {
@@ -176,11 +184,13 @@ export const AthleteLayout: React.FC = () => {
         {activeTab === 'messages' && <AthleteChat />}
 
         {activeTab === 'profile' && <AthleteProfileView />}
+
+        {activeTab === 'settings' && <AthleteSettingsView />}
       </main>
 
-      {/* ─── FLOATING DYNAMIC ISLAND NAVBAR CON BADGE DI NOTIFICA IN-APP ─── */}
-      <div className="fixed bottom-3 inset-x-0 z-40 px-3 sm:px-4 flex items-center justify-center pointer-events-none">
-        <nav className="w-full max-w-md bg-slate-950/90 backdrop-blur-2xl border border-slate-800/90 p-1.5 rounded-[26px] flex items-center justify-between gap-1 shadow-[0_12px_40px_rgba(0,0,0,0.85)] pointer-events-auto">
+      {/* ─── FLOATING DYNAMIC ISLAND NAVBAR CON BADGE DI NOTIFICA IN-APP & SAFE AREA ─── */}
+      <div className="fixed bottom-[max(0.75rem,calc(env(safe-area-inset-bottom,0px)+0.5rem))] inset-x-0 z-40 px-3 sm:px-4 flex items-center justify-center pointer-events-none">
+        <nav className="w-full max-w-lg bg-[var(--color-surface)]/95 backdrop-blur-2xl border border-[var(--color-border)] p-1.5 rounded-[28px] grid grid-cols-5 gap-1 shadow-[0_12px_40px_rgba(0,0,0,0.15)] pointer-events-auto transition-colors duration-200">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -190,22 +200,22 @@ export const AthleteLayout: React.FC = () => {
                 key={item.id}
                 type="button"
                 onClick={() => setActiveTab(item.id)}
-                className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 sm:px-2.5 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 min-h-[46px] relative ${
+                className={`flex flex-col items-center justify-center py-2 px-1 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 min-h-[50px] relative ${
                   isActive
-                    ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-lg shadow-[var(--color-primary)]/30'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900/80 font-semibold'
+                    ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
+                    : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] font-semibold'
                 }`}
               >
-                <div className="relative flex items-center justify-center">
+                <div className="relative flex items-center justify-center mb-0.5">
                   <Icon className={`w-4 h-4 shrink-0 transition-transform ${isActive ? 'stroke-[2.5] scale-110' : item.accentColor}`} />
                   
                   {/* Badge Numerico Messaggi Non Letti */}
                   {Boolean(item.badgeCount && item.badgeCount > 0) && (
                     <span
-                      className={`absolute -top-1.5 -right-2 min-w-[16px] h-[16px] px-1 rounded-full text-[9px] font-black flex items-center justify-center shadow-lg border border-slate-950 animate-pulse ${
+                      className={`absolute -top-1.5 -right-2.5 min-w-[16px] h-[16px] px-1 rounded-full text-[9px] font-black flex items-center justify-center shadow-md border ${
                         isActive
-                          ? 'bg-slate-950 text-[var(--color-primary)]'
-                          : 'bg-rose-500 text-white shadow-rose-500/50'
+                          ? 'bg-slate-950 text-[var(--color-primary)] border-[var(--color-primary)]'
+                          : 'bg-rose-500 text-white border-[var(--color-surface)]'
                       }`}
                     >
                       {item.badgeCount! > 9 ? '9+' : item.badgeCount}
@@ -215,14 +225,16 @@ export const AthleteLayout: React.FC = () => {
                   {/* Dot di Alert per Bozza Attiva, Profilo o Check in scadenza */}
                   {Boolean(item.hasAlertDot && (!item.badgeCount || item.badgeCount === 0)) && (
                     <span
-                      className={`absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full border border-slate-950 animate-pulse ${
-                        isActive ? 'bg-slate-950' : 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]'
+                      className={`absolute -top-0.5 -right-1 w-2 h-2 rounded-full ring-2 ${
+                        isActive
+                          ? 'bg-slate-950 ring-[var(--color-primary)]'
+                          : 'bg-amber-500 ring-[var(--color-surface)]'
                       }`}
                     />
                   )}
                 </div>
 
-                <span className="whitespace-nowrap leading-tight text-[11px] sm:text-xs">{item.label}</span>
+                <span className="leading-tight text-[10px] sm:text-[11px] truncate max-w-full text-center">{item.label}</span>
               </button>
             );
           })}

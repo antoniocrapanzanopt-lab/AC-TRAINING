@@ -97,6 +97,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   // STORICO SESSIONI PRECEDENTI (GHOST LOG)
   const [previousHistoryMap, setPreviousHistoryMap] = useState<Record<string, PreviousExerciseHistory>>({});
+  const [isHistoryBannerDismissed, setIsHistoryBannerDismissed] = useState<boolean>(false);
 
   // CELEBRATION SCREEN STATE
   const [celebrationData, setCelebrationData] = useState<{
@@ -281,6 +282,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     });
 
     if (appliedCount > 0) {
+      setIsHistoryBannerDismissed(true);
       showSuccess('Carichi applicati', `Pre-compilati i carichi precedenti per ${appliedCount} esercizio/i!`);
     } else {
       showSuccess('Nessun dato precedente', 'Non sono presenti sessioni registrate per gli esercizi di oggi.');
@@ -754,8 +756,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
   return (
     <div className="fixed inset-0 bg-[var(--color-bg)] z-50 flex flex-col font-sans overflow-hidden">
-      {/* ── HEADER LIVE CON STATO OFFLINE & SYNC DISCRETO ── */}
-      <div className="bg-[var(--color-panel)]/90 backdrop-blur-xl border-b border-[var(--color-panel-border)]/60 p-3.5 sm:p-4 flex items-center justify-between shadow-lg relative z-20">
+      {/* ── HEADER LIVE CON STATO OFFLINE & SYNC DISCRETO CON SUPPORTO SAFE AREA iOS ── */}
+      <div className="bg-[var(--color-surface)]/95 backdrop-blur-xl border-b border-[var(--color-border)] px-3.5 sm:px-4 pt-[calc(0.875rem+env(safe-area-inset-top,0px))] pb-3.5 sm:pb-4 flex items-center justify-between shadow-md relative z-20">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -763,30 +765,30 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               flushAutosave();
               onClose();
             }}
-            className="p-2 -ml-1.5 text-slate-400 hover:text-white rounded-full bg-slate-800/50 cursor-pointer"
+            className="p-2 -ml-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text)] rounded-full bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] transition-colors cursor-pointer"
             title="Chiudi sessione"
           >
             <X className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-sm font-bold text-white line-clamp-1 leading-tight">{workout.title}</h1>
+            <h1 className="text-sm font-black text-[var(--color-text)] line-clamp-1 leading-tight">{workout.title}</h1>
             <div className="flex items-center gap-2 text-xs font-mono text-[var(--color-primary)]">
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1 font-bold">
                 <Clock className="w-3 h-3" />
                 {formatTime(elapsedTime)}
               </span>
 
               {/* STATO SYNC / OFFLINE DISCRETO */}
-              <span className="text-[10px] text-slate-400 font-sans flex items-center gap-1 border-l border-slate-800 pl-2">
+              <span className="text-[10px] text-[var(--color-text-muted)] font-sans flex items-center gap-1 border-l border-[var(--color-border)] pl-2">
                 {isOnline ? (
-                  <span className="flex items-center gap-1 text-emerald-400" title={lastSavedText}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="flex items-center gap-1 text-emerald-600 font-bold" title={lastSavedText}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="hidden sm:inline">{lastSavedText}</span>
                     <span className="sm:hidden">Salvato</span>
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-amber-400 font-bold">
-                    <WifiOff className="w-3 h-3 text-amber-400" />
+                  <span className="flex items-center gap-1 text-amber-600 font-bold">
+                    <WifiOff className="w-3 h-3 text-amber-600" />
                     <span>Offline (Dati al sicuro)</span>
                   </span>
                 )}
@@ -799,10 +801,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           type="button"
           onClick={handleOpenFinishFlow}
           disabled={isSaving}
-          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer shrink-0"
+          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer shrink-0"
         >
           {isSaving ? (
-            <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
           ) : (
             <Check className="w-4 h-4 stroke-[3]" />
           )}
@@ -821,26 +823,37 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       )}
 
       {/* QUICK ACTIONS BANNER: APPLICA TUTTI I CARICHI PRECEDENTI */}
-      {hasAnyPreviousHistory && (
-        <div className="bg-gradient-to-r from-blue-950/60 via-slate-900 to-slate-950 border-b border-blue-500/30 px-4 py-2.5 flex items-center justify-between gap-3 text-xs shadow-md shrink-0">
-          <div className="flex items-center gap-2 text-blue-300 font-bold min-w-0">
-            <History className="w-4 h-4 text-blue-400 shrink-0" />
+      {hasAnyPreviousHistory && !isHistoryBannerDismissed && (
+        <div className="bg-[var(--color-surface-strong)] border-b border-[var(--color-border)] px-4 py-2 flex items-center justify-between gap-2.5 text-xs shadow-sm shrink-0 transition-all animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 text-sky-600 font-bold min-w-0">
+            <History className="w-4 h-4 text-sky-600 shrink-0" />
             <span className="truncate">Storico carichi precedenti disponibile</span>
           </div>
-          <button
-            type="button"
-            onClick={handleApplyAllPreviousLoads}
-            className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-200 hover:text-white border border-blue-500/40 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 transition-all active:scale-95 cursor-pointer shadow-sm"
-            title="Pre-compila automaticamente i carichi dell'ultima volta su tutti gli esercizi di oggi"
-          >
-            <Zap className="w-3.5 h-3.5 fill-current text-blue-400" />
-            <span>Pre-compila tutti i carichi</span>
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={handleApplyAllPreviousLoads}
+              className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-700 hover:text-sky-800 border border-sky-500/40 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 transition-all active:scale-95 cursor-pointer shadow-sm"
+              title="Pre-compila automaticamente i carichi dell'ultima volta su tutti gli esercizi di oggi"
+            >
+              <Zap className="w-3.5 h-3.5 fill-current text-sky-600" />
+              <span>Pre-compila tutti i carichi</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsHistoryBannerDismissed(true)}
+              className="p-1.5 rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-panel)] transition-all cursor-pointer"
+              title="Nascondi questo avviso"
+              aria-label="Chiudi avviso storico carichi"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
       {/* SCROLLABLE EXERCISES LIST */}
-      <div className="flex-1 overflow-y-auto p-4 pb-32 space-y-4 bg-slate-950">
+      <div className="flex-1 overflow-y-auto p-4 pb-32 space-y-4 bg-[var(--color-bg)]">
         {activeExercises.map((ex, idx) => {
           const isExpanded = Boolean(expandedExerciseMap[idx]);
           const isCompleted = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
@@ -898,13 +911,13 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
         return (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="text-center space-y-1">
                 <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] mx-auto shadow-md">
                   <Sparkles className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-black text-white">Com'è andato l'allenamento?</h3>
-                <p className="text-xs text-slate-400">
+                <h3 className="text-lg font-black text-[var(--color-text)]">Com'è andato l'allenamento?</h3>
+                <p className="text-xs text-[var(--color-text-muted)]">
                   Aiuta il coach e l'IA a regolare i carichi e il recupero per la prossima sessione.
                 </p>
               </div>
@@ -912,7 +925,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               {/* Avviso Serie / Carichi Non Registrati o Parziali */}
               {hasMissingData && (
                 <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-1.5 text-xs animate-in fade-in">
-                  <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                  <div className="flex items-center gap-1.5 text-amber-600 font-bold">
                     <Info className="w-4 h-4 shrink-0" />
                     <span>
                       {isCompletelyEmpty
@@ -920,7 +933,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                         : `Compilazione incompleta (${setsWithWeightAndReps}/${totalSetsPlanned} serie registrate)`}
                     </span>
                   </div>
-                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                  <p className="text-[var(--color-text)] text-[11px] leading-relaxed">
                     {isCompletelyEmpty
                       ? 'Non hai inserito i carichi usati oggi. Inserire i pesi e le ripetizioni aiuta il tuo coach a monitorare i tuoi progressi!'
                       : `Hai lasciato ${emptyExercisesCount > 0 ? `${emptyExercisesCount} esercizio/i` : 'alcune serie'} senza carichi o ripetizioni. Completa tutti gli esercizi per consentire al coach di tracciare l'andamento reale!`}
@@ -931,8 +944,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             {/* Fatica Percepita */}
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-bold">
-                <span className="text-slate-300">Fatica complessiva (RPE):</span>
-                <span className="text-[var(--color-primary)] font-mono">{difficulty} / 5</span>
+                <span className="text-[var(--color-text)]">Fatica complessiva (RPE):</span>
+                <span className="text-[var(--color-primary)] font-mono font-bold">{difficulty} / 5</span>
               </div>
               <div className="grid grid-cols-5 gap-1.5">
                 {[1, 2, 3, 4, 5].map((val) => (
@@ -940,10 +953,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                     key={val}
                     type="button"
                     onClick={() => setDifficulty(val)}
-                    className={`py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                    className={`py-2.5 rounded-xl font-black text-xs border transition-all cursor-pointer ${
                       difficulty === val
                         ? 'bg-[var(--color-primary)] text-slate-950 border-[var(--color-primary)] shadow-md scale-105'
-                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                        : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:text-[var(--color-text)]'
                     }`}
                   >
                     {val}
@@ -955,11 +968,11 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             {/* Dolori Articolari / Fastidi */}
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-bold">
-                <span className="text-slate-300 flex items-center gap-1">
-                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                <span className="text-[var(--color-text)] flex items-center gap-1">
+                  <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
                   Dolori o fastidi articolari:
                 </span>
-                <span className={`font-mono ${jointPain >= 3 ? 'text-rose-400' : 'text-slate-400'}`}>
+                <span className={`font-mono font-bold ${jointPain >= 3 ? 'text-rose-500' : 'text-[var(--color-text-muted)]'}`}>
                   {jointPain} / 5
                 </span>
               </div>
@@ -969,12 +982,12 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                     key={val}
                     type="button"
                     onClick={() => setJointPain(val)}
-                    className={`py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                    className={`py-2.5 rounded-xl font-black text-xs border transition-all cursor-pointer ${
                       jointPain === val
                         ? val >= 3
                           ? 'bg-rose-500 text-white border-rose-400 shadow-md scale-105'
-                          : 'bg-emerald-500 text-black border-emerald-400 shadow-md scale-105'
-                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                          : 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md scale-105'
+                        : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:text-[var(--color-text)]'
                     }`}
                   >
                     {val}
@@ -987,14 +1000,14 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             {jointPain >= 2 && (
               <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl space-y-3 animate-in fade-in duration-150">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-rose-500">
                     <ShieldAlert className="w-3.5 h-3.5" />
                     <span>Dettaglio Fastidi Articolari ({painReports.length})</span>
                   </div>
                   <button
                     type="button"
                     onClick={handleAddPainReport}
-                    className="px-2.5 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[11px] font-bold border border-rose-500/40 flex items-center gap-1 transition-all cursor-pointer active:scale-95 shadow-sm"
+                    className="px-2.5 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-600 text-[11px] font-bold border border-rose-500/40 flex items-center gap-1 transition-all cursor-pointer active:scale-95 shadow-sm"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>+ Aggiungi esercizio</span>
@@ -1005,17 +1018,17 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                   {painReports.map((report, rIdx) => (
                     <div
                       key={report.id}
-                      className="p-3 bg-slate-950/80 border border-rose-500/30 rounded-xl space-y-2 relative group"
+                      className="p-3 bg-[var(--color-surface)] border border-rose-500/30 rounded-xl space-y-2 relative group"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-rose-300">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-rose-500">
                           Esercizio #{rIdx + 1}
                         </span>
                         {painReports.length > 1 && (
                           <button
                             type="button"
                             onClick={() => handleRemovePainReport(report.id)}
-                            className="text-slate-500 hover:text-rose-400 p-1 rounded-lg transition-colors cursor-pointer"
+                            className="text-[var(--color-text-muted)] hover:text-rose-500 p-1 rounded-lg transition-colors cursor-pointer"
                             title="Rimuovi questo esercizio"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1025,13 +1038,13 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
                       {/* Dropdown Esercizio */}
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block">
                           Su quale esercizio?
                         </label>
                         <select
                           value={report.exercise}
                           onChange={(e) => handleUpdatePainReport(report.id, 'exercise', e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-rose-500/40 text-white text-xs focus:outline-none focus:border-rose-400 cursor-pointer"
+                          className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface-strong)] border border-rose-500/40 text-[var(--color-text)] text-xs focus:outline-none focus:border-rose-500 cursor-pointer"
                         >
                           <option value="">-- Seleziona esercizio --</option>
                           {activeExercises.map((ex) => (
@@ -1045,7 +1058,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
                       {/* Input Zona / Articolazione */}
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        <label className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider block">
                           Dove hai sentito fastidio?
                         </label>
                         <input
@@ -1053,7 +1066,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                           value={report.bodyPart}
                           onChange={(e) => handleUpdatePainReport(report.id, 'bodyPart', e.target.value)}
                           placeholder="Es: spalla anteriore destra, gomito interno..."
-                          className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-rose-500/40 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-rose-400"
+                          className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface-strong)] border border-rose-500/40 text-[var(--color-text)] text-xs placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-rose-500"
                         />
                         {/* Chip Rapidi */}
                         <div className="flex flex-wrap gap-1 pt-0.5">
@@ -1069,7 +1082,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                                   cur ? `${cur}, ${chip}` : chip
                                 );
                               }}
-                              className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold hover:bg-rose-500/30 cursor-pointer"
+                              className="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-600 text-[10px] font-bold hover:bg-rose-500/30 cursor-pointer"
                             >
                               +{chip}
                             </button>
@@ -1085,8 +1098,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             {/* Pump Muscolare */}
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-bold">
-                <span className="text-slate-300">Pump muscolare & attivazione:</span>
-                <span className="text-sky-400 font-mono">{pump} / 5</span>
+                <span className="text-[var(--color-text)]">Pump muscolare & attivazione:</span>
+                <span className="text-sky-600 font-mono font-bold">{pump} / 5</span>
               </div>
               <div className="grid grid-cols-5 gap-1.5">
                 {[1, 2, 3, 4, 5].map((val) => (
@@ -1094,10 +1107,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                     key={val}
                     type="button"
                     onClick={() => setPump(val)}
-                    className={`py-2.5 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+                    className={`py-2.5 rounded-xl font-black text-xs border transition-all cursor-pointer ${
                       pump === val
-                        ? 'bg-sky-500 text-black border-sky-400 shadow-md scale-105'
-                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                        ? 'bg-sky-500 text-slate-950 border-sky-400 shadow-md scale-105'
+                        : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:text-[var(--color-text)]'
                     }`}
                   >
                     {val}
@@ -1111,7 +1124,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               <button
                 type="button"
                 onClick={() => setShowQuestionnaireModal(false)}
-                className="flex-1 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                className="flex-1 py-3 rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] font-bold text-xs border border-[var(--color-border)] transition-colors cursor-pointer"
               >
                 Torna alla scheda
               </button>
@@ -1119,10 +1132,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                 type="button"
                 onClick={executeWorkoutSave}
                 disabled={isSaving}
-                className="flex-1 py-3 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-black text-xs transition-all shadow-lg cursor-pointer flex items-center justify-center gap-2"
+                className="flex-1 py-3 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
               >
                 {isSaving ? (
-                  <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
                 ) : (
                   <Check className="w-4 h-4 stroke-[3]" />
                 )}

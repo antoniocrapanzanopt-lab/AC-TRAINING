@@ -273,7 +273,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
           {text && <p className="whitespace-pre-wrap break-words leading-relaxed">{text}</p>}
           {fileDataUrl && (
             <SecureChatAttachment
-              type="file"
+            type="file"
               pathOrUrl={fileDataUrl}
               fileName={fileName || 'Documento Allegato'}
               isMine={isMineMsg}
@@ -287,16 +287,16 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-100 font-sans relative overflow-hidden">
+    <div className="flex flex-col h-full bg-[var(--color-bg)] text-[var(--color-text)] font-sans relative overflow-hidden">
       
       {/* ─── HEADER CHAT SATINATO & ELEGANTE ─── */}
-      <div className="bg-slate-950/90 backdrop-blur-2xl border-b border-slate-800/80 px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-md shadow-black/40 shrink-0">
+      <div className="bg-[var(--color-surface)]/90 backdrop-blur-2xl border-b border-[var(--color-border)] px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm shrink-0">
         <div className="flex items-center gap-3">
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-850 rounded-2xl transition-all active:scale-95 cursor-pointer"
+              className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] rounded-2xl transition-all active:scale-95 cursor-pointer"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -308,49 +308,49 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-950"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-[var(--color-surface)]"></span>
             </span>
           </div>
 
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-white font-black text-sm sm:text-base tracking-tight">
+              <h2 className="text-[var(--color-text)] font-black text-sm sm:text-base tracking-tight">
                 Il Tuo Coach
               </h2>
               <span className="px-2 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 text-[9px] font-black uppercase tracking-wider">
                 Coach Ufficiale
               </span>
             </div>
-            <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <p className="text-[11px] text-emerald-500 font-medium flex items-center gap-1 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Online • Supporto Diretto
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-slate-900/80 border border-slate-800 text-[10px] font-bold text-slate-400">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-[10px] font-bold text-[var(--color-text-muted)]">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
           <span>Chat Protetta</span>
         </div>
       </div>
 
-      {/* ─── AREA MESSAGGI (STILE IPHONE / WHATSAPP DARK) ─── */}
+      {/* ─── AREA MESSAGGI (STILE IPHONE / WHATSAPP ADATTIVO) ─── */}
       <div
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 custom-scrollbar bg-slate-950"
+        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 custom-scrollbar bg-[var(--color-bg)]"
       >
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500 text-xs">
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--color-text-muted)] text-xs">
             <div className="w-7 h-7 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"></div>
-            <span className="font-bold text-slate-400">Caricamento conversazione...</span>
+            <span className="font-bold text-[var(--color-text-muted)]">Caricamento conversazione...</span>
           </div>
         ) : athleteMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8 max-w-sm mx-auto space-y-3 animate-in fade-in">
-            <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-[var(--color-primary)] shadow-lg">
+            <div className="w-14 h-14 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-primary)] shadow-md">
               <MessageSquare className="w-7 h-7" />
             </div>
-            <h3 className="text-sm sm:text-base font-black text-white">Canale Diretto con il Coach</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <h3 className="text-sm sm:text-base font-black text-[var(--color-text)]">Canale Diretto con il Coach</h3>
+            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
               Scrivi un messaggio o allega una foto/video per chiarimenti, consigli o aggiornamenti sulla scheda.
             </p>
           </div>
@@ -367,7 +367,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
               <React.Fragment key={msg.id}>
                 {showDate && (
                   <div className="flex justify-center my-3">
-                    <span className="px-3.5 py-1 rounded-full bg-slate-900/90 border border-slate-800/90 text-[10px] font-bold text-slate-400 uppercase tracking-widest shadow-sm">
+                    <span className="px-3.5 py-1 rounded-full bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-widest shadow-sm">
                       {new Date(msg.created_at).toLocaleDateString('it-IT', {
                         weekday: 'short',
                         day: '2-digit',
@@ -382,11 +382,11 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                     
                     {/* Pulsanti Modifica / Elimina per l'ultimo messaggio dell'atleta */}
                     {isMine && isEditableAndDeletable && (
-                      <div className="opacity-0 group-hover/msg:opacity-100 flex items-center gap-1 transition-all bg-slate-900 border border-slate-800 p-1 rounded-2xl shadow-lg mb-1">
+                      <div className="opacity-0 group-hover/msg:opacity-100 flex items-center gap-1 transition-all bg-[var(--color-surface-strong)] border border-[var(--color-border)] p-1 rounded-2xl shadow-lg mb-1">
                         <button
                           type="button"
                           onClick={() => handleStartEdit(msg.id, msg.content)}
-                          className="p-1.5 text-slate-400 hover:text-[var(--color-primary)] hover:bg-slate-850 rounded-xl transition-colors cursor-pointer"
+                          className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-panel)] rounded-xl transition-colors cursor-pointer"
                           title="Modifica ultimo messaggio"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -394,7 +394,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                         <button
                           type="button"
                           onClick={() => deleteMessage(msg.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-850 rounded-xl transition-colors cursor-pointer"
+                          className="p-1.5 text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-[var(--color-panel)] rounded-xl transition-colors cursor-pointer"
                           title="Elimina ultimo messaggio"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -407,7 +407,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                       className={`px-4 py-2.5 rounded-2xl text-sm shadow-md transition-all relative flex flex-col ${
                         isMine
                           ? 'bg-gradient-to-r from-[var(--color-primary)] to-amber-400 text-slate-950 font-semibold rounded-br-xs shadow-[var(--color-primary)]/15'
-                          : 'bg-slate-900 text-slate-100 border border-slate-800/90 rounded-bl-xs'
+                          : 'bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] rounded-bl-xs'
                       }`}
                     >
                       <div className="leading-relaxed pr-1">
@@ -417,7 +417,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
                       {/* Footer Bolla: Orario + Spunta integrati */}
                       <div
                         className={`flex items-center justify-end gap-1 text-[10px] font-bold mt-1 self-end ${
-                          isMine ? 'text-slate-950/70' : 'text-slate-500'
+                          isMine ? 'text-slate-950/70' : 'text-[var(--color-text-muted)]'
                         }`}
                       >
                         <span>
@@ -446,7 +446,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
 
         {/* Typing Indicator Coach */}
         {isCoachTyping && (
-          <div className="flex items-center gap-2 text-xs text-slate-400 animate-pulse bg-slate-900 px-4 py-2 rounded-2xl w-fit border border-slate-800">
+          <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] animate-pulse bg-[var(--color-surface-strong)] px-4 py-2 rounded-2xl w-fit border border-[var(--color-border)]">
             <div className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-bounce" />
             <div className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-bounce [animation-delay:0.2s]" />
             <div className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-bounce [animation-delay:0.4s]" />
@@ -459,51 +459,47 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
 
       {/* ─── ANTEPRIMA ALLEGATO IN CODA ─── */}
       {attachment && (
-        <div className="px-4 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-2 shrink-0">
-          <div className="flex items-center gap-3 overflow-hidden">
-            {attachment.type === 'image' ? (
-              <img
-                src={attachment.previewUrl}
-                alt="Anteprima"
-                className="w-10 h-10 object-cover rounded-xl border border-slate-700"
-              />
-            ) : attachment.type === 'video' ? (
-              <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-300">
-                <Video className="w-5 h-5 text-[var(--color-primary)]" />
-              </div>
-            ) : (
-              <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center text-slate-300">
-                <Paperclip className="w-5 h-5 text-[var(--color-primary)]" />
+        <div className="p-3 bg-[var(--color-surface-strong)] border-t border-[var(--color-border)] flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {attachment.type === 'image' && (
+              <img src={attachment.previewUrl} alt="Preview" className="w-10 h-10 object-cover rounded-xl border border-[var(--color-border)]" />
+            )}
+            {attachment.type === 'video' && (
+              <div className="w-10 h-10 bg-purple-950/40 border border-purple-800 text-purple-400 flex items-center justify-center rounded-xl">
+                <Video className="w-5 h-5" />
               </div>
             )}
-            <div className="text-xs truncate">
-              <p className="text-white font-medium truncate">{attachment.file.name}</p>
-              <p className="text-slate-400 text-[10px]">
-                {(attachment.file.size / 1024 / 1024).toFixed(2)} MB
-              </p>
+            {attachment.type === 'file' && (
+              <div className="w-10 h-10 bg-blue-950/40 border border-blue-800 text-blue-400 flex items-center justify-center rounded-xl">
+                <Paperclip className="w-5 h-5" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-[var(--color-text)] truncate block">{attachment.file.name}</span>
+              <span className="text-[10px] text-[var(--color-text-muted)]">{(attachment.file.size / 1024).toFixed(1)} KB</span>
             </div>
           </div>
           <button
             type="button"
             onClick={handleRemoveAttachment}
-            className="p-1.5 text-slate-400 hover:text-rose-400 rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 text-[var(--color-text-muted)] hover:text-rose-500 rounded-xl cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* ─── BANNER MODALITÀ MODIFICA ─── */}
+      {/* Barra Notifica Modifica Attiva */}
       {editingMessageId && (
-        <div className="px-4 py-2 bg-[var(--color-primary)]/15 border-t border-[var(--color-primary)]/30 flex items-center justify-between text-xs text-[var(--color-primary)] shrink-0">
-          <span className="font-bold flex items-center gap-1.5">
+        <div className="p-2.5 bg-[var(--color-primary)]/10 border-t border-[var(--color-primary)]/30 flex items-center justify-between text-xs text-[var(--color-primary)] font-medium px-4">
+          <span className="flex items-center gap-1.5">
             <Edit2 className="w-3.5 h-3.5" />
             <span>Modifica messaggio...</span>
           </span>
           <button
             type="button"
             onClick={handleCancelEdit}
-            className="text-[var(--color-primary)] hover:text-white font-bold text-xs cursor-pointer"
+            className="text-[var(--color-primary)] hover:underline font-bold text-xs cursor-pointer"
           >
             Annulla
           </button>
@@ -511,7 +507,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
       )}
 
       {/* ─── INPUT BAR MODERNA A PILLOLA FLUTTUANTE CON PADDING CALIBRATO PER NAVBAR ─── */}
-      <div className="p-3 sm:p-4 pb-24 sm:pb-28 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent shrink-0">
+      <div className="p-3 sm:p-4 pb-24 sm:pb-28 bg-gradient-to-t from-[var(--color-bg)] via-[var(--color-bg)]/95 to-transparent shrink-0">
         <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto">
           {/* Input File nascosto */}
           <input
@@ -522,13 +518,13 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
             className="hidden"
           />
 
-          <div className="bg-slate-900/90 backdrop-blur-2xl border border-slate-800/90 rounded-full p-1.5 pl-2 sm:pl-3 flex items-center gap-2 shadow-2xl focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary)]/20 transition-all">
+          <div className="bg-[var(--color-surface)] backdrop-blur-2xl border border-[var(--color-border)] rounded-full p-1.5 pl-2 sm:pl-3 flex items-center gap-2 shadow-xl focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary)]/20 transition-all">
             
             {/* Bottone Graffetta (+) */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="w-9 h-9 rounded-full bg-slate-850 hover:bg-slate-800 text-slate-300 hover:text-[var(--color-primary)] border border-slate-750 flex items-center justify-center transition-all cursor-pointer shrink-0 active:scale-95"
+              className="w-9 h-9 rounded-full bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)] flex items-center justify-center transition-all cursor-pointer shrink-0 active:scale-95"
               title="Allega foto, video o documento"
             >
               <Plus className="w-5 h-5 stroke-[2.5]" />
@@ -541,7 +537,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
               onChange={e => setNewMessage(e.target.value)}
               placeholder={editingMessageId ? "Modifica il messaggio..." : "Scrivi un messaggio al tuo coach..."}
               disabled={isSending}
-              className="flex-1 py-2 bg-transparent text-white text-sm focus:outline-none placeholder:text-slate-500 disabled:opacity-50 min-w-0 px-2"
+              className="flex-1 py-2 bg-transparent text-[var(--color-text)] text-sm focus:outline-none placeholder:text-[var(--color-text-muted)] disabled:opacity-50 min-w-0 px-2"
             />
 
             {/* Bottone Invio Circolare Dorato */}

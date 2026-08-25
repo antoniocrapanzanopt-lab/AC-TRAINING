@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Zap,
   Flame,
 } from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
@@ -167,11 +166,11 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
 
   return (
     <div
-      className={`bg-slate-900/40 backdrop-blur-xl border ${
+      className={`bg-[var(--color-panel)] border ${
         isFirst
-          ? 'border-[var(--color-primary)]/40 shadow-2xl shadow-[var(--color-primary)]/5'
-          : 'border-slate-800/60'
-      } rounded-3xl p-4 sm:p-6 space-y-5 shadow-lg overflow-hidden transition-all`}
+          ? 'border-[var(--color-primary)]/40 shadow-xl shadow-[var(--color-primary)]/5'
+          : 'border-[var(--color-panel-border)]'
+      } rounded-3xl p-4 sm:p-6 space-y-5 shadow-md overflow-hidden transition-all`}
     >
       {/* ─── 1. HEADER SCHEDA SEMPLIFICATO ─── */}
       <div className="space-y-3">
@@ -182,34 +181,34 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                 <Dumbbell className="w-3.5 h-3.5" />
                 Programma Attivo
               </span>
-              <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
+              <span className="bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
                 Attiva
               </span>
             </div>
-            <h3 className="text-base sm:text-lg font-black text-white leading-snug">
+            <h3 className="text-base sm:text-lg font-black text-[var(--color-text)] leading-snug">
               {assigned.workout?.title}
             </h3>
           </div>
 
-          <span className="bg-slate-950 border border-slate-800 px-3 py-1 rounded-xl text-xs font-mono font-bold text-[var(--color-primary)] shrink-0 shadow-inner">
+          <span className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] px-3 py-1 rounded-xl text-xs font-mono font-bold text-[var(--color-primary)] shrink-0 shadow-inner">
             {totalWeeks} settimane
           </span>
         </div>
 
         {/* ─── STATO SINTETICO & BARRA DI AVANZAMENTO ─── */}
-        <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+        <div className="p-3.5 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-white flex items-center gap-1.5">
+            <span className="font-black text-[var(--color-text)] flex items-center gap-1.5">
               <span>Settimana {selectedWeek} di {totalWeeks}</span>
-              {isCurrentWeekAllDone && <span className="text-emerald-400 font-black">✓</span>}
+              {isCurrentWeekAllDone && <span className="text-emerald-600 font-black">✓</span>}
             </span>
-            <span className="font-mono font-black text-[var(--color-primary)]">
+            <span className="font-mono font-black text-amber-600 dark:text-[var(--color-primary)]">
               {weekCompletedCount}/{days.length} sedute completate
             </span>
           </div>
 
           {/* Barra di Avanzamento */}
-          <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-800">
+          <div className="h-2 w-full bg-[var(--color-surface)] rounded-full overflow-hidden p-0.5 border border-[var(--color-border)]">
             <div
               className="h-full bg-gradient-to-r from-amber-500 to-[var(--color-primary)] rounded-full transition-all duration-500 shadow-sm shadow-[var(--color-primary)]/30"
               style={{ width: `${weekProgressPercent}%` }}
@@ -217,15 +216,15 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
           </div>
 
           {/* Messaggio Motivazionale Breve */}
-          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
-            <span>
+          <div className="flex items-center justify-between text-[11px] text-[var(--color-text-muted)] pt-0.5">
+            <span className="font-medium text-[var(--color-text)]">
               {isCurrentWeekAllDone
                 ? 'Hai completato tutti gli allenamenti previsti per questa settimana! 🎉'
                 : selectedWeek === currentActiveWeek
                 ? `Sei nella settimana ${selectedWeek}. Continua così! 🔥`
                 : `Visualizzazione storico settimana ${selectedWeek}.`}
             </span>
-            <span className="font-bold text-slate-300 shrink-0 font-mono">{weekProgressPercent}%</span>
+            <span className="font-black text-[var(--color-text)] shrink-0 font-mono">{weekProgressPercent}%</span>
           </div>
         </div>
 
@@ -235,13 +234,13 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
             <button
               type="button"
               onClick={() => setIsDetailsOpen(!isDetailsOpen)}
-              className="text-[11px] font-bold text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer transition-colors py-1"
+              className="text-[11px] font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)] flex items-center gap-1 cursor-pointer transition-colors py-1"
             >
               <span>{isDetailsOpen ? 'Nascondi dettagli scheda' : 'Vedi dettagli scheda'}</span>
               {isDetailsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
             {isDetailsOpen && (
-              <p className="text-xs text-slate-300 bg-slate-950/60 p-3 rounded-xl border border-slate-800 mt-1 leading-relaxed animate-in fade-in">
+              <p className="text-xs text-[var(--color-text)] bg-[var(--color-surface-strong)] p-3 rounded-xl border border-[var(--color-border)] mt-1 leading-relaxed animate-in fade-in">
                 {assigned.workout.description}
               </p>
             )}
@@ -249,14 +248,13 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
         )}
       </div>
 
-      {/* ─── 2. SELETTORE SETTIMANE ("IL TUO PERCORSO") ─── */}
-      <div className="space-y-2.5 pt-2 border-t border-slate-800/80">
+      {/* ─── 2. SELETTORE SETTIMANE A SCORRIMENTO TOUCH ─── */}
+      <div className="space-y-2 border-t border-[var(--color-border)] pt-3">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-            Il tuo percorso
+          <span className="text-[11px] font-black uppercase tracking-wider text-[var(--color-text-muted)]">
+            Seleziona Settimana
           </span>
-          <span className="text-[10px] text-slate-500">Scorri per navigare le settimane</span>
+          <span className="text-[10px] text-[var(--color-text-muted)] font-medium">Scorri per navigare le settimane</span>
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 -mx-1 px-1 touch-pan-x snap-x">
@@ -275,17 +273,17 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                   isSelected
                     ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-lg shadow-[var(--color-primary)]/20 ring-1 ring-[var(--color-primary)]'
                     : isWeekDone
-                    ? 'bg-emerald-950/30 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-900/40'
+                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
                     : isCurrent
-                    ? 'bg-slate-800/90 text-white border border-[var(--color-primary)]/40 hover:border-[var(--color-primary)]'
-                    : 'bg-slate-950/60 text-slate-400 border border-slate-800 hover:text-white hover:border-slate-700'
+                    ? 'bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-[var(--color-primary)]/40 hover:border-[var(--color-primary)] font-black'
+                    : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-[var(--color-text)]'
                 }`}
               >
                 <span>Settimana {wNum}</span>
                 {isWeekDone ? (
-                  <span className="text-emerald-400 font-bold text-[11px]">✓</span>
+                  <span className="text-emerald-600 font-black text-[11px]">✓</span>
                 ) : isCurrent && !isSelected ? (
-                  <span className="text-[10px] text-amber-400 font-bold">• In corso</span>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-black">• In corso</span>
                 ) : null}
               </button>
             );
@@ -294,9 +292,9 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
       </div>
 
       {/* ─── 3. CARD DEI GIORNI CON 4 STATI DIFFERENZIATI ─── */}
-      <div className="space-y-3 pt-2 border-t border-slate-800/80">
+      <div className="space-y-3 pt-2 border-t border-[var(--color-border)]">
         <div className="flex items-center justify-between">
-          <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
+          <h4 className="text-xs sm:text-sm font-black text-[var(--color-text)] flex items-center gap-2">
             <span>Sedute di Allenamento (Settimana {selectedWeek})</span>
           </h4>
         </div>
@@ -324,40 +322,40 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                 role="button"
                 tabIndex={0}
                 onClick={() => onStart(assigned, selectedWeek, dayName)}
-                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between shadow-md relative overflow-hidden cursor-pointer select-none group/daycard active:scale-[0.98] ${
+                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between shadow-sm relative overflow-hidden cursor-pointer select-none group/daycard active:scale-[0.98] ${
                   isDone
-                    ? 'bg-slate-950/60 border-slate-800/60 text-slate-400 hover:border-slate-700'
+                    ? 'bg-[var(--color-surface-strong)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-border)]'
                     : isDraftForThisDay
-                    ? 'bg-gradient-to-b from-amber-950/30 to-slate-900 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/50'
+                    ? 'bg-amber-500/10 border-[var(--color-primary)] shadow-md shadow-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/50'
                     : isNextUpcoming
-                    ? 'bg-slate-900/90 border-[var(--color-primary)]/70 shadow-lg shadow-[var(--color-primary)]/10 text-white hover:border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/30'
-                    : 'bg-slate-950/60 border-slate-800/80 text-slate-300 hover:border-slate-700 hover:bg-slate-900/40'
+                    ? 'bg-[var(--color-surface-strong)] border-[var(--color-primary)]/70 shadow-md shadow-[var(--color-primary)]/10 text-[var(--color-text)] hover:border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/30'
+                    : 'bg-[var(--color-surface-strong)] border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)]/40'
                 }`}
               >
                 {/* Header Card Giorno */}
                 <div className="space-y-2 mb-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-white whitespace-nowrap">{dayName}</span>
+                      <span className="text-sm font-black text-[var(--color-text)] whitespace-nowrap">{dayName}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
                       {isDone ? (
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-black flex items-center gap-1 shrink-0 whitespace-nowrap">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-black flex items-center gap-1 shrink-0 whitespace-nowrap">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                           Completato
                         </span>
                       ) : isDraftForThisDay ? (
-                        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse whitespace-nowrap">
-                          <RotateCcw className="w-3 h-3 text-amber-400" />
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/40 text-[10px] font-black flex items-center gap-1 shrink-0 animate-pulse whitespace-nowrap">
+                          <RotateCcw className="w-3 h-3 text-amber-600" />
                           In corso
                         </span>
                       ) : isNextUpcoming ? (
-                        <span className="px-2 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40 text-[9px] font-black shrink-0 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-slate-950 dark:text-[var(--color-primary)] border border-[var(--color-primary)]/40 text-[9px] font-black shrink-0 whitespace-nowrap">
                           Oggi
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 border border-slate-800 text-[9px] font-bold shrink-0 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded-full bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] text-[9px] font-bold shrink-0 whitespace-nowrap">
                           Da completare
                         </span>
                       )}
@@ -367,7 +365,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                         className={`w-7 h-7 rounded-full flex items-center justify-center transition-all shrink-0 ${
                           isDraftForThisDay || isNextUpcoming
                             ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/30 scale-105'
-                            : 'bg-slate-800/80 text-slate-300 group-hover/daycard:bg-[var(--color-primary)] group-hover/daycard:text-slate-950'
+                            : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] group-hover/daycard:bg-[var(--color-primary)] group-hover/daycard:text-slate-950'
                         }`}
                       >
                         <Play className="w-3 h-3 fill-current ml-0.5" />
@@ -375,14 +373,14 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
-                    <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <div className="flex items-center gap-1.5 text-xs text-[var(--color-text)] font-semibold">
+                    <Clock className="w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0" />
                     <span className="whitespace-nowrap">Durata ~45-60 min</span>
                   </div>
                 </div>
 
                 {/* Pulsante CTA con gerarchia chiara */}
-                <div className="pt-2 border-t border-slate-800/60 mt-auto">
+                <div className="pt-2 border-t border-[var(--color-border)] mt-auto">
                   {isDone ? (
                     <button
                       type="button"
@@ -391,7 +389,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                         e.stopPropagation();
                         onStart(assigned, selectedWeek, dayName);
                       }}
-                      className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-bold transition-all cursor-pointer text-center"
+                      className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-surface)] hover:bg-[var(--color-panel)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)] text-xs font-black transition-all cursor-pointer text-center"
                     >
                       Rivedi
                     </button>
@@ -403,7 +401,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                         e.stopPropagation();
                         onStart(assigned, selectedWeek, dayName);
                       }}
-                      className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5 active:scale-95"
+                      className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-primary)] hover:opacity-90 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5 active:scale-95"
                     >
                       <Play className="w-3.5 h-3.5 fill-black" />
                       <span>Riprendi</span>
@@ -416,7 +414,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                         e.stopPropagation();
                         onStart(assigned, selectedWeek, dayName);
                       }}
-                      className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 flex items-center justify-center gap-1.5 active:scale-95"
+                      className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-primary)] hover:opacity-90 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 flex items-center justify-center gap-1.5 active:scale-95"
                     >
                       <Play className="w-3.5 h-3.5 fill-black" />
                       <span>Inizia ora →</span>
@@ -429,7 +427,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
                         e.stopPropagation();
                         onStart(assigned, selectedWeek, dayName);
                       }}
-                      className="w-full py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-bold transition-all cursor-pointer text-center flex items-center justify-center gap-1"
+                      className="w-full py-2.5 px-3 rounded-xl bg-[var(--color-surface)] hover:bg-[var(--color-panel)] text-[var(--color-text)] border border-[var(--color-border)] text-xs font-black transition-all cursor-pointer text-center flex items-center justify-center gap-1"
                     >
                       <span>Inizia ora →</span>
                     </button>
@@ -644,8 +642,8 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     <div className="space-y-4 sm:space-y-6 pb-32 font-sans">
       {/* ─── 1. HEADER: SALUTO E TITOLO ─── */}
       <div className="space-y-0.5">
-        <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">Il tuo Allenamento</h2>
-        <p className="text-xs text-slate-400">La tua home operativa per raggiungere i tuoi obiettivi.</p>
+        <h2 className="text-xl sm:text-2xl font-black text-[var(--color-text)] tracking-tight">Il tuo Allenamento</h2>
+        <p className="text-xs text-[var(--color-text-muted)]">La tua home operativa per raggiungere i tuoi obiettivi.</p>
       </div>
 
       {/* ─── BANNER INVITO AGGIUNGI AC ALLA HOME ─── */}
@@ -654,10 +652,10 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       {/* ─── 2. BLOCCO PRINCIPALE: AZIONE IMMEDIATA HERO ─── */}
       {activeDraft ? (
         // SCENARIO A: RIPRENDI SESSIONE IN CORSO
-        <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-b from-amber-950/40 via-slate-900 to-slate-950 border border-[var(--color-primary)] shadow-2xl shadow-[var(--color-primary)]/10 space-y-4 animate-in fade-in">
+        <div className="p-4 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-primary)] shadow-xl shadow-[var(--color-primary)]/10 space-y-4 animate-in fade-in">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40 flex items-center justify-center shrink-0 shadow-lg">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40 flex items-center justify-center shrink-0 shadow-md">
                 <RotateCcw className="w-5 h-5 animate-spin-slow" />
               </div>
               <div className="min-w-0">
@@ -665,21 +663,21 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
                   <span className="text-[10px] font-black text-[var(--color-primary)] uppercase tracking-wider">
                     Riprendi da dove avevi lasciato
                   </span>
-                  <span className="px-2 py-0.5 rounded-full bg-slate-950 text-slate-400 text-[9px] font-bold border border-slate-800">
+                  <span className="px-2 py-0.5 rounded-full bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] text-[9px] font-bold border border-[var(--color-border)]">
                     Salvato sul dispositivo
                   </span>
                 </div>
-                <h3 className="text-base sm:text-lg font-black text-white truncate mt-0.5">
+                <h3 className="text-base sm:text-lg font-black text-[var(--color-text)] truncate mt-0.5">
                   {activeDraft.workout?.title}
                 </h3>
-                <div className="flex items-center gap-2 text-xs text-slate-300 mt-0.5">
+                <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] mt-0.5">
                   {draftCurrentExerciseName && (
-                    <span className="text-slate-300 truncate">
-                      In corso: <strong className="text-white">{draftCurrentExerciseName}</strong>
+                    <span className="text-[var(--color-text-muted)] truncate">
+                      In corso: <strong className="text-[var(--color-text)]">{draftCurrentExerciseName}</strong>
                     </span>
                   )}
                   {draftCompletedSetsPercent !== null && draftCompletedSetsPercent > 0 && (
-                    <span className="text-amber-400 font-bold font-mono">
+                    <span className="text-amber-500 font-bold font-mono">
                       • {draftCompletedSetsPercent}% completato
                     </span>
                   )}
@@ -688,8 +686,8 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
             </div>
           </div>
 
-          <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1 border-t border-slate-800/80">
-            <Clock className="w-3.5 h-3.5 text-slate-500" />
+          <div className="text-[11px] text-[var(--color-text-muted)] flex items-center gap-1.5 pt-1 border-t border-[var(--color-border)]">
+            <Clock className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
             <span>
               Ultimo salvataggio alle{' '}
               {new Date(activeDraft.lastSavedTimestamp).toLocaleTimeString('it-IT', {
@@ -712,7 +710,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
             <button
               type="button"
               onClick={handleDiscardDraft}
-              className="w-full sm:w-auto py-2.5 px-4 rounded-xl text-slate-400 hover:text-rose-400 text-xs font-bold hover:bg-slate-900 border border-slate-800/60 transition-colors cursor-pointer text-center"
+              className="w-full sm:w-auto py-2.5 px-4 rounded-xl text-[var(--color-text-muted)] hover:text-rose-500 text-xs font-bold hover:bg-[var(--color-surface-strong)] border border-[var(--color-border)] transition-colors cursor-pointer text-center"
             >
               Scarta sessione
             </button>
@@ -720,10 +718,10 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         </div>
       ) : firstAssigned ? (
         // SCENARIO B: ALLENAMENTO DI OGGI (NESSUNA BOZZA ATTIVA)
-        <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-b from-slate-900 via-[var(--color-panel)] to-slate-950 border border-[var(--color-primary)]/40 shadow-xl space-y-4">
+        <div className="p-4 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-primary)]/40 shadow-md space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0 shadow-lg">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0 shadow-md">
                 <Flame className="w-6 h-6" />
               </div>
               <div className="min-w-0">
@@ -731,15 +729,15 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
                   <span className="text-[10px] font-black text-[var(--color-primary)] uppercase tracking-wider">
                     Allenamento di Oggi
                   </span>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 text-[9px] font-black border border-emerald-500/30">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 text-[9px] font-black border border-emerald-500/30">
                     Pronto per iniziare
                   </span>
                 </div>
-                <h3 className="text-base sm:text-lg font-black text-white truncate mt-0.5">
+                <h3 className="text-base sm:text-lg font-black text-[var(--color-text)] truncate mt-0.5">
                   {firstAssigned.workout?.title}
                 </h3>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  Seduta pronta: <strong className="text-white">{heroNextDay}</strong> (Settimana {heroActiveWeek}) • Raggiungi il tuo massimo!
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                  Seduta pronta: <strong className="text-[var(--color-text)]">{heroNextDay}</strong> (Settimana {heroActiveWeek}) • Raggiungi il tuo massimo!
                 </p>
               </div>
             </div>
@@ -750,7 +748,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
             <button
               type="button"
               onClick={() => handleStartWorkout(firstAssigned, heroActiveWeek, heroNextDay)}
-              className="w-full py-3.5 px-5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xl shadow-[var(--color-primary)]/20 transition-all cursor-pointer active:scale-95"
+              className="w-full py-3.5 px-5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 transition-all cursor-pointer active:scale-95"
             >
               <Play className="w-4 h-4 fill-black" />
               <span>Inizia {heroNextDay || 'Allenamento'}</span>
@@ -761,7 +759,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
       {/* ─── 3. BANNER CODA SINCRONIZZAZIONE OFFLINE ─── */}
       {pendingSyncCount > 0 && (
-        <div className="p-3 rounded-2xl bg-slate-900/50 backdrop-blur-xl border border-[var(--color-primary)]/30 flex items-center justify-between text-xs text-slate-300">
+        <div className="p-3 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-primary)]/30 flex items-center justify-between text-xs text-[var(--color-text)] shadow-sm">
           <div className="flex items-center gap-2">
             <WifiOff className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
             <span>
@@ -788,12 +786,12 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
       {/* ─── 4. ELENCO SCHEDE ASSEGNATE ─── */}
       {myAssignedWorkouts.length === 0 ? (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 sm:p-12 text-center space-y-3">
-          <div className="w-14 h-14 bg-slate-800/80 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-8 sm:p-12 text-center space-y-3 shadow-md">
+          <div className="w-14 h-14 bg-[var(--color-surface-strong)] rounded-2xl flex items-center justify-center mx-auto text-[var(--color-text-muted)]">
             <Dumbbell className="w-7 h-7" />
           </div>
-          <h3 className="text-base sm:text-lg font-black text-white">Nessuna scheda assegnata</h3>
-          <p className="text-slate-400 text-xs max-w-sm mx-auto leading-relaxed">
+          <h3 className="text-base sm:text-lg font-black text-[var(--color-text)]">Nessuna scheda assegnata</h3>
+          <p className="text-[var(--color-text-muted)] text-xs max-w-sm mx-auto leading-relaxed">
             Il tuo coach non ti ha ancora assegnato un programma di allenamento. Riceverai una notifica non appena sarà pronto!
           </p>
         </div>

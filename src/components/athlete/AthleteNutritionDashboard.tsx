@@ -237,7 +237,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
             <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-primary)] block">
               Piano Nutrizionale Attivo
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-white mt-0.5">
+            <h2 className="text-xl sm:text-2xl font-black text-[var(--color-text)] mt-0.5">
               I Tuoi Obiettivi Energetici Giornalieri
             </h2>
             <div className="flex items-center gap-2 mt-2">
@@ -245,8 +245,8 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                 {planData.goalLabel}
               </span>
               {planData.reviewDate && (
-                <span className="text-xs text-slate-400 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
                   Prossima revisione: {planData.reviewDate}
                 </span>
               )}
@@ -259,10 +259,10 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
               <button
                 type="button"
                 onClick={onOpenEstimator}
-                className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-bold text-xs transition-all shadow-md cursor-pointer"
+                className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] font-bold text-xs transition-all shadow-sm cursor-pointer"
                 title="Ricalcola fabbisogno energetico con i tuoi dati corporei"
               >
-                <Calculator className="w-3.5 h-3.5 text-amber-400" />
+                <Calculator className="w-3.5 h-3.5 text-amber-500" />
                 <span className="hidden sm:inline">Ricalcola</span>
               </button>
             )}
@@ -270,7 +270,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
             <button
               type="button"
               onClick={() => setIsEditModalOpen(true)}
-              className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 font-bold text-xs transition-all shadow-md cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] font-bold text-xs transition-all shadow-sm cursor-pointer"
             >
               <Pencil className="w-3.5 h-3.5 text-[var(--color-primary)]" />
               <span>Modifica Macro</span>
@@ -279,7 +279,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
             <button
               type="button"
               onClick={() => setIsCheckInOpen(true)}
-              className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[var(--color-primary)] text-black font-black text-xs sm:text-sm hover:bg-[var(--color-primary-hover)] transition-all shadow-[0_0_20px_rgba(234,179,8,0.25)] shrink-0 cursor-pointer"
+              className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[var(--color-primary)] text-slate-950 font-black text-xs sm:text-sm hover:bg-[var(--color-primary-hover)] transition-all shadow-md shrink-0 cursor-pointer"
             >
               <Scale className="w-4 h-4 stroke-[2.5]" />
               <span>Registra Check-in</span>
@@ -288,17 +288,17 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
         </div>
 
         {/* Target Kcal Big Highlight */}
-        <div className="p-6 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+        <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0 shadow-lg shadow-[var(--color-primary)]/10">
+            <div className="w-14 h-14 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0 shadow-md shadow-[var(--color-primary)]/10">
               <Flame className="w-7 h-7" />
             </div>
             <div>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+              <span className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider block">
                 Apporto Energetico Target
               </span>
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+                <span className="text-3xl sm:text-4xl font-black text-[var(--color-text)] tracking-tight">
                   {planData.targetKcal}
                 </span>
                 <span className="text-base font-bold text-[var(--color-primary)]">kcal / giorno</span>
@@ -306,9 +306,9 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
             </div>
           </div>
 
-          <div className="text-xs text-slate-400 space-y-1 sm:text-right">
-            <span className="block font-bold text-white">Inizio Piano: {planData.startDate}</span>
-            <span className="block text-[11px] text-slate-500">
+          <div className="text-xs text-[var(--color-text-muted)] space-y-1 sm:text-right">
+            <span className="block font-bold text-[var(--color-text)]">Inizio Piano: {planData.startDate}</span>
+            <span className="block text-[11px] text-[var(--color-text-muted)]">
               {activePlan?.mode === 'manual' ? 'Personalizzato da te' : 'Impostato dal tuo Coach'}
             </span>
           </div>
@@ -318,70 +318,70 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
           
           {/* PROTEINE */}
-          <div className="p-5 rounded-2xl bg-slate-900/90 border border-sky-500/30 space-y-2 shadow-lg">
+          <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-sky-500/30 space-y-2 shadow-md">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-wider text-sky-400">
+              <span className="text-xs font-black uppercase tracking-wider text-sky-500">
                 Proteine
               </span>
-              <span className="text-[11px] font-bold text-slate-400">{planData.proteinPercent}%</span>
+              <span className="text-[11px] font-bold text-[var(--color-text-muted)]">{planData.proteinPercent}%</span>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black text-white">{planData.proteinGrams}</span>
-              <span className="text-xs font-bold text-slate-500">g / die</span>
+              <span className="text-2xl font-black text-[var(--color-text)]">{planData.proteinGrams}</span>
+              <span className="text-xs font-bold text-[var(--color-text-muted)]">g / die</span>
             </div>
-            <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden">
+            <div className="h-2 w-full bg-[var(--color-surface-strong)] rounded-full overflow-hidden border border-[var(--color-border)]">
               <div className="h-full bg-gradient-to-r from-sky-500 to-cyan-400 w-full" />
             </div>
-            <span className="text-[10px] text-slate-500 block pt-0.5">Recupero e massa magra</span>
+            <span className="text-[10px] text-[var(--color-text-muted)] block pt-0.5">Recupero e massa magra</span>
           </div>
 
           {/* CARBOIDRATI */}
-          <div className="p-5 rounded-2xl bg-slate-900/90 border border-amber-500/30 space-y-2 shadow-lg">
+          <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-amber-500/30 space-y-2 shadow-md">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-wider text-amber-400">
+              <span className="text-xs font-black uppercase tracking-wider text-amber-500">
                 Carboidrati
               </span>
-              <span className="text-[11px] font-bold text-slate-400">{planData.carbPercent}%</span>
+              <span className="text-[11px] font-bold text-[var(--color-text-muted)]">{planData.carbPercent}%</span>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black text-white">{planData.carbGrams}</span>
-              <span className="text-xs font-bold text-slate-500">g / die</span>
+              <span className="text-2xl font-black text-[var(--color-text)]">{planData.carbGrams}</span>
+              <span className="text-xs font-bold text-[var(--color-text-muted)]">g / die</span>
             </div>
-            <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden">
+            <div className="h-2 w-full bg-[var(--color-surface-strong)] rounded-full overflow-hidden border border-[var(--color-border)]">
               <div className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 w-full" />
             </div>
-            <span className="text-[10px] text-slate-500 block pt-0.5">Energia per gli allenamenti</span>
+            <span className="text-[10px] text-[var(--color-text-muted)] block pt-0.5">Energia per gli allenamenti</span>
           </div>
 
           {/* GRASSI */}
-          <div className="p-5 rounded-2xl bg-slate-900/90 border border-rose-500/30 space-y-2 shadow-lg">
+          <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-rose-500/30 space-y-2 shadow-md">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-wider text-rose-400">
+              <span className="text-xs font-black uppercase tracking-wider text-rose-500">
                 Grassi (Lipidi)
               </span>
-              <span className="text-[11px] font-bold text-slate-400">{planData.fatPercent}%</span>
+              <span className="text-[11px] font-bold text-[var(--color-text-muted)]">{planData.fatPercent}%</span>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-black text-white">{planData.fatGrams}</span>
-              <span className="text-xs font-bold text-slate-500">g / die</span>
+              <span className="text-2xl font-black text-[var(--color-text)]">{planData.fatGrams}</span>
+              <span className="text-xs font-bold text-[var(--color-text-muted)]">g / die</span>
             </div>
-            <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden">
+            <div className="h-2 w-full bg-[var(--color-surface-strong)] rounded-full overflow-hidden border border-[var(--color-border)]">
               <div className="h-full bg-gradient-to-r from-rose-500 to-pink-500 w-full" />
             </div>
-            <span className="text-[10px] text-slate-500 block pt-0.5">Equilibrio ormonale e salute</span>
+            <span className="text-[10px] text-[var(--color-text-muted)] block pt-0.5">Equilibrio ormonale e salute</span>
           </div>
 
         </div>
 
         {/* Note del Coach */}
         {planData.notes && (
-          <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 flex items-start gap-3 relative z-10">
+          <div className="p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] flex items-start gap-3 relative z-10 shadow-sm">
             <FileText className="w-4 h-4 text-[var(--color-primary)] shrink-0 mt-0.5" />
             <div className="space-y-0.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] block">
                 Indicazioni del Tuo Coach
               </span>
-              <p className="text-xs text-slate-300 leading-relaxed italic">
+              <p className="text-xs text-[var(--color-text)] leading-relaxed italic">
                 "{planData.notes}"
               </p>
             </div>
@@ -392,59 +392,59 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
 
       {/* ULTIMO CHECK-IN & MONITORAGGIO */}
       {latestCheckIn && (
-        <div className="p-5 sm:p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 className="text-sm font-black text-white flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div className="p-5 sm:p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-md space-y-4">
+          <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+            <h3 className="text-sm font-black text-[var(--color-text)] flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
               Ultimo Check-in Registrato ({latestCheckIn.date})
             </h3>
-            <span className="text-xs font-bold text-white bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
+            <span className="text-xs font-bold text-[var(--color-text)] bg-[var(--color-surface-strong)] px-3 py-1 rounded-full border border-[var(--color-border)]">
               Peso: {latestCheckIn.weightKg} kg
             </span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-1">
-              <span className="text-[10px] text-slate-500 font-bold uppercase block">Aderenza</span>
+            <div className="p-3 rounded-xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-center space-y-1">
+              <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase block">Aderenza</span>
               <span className="text-base font-black text-[var(--color-primary)]">{latestCheckIn.adherenceScore} / 5</span>
             </div>
-            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-1">
-              <span className="text-[10px] text-slate-500 font-bold uppercase block">Fame</span>
-              <span className="text-base font-black text-amber-400">{latestCheckIn.hungerScore} / 5</span>
+            <div className="p-3 rounded-xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-center space-y-1">
+              <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase block">Fame</span>
+              <span className="text-base font-black text-amber-500">{latestCheckIn.hungerScore} / 5</span>
             </div>
-            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-1">
-              <span className="text-[10px] text-slate-500 font-bold uppercase block">Energia</span>
-              <span className="text-base font-black text-sky-400">{latestCheckIn.energyScore} / 5</span>
+            <div className="p-3 rounded-xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-center space-y-1">
+              <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase block">Energia</span>
+              <span className="text-base font-black text-sky-500">{latestCheckIn.energyScore} / 5</span>
             </div>
-            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-1">
-              <span className="text-[10px] text-slate-500 font-bold uppercase block">Sonno</span>
-              <span className="text-base font-black text-purple-400">{latestCheckIn.sleepScore} / 5</span>
+            <div className="p-3 rounded-xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-center space-y-1">
+              <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase block">Sonno</span>
+              <span className="text-base font-black text-purple-500">{latestCheckIn.sleepScore} / 5</span>
             </div>
-            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-1 col-span-2 sm:col-span-1">
-              <span className="text-[10px] text-slate-500 font-bold uppercase block">Digestione</span>
-              <span className="text-base font-black text-rose-400">{latestCheckIn.digestionScore} / 5</span>
+            <div className="p-3 rounded-xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-center space-y-1 col-span-2 sm:col-span-1">
+              <span className="text-[10px] text-[var(--color-text-muted)] font-bold uppercase block">Digestione</span>
+              <span className="text-base font-black text-rose-500">{latestCheckIn.digestionScore} / 5</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* DISCLAIMER & AVVERTENZA LEGALE (STILE UFFICIALE ROSSO IN FONDO) */}
-      <div className="p-5 sm:p-7 rounded-3xl bg-gradient-to-b from-rose-950/60 to-slate-950 border-2 border-rose-500/70 shadow-2xl shadow-rose-950/80 space-y-4">
+      {/* DISCLAIMER & AVVERTENZA LEGALE */}
+      <div className="p-5 sm:p-7 rounded-3xl bg-rose-500/10 border border-rose-500/40 shadow-md space-y-4">
         <div className="flex items-center gap-3.5 border-b border-rose-500/30 pb-3.5">
-          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0 shadow-lg shadow-rose-500/20">
-            <AlertTriangle className="w-6 h-6 animate-pulse text-rose-400" />
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-500 shrink-0 shadow-sm">
+            <AlertTriangle className="w-6 h-6 animate-pulse text-rose-500" />
           </div>
           <div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-rose-400 block">
+            <span className="text-[10px] font-black uppercase tracking-widest text-rose-500 block">
               Presa Visione Obbligatoria
             </span>
-            <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-tight">
+            <h3 className="text-sm sm:text-base font-black text-[var(--color-text)] uppercase tracking-tight">
               Avvertenza Legale & Consapevolezza
             </h3>
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-rose-900/20 border border-rose-500/30 text-xs text-rose-100/90 leading-relaxed font-medium">
+        <div className="p-4 rounded-2xl bg-[var(--color-panel)] border border-rose-500/30 text-xs text-[var(--color-text)] leading-relaxed font-medium">
           <p>
             {NUTRITION_DISCLAIMER}
           </p>
@@ -454,21 +454,21 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
       {/* MODAL MODIFICA MACRO E CALORIE */}
       {isEditModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl space-y-5 p-6 animate-in zoom-in-95">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] w-full max-w-md rounded-3xl overflow-hidden shadow-2xl space-y-5 p-6 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)]">
                   <Pencil className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-white">Modifica Obiettivi & Macro</h3>
-                  <span className="text-[10px] text-slate-400 block">Personalizza calorie e grammature</span>
+                  <h3 className="text-sm font-black text-[var(--color-text)]">Modifica Obiettivi & Macro</h3>
+                  <span className="text-[10px] text-[var(--color-text-muted)] block">Personalizza calorie e grammature</span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsEditModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)]"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -478,7 +478,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
               
               {/* Obiettivo */}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-slate-400 uppercase">Obiettivo Nutrizionale</label>
+                <label className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Obiettivo Nutrizionale</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['cutting', 'maintenance', 'bulking'] as NutritionGoal[]).map((g) => (
                     <button
@@ -488,7 +488,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                       className={`py-2 px-2 rounded-xl font-bold text-[11px] transition-all cursor-pointer ${
                         editGoal === g
                           ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md'
-                          : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+                          : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:text-[var(--color-text)]'
                       }`}
                     >
                       {GOAL_OFFSETS[g].label.split('/')[0]}
@@ -500,7 +500,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
               {/* Target Calorie */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase">Target Calorie (kcal)</label>
+                  <label className="text-[11px] font-bold text-[var(--color-text-muted)] uppercase">Target Calorie (kcal)</label>
                   <button
                     type="button"
                     onClick={() => setEditTargetKcal(editCalculatedKcal)}
@@ -522,7 +522,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                     setEditTargetKcal(val === '' ? 0 : Number(val));
                   }}
                   placeholder="2000"
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono font-black text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                  className="w-full px-3 py-2.5 rounded-xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-[var(--color-text)] font-mono font-black text-sm focus:outline-none focus:border-[var(--color-primary)]"
                   required
                 />
               </div>
@@ -530,7 +530,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
               {/* Grammi Macro */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-sky-400 uppercase">Proteine (g)</label>
+                  <label className="text-[10px] font-bold text-sky-500 uppercase">Proteine (g)</label>
                   <input
                     type="number"
                     min="0"
@@ -542,14 +542,14 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                       setEditProteinGrams(val === '' ? 0 : Number(val));
                     }}
                     placeholder="150"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-sky-500/40 text-white font-mono font-bold text-sm focus:outline-none focus:border-sky-400"
+                    className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface-strong)] border border-sky-500/40 text-[var(--color-text)] font-mono font-bold text-sm focus:outline-none focus:border-sky-400"
                     required
                   />
-                  <span className="text-[9px] text-slate-500 block font-mono">{editProteinGrams * 4} kcal</span>
+                  <span className="text-[9px] text-[var(--color-text-muted)] block font-mono">{editProteinGrams * 4} kcal</span>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-amber-400 uppercase">Carboidrati (g)</label>
+                  <label className="text-[10px] font-bold text-amber-500 uppercase">Carboidrati (g)</label>
                   <input
                     type="number"
                     min="0"
@@ -561,14 +561,14 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                       setEditCarbGrams(val === '' ? 0 : Number(val));
                     }}
                     placeholder="250"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-amber-500/40 text-white font-mono font-bold text-sm focus:outline-none focus:border-amber-400"
+                    className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface-strong)] border border-amber-500/40 text-[var(--color-text)] font-mono font-bold text-sm focus:outline-none focus:border-amber-400"
                     required
                   />
-                  <span className="text-[9px] text-slate-500 block font-mono">{editCarbGrams * 4} kcal</span>
+                  <span className="text-[9px] text-[var(--color-text-muted)] block font-mono">{editCarbGrams * 4} kcal</span>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-rose-400 uppercase">Grassi (g)</label>
+                  <label className="text-[10px] font-bold text-rose-500 uppercase">Grassi (g)</label>
                   <input
                     type="number"
                     min="0"
@@ -580,19 +580,19 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                       setEditFatGrams(val === '' ? 0 : Number(val));
                     }}
                     placeholder="60"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-rose-500/40 text-white font-mono font-bold text-sm focus:outline-none focus:border-rose-400"
+                    className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface-strong)] border border-rose-500/40 text-[var(--color-text)] font-mono font-bold text-sm focus:outline-none focus:border-rose-400"
                     required
                   />
-                  <span className="text-[9px] text-slate-500 block font-mono">{editFatGrams * 9} kcal</span>
+                  <span className="text-[9px] text-[var(--color-text-muted)] block font-mono">{editFatGrams * 9} kcal</span>
                 </div>
               </div>
 
               {/* Azioni Modale */}
-              <div className="flex items-center gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center gap-2 pt-3 border-t border-[var(--color-border)]">
                 <button
                   type="button"
                   onClick={() => setIsEditModalOpen(false)}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text)] font-bold text-xs"
                 >
                   Annulla
                 </button>

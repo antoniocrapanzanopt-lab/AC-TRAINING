@@ -87,24 +87,24 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
       />
 
       {/* Contenitore Modale con Header Fisso e Body Scrollabile */}
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-slate-950 border border-slate-800 rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.95)] flex flex-col overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl shadow-2xl flex flex-col overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header Fisso */}
-        <div className="px-5 sm:px-7 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0 z-30">
+        <div className="px-5 sm:px-7 py-4 bg-[var(--color-panel)] border-b border-[var(--color-border)] flex items-center justify-between shrink-0 z-30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0 shadow-md">
+            <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0 shadow-sm">
               <Calendar className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-tight">
+                <h2 className="text-sm sm:text-base font-black text-[var(--color-text)] uppercase tracking-tight">
                   I Tuoi Appuntamenti & Check
                 </h2>
                 <span className="px-2 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] font-black text-[9px] uppercase border border-[var(--color-primary)]/30">
                   Calendario
                 </span>
               </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium mt-0.5">
+              <p className="text-[10px] sm:text-[11px] text-[var(--color-text-muted)] font-medium mt-0.5">
                 Riepilogo delle sessioni, call e check programmati con il coach
               </p>
             </div>
@@ -113,7 +113,7 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-850 rounded-2xl border border-slate-800 transition-all cursor-pointer shadow-sm"
+            className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] transition-all cursor-pointer shadow-sm"
             aria-label="Chiudi finestra"
           >
             <X className="w-5 h-5" />
@@ -125,28 +125,26 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
           
           {/* ─── 1. PROSSIMO APPUNTAMENTO IN EVIDENZA ─── */}
           {nextAppointment ? (
-            <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-slate-900/95 to-slate-950 border-2 border-[var(--color-primary)]/40 shadow-2xl space-y-4 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-48 h-48 bg-[var(--color-primary)]/10 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div className="p-5 sm:p-6 rounded-3xl bg-[var(--color-surface-strong)] border-2 border-[var(--color-primary)]/40 shadow-md space-y-4 relative overflow-hidden">
+              <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] pb-3">
                 <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-primary)] flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-pulse" />
                   Prossimo Appuntamento in Evidenza
                 </span>
                 <div className="flex items-center gap-1.5">
                   {isOnline(nextAppointment) ? (
-                    <span className="px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[10px] font-black flex items-center gap-1">
+                    <span className="px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-600 border border-purple-500/30 text-[10px] font-black flex items-center gap-1">
                       <Video className="w-3 h-3" /> Online
                     </span>
                   ) : (
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-black flex items-center gap-1">
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 text-[10px] font-black flex items-center gap-1">
                       <MapPin className="w-3 h-3" /> In Presenza
                     </span>
                   )}
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
                     nextAppointment.status === 'scheduled' || nextAppointment.status === 'completed'
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                      : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                      ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                      : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
                   }`}>
                     <CheckCircle2 className="w-3 h-3" />
                     {nextAppointment.status === 'scheduled' || nextAppointment.status === 'completed' ? 'Confermato' : 'Da confermare'}
@@ -155,20 +153,20 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
               </div>
 
               <div>
-                <h3 className="text-base sm:text-lg font-black text-white capitalize">
+                <h3 className="text-base sm:text-lg font-black text-[var(--color-text)] capitalize">
                   {nextAppointment.title}
                 </h3>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-slate-300 font-medium">
-                  <span className="flex items-center gap-1.5 text-white font-bold capitalize">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-[var(--color-text-muted)] font-medium">
+                  <span className="flex items-center gap-1.5 text-[var(--color-text)] font-bold capitalize">
                     <Calendar className="w-3.5 h-3.5 text-[var(--color-primary)]" />
                     {formatDate(nextAppointment.date)}
                   </span>
                   {nextAppointment.startTime && (
-                    <span className="flex items-center gap-1 text-slate-400 font-mono">
-                      <Clock className="w-3.5 h-3.5 text-slate-500" />
+                    <span className="flex items-center gap-1 text-[var(--color-text-muted)] font-mono">
+                      <Clock className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
                       {nextAppointment.startTime} {nextAppointment.endTime ? `- ${nextAppointment.endTime}` : ''}
                       {getDurationText(nextAppointment) && (
-                        <span className="text-[10px] text-slate-500 font-sans ml-1">
+                        <span className="text-[10px] text-[var(--color-text-muted)] font-sans ml-1">
                           ({getDurationText(nextAppointment)})
                         </span>
                       )}
@@ -179,8 +177,8 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
 
               {/* Note o Dettagli del Coach */}
               {(nextAppointment.description || nextAppointment.notes) && (
-                <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300 leading-relaxed flex items-start gap-2.5">
-                  <FileText className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                <div className="p-3.5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-border)] text-xs text-[var(--color-text)] leading-relaxed flex items-start gap-2.5">
+                  <FileText className="w-4 h-4 text-[var(--color-text-muted)] shrink-0 mt-0.5" />
                   <p className="italic">
                     "{nextAppointment.description || nextAppointment.notes}"
                   </p>
@@ -194,7 +192,7 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
                     href={nextAppointment.htmlLink}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex-1 py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer active:scale-95"
+                    className="flex-1 py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
                   >
                     <Video className="w-4 h-4" />
                     <span>Partecipa alla Call</span>
@@ -204,7 +202,7 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
                 <button
                   type="button"
                   onClick={() => exportEventToIcs(nextAppointment)}
-                  className="py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-200 hover:text-white font-bold text-xs border border-slate-800 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                  className="py-2.5 px-4 rounded-xl bg-[var(--color-panel)] hover:bg-[var(--color-surface)] text-[var(--color-text)] font-bold text-xs border border-[var(--color-border)] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                 >
                   <CalendarPlus className="w-4 h-4 text-[var(--color-primary)]" />
                   <span>Aggiungi al Calendario (.ics)</span>
@@ -212,13 +210,13 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
               </div>
             </div>
           ) : (
-            <div className="p-6 sm:p-8 rounded-3xl bg-slate-900/30 border border-slate-800/80 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto">
+            <div className="p-6 sm:p-8 rounded-3xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-text-muted)] mx-auto">
                 <Calendar className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="text-sm sm:text-base font-bold text-white">Nessun appuntamento programmato</h4>
-                <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                <h4 className="text-sm sm:text-base font-bold text-[var(--color-text)]">Nessun appuntamento programmato</h4>
+                <p className="text-xs text-[var(--color-text-muted)] mt-1 max-w-sm mx-auto">
                   Qui vedrai il tuo prossimo check o incontro con il coach non appena verrà fissato.
                 </p>
               </div>
@@ -228,7 +226,7 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
           {/* ─── 2. LISTA APPUNTAMENTI FUTURI ─── */}
           {futureAppointments.length > 1 && (
             <div className="space-y-3 pt-2">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <h4 className="text-xs font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-[var(--color-primary)]" />
                 Altri Appuntamenti Futuri ({futureAppointments.length - 1})
               </h4>
@@ -236,22 +234,22 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
                 {futureAppointments.slice(1).map((evt) => (
                   <div
                     key={evt.id}
-                    className="p-4 rounded-2xl bg-slate-900/40 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-700 transition-colors"
+                    className="p-4 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[var(--color-primary)]/40 transition-colors"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-bold text-white">{evt.title}</span>
+                        <span className="text-xs font-bold text-[var(--color-text)]">{evt.title}</span>
                         {isOnline(evt) ? (
-                          <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[9px] font-bold">
+                          <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 border border-purple-500/20 text-[9px] font-bold">
                             Online
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[9px] font-bold">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-[9px] font-bold">
                             In Presenza
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                      <div className="flex items-center gap-3 text-[11px] text-[var(--color-text-muted)]">
                         <span>{formatDate(evt.date)}</span>
                         {evt.startTime && <span>• {evt.startTime}</span>}
                       </div>
@@ -260,7 +258,7 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
                     <button
                       type="button"
                       onClick={() => exportEventToIcs(evt)}
-                      className="p-2 text-slate-400 hover:text-white bg-slate-950 rounded-xl border border-slate-800 transition-colors self-end sm:self-center"
+                      className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] bg-[var(--color-panel)] rounded-xl border border-[var(--color-border)] transition-colors self-end sm:self-center"
                       title="Scarica per il tuo calendario"
                     >
                       <CalendarPlus className="w-4 h-4 text-[var(--color-primary)]" />
@@ -273,22 +271,22 @@ export const AthleteAppointmentsModal: React.FC<AthleteAppointmentsModalProps> =
 
           {/* ─── 3. STORICO APPUNTAMENTI PASSATI ─── */}
           {pastAppointments.length > 0 && (
-            <div className="space-y-3 pt-2 border-t border-slate-800">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <History className="w-4 h-4 text-slate-500" />
+            <div className="space-y-3 pt-2 border-t border-[var(--color-border)]">
+              <h4 className="text-xs font-black uppercase tracking-wider text-[var(--color-text-muted)] flex items-center gap-2">
+                <History className="w-4 h-4 text-[var(--color-text-muted)]" />
                 Storico Incontri Passati ({pastAppointments.length})
               </h4>
               <div className="space-y-2">
                 {pastAppointments.map((evt) => (
                   <div
                     key={evt.id}
-                    className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/60 flex items-center justify-between gap-3 opacity-70"
+                    className="p-3.5 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] flex items-center justify-between gap-3 opacity-80"
                   >
                     <div>
-                      <span className="text-xs font-semibold text-slate-300 block">{evt.title}</span>
-                      <span className="text-[10px] text-slate-500">{formatDate(evt.date)}</span>
+                      <span className="text-xs font-semibold text-[var(--color-text)] block">{evt.title}</span>
+                      <span className="text-[10px] text-[var(--color-text-muted)]">{formatDate(evt.date)}</span>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)]">
                       Concluso
                     </span>
                   </div>

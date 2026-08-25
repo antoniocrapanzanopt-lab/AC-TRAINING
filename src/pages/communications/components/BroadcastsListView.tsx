@@ -135,17 +135,19 @@ export const BroadcastsListView: React.FC<BroadcastsListViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-900 text-xs">
-                {filtered.map(b => {
+                {filtered.map((b, index) => {
                   const currentType = typeConfig[b.type] || typeConfig.update;
                   const TypeIcon = currentType.icon;
                   const isScheduled = b.status === 'scheduled';
                   const totalRec = b.totalRecipientsCount || 1;
                   const readPct = Math.round(((b.metrics.read || 0) / totalRec) * 100);
                   const clickPct = Math.round(((b.metrics.clicked || 0) / totalRec) * 100);
+                  const rowKey = b.id && b.id.trim() !== '' ? b.id : `bc-row-${index}-${b.title}`;
+                  const isConfirming = Boolean(deleteConfirmId && deleteConfirmId === rowKey);
 
                   return (
                     <tr
-                      key={b.id}
+                      key={rowKey}
                       className="hover:bg-slate-900/50 transition-colors group"
                     >
                       {/* Titolo e Tipo */}
@@ -266,22 +268,22 @@ export const BroadcastsListView: React.FC<BroadcastsListViewProps> = ({
                             Dettagli
                           </button>
 
-                          {deleteConfirmId === b.id ? (
+                          {isConfirming ? (
                             <div className="flex items-center gap-1.5 bg-red-950/90 p-1 rounded-xl border border-red-500/50 shadow-md">
                               <button
                                 type="button"
                                 onClick={() => {
-                                  onDeleteBroadcast(b.id);
+                                  onDeleteBroadcast(b.id || rowKey);
                                   setDeleteConfirmId(null);
                                 }}
-                                className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-black transition-colors shadow-sm"
+                                className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-black transition-colors shadow-sm cursor-pointer"
                               >
                                 Conferma
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setDeleteConfirmId(null)}
-                                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold"
+                                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold cursor-pointer"
                               >
                                 Annulla
                               </button>
@@ -289,7 +291,7 @@ export const BroadcastsListView: React.FC<BroadcastsListViewProps> = ({
                           ) : (
                             <button
                               type="button"
-                              onClick={() => setDeleteConfirmId(b.id)}
+                              onClick={() => setDeleteConfirmId(rowKey)}
                               className="p-2 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10 transition-all cursor-pointer shadow-sm"
                               title="Elimina annuncio definitivamente"
                             >

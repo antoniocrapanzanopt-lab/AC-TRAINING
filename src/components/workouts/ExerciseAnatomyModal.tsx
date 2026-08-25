@@ -81,11 +81,11 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="bg-slate-950 border border-slate-800 w-full max-w-2xl max-h-[90vh] rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 animate-in zoom-in-95 duration-200"
+        className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] w-full max-w-2xl max-h-[90vh] rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* ─── HEADER ─── */}
-        <div className="bg-[var(--color-panel)]/90 backdrop-blur-xl border-b border-[var(--color-panel-border)]/80 p-4 sm:p-5 flex items-start justify-between gap-3 shrink-0">
+        <div className="bg-[var(--color-surface)]/95 backdrop-blur-xl border-b border-[var(--color-border)] p-4 sm:p-5 flex items-start justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-11 h-11 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0 shadow-md">
               <Dumbbell className="w-5 h-5" />
@@ -95,11 +95,11 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
                 <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
                   {anatomy.category}
                 </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border border-[var(--color-border)]">
                   {anatomy.pattern}
                 </span>
               </div>
-              <h2 className="text-base sm:text-lg font-black text-white truncate leading-snug mt-0.5">
+              <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] truncate leading-snug mt-0.5">
                 {exercise.name}
               </h2>
             </div>
@@ -108,7 +108,7 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors cursor-pointer shrink-0"
+            className="p-2 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)] transition-colors cursor-pointer shrink-0"
             title="Chiudi"
           >
             <X className="w-5 h-5" />
@@ -116,14 +116,14 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
         </div>
 
         {/* ─── SUB-NAVBAR TABS ─── */}
-        <div className="px-4 pt-3 pb-2 bg-slate-900/60 border-b border-slate-800/80 flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+        <div className="px-4 pt-3 pb-2 bg-[var(--color-surface)] border-b border-[var(--color-border)] flex items-center gap-1.5 overflow-x-auto scrollbar-none shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('technique')}
             className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'technique'
                 ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)]'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -135,7 +135,7 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
             className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'anatomy'
                 ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)]'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
@@ -146,14 +146,14 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
             onClick={() => setActiveTab('video')}
             className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'video'
-                ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                ? 'bg-sky-500 text-white shadow-md shadow-sky-500/20'
+                : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)]'
             }`}
           >
             <Video className="w-3.5 h-3.5" />
             <span>Video Tutorial</span>
             {!exercise.video_url && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 font-bold border border-slate-700 ml-0.5">
+              <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] font-bold border border-[var(--color-border)] ml-0.5">
                 In arrivo
               </span>
             )}
@@ -161,23 +161,23 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
         </div>
 
         {/* ─── BODY SCROLLABILE ─── */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-[var(--color-bg)]">
           {/* TAB 1: ANATOMIA */}
           {activeTab === 'anatomy' && (
             <div className="space-y-6 animate-in fade-in duration-150">
               {/* Mappa Muscolare Interattiva */}
-              <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/60 shadow-xl space-y-3">
+              <div className="p-4 sm:p-5 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-border)] shadow-md space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="text-xs font-black text-[var(--color-text)] uppercase tracking-wider flex items-center gap-1.5">
                     <Target className="w-4 h-4 text-[var(--color-primary)]" />
                     Attivazione Muscolare 3D
                   </span>
                   <div className="flex items-center gap-3 text-[10px] font-bold">
-                    <span className="flex items-center gap-1 text-[var(--color-primary)]">
+                    <span className="flex items-center gap-1 text-amber-600 dark:text-[var(--color-primary)]">
                       <span className="w-2 h-2 rounded-full bg-[var(--color-primary)] shadow-[0_0_6px_var(--color-primary)]" /> Target Primario
                     </span>
-                    <span className="flex items-center gap-1 text-sky-400">
-                      <span className="w-2 h-2 rounded-full bg-sky-400" /> Sinergico
+                    <span className="flex items-center gap-1 text-sky-600">
+                      <span className="w-2 h-2 rounded-full bg-sky-500" /> Sinergico
                     </span>
                   </div>
                 </div>
@@ -195,7 +195,7 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {/* Target Primari */}
                 <div className="p-4 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 space-y-2">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1.5">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-amber-600 dark:text-[var(--color-primary)] flex items-center gap-1.5">
                     <Target className="w-3.5 h-3.5" /> Muscoli Target (Primari):
                   </span>
                   <div className="space-y-1.5">
@@ -203,21 +203,21 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
                       targets.map((m, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center justify-between text-xs font-bold text-white bg-slate-950/80 px-3 py-1.5 rounded-xl border border-[var(--color-primary)]/20"
+                          className="flex items-center justify-between text-xs font-bold text-[var(--color-text)] bg-[var(--color-panel)] px-3 py-1.5 rounded-xl border border-[var(--color-primary)]/20"
                         >
                           <span>{m.muscolo}</span>
-                          <span className="text-[var(--color-primary)] font-mono text-[11px]">{m.percentuale}% stimolo</span>
+                          <span className="text-amber-600 dark:text-[var(--color-primary)] font-mono text-[11px] font-black">{m.percentuale}% stimolo</span>
                         </div>
                       ))
                     ) : (
-                      <p className="text-xs text-slate-400">Distretto primario di riferimento</p>
+                      <p className="text-xs text-[var(--color-text-muted)]">Distretto primario di riferimento</p>
                     )}
                   </div>
                 </div>
 
                 {/* Sinergici & Stabilizzatori */}
                 <div className="p-4 rounded-2xl bg-sky-500/10 border border-sky-500/20 space-y-2">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-sky-600 flex items-center gap-1.5">
                     <Layers className="w-3.5 h-3.5" /> Muscoli Sinergici & Secondari:
                   </span>
                   <div className="space-y-1.5">
@@ -225,14 +225,14 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
                       synergists.concat(stabilizers).map((m, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center justify-between text-xs font-bold text-white bg-slate-950/80 px-3 py-1.5 rounded-xl border border-sky-500/20"
+                          className="flex items-center justify-between text-xs font-bold text-[var(--color-text)] bg-[var(--color-panel)] px-3 py-1.5 rounded-xl border border-sky-500/20"
                         >
                           <span>{m.muscolo}</span>
-                          <span className="text-sky-400 font-mono text-[11px]">{m.ruolo}</span>
+                          <span className="text-sky-600 font-mono text-[11px] font-black">{m.ruolo}</span>
                         </div>
                       ))
                     ) : (
-                      <p className="text-xs text-slate-400">Nessun muscolo secondario rilevante</p>
+                      <p className="text-xs text-[var(--color-text-muted)]">Nessun muscolo secondario rilevante</p>
                     )}
                   </div>
                 </div>
@@ -245,20 +245,20 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
             <div className="space-y-5 animate-in fade-in duration-150">
               {/* Esecuzione Step-by-Step */}
               <div className="space-y-3">
-                <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <h4 className="text-xs font-black uppercase tracking-wider text-[var(--color-text)] flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                   Esecuzione Corretta & Setup
                 </h4>
                 <div className="space-y-2">
                   {executionSteps.map((step, idx) => (
                     <div
                       key={idx}
-                      className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-start gap-3 text-xs leading-relaxed"
+                      className="p-3.5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-border)] flex items-start gap-3 text-xs leading-relaxed"
                     >
                       <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-slate-950 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                         {idx + 1}
                       </span>
-                      <span className="text-slate-200 font-medium">{step}</span>
+                      <span className="text-[var(--color-text)] font-medium">{step}</span>
                     </div>
                   ))}
                 </div>
@@ -267,17 +267,17 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
               {/* Errori Comuni da Evitare */}
               {commonMistakes.length > 0 && (
                 <div className="space-y-3">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
-                    <ShieldAlert className="w-4 h-4 text-rose-400" />
+                  <h4 className="text-xs font-black uppercase tracking-wider text-rose-500 flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-rose-500" />
                     Errori Comuni da Evitare
                   </h4>
                   <div className="space-y-2">
                     {commonMistakes.map((mistake, idx) => (
                       <div
                         key={idx}
-                        className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-200 flex items-start gap-2.5"
+                        className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-600 flex items-start gap-2.5 font-medium"
                       >
-                        <span className="text-rose-400 font-black shrink-0">✕</span>
+                        <span className="text-rose-500 font-black shrink-0">✕</span>
                         <span>{mistake}</span>
                       </div>
                     ))}
@@ -287,10 +287,10 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
 
               {/* Consiglio del Coach */}
               <div className="p-4 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 text-xs space-y-1.5">
-                <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-primary)] flex items-center gap-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-[var(--color-primary)] flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5" /> Consiglio Coach & Biomeccanica
                 </span>
-                <p className="text-slate-300 font-medium leading-relaxed">
+                <p className="text-[var(--color-text)] font-medium leading-relaxed">
                   Mantieni sempre il controllo della fase eccentrica (discesa controllata). Evita slanci o compensi lombari per massimizzare la tensione meccanica sui muscoli target.
                 </p>
               </div>
@@ -302,7 +302,7 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
             <div className="space-y-4 animate-in fade-in duration-150">
               {exercise.video_url ? (
                 <div className="space-y-3">
-                  <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black border border-slate-800 shadow-xl">
+                  <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black border border-[var(--color-border)] shadow-xl">
                     <iframe
                       src={
                         exercise.video_url.includes('youtube.com/watch?v=')
@@ -317,18 +317,18 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
                       allowFullScreen
                     />
                   </div>
-                  <p className="text-xs text-slate-400 text-center">
+                  <p className="text-xs text-[var(--color-text-muted)] text-center font-medium">
                     Video tutorial dimostrativo fornito dal coach per {exercise.name}.
                   </p>
                 </div>
               ) : (
-                <div className="p-8 rounded-3xl bg-slate-900/60 border border-slate-800 flex flex-col items-center justify-center text-center space-y-4 shadow-xl">
-                  <div className="w-14 h-14 rounded-2xl bg-red-600/15 border border-red-500/30 text-red-400 flex items-center justify-center shadow-lg">
+                <div className="p-8 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-border)] flex flex-col items-center justify-center text-center space-y-4 shadow-md">
+                  <div className="w-14 h-14 rounded-2xl bg-red-600/15 border border-red-500/30 text-red-500 flex items-center justify-center shadow-md">
                     <Video className="w-7 h-7" />
                   </div>
                   <div className="space-y-1 max-w-md">
-                    <h4 className="text-sm font-black text-white">Video Tutorial su YouTube</h4>
-                    <p className="text-xs text-slate-400 leading-relaxed">
+                    <h4 className="text-sm font-black text-[var(--color-text)]">Video Tutorial su YouTube</h4>
+                    <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
                       Non è ancora stato assegnato un video specifico per <strong>{exercise.name}</strong>. Puoi consultare i migliori video tutorial di esecuzione direttamente su YouTube.
                     </p>
                   </div>
@@ -337,7 +337,7 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
                     href={`https://www.youtube.com/results?search_query=${encodeURIComponent(exercise.name + ' esecuzione corretta tutorial')}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 cursor-pointer"
+                    className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-2 shadow-md active:scale-95 cursor-pointer"
                   >
                     <ExternalLink className="w-4 h-4" />
                     <span>Cerca Tutorial su YouTube</span>
@@ -349,8 +349,8 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
         </div>
 
         {/* ─── FOOTER CON PULSANTE CHIUDI ─── */}
-        <div className="p-4 bg-[var(--color-panel)] border-t border-[var(--color-panel-border)] flex items-center justify-between shrink-0">
-          <span className="text-[11px] text-slate-500 font-bold hidden sm:inline">
+        <div className="p-4 bg-[var(--color-surface)] border-t border-[var(--color-border)] flex items-center justify-between shrink-0">
+          <span className="text-[11px] text-[var(--color-text-muted)] font-bold hidden sm:inline">
             AC Coaching Anatomy & Biomechanics Module
           </span>
           <button

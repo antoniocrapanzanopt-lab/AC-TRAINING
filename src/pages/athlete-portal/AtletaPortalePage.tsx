@@ -15,6 +15,7 @@ import {
   Scale,
   Sparkles,
   Flame,
+  Settings,
 } from 'lucide-react';
 import { useAthletes } from '../../context/AthletesContext';
 import { useSubscriptions } from '../../context/SubscriptionsContext';
@@ -30,6 +31,7 @@ import { AthleteProgressView } from '../athlete/AthleteProgressView';
 import { AthleteNutritionDashboard } from '../../components/athlete/AthleteNutritionDashboard';
 import { AthleteNextAppointmentCard } from '../../components/athlete/AthleteNextAppointmentCard';
 import { AthleteCommunicationsFeed } from '../../components/athlete/AthleteCommunicationsFeed';
+import { AthleteSettingsView } from '../athlete/AthleteSettingsView';
 
 export const AtletaPortalePage: React.FC = () => {
   const { athletes } = useAthletes();
@@ -41,7 +43,7 @@ export const AtletaPortalePage: React.FC = () => {
   const { ownerProfile } = useApp();
   const { currentOrganization } = useAuth();
 
-  const [portalTab, setPortalTab] = useState<'panoramica' | 'comunicazioni' | 'progressi' | 'fabbisogno'>('panoramica');
+  const [portalTab, setPortalTab] = useState<'panoramica' | 'comunicazioni' | 'progressi' | 'fabbisogno' | 'impostazioni'>('panoramica');
 
   // Atleta Selezionato per l'anteprima del portale
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>(
@@ -252,9 +254,22 @@ export const AtletaPortalePage: React.FC = () => {
           <Flame className="w-4 h-4" />
           <span>Nutrizione & Target</span>
         </button>
+        <button
+          onClick={() => setPortalTab('impostazioni')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            portalTab === 'impostazioni'
+              ? 'bg-[var(--color-primary)] text-black shadow-md font-black'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          <span>Impostazioni & Aspetto</span>
+        </button>
       </div>
 
-      {portalTab === 'fabbisogno' ? (
+      {portalTab === 'impostazioni' ? (
+        <AthleteSettingsView />
+      ) : portalTab === 'fabbisogno' ? (
         <AthleteNutritionDashboard athleteId={selectedAthlete.id} />
       ) : portalTab === 'progressi' ? (
         <AthleteProgressView targetAthleteId={selectedAthlete.id} />

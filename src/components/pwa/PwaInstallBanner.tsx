@@ -72,33 +72,29 @@ export const PwaInstallBanner: React.FC<{ className?: string }> = ({ className =
   return (
     <>
       <div
-        className={`p-4 rounded-3xl bg-gradient-to-r from-slate-950 via-[#0e1424] to-slate-950 border border-cyan-500/30 hover:border-cyan-500/50 shadow-2xl shadow-cyan-950/20 text-white relative overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-top-3 ${className}`}
+        className={`p-4 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-md text-[var(--color-text)] relative overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-top-3 ${className}`}
       >
-        {/* Glow di sfondo */}
-        <div className="absolute top-0 right-0 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 relative z-10">
           {/* Sinistra: Icona App AC & Testi */}
           <div className="flex items-center gap-3 min-w-0">
             
             {/* Icona Monogramma AC */}
-            <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[var(--color-primary)] via-amber-400 to-cyan-400 p-0.5 shadow-xl shadow-[var(--color-primary)]/30 shrink-0">
-              <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center relative overflow-hidden">
+            <div className="w-12 h-12 sm:w-13 sm:h-13 rounded-2xl bg-gradient-to-tr from-[var(--color-primary)] to-amber-400 p-0.5 shadow-md shrink-0">
+              <div className="w-full h-full bg-[var(--color-surface)] rounded-[14px] flex items-center justify-center relative overflow-hidden">
                 <img src="/ac-logo-transparent.png" alt="AC" className="w-full h-full object-contain scale-115" />
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400" />
               </div>
             </div>
 
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h4 className="text-xs sm:text-sm font-black text-white tracking-tight">
+                <h4 className="text-xs sm:text-sm font-black text-[var(--color-text)] tracking-tight">
                   Aggiungi AC alla schermata Home
                 </h4>
-                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
                   App
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300/90 font-medium line-clamp-1 mt-0.5">
+              <p className="text-[11px] text-[var(--color-text-muted)] font-medium line-clamp-1 mt-0.5">
                 Apri il tuo percorso di allenamento in un tocco, a schermo intero.
               </p>
             </div>
@@ -109,7 +105,7 @@ export const PwaInstallBanner: React.FC<{ className?: string }> = ({ className =
             <button
               type="button"
               onClick={handleDismiss}
-              className="px-3 py-2 rounded-xl text-slate-400 hover:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+              className="px-3 py-2 rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text)] text-xs font-bold transition-colors cursor-pointer"
             >
               Non ora
             </button>
@@ -117,7 +113,7 @@ export const PwaInstallBanner: React.FC<{ className?: string }> = ({ className =
             <button
               type="button"
               onClick={handleOpenGuide}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 to-[var(--color-primary)] text-slate-950 font-black text-xs hover:opacity-95 active:scale-95 transition-all flex items-center gap-1.5 shadow-lg shadow-cyan-500/25 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs active:scale-95 transition-all flex items-center gap-1.5 shadow-md cursor-pointer"
             >
               <Smartphone className="w-3.5 h-3.5" />
               <span>Aggiungi</span>

@@ -50,13 +50,15 @@ export const DraftsListView: React.FC<DraftsListViewProps> = ({
     <div className="space-y-4">
       {drafts.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {drafts.map(d => {
+          {drafts.map((d, index) => {
             const currentType = typeConfig[d.type] || typeConfig.update;
             const TypeIcon = currentType.icon;
+            const rowKey = d.id && d.id.trim() !== '' ? d.id : `draft-row-${index}-${d.title}`;
+            const isConfirming = Boolean(deleteConfirmId && deleteConfirmId === rowKey);
 
             return (
               <div
-                key={d.id}
+                key={rowKey}
                 className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl flex flex-col justify-between gap-4 hover:border-slate-700 transition-all group"
               >
                 <div className="space-y-2.5">
@@ -91,7 +93,6 @@ export const DraftsListView: React.FC<DraftsListViewProps> = ({
                         )
                       )}
                     </span>
-
                     <span className="ml-auto text-slate-400 font-bold">
                       Canali: {d.channels.join(', ')}
                     </span>
@@ -100,23 +101,23 @@ export const DraftsListView: React.FC<DraftsListViewProps> = ({
 
                 {/* Footer azioni */}
                 <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                  {deleteConfirmId === d.id ? (
+                  {isConfirming ? (
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={() => {
-                          onDeleteDraft(d.id);
+                          onDeleteDraft(d.id || rowKey);
                           setDeleteConfirmId(null);
                           showSuccess('Bozza Eliminata', 'La bozza è stata rimossa.');
                         }}
-                        className="px-2.5 py-1 rounded bg-red-600 text-white text-xs font-bold hover:bg-red-500"
+                        className="px-2.5 py-1 rounded bg-red-600 text-white text-xs font-bold hover:bg-red-500 cursor-pointer"
                       >
                         Conferma
                       </button>
                       <button
                         type="button"
                         onClick={() => setDeleteConfirmId(null)}
-                        className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-xs"
+                        className="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-xs cursor-pointer"
                       >
                         Annulla
                       </button>
@@ -124,8 +125,8 @@ export const DraftsListView: React.FC<DraftsListViewProps> = ({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setDeleteConfirmId(d.id)}
-                      className="p-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-slate-900 transition-all"
+                      onClick={() => setDeleteConfirmId(rowKey)}
+                      className="p-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-slate-900 transition-all cursor-pointer"
                       title="Elimina bozza"
                     >
                       <Trash2 className="w-4 h-4" />

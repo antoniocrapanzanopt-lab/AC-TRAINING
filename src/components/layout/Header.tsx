@@ -57,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="bg-[var(--color-panel)]/80 backdrop-blur-xl border-b border-[var(--color-panel-border)]/50 px-4 sm:px-6 py-3.5 flex items-center justify-between sticky top-0 z-30 shadow-sm">
+      <header className="bg-[var(--color-panel)]/80 backdrop-blur-xl border-b border-[var(--color-panel-border)]/50 px-4 sm:px-6 pt-[calc(0.875rem+env(safe-area-inset-top,0px))] pb-3.5 flex items-center justify-between sticky top-0 z-30 shadow-sm">
         {/* Sinistra: Menu Mobile Toggle + Logo + Organizzazione */}
         <div className="flex items-center gap-3">
           <button
