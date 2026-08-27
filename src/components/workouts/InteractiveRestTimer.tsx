@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Volume2, VolumeX, FastForward, Plus, Minus } from 'lucide-react';
-import { playCountdownBeep, playRestCompleteTone } from '../../utils/soundEffects';
+import { playCountdownBeep, initOrResumeAudioContext } from '../../utils/soundEffects';
 
 interface InteractiveRestTimerProps {
   remainingSeconds: number;
@@ -29,6 +29,10 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
   const toggleAudio = () => {
     setIsAudioEnabled((prev) => {
       const next = !prev;
+      if (next) {
+        initOrResumeAudioContext();
+        playCountdownBeep(700, 0.06);
+      }
       try {
         localStorage.setItem('ac_rest_audio_enabled', JSON.stringify(next));
       } catch {}
@@ -36,31 +40,28 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
     });
   };
 
-  // Gestione Suoni e Vibrazione nei secondi finali
+  // Gestione Suoni e Vibrazione nei secondi finali (countdown 3, 2, 1)
   useEffect(() => {
     if (remainingSeconds === lastPlayedSecondRef.current) return;
     lastPlayedSecondRef.current = remainingSeconds;
 
     if (remainingSeconds === 3 || remainingSeconds === 2 || remainingSeconds === 1) {
       if (isAudioEnabled) {
-        playCountdownBeep(remainingSeconds === 1 ? 800 : 600, 0.08);
+        playCountdownBeep(remainingSeconds === 1 ? 880 : 660, 0.08);
       }
       if (navigator.vibrate) {
-        navigator.vibrate(40);
-      }
-    } else if (remainingSeconds === 0) {
-      if (isAudioEnabled) {
-        playRestCompleteTone();
-      }
-      if (navigator.vibrate) {
-        navigator.vibrate([100, 50, 150]);
+        navigator.vibrate(35);
       }
     }
   }, [remainingSeconds, isAudioEnabled]);
 
   const formatTime = (sec: number) => {
-    const m = Math.floor(sec / 60);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
     const s = sec % 60;
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 

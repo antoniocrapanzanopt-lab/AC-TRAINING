@@ -269,6 +269,52 @@ export function buildAthleteReport(
   const previousPainCount = previousSessions.filter((s) => isPainNote(s.notes)).length;
   const painReportsCount = calculateDelta(currentPainCount, previousPainCount);
 
+  // Estrai dettagli specifici di dolori/fastidi (esercizi coinvolti e zone anatomiche)
+  let painDetailsSummary = '';
+  if (currentPainCount > 0) {
+    const painSummaries: string[] = [];
+
+    // A. Cerca nelle note sessione (questionario post-workout)
+    currentSessions
+      .filter((s) => isPainNote(s.notes))
+      .forEach((s) => {
+        const text = s.notes || '';
+        if (text.includes('Fastidi:')) {
+          const fastidiPart = text.split('Fastidi:')[1]?.trim() || '';
+          const matches = [...fastidiPart.matchAll(/Esercizio:\s*([^—\];]+)(?:—\s*Zona:\s*([^\];]+))?/gi)];
+          if (matches.length > 0) {
+            matches.forEach((m) => {
+              const ex = m[1]?.trim();
+              const zone = m[2]?.trim();
+              if (ex && ex !== 'Non specificato') {
+                painSummaries.push(zone && zone !== 'Non specificata' ? `${ex} (${zone})` : ex);
+              } else if (zone && zone !== 'Non specificata') {
+                painSummaries.push(`Zona ${zone}`);
+              }
+            });
+          } else {
+            const cleanText = fastidiPart.replace(/[\[\]#0-9]/g, '').trim();
+            if (cleanText) painSummaries.push(cleanText);
+          }
+        } else if (isPainFeedback(text) && !text.toLowerCase().startsWith('questionario:')) {
+          painSummaries.push(text.length > 60 ? `${text.slice(0, 57)}...` : text);
+        }
+      });
+
+    // B. Cerca nelle note dei singoli log esercizio
+    currentLogs
+      .filter((l) => isPainFeedback(l.notes))
+      .forEach((l) => {
+        const exName = l.exercise_name || (l.exercise_id && exerciseNamesMap.get(l.exercise_id)) || 'Esercizio';
+        painSummaries.push(`${exName}: "${l.notes}"`);
+      });
+
+    const uniquePainSummaries = Array.from(new Set(painSummaries));
+    if (uniquePainSummaries.length > 0) {
+      painDetailsSummary = uniquePainSummaries.slice(0, 2).join(' • ');
+    }
+  }
+
   // 3. Volume Totale (kg)
   const calcTotalVolume = (logList: RawExerciseLog[]) => {
     return logList.reduce((acc, log) => {
@@ -404,14 +450,15 @@ export function buildAthleteReport(
     singleDecisionType = 'missing_weights';
     singleDecisionCtaLabel = 'Sollecita Compilazione';
   } else if (currentPainCount > 0) {
+    const painSubject = painDetailsSummary ? `su ${painDetailsSummary}` : 'nelle ultime sessioni';
     if (currentPainCount === 1 && totalCompletedInHistory <= 2) {
-      singleDecisionTitle = 'Richiedi Video o Check Tecnico';
-      singleDecisionRationale = '1° segnalazione di fastidio: richiedi un video esecutivo o verifica la tecnica prima di modificare la scheda.';
+      singleDecisionTitle = painDetailsSummary ? `Fastidio su ${painDetailsSummary}` : 'Richiedi Video o Check Tecnico';
+      singleDecisionRationale = `1° segnalazione di fastidio ${painSubject}: richiedi un video esecutivo o verifica la tecnica prima di modificare la scheda.`;
       singleDecisionType = 'pain';
       singleDecisionCtaLabel = 'Verifica Tecnica';
     } else {
-      singleDecisionTitle = 'Sostituisci Esercizio a Rischio';
-      singleDecisionRationale = `${currentPainCount} segnalazione/i di fastidio articolare rilevata nelle ultime sessioni.`;
+      singleDecisionTitle = painDetailsSummary ? `Fastidio su ${painDetailsSummary}` : 'Sostituisci Esercizio a Rischio';
+      singleDecisionRationale = `Segnalato fastidio articolare ${painSubject}. Valuta sostituzione variante o riduzione carico.`;
       singleDecisionType = 'pain';
       singleDecisionCtaLabel = 'Apri Decisione';
     }
@@ -441,8 +488,10 @@ export function buildAthleteReport(
   let aiNarrativeSummary = '';
   if (!hasAssignment) {
     aiNarrativeSummary = `L'atleta ${athlete.fullName} non ha ancora un programma di allenamento assegnato. Assegna una scheda per iniziare a raccogliere dati di performance.`;
+  } else if (currentSessions.length === 0) {
+    aiNarrativeSummary = `Scheda "${workoutTitle}" assegnata. In attesa del primo allenamento registrato da parte di ${athlete.fullName}.`;
   } else {
-    aiNarrativeSummary = `Nelle ultime settimane ${athlete.fullName} ha completato ${currentSessions.length} sessioni con un'aderenza del ${currentAttendancePct}%. Volume totale pari a ${curVol.toLocaleString('it-IT')} kg. ${singleDecisionRationale}`;
+    aiNarrativeSummary = `Nelle ultime settimane ${athlete.fullName} ha completato ${currentSessions.length} sessioni con un'aderenza del ${currentAttendancePct}%. ${singleDecisionRationale}`;
   }
 
   // 10. Direzione Strategica
@@ -529,6 +578,7 @@ export function buildAthleteReport(
     completedSessions,
     avgRpe,
     painReportsCount,
+    painDetailsSummary,
     totalVolumeKg,
     keyExercises,
     muscleGroups,
@@ -601,12 +651,19 @@ export function buildTeamOverviewReport(
   );
   painAthletes.forEach((pa) => {
     if (todayPriorities.length < 3) {
+      const painTitle = pa.painDetailsSummary
+        ? `Fastidio su ${pa.painDetailsSummary}`
+        : `Verifica fastidio articolare per ${pa.athleteName}`;
+      const painRationale = pa.painDetailsSummary
+        ? `Segnalato fastidio articolare su: ${pa.painDetailsSummary}.`
+        : `${pa.painReportsCount.current} segnalazione/i di fastidio registrate nelle ultime sessioni.`;
+
       todayPriorities.push({
         id: `prio-pain-${pa.athleteId}`,
         athleteId: pa.athleteId,
         athleteName: pa.athleteName,
-        title: `Verifica fastidio articolare per ${pa.athleteName}`,
-        rationale: `${pa.painReportsCount.current} segnalazione/i di fastidio registrate nelle ultime sessioni.`,
+        title: painTitle,
+        rationale: painRationale,
         type: 'pain',
         urgency: 'high',
         ctaLabel: 'Apri Decisione',

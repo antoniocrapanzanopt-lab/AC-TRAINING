@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   MessageSquare,
   ShieldCheck,
+  ShieldAlert,
   Send,
   Ban,
   Video,
@@ -426,7 +427,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
               {/* Contesto sintetico */}
               {currentStep !== 'success' && (
                 <p className="text-xs text-amber-200/90 font-medium mt-2 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 leading-relaxed">
-                  ⚠️ {diagnosisSummary}
+                  ⚠️ {diagnosisSummary || alertData.noteText || alertData.suggestion || 'Valutazione intervento per l\'atleta.'}
                 </p>
               )}
             </div>
@@ -530,7 +531,32 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
           {/* ══════════════════════════════════════════════════════════════════ */}
           {currentStep === 'select_mode' && (
             <div className="space-y-5 animate-in fade-in duration-150">
-              <div className="text-center space-y-1">
+              
+              {/* BOX DETTAGLIO PROBLEMA / FASTIDIO SEGNALATO IN EVIDENZA */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-rose-950/40 via-rose-900/20 to-slate-950 border border-rose-500/40 space-y-2 shadow-lg animate-in fade-in">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
+                    <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>Problema & Fastidio Segnalato dall'Atleta</span>
+                  </div>
+                  {alertData.exerciseName && (
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30 font-mono">
+                      {alertData.exerciseName}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs sm:text-sm font-semibold text-slate-100 leading-relaxed">
+                  {alertData.noteText || alertData.suggestion || 'Segnalato fastidio articolare post-allenamento.'}
+                </p>
+                {diagnosisSummary && (
+                  <div className="pt-2 border-t border-rose-500/20 text-[11px] text-amber-300 font-medium flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Analisi Kinesiologica Preliminare: {diagnosisSummary}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center space-y-1 pt-1">
                 <h4 className="text-lg sm:text-xl font-black text-white tracking-tight">
                   Come desideri intervenire sul programma?
                 </h4>

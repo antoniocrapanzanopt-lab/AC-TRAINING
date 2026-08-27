@@ -905,6 +905,7 @@ export interface AthleteReportSummary {
   completedSessions: ComparisonMetricDelta; // numero sessioni
   avgRpe: ComparisonMetricDelta; // RPE 1-10
   painReportsCount: ComparisonMetricDelta; // numero segnalazioni
+  painDetailsSummary?: string; // Dettaglio esercizi e zone di fastidio estratte dalle note/questionari
   totalVolumeKg: ComparisonMetricDelta; // kg sollevati
   
   // Dettagli Esercizi & Distretti Muscolari

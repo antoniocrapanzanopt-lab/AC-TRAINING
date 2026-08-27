@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { ToastContainer } from './components/common/ToastContainer';
-import { GlobalCoachAIAssistantWidget } from './components/common/GlobalCoachAIAssistantWidget';
 import { FloatingChatWidget } from './components/chat/FloatingChatWidget';
 import { PageContainer } from './pages/PageContainer';
 import { DashboardPage } from './pages/dashboard/DashboardPage';
@@ -148,7 +147,6 @@ export const MainLayout: React.FC = () => {
           {renderPage(activeTab, setActiveTab)}
         </main>
       </div>
-      <GlobalCoachAIAssistantWidget />
       <FloatingChatWidget />
       <ToastContainer />
       <NotificationToast

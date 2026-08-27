@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, ChevronLeft, Trash2, Paperclip, Download } from 'lucide-react';
+import { MessageSquare, X, Send, ChevronLeft, Trash2, Paperclip, Download, Mail, CheckCheck } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
@@ -7,7 +7,7 @@ import { uploadChatAttachment } from '../../lib/chatStorage';
 import { SecureChatAttachment } from './SecureChatAttachment';
 
 export const FloatingChatWidget: React.FC = () => {
-  const { conversations, activeConversation, setActiveConversation, messages, sendMessage, markAsRead, deleteMessage } = useMessages();
+  const { conversations, activeConversation, setActiveConversation, messages, sendMessage, markAsRead, markAsUnread, deleteMessage } = useMessages();
   const { user } = useAuth();
   const { athletes } = useAthletes();
   const [isOpen, setIsOpen] = useState(false);
@@ -34,6 +34,13 @@ export const FloatingChatWidget: React.FC = () => {
       markAsRead(activeConversation.athlete_id);
     }
   }, [isOpen, activeConversation, messages.length, markAsRead]);
+
+  const handleMarkActiveAsUnread = async () => {
+    if (!activeConversation) return;
+    const athleteId = activeConversation.athlete_id;
+    setActiveConversation(null);
+    await markAsUnread(athleteId);
+  };
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -183,41 +190,67 @@ export const FloatingChatWidget: React.FC = () => {
           {/* HEADER */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-panel-border)] bg-[var(--color-panel)]/90 backdrop-blur-md shrink-0">
             {activeConversation ? (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setActiveConversation(null)}
-                  className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-300">
-                      {activeConversation.athlete_initials}
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                  <button
+                    onClick={() => setActiveConversation(null)}
+                    className="p-1 -ml-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                    title="Torna alle conversazioni"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="relative shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-300">
+                        {activeConversation.athlete_initials}
+                      </div>
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-[var(--color-panel)]"></span>
                     </div>
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-[var(--color-panel)]"></span>
+                    <span className="text-sm font-bold text-white uppercase truncate">{activeConversation.athlete_name}</span>
                   </div>
-                  <span className="text-sm font-bold text-white uppercase">{activeConversation.athlete_name}</span>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleMarkActiveAsUnread}
+                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition-colors cursor-pointer"
+                    title="Segna come non letto"
+                  >
+                    <Mail className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsOpen(false);
+                      setActiveConversation(null);
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    title="Chiudi"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
-                  <MessageSquare className="w-4 h-4" />
+              <>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                    <MessageSquare className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white">Chat Atleti</h3>
                 </div>
-                <h3 className="text-sm font-bold text-white">Chat Atleti</h3>
-              </div>
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    setActiveConversation(null);
+                  }}
+                  className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title="Chiudi"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </>
             )}
-
-            <button
-              onClick={() => {
-                setIsOpen(false);
-                setActiveConversation(null);
-              }}
-              className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
 
           {/* MESSAGES / CONVERSATIONS BODY */}
@@ -232,9 +265,9 @@ export const FloatingChatWidget: React.FC = () => {
                     <div
                       key={conv.athlete_id}
                       onClick={() => setActiveConversation(conv)}
-                      className="p-3 rounded-xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] hover:border-[var(--color-primary)]/50 cursor-pointer flex items-center justify-between gap-3 group transition-all"
+                      className="p-3 rounded-xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] hover:border-[var(--color-primary)]/50 cursor-pointer flex items-center justify-between gap-3 group transition-all relative"
                     >
-                      <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
                         <div className="relative shrink-0">
                           <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-300">
                             {conv.athlete_initials}
@@ -245,7 +278,7 @@ export const FloatingChatWidget: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <div className="truncate">
+                        <div className="truncate flex-1 min-w-0">
                           <h4 className="text-sm font-bold text-white group-hover:text-[var(--color-primary)] transition-colors truncate">
                             {conv.athlete_name}
                           </h4>
@@ -254,11 +287,37 @@ export const FloatingChatWidget: React.FC = () => {
                           </p>
                         </div>
                       </div>
-                      {conv.last_message && (
-                        <span className="text-[9px] text-slate-500 shrink-0 whitespace-nowrap self-start mt-1">
-                          {new Date(conv.last_message.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
+
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {conv.last_message && (
+                          <span className="text-[9px] text-slate-500 whitespace-nowrap">
+                            {new Date(conv.last_message.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (conv.unread_count > 0) {
+                              markAsRead(conv.athlete_id);
+                            } else {
+                              markAsUnread(conv.athlete_id);
+                            }
+                          }}
+                          className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                            conv.unread_count > 0
+                              ? 'text-emerald-400 hover:bg-emerald-500/20'
+                              : 'text-slate-500 hover:text-amber-400 hover:bg-slate-800'
+                          }`}
+                          title={conv.unread_count > 0 ? 'Segna come già letto' : 'Segna come non letto'}
+                        >
+                          {conv.unread_count > 0 ? (
+                            <CheckCheck className="w-3.5 h-3.5" />
+                          ) : (
+                            <Mail className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}

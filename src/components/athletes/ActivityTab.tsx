@@ -8,6 +8,10 @@ import {
   Calendar,
   Filter,
   ShieldAlert,
+  ShieldCheck,
+  AlertCircle,
+  XCircle,
+  Send,
   Sparkles,
   TrendingUp,
   Clock,
@@ -16,6 +20,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useApp } from '../../context/AppContext';
+import { useToast } from '../../context/ToastContext';
 import { isPainFeedback } from '../../utils/painAnalysis';
 
 interface ActivityTabProps {
@@ -54,15 +59,23 @@ export interface DetailedWorkoutSession {
   hasPainAlert: boolean;
   painAlertReason?: string;
   isHighRpe: boolean;
+  status?: 'completed' | 'skipped';
+  skipReason?: string;
+  skipNotes?: string;
+  coachJustified?: boolean | null;
+  coachFeedback?: string;
   exercises: WorkoutExerciseLogGroup[];
 }
 
 export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName }) => {
   const { allAssignedWorkouts } = useWorkouts();
   const { setActiveTab: setAppActiveTab } = useApp();
+  const { showSuccess, showError } = useToast();
 
   const [completedSessions, setCompletedSessions] = useState<DetailedWorkoutSession[]>([]);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>({});
+  const [savingEvaluationId, setSavingEvaluationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeWorkoutDaysCount, setActiveWorkoutDaysCount] = useState<number>(3);
 
@@ -112,6 +125,13 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
             rpe,
             notes,
             workout_id,
+            status,
+            skip_reason,
+            skip_notes,
+            coach_justified,
+            coach_feedback,
+            week_number,
+            day_name,
             workouts ( id, title, total_weeks )
           `)
           .eq('athlete_id', athleteId)
@@ -267,10 +287,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
               }
             });
 
-            // Se week/day non erano presenti nel log esercizio, li calcoliamo dalla cronologia
-            const computedWeek = detectedWeek || Math.min(sessionTotalWeeks, Math.floor(idx / daysPerWeek) + 1);
             const dayLetters = ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
-            const computedDay = detectedDay || dayLetters[idx % daysPerWeek] || `Seduta ${(idx % daysPerWeek) + 1}`;
 
             const exercises: WorkoutExerciseLogGroup[] = Array.from(exMap.entries()).map(
               ([name, { sets, notesSet }]) => {
@@ -287,9 +304,13 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
               painNotesList.push(`Questionario: "${session.notes}"`);
             }
 
-            const hasPainAlert = hasPainInLogs || hasPainInSessionNotes;
+            const isSkipped = session.status === 'skipped';
+            const hasPainAlert = !isSkipped && (hasPainInLogs || hasPainInSessionNotes);
             const rpeVal = Number(session.rpe) || 0;
-            const isHighRpe = rpeVal >= 8.5;
+            const isHighRpe = !isSkipped && rpeVal >= 8.5;
+
+            const computedWeek = session.week_number || detectedWeek || Math.min(sessionTotalWeeks, Math.floor(idx / daysPerWeek) + 1);
+            const computedDay = session.day_name || detectedDay || dayLetters[idx % daysPerWeek] || `Seduta ${(idx % daysPerWeek) + 1}`;
 
             return {
               id: session.id,
@@ -305,13 +326,18 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
                 month: 'short',
                 year: 'numeric',
               }),
-              durationMinutes,
+              durationMinutes: isSkipped ? 0 : durationMinutes,
               rpe: rpeVal,
               notes: session.notes,
-              totalVolumeKg: sessionVolumeKg,
+              totalVolumeKg: isSkipped ? 0 : sessionVolumeKg,
               hasPainAlert,
               painAlertReason: painNotesList.join(' • '),
               isHighRpe,
+              status: isSkipped ? 'skipped' : 'completed',
+              skipReason: session.skip_reason,
+              skipNotes: session.skip_notes,
+              coachJustified: session.coach_justified,
+              coachFeedback: session.coach_feedback,
               exercises,
             };
           });
@@ -335,6 +361,49 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
     }
   }, [athleteId, allAssignedWorkouts, assignedWorkout, activeWorkoutTitle, totalWeeks, activeWorkoutDaysCount]);
 
+  const handleEvaluateSkip = async (sessionId: string, isJustified: boolean, feedbackText?: string) => {
+    setSavingEvaluationId(sessionId);
+    try {
+      const updatePayload: Record<string, any> = {
+        coach_justified: isJustified,
+      };
+      if (feedbackText !== undefined) {
+        updatePayload.coach_feedback = feedbackText.trim() || null;
+      }
+
+      const { error } = await supabase
+        .from('workout_sessions')
+        .update(updatePayload)
+        .eq('id', sessionId);
+
+      if (error) throw error;
+
+      setCompletedSessions((prev) =>
+        prev.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                coachJustified: isJustified,
+                coachFeedback: feedbackText !== undefined ? feedbackText.trim() : s.coachFeedback,
+              }
+            : s
+        )
+      );
+
+      showSuccess(
+        isJustified ? 'Assenza Giustificata' : 'Penalità Applicata',
+        isJustified
+          ? 'Nessuna penalità applicata al punteggio dell\'atleta.'
+          : 'Penalità applicata all\'aderenza dell\'atleta.'
+      );
+    } catch (err: any) {
+      console.error('Errore valutazione salto:', err);
+      showError('Errore', 'Impossibile salvare la valutazione.');
+    } finally {
+      setSavingEvaluationId(null);
+    }
+  };
+
   // Calcolo avanzamento Programma Attivo (Schede fatte vs rimanenti)
   const activeProgramProgress = useMemo(() => {
     if (!assignedWorkout) return null;
@@ -344,7 +413,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
 
     // Sessioni completate per questa scheda attiva
     const completedForThisWorkout = completedSessions.filter(
-      (s) => s.workoutId === assignedWorkout.workout_id || s.workoutTitle === activeWorkoutTitle
+      (s) => (s.workoutId === assignedWorkout.workout_id || s.workoutTitle === activeWorkoutTitle) && s.status !== 'skipped'
     ).length;
 
     const remainingSessions = Math.max(0, totalPlannedSessions - completedForThisWorkout);
@@ -448,12 +517,13 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
   return (
     <div className="space-y-6">
       {/* ─── 1. HEADER SEZIONE ─── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
-          <h3 className="text-lg font-black text-white flex items-center gap-2">
-            <Activity className="w-5 h-5 text-[var(--color-primary)]" /> Cronologia Allenamenti Svolti
+          <h3 className="text-xl font-black text-white flex items-center gap-2.5">
+            <Activity className="w-6 h-6 text-amber-400" />
+            <span>Cronologia & Registro Allenamenti</span>
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-400 mt-1">
             Registro storico delle sessioni, carichi sollevati, intensità e avanzamento per {athleteName}.
           </p>
         </div>
@@ -467,6 +537,28 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
           <span>Gestisci Schede</span>
         </button>
       </div>
+
+      {/* BANNER NOTIFICA GIUSTIFICAZIONI IN SOSPESO */}
+      {completedSessions.some((s) => s.status === 'skipped' && s.coachJustified === null) && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/40">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-sm font-black text-white truncate">
+                Giustificazioni in attesa di valutazione
+              </h4>
+              <p className="text-xs text-amber-200/80 mt-0.5">
+                L'atleta ha segnalato delle sedute saltate. Decidi se giustificare l'assenza o applicare la penalità sul punteggio.
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-amber-500 text-slate-950 font-black text-xs shrink-0 shadow-md">
+            {completedSessions.filter((s) => s.status === 'skipped' && s.coachJustified === null).length} in attesa
+          </span>
+        </div>
+      )}
 
       {/* ─── 2. HERO BOX AVANZAMENTO PROGRAMMA ATTIVO (SCHEDE FATTE / RIMANGONO / SETTIMANA) ─── */}
       {activeProgramProgress && (
@@ -679,6 +771,156 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
         ) : (
           filteredSessions.map((session) => {
             const isExpanded = expandedSessionId === session.id;
+
+            if (session.status === 'skipped') {
+              return (
+                <div
+                  key={session.id}
+                  className="rounded-3xl border border-amber-500/30 bg-slate-950/90 shadow-xl overflow-hidden"
+                >
+                  <div
+                    onClick={() => toggleExpand(session.id)}
+                    className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer select-none group"
+                  >
+                    <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-amber-500/20 text-amber-400 border-amber-500/40 shadow-sm">
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm sm:text-base font-black text-white group-hover:text-amber-300 transition-colors">
+                            {session.dayName}
+                          </h4>
+                          <span className="text-xs font-black text-amber-400 bg-amber-500/15 px-2.5 py-0.5 rounded-lg border border-amber-500/30 flex items-center gap-1 font-mono">
+                            <Calendar className="w-3 h-3 text-amber-400" />
+                            Settimana {session.weekNumber} di {session.totalWeeks}
+                          </span>
+                          <span className="text-[11px] font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                            Saltato: {session.skipReason || 'Non specificato'}
+                          </span>
+                          {session.coachJustified === true ? (
+                            <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/15 px-2.5 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                              <ShieldCheck className="w-3 h-3" /> Giustificato (Nessuna penalità)
+                            </span>
+                          ) : session.coachJustified === false ? (
+                            <span className="text-[10px] font-black text-rose-400 bg-rose-500/15 px-2.5 py-0.5 rounded-full border border-rose-500/30 flex items-center gap-1">
+                              <XCircle className="w-3 h-3" /> Non Giustificato (Penalizzato)
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black text-amber-300 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/40 animate-pulse flex items-center gap-1">
+                              ⏳ In attesa di tua decisione
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <Clock className="w-3 h-3" />
+                          <span>Segnalato il {session.dateFormatted}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                      <span className="text-xs font-bold text-amber-400">Dettagli & Valutazione</span>
+                      {isExpanded ? <ChevronUp className="w-5 h-5 text-amber-400" /> : <ChevronDown className="w-5 h-5 text-amber-400" />}
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="p-5 border-t border-slate-800 space-y-4 bg-slate-900/60">
+                      {/* Spiegazione dell'atleta */}
+                      <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5">
+                        <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider block">
+                          Motivazione fornita dall'atleta:
+                        </span>
+                        <p className="text-xs text-slate-200 italic leading-relaxed">
+                          "{session.skipNotes || 'Nessuna nota descrittiva aggiunta dall\'atleta.'}"
+                        </p>
+                      </div>
+
+                      {/* Risposta precedente del coach */}
+                      {session.coachFeedback && (
+                        <div className="p-3.5 rounded-2xl bg-sky-950/20 border border-sky-500/30 space-y-1">
+                          <span className="text-[10px] font-black text-sky-400 uppercase tracking-wider block">
+                            La tua nota / risposta inviata:
+                          </span>
+                          <p className="text-xs text-sky-200 italic leading-relaxed">
+                            "{session.coachFeedback}"
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Azioni Decisionali Coach */}
+                      <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                        <span className="text-xs font-black text-white uppercase tracking-wider block">
+                          Valuta questa assenza:
+                        </span>
+                        <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                          <button
+                            type="button"
+                            disabled={savingEvaluationId === session.id}
+                            onClick={() => handleEvaluateSkip(session.id, true, feedbackDrafts[session.id])}
+                            className={`w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                              session.coachJustified === true
+                                ? 'bg-emerald-500 text-slate-950 shadow-md ring-2 ring-emerald-400'
+                                : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30'
+                            }`}
+                          >
+                            <ShieldCheck className="w-4 h-4" />
+                            <span>Giustifica (Nessuna Penalità)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={savingEvaluationId === session.id}
+                            onClick={() => handleEvaluateSkip(session.id, false, feedbackDrafts[session.id])}
+                            className={`w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                              session.coachJustified === false
+                                ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-400'
+                                : 'bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 border border-rose-500/30'
+                            }`}
+                          >
+                            <XCircle className="w-4 h-4" />
+                            <span>Non Giustificare (Applica Penalità)</span>
+                          </button>
+                        </div>
+
+                        {/* Campo Risposta / Feedback per l'atleta */}
+                        <div className="space-y-1.5 pt-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Invia nota o messaggio di risposta all'atleta (opzionale):
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={feedbackDrafts[session.id] ?? session.coachFeedback ?? ''}
+                              onChange={(e) =>
+                                setFeedbackDrafts((prev) => ({ ...prev, [session.id]: e.target.value }))
+                              }
+                              placeholder="Es: 'Tranquillo, recuperiamo il giorno di riposo'..."
+                              className="flex-1 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            />
+                            <button
+                              type="button"
+                              disabled={savingEvaluationId === session.id || !feedbackDrafts[session.id]}
+                              onClick={() =>
+                                handleEvaluateSkip(
+                                  session.id,
+                                  session.coachJustified ?? true,
+                                  feedbackDrafts[session.id]
+                                )
+                              }
+                              className="px-3.5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all disabled:opacity-40 cursor-pointer shrink-0"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>Salva Nota</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            }
 
             return (
               <div

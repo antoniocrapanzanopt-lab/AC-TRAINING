@@ -39,6 +39,7 @@ export const AnalysisReportsPage: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [exerciseNamesMap, setExerciseNamesMap] = useState<Map<string, string>>(new Map());
+  const [exerciseMetaMap, setExerciseMetaMap] = useState<Map<string, { name: string; day_name?: string; week_number?: number }>>(new Map());
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Sincronizza con atleta globale se selezionato in precedenza
@@ -48,30 +49,55 @@ export const AnalysisReportsPage: React.FC = () => {
     }
   }, [globalAthleteId]);
 
+  const isFetchingRef = React.useRef(false);
+  const athleteIdsKey = useMemo(() => (athletes || []).map((a) => a.id).sort().join(','), [athletes]);
+
   const loadData = useCallback(async () => {
     if (!athletes || athletes.length === 0) {
       setIsLoading(false);
       return;
     }
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
 
-    setIsLoading(true);
     try {
       const athleteIds = athletes.map((a) => a.id);
 
-      // 1. Carica assegnazioni schede attive
-      const { data: assignData } = await supabase
-        .from('athlete_assigned_workouts')
-        .select(`
-          id,
-          athlete_id,
-          workout_id,
-          assigned_date,
-          is_active,
-          workout:workouts(id, title, total_weeks)
-        `)
-        .in('athlete_id', athleteIds);
+      // 1. Carica assegnazioni schede e sessioni in parallelo
+      const twoYearsAgoIso = new Date(Date.now() - 730 * 24 * 60 * 60 * 1000).toISOString();
 
-      const mergedAssignments: any[] = assignData || [];
+      const [assignRes, sessionRes] = await Promise.all([
+        supabase
+          .from('athlete_assigned_workouts')
+          .select(`
+            id,
+            athlete_id,
+            workout_id,
+            assigned_date,
+            is_active,
+            workout:workouts(id, title, total_weeks)
+          `)
+          .in('athlete_id', athleteIds),
+        supabase
+          .from('workout_sessions')
+          .select(`
+            id,
+            athlete_id,
+            workout_id,
+            start_time,
+            end_time,
+            notes,
+            rpe,
+            workouts ( id, title, total_weeks )
+          `)
+          .in('athlete_id', athleteIds)
+          .gte('start_time', twoYearsAgoIso)
+          .not('end_time', 'is', null)
+          .order('start_time', { ascending: false })
+          .limit(200),
+      ]);
+
+      const mergedAssignments: any[] = assignRes.data || [];
       allAssignedWorkouts.forEach((localAssign: any) => {
         if (!mergedAssignments.some((a) => a.athlete_id === localAssign.athlete_id)) {
           mergedAssignments.push({
@@ -88,39 +114,19 @@ export const AnalysisReportsPage: React.FC = () => {
       });
       setAssignments(mergedAssignments);
 
-      // 2. Carica sessioni degli ultimi 2 anni (per coprire fino al confronto annuale)
-      const twoYearsAgoIso = new Date(Date.now() - 730 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: sessionData } = await supabase
-        .from('workout_sessions')
-        .select(`
-          id,
-          athlete_id,
-          workout_id,
-          start_time,
-          end_time,
-          notes,
-          rpe,
-          workouts ( title, total_weeks )
-        `)
-        .in('athlete_id', athleteIds)
-        .gte('start_time', twoYearsAgoIso)
-        .not('end_time', 'is', null)
-        .order('start_time', { ascending: false });
-
-      // Carica sessioni da backup locale se presenti (solo completate con end_time)
+      // Carica sessioni da backup locale se presenti
       let localSessionList: any[] = [];
       try {
         localSessionList = JSON.parse(localStorage.getItem('builder_local_sessions_backup') || '[]');
       } catch (_) {}
 
       const completedLocalSessions = localSessionList.filter((ls) => ls && ls.end_time);
-
-      const allSessions = (sessionData || []).concat(
-        completedLocalSessions.filter((ls) => !(sessionData || []).some((sd) => sd.id === ls.id))
+      const allSessions = (sessionRes.data || []).concat(
+        completedLocalSessions.filter((ls) => !(sessionRes.data || []).some((sd: any) => sd.id === ls.id))
       );
       setSessions(allSessions);
 
-      // 3. Carica log degli esercizi
+      // 2. Carica log degli esercizi
       const sessionIds = allSessions.map((s) => s.id);
       let allLogs: any[] = [];
       if (sessionIds.length > 0) {
@@ -135,7 +141,7 @@ export const AnalysisReportsPage: React.FC = () => {
             weight_kg,
             notes
           `)
-          .in('session_id', sessionIds.slice(0, 300));
+          .in('session_id', sessionIds.slice(0, 150));
         allLogs = logData || [];
       }
 
@@ -150,35 +156,40 @@ export const AnalysisReportsPage: React.FC = () => {
       } catch (_) {}
       setLogs(allLogs);
 
-      // 4. Dizionario Nomi Esercizi
+      // 3. Dizionario Nomi & Metadati Esercizi
       const uniqueExIds = Array.from(new Set(allLogs.map((l) => l.exercise_id).filter(Boolean)));
       if (uniqueExIds.length > 0) {
         const { data: exData } = await supabase
           .from('workout_exercises')
-          .select('id, name')
+          .select('id, name, day_name, week_number')
           .in('id', uniqueExIds);
 
         if (exData) {
-          const map = new Map<string, string>();
-          exData.forEach((e) => map.set(e.id, e.name));
-          setExerciseNamesMap(map);
+          const namesMap = new Map<string, string>();
+          const metaMap = new Map<string, { name: string; day_name?: string; week_number?: number }>();
+          exData.forEach((e) => {
+            namesMap.set(e.id, e.name);
+            metaMap.set(e.id, {
+              name: e.name,
+              day_name: e.day_name,
+              week_number: e.week_number,
+            });
+          });
+          setExerciseNamesMap(namesMap);
+          setExerciseMetaMap(metaMap);
         }
       }
-
-      setIsLoading(false);
     } catch (err) {
       console.warn('Errore caricamento dati Performance & Copilot:', err);
+    } finally {
       setIsLoading(false);
+      isFetchingRef.current = false;
     }
   }, [athletes, allAssignedWorkouts]);
 
   useEffect(() => {
     loadData();
-    window.addEventListener('storage', loadData);
-    return () => {
-      window.removeEventListener('storage', loadData);
-    };
-  }, [loadData]);
+  }, [athleteIdsKey, loadData]);
 
   // Calcolo Report Globale Squadra e Atleti
   const teamReportData: TeamOverviewReportData = useMemo(() => {
@@ -220,20 +231,25 @@ export const AnalysisReportsPage: React.FC = () => {
   const handleOpenCopilotModal = (athleteId: string, customAlert?: any) => {
     const athlete = athletes.find((a) => a.id === athleteId);
     const assign = assignments.find((a) => a.athlete_id === athleteId);
+    const athReport = teamReportData.athletesReports.find((a) => a.athleteId === athleteId);
 
     let type: CopilotAlertContext['type'] = 'progression';
-    if (customAlert?.category === 'pain') type = 'critical_note';
-    else if (customAlert?.category === 'inactivity') type = 'inactivity';
-    else if (customAlert?.category === 'missing_weights') type = 'missing_weights';
-    else if (customAlert?.category === 'stagnation' || customAlert?.category === 'plateau') type = 'plateau';
+    if (customAlert?.category === 'pain' || customAlert?.type === 'pain') type = 'critical_note';
+    else if (customAlert?.category === 'inactivity' || customAlert?.type === 'inactivity') type = 'inactivity';
+    else if (customAlert?.category === 'missing_weights' || customAlert?.type === 'missing_weights') type = 'missing_weights';
+    else if (customAlert?.category === 'stagnation' || customAlert?.category === 'plateau' || customAlert?.type === 'plateau') type = 'plateau';
+
+    const exerciseName = customAlert?.exerciseName || athReport?.painDetailsSummary || '';
+    const noteText = customAlert?.rationale || customAlert?.noteText || athReport?.painDetailsSummary || customAlert?.summary || '';
 
     setCopilotContext({
       athleteId,
-      athleteName: athlete?.fullName || 'Atleta',
+      athleteName: athlete?.fullName || customAlert?.athleteName || 'Atleta',
       workoutTitle: assign?.workout?.title || assign?.workout_title || 'Scheda Attiva',
       type,
-      suggestion: customAlert?.summary,
-      noteText: customAlert?.summary,
+      exerciseName,
+      suggestion: customAlert?.summary || athReport?.singleDecisionTitle,
+      noteText,
     });
     setIsCopilotOpen(true);
   };
@@ -331,6 +347,10 @@ export const AnalysisReportsPage: React.FC = () => {
           timeframe={timeframe}
           currentRangeLabel={teamReportData.currentRangeLabel}
           previousRangeLabel={teamReportData.previousRangeLabel}
+          sessions={sessions}
+          logs={logs}
+          exerciseMetaMap={exerciseMetaMap}
+          onDataUpdated={loadData}
           onTimeframeChange={setTimeframe}
           onSelectAthlete={handleSelectAthlete}
           onBackToOverview={handleBackToOverview}

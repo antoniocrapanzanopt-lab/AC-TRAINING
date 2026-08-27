@@ -159,6 +159,13 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
               audioRef.current?.play().catch(() => {});
             } catch (_) {}
           }
+
+          // Notifica nativa di sistema su smartphone e desktop
+          WebPushService.showLocalNotification(newNotif.title, {
+            body: newNotif.body,
+            tag: `notif-${newNotif.id}`,
+            url: newNotif.action_url || '/notifiche',
+          }).catch(() => {});
         }
       )
       .on(
@@ -224,6 +231,13 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
             if (prev.some((n) => n.id === mapped.id)) return prev;
             return [mapped, ...prev];
           });
+
+          // Notifica nativa di sistema su smartphone e desktop
+          WebPushService.showLocalNotification(mapped.title, {
+            body: mapped.body,
+            tag: `notif-${mapped.id}`,
+            url: mapped.action_url || '/notifiche',
+          }).catch(() => {});
         }
       )
       .subscribe();

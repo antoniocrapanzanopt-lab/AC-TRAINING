@@ -23,9 +23,29 @@ function getAudioContext(): AudioContext | null {
 }
 
 /**
+ * Inizializza o riattiva l'AudioContext in risposta a un'interazione utente
+ * (fondamentale per sbloccare l'audio su iOS Safari e Chrome mobile).
+ */
+export function initOrResumeAudioContext(): AudioContext | null {
+  return getAudioContext();
+}
+
+/**
+ * Controlla se l'utente ha abilitato l'audio per i recuperi
+ */
+export function isRestAudioEnabled(): boolean {
+  try {
+    const saved = localStorage.getItem('ac_rest_audio_enabled');
+    return saved !== null ? JSON.parse(saved) : true;
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Emette un micro-beep per il countdown finale (3, 2, 1)
  */
-export function playCountdownBeep(frequency = 600, duration = 0.08): void {
+export function playCountdownBeep(frequency = 600, duration = 0.09): void {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
@@ -36,7 +56,7 @@ export function playCountdownBeep(frequency = 600, duration = 0.08): void {
     osc.type = 'sine';
     osc.frequency.setValueAtTime(frequency, ctx.currentTime);
 
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
 
     osc.connect(gain);
@@ -50,41 +70,37 @@ export function playCountdownBeep(frequency = 600, duration = 0.08): void {
 }
 
 /**
- * Emette il suono di completamento del recupero (Doppio tono energico per riprendere)
+ * Emette il suono di completamento del recupero (Triplo rintocco energico e limpido a campana per riprendere il set)
  */
 export function playRestCompleteTone(): void {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
 
-    // Tono 1 (880 Hz - Nota La)
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'triangle';
-    osc1.frequency.setValueAtTime(880, ctx.currentTime);
-    gain1.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start();
-    osc1.stop(ctx.currentTime + 0.12);
+    const notes = [
+      { freq: 587.33, timeOffset: 0, duration: 0.25, gainVal: 0.3 },     // D5
+      { freq: 880.00, timeOffset: 0.12, duration: 0.3, gainVal: 0.35 },  // A5
+      { freq: 1174.66, timeOffset: 0.25, duration: 0.45, gainVal: 0.4 }, // D6 (Rintocco finale squillante)
+    ];
 
-    // Tono 2 (1320 Hz - Nota Mi alta)
-    setTimeout(() => {
-      try {
-        if (!ctx) return;
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.type = 'triangle';
-        osc2.frequency.setValueAtTime(1320, ctx.currentTime);
-        gain2.gain.setValueAtTime(0.25, ctx.currentTime);
-        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.start();
-        osc2.stop(ctx.currentTime + 0.25);
-      } catch {}
-    }, 120);
+    notes.forEach(({ freq, timeOffset, duration, gainVal }) => {
+      const startTime = ctx.currentTime + timeOffset;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      gain.gain.setValueAtTime(gainVal, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    });
   } catch {
     // Fallback silente
   }

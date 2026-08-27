@@ -85,6 +85,13 @@ export interface WorkoutSession {
   end_time?: string;
   notes?: string;
   rpe?: number;
+  status?: 'completed' | 'skipped';
+  skip_reason?: string;
+  skip_notes?: string;
+  coach_justified?: boolean | null;
+  coach_feedback?: string;
+  week_number?: number;
+  day_name?: string;
 }
 
 export interface ExerciseLog {

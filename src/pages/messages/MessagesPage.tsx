@@ -10,7 +10,9 @@ import {
   X,
   Trash2,
   Paperclip,
-  Download
+  Download,
+  Mail,
+  CheckCheck
 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
@@ -28,6 +30,7 @@ export const MessagesPage: React.FC = () => {
     setActiveConversation,
     sendMessage,
     markAsRead,
+    markAsUnread,
     deleteMessage,
     deleteConversation,
     loading
@@ -171,6 +174,16 @@ export const MessagesPage: React.FC = () => {
     }
   };
 
+  const handleMarkActiveAsUnread = async () => {
+    if (!activeConversation) return;
+    const athleteId = activeConversation.athlete_id;
+    const athleteName = activeConversation.athlete_name;
+    setShowChatMenu(false);
+    setActiveConversation(null);
+    await markAsUnread(athleteId);
+    showSuccess(`Conversazione con ${athleteName} segnata come non letta`);
+  };
+
   const handleDeleteActiveConversation = async () => {
     if (!activeConversation) return;
     if (window.confirm(`Sei sicuro di voler eliminare l'intera conversazione con ${activeConversation.athlete_name}?`)) {
@@ -305,13 +318,12 @@ export const MessagesPage: React.FC = () => {
             ) : (
               <div className="divide-y divide-slate-800/50">
                 {filteredConversations.map(conv => (
-                  <button
+                  <div
                     key={conv.athlete_id}
-                    onClick={() => setActiveConversation(conv)}
-                    className={`w-full text-left p-4 hover:bg-slate-900/50 transition-colors flex items-start gap-3 ${activeConversation?.athlete_id === conv.athlete_id ? 'bg-slate-900/80 border-l-2 border-[var(--color-primary)]' : 'border-l-2 border-transparent'}`}
+                    className={`w-full group text-left p-4 hover:bg-slate-900/50 transition-colors flex items-start gap-3 ${activeConversation?.athlete_id === conv.athlete_id ? 'bg-slate-900/80 border-l-2 border-[var(--color-primary)]' : 'border-l-2 border-transparent'}`}
                   >
                     {/* Avatar */}
-                    <div className="relative shrink-0">
+                    <div className="relative shrink-0 cursor-pointer" onClick={() => setActiveConversation(conv)}>
                       {conv.athlete_avatar ? (
                         <img src={conv.athlete_avatar} alt={conv.athlete_name} className="w-12 h-12 rounded-full object-cover border border-slate-700" />
                       ) : (
@@ -323,7 +335,7 @@ export const MessagesPage: React.FC = () => {
                     </div>
 
                     {/* Info */}
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setActiveConversation(conv)}>
                       <div className="flex justify-between items-start mb-1">
                         <h4 className="text-sm font-bold text-white truncate pr-2">{conv.athlete_name}</h4>
                         {conv.last_message && (
@@ -339,18 +351,35 @@ export const MessagesPage: React.FC = () => {
                             {tag}
                           </span>
                         ))}
-                        {conv.unread_count > 0 && (
-                          <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none ml-auto">
-                            {conv.unread_count}
-                          </span>
-                        )}
                       </div>
 
                       <p className={`text-xs truncate ${conv.unread_count > 0 ? 'text-white font-semibold' : 'text-slate-400'}`}>
                         {conv.last_message?.content || 'Inizia una nuova conversazione...'}
                       </p>
                     </div>
-                  </button>
+
+                    {/* Action Button */}
+                    <div className="flex flex-col items-end gap-1">
+                       {conv.unread_count > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">
+                            {conv.unread_count}
+                          </span>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (conv.unread_count > 0) {
+                              markAsRead(conv.athlete_id);
+                            } else {
+                              markAsUnread(conv.athlete_id);
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-800 text-slate-500 hover:text-white transition-all"
+                        >
+                          {conv.unread_count > 0 ? <CheckCheck className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
+                        </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -382,6 +411,12 @@ export const MessagesPage: React.FC = () => {
                 </button>
                 {showChatMenu && (
                   <div className="absolute right-0 top-full mt-2 w-52 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden z-50">
+                    <button 
+                      onClick={handleMarkActiveAsUnread}
+                      className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:text-white hover:bg-slate-700 flex items-center gap-2 transition-colors"
+                    >
+                      <Mail className="w-4 h-4" /> Segna come non letto
+                    </button>
                     <button 
                       onClick={() => {
                         setShowChatMenu(false);

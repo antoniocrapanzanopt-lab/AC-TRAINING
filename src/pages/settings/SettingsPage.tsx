@@ -4,10 +4,7 @@ import {
   Building2,
   Palette,
   Globe,
-  CreditCard,
-  Tag,
   Users,
-  Bell,
   Lock,
   Download,
   History,
@@ -18,8 +15,6 @@ import {
   X,
   FileCheck2,
   FileX,
-  Plus,
-  Trash2,
   ExternalLink,
   ChevronRight,
   Smartphone,
@@ -42,7 +37,6 @@ import { OwnerProfileTab } from './components/OwnerProfileTab';
 import { BackupSettingsTab } from './components/BackupSettingsTab';
 import { ThemeCustomizer } from '../../components/settings/ThemeCustomizer';
 import { SecuritySettingsPage } from './SecuritySettingsPage';
-import { NotificationSettingsTab } from '../../components/settings/NotificationSettingsTab';
 import { PwaDiagnosticsTab } from './components/PwaDiagnosticsTab';
 
 export type SettingsTab =
@@ -51,11 +45,8 @@ export type SettingsTab =
   | 'appearance'
   | 'localization'
   | 'packages'
-  | 'payments_activities'
-  | 'tags'
   | 'users_roles'
   | 'security'
-  | 'reminders'
   | 'backup'
   | 'audit'
   | 'pwa_diagnostics';
@@ -73,11 +64,8 @@ const SETTINGS_SECTIONS: SectionMeta[] = [
   { id: 'appearance', label: 'Colori & Tema Live', icon: Palette, description: 'Palette aziendale, preset colore e modalità scura' },
   { id: 'localization', label: 'Valuta & Data', icon: Globe, description: 'Valuta predefinita, fuso orario e formato date' },
   { id: 'packages', label: 'Pacchetti', icon: Package, description: 'Listino abbonamenti, ingressi e servizi' },
-  { id: 'payments_activities', label: 'Pagamenti & Categorie', icon: CreditCard, description: 'Metodi di incasso e categorie appuntamenti' },
-  { id: 'tags', label: 'Etichette', icon: Tag, description: 'Tag di classificazione e profilazione atleti' },
   { id: 'users_roles', label: 'Utenti, Ruoli & Permessi', icon: Users, description: 'Organigramma staff, permessi e privilegi' },
   { id: 'security', label: 'Sicurezza Account', icon: Lock, description: 'Autenticazione a due fattori (MFA) e sessioni' },
-  { id: 'reminders', label: 'Promemoria', icon: Bell, description: 'Soglie di notifica scadenze visite e rinnovi' },
   { id: 'backup', label: 'Backup & Esportazione', icon: Download, description: 'Salvataggio, esportazione e ripristino dati' },
   { id: 'audit', label: 'Audit Log Generale', icon: History, description: 'Registro cronologico di tutte le azioni di sistema' },
   { id: 'pwa_diagnostics', label: 'PWA, Versioning & Cache', icon: Smartphone, description: 'Stato build, aggiornamenti PWA e diagnostica cache' },
@@ -88,16 +76,12 @@ export const SettingsPage: React.FC = () => {
     settings,
     updateOrgSettings,
     updateAppearanceSettings,
-    updateReminderRules,
-    updatePaymentMethods,
-    updateActivityCategories,
-    updateAthleteTags,
     logGeneralAudit,
     auditLogs,
   } = useSettings();
 
   const { packages } = usePackages();
-  const { showSuccess, showInfo, showError } = useToast();
+  const { showSuccess, showError } = useToast();
   const { ownerProfile, setOwnerProfile } = useApp();
   const { refreshAuthProfile, members } = useAuth();
   const { syncOwnerNameInAthletes } = useAthletes();
@@ -114,20 +98,12 @@ export const SettingsPage: React.FC = () => {
     organizationName: currentOwner?.organizationName || 'Builder Athlete Manager',
   });
 
-
-
   // Anteprima ed Importazione JSON
   const [importValidation, setImportValidation] = useState<ImportValidationResult | null>(null);
 
   // Form locali
   const [orgForm, setOrgForm] = useState(settings.organization);
   const [appearanceForm, setAppearanceForm] = useState(settings.appearance);
-  const [reminderForm, setReminderForm] = useState(settings.reminderRules);
-
-  // State per nuovi elementi dinamici (Pagamenti, Categorie, Tag)
-  const [newPaymentMethod, setNewPaymentMethod] = useState('');
-  const [newCategory, setNewCategory] = useState('');
-  const [newTag, setNewTag] = useState('');
 
   // 1. SALVATAGGIO PROFILO PROPRIETARIO
   const handleSaveOwnerProfile = (e: React.FormEvent) => {
@@ -250,75 +226,6 @@ export const SettingsPage: React.FC = () => {
     e.preventDefault();
     updateOrgSettings(orgForm);
     showSuccess('Salvato', 'Dati organizzazione aggiornati con successo.');
-  };
-
-  // 7. Salvataggio Promemoria
-  const handleSaveReminders = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateReminderRules(reminderForm);
-    showSuccess('Regole Salvate', 'Regole di promemoria aggiornate.');
-  };
-
-  // 8. Handler Metodi Pagamento
-  const handleAddPaymentMethod = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPaymentMethod.trim()) return;
-    if (settings.paymentMethods.includes(newPaymentMethod.trim())) {
-      showError('Esistente', 'Questo metodo di pagamento è già presente.');
-      return;
-    }
-    updatePaymentMethods([...settings.paymentMethods, newPaymentMethod.trim()]);
-    setNewPaymentMethod('');
-    showSuccess('Metodo Aggiunto', 'Nuovo metodo di pagamento registrato.');
-  };
-
-  const handleRemovePaymentMethod = (method: string) => {
-    if (settings.paymentMethods.length <= 1) {
-      showError('Operazione Rifiutata', 'Deve rimanere almeno un metodo di pagamento.');
-      return;
-    }
-    updatePaymentMethods(settings.paymentMethods.filter(m => m !== method));
-    showInfo('Metodo Rimosso', `Rimosso: ${method}`);
-  };
-
-  // 9. Handler Categorie Attività
-  const handleAddCategory = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCategory.trim()) return;
-    if (settings.activityCategories.includes(newCategory.trim())) {
-      showError('Esistente', 'Questa categoria è già presente.');
-      return;
-    }
-    updateActivityCategories([...settings.activityCategories, newCategory.trim()]);
-    setNewCategory('');
-    showSuccess('Categoria Aggiunta', 'Nuova categoria attività registrata.');
-  };
-
-  const handleRemoveCategory = (cat: string) => {
-    if (settings.activityCategories.length <= 1) {
-      showError('Operazione Rifiutata', 'Deve rimanere almeno una categoria.');
-      return;
-    }
-    updateActivityCategories(settings.activityCategories.filter(c => c !== cat));
-    showInfo('Categoria Rimossa', `Rimossa: ${cat}`);
-  };
-
-  // 10. Handler Tag Atleta
-  const handleAddTag = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTag.trim()) return;
-    if (settings.athleteTags.includes(newTag.trim())) {
-      showError('Esistente', 'Questa etichetta è già presente.');
-      return;
-    }
-    updateAthleteTags([...settings.athleteTags, newTag.trim()]);
-    setNewTag('');
-    showSuccess('Etichetta Creata', 'Nuovo tag atleta aggiunto.');
-  };
-
-  const handleRemoveTag = (tagItem: string) => {
-    updateAthleteTags(settings.athleteTags.filter(t => t !== tagItem));
-    showInfo('Etichetta Rimossa', `Rimossa: ${tagItem}`);
   };
 
   return (
@@ -650,155 +557,7 @@ export const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* SEZIONE 6: PAGAMENTI E CATEGORIE ATTIVITÀ */}
-          {activeSubTab === 'payments_activities' && (
-            <div className="space-y-6">
-              {/* Metodi di Pagamento */}
-              <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div>
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <CreditCard className="w-5 h-5 text-[var(--color-primary)]" /> Metodi di Pagamento Accettati
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Definisci i canali di incasso abilitati nella registrazione pagamenti.</p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleAddPaymentMethod} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Nuovo metodo di pagamento (es. Satispay, Bonifico Istantaneo)..."
-                    value={newPaymentMethod}
-                    onChange={e => setNewPaymentMethod(e.target.value)}
-                    className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-                  />
-                  <button
-                    type="submit"
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all"
-                  >
-                    <Plus className="w-4 h-4" /> Aggiungi
-                  </button>
-                </form>
-
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {settings.paymentMethods.map(method => (
-                    <div
-                      key={method}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold shadow-sm"
-                    >
-                      <span>{method}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemovePaymentMethod(method)}
-                        className="text-slate-500 hover:text-red-400 transition-colors"
-                        title="Rimuovi metodo"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Categorie Attività & Calendario */}
-              <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div>
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <Tag className="w-5 h-5 text-[var(--color-primary)]" /> Categorie Attività & Calendario
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Tipologie di eventi e appuntamenti nel diario gestionale.</p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleAddCategory} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Nuova categoria (es. Check-in Fisico, Plicometria)..."
-                    value={newCategory}
-                    onChange={e => setNewCategory(e.target.value)}
-                    className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-                  />
-                  <button
-                    type="submit"
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all"
-                  >
-                    <Plus className="w-4 h-4" /> Aggiungi
-                  </button>
-                </form>
-
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {settings.activityCategories.map(cat => (
-                    <div
-                      key={cat}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs font-bold shadow-sm"
-                    >
-                      <span>{cat}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveCategory(cat)}
-                        className="text-slate-500 hover:text-red-400 transition-colors"
-                        title="Rimuovi categoria"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* SEZIONE 7: ETICHETTE ATLETI */}
-          {activeSubTab === 'tags' && (
-            <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <Tag className="w-5 h-5 text-[var(--color-primary)]" /> Etichette & Tag Profilo Atleti
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Personalizza i tag rapidi per filtrare e raggruppare gli atleti.</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleAddTag} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Nuova etichetta (es. Powerlifting, Gara Autunno, Posturale)..."
-                  value={newTag}
-                  onChange={e => setNewTag(e.target.value)}
-                  className="flex-1 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-                />
-                <button
-                  type="submit"
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all"
-                >
-                  <Plus className="w-4 h-4" /> Crea Etichetta
-                </button>
-              </form>
-
-              <div className="flex flex-wrap gap-2.5 pt-2">
-                {settings.athleteTags.map(tagItem => (
-                  <div
-                    key={tagItem}
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold"
-                  >
-                    <span>#{tagItem}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveTag(tagItem)}
-                      className="text-amber-400/60 hover:text-red-400 transition-colors"
-                      title="Elimina tag"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* SEZIONE 8: UTENTI, RUOLI E PERMESSI */}
+          {/* SEZIONE 6: UTENTI, RUOLI E PERMESSI */}
           {activeSubTab === 'users_roles' && (
             <div className="p-6 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -837,71 +596,9 @@ export const SettingsPage: React.FC = () => {
             </div>
           )}
 
-          {/* SEZIONE 9: SICUREZZA ACCOUNT */}
+          {/* SEZIONE 7: SICUREZZA ACCOUNT */}
           {activeSubTab === 'security' && (
             <SecuritySettingsPage />
-          )}
-
-          {/* SEZIONE 10: NOTIFICHE, WEB PUSH & PROMEMORIA */}
-          {activeSubTab === 'reminders' && (
-            <div className="space-y-8">
-              <NotificationSettingsTab />
-
-              <form onSubmit={handleSaveReminders} className="p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-6">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <Bell className="w-5 h-5 text-[var(--color-primary)]" /> Regole Automatiche di Scadenza & Rinnovi
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Certificato Medico (giorni)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="90"
-                      value={reminderForm.certificateDaysBefore}
-                      onChange={e => setReminderForm({ ...reminderForm, certificateDaysBefore: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Abbonamento (giorni)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="90"
-                      value={reminderForm.subscriptionDaysBefore}
-                      onChange={e => setReminderForm({ ...reminderForm, subscriptionDaysBefore: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold text-slate-300 block mb-1">Preavviso Scadenza Rata (giorni)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="90"
-                      value={reminderForm.installmentDaysBefore}
-                      onChange={e => setReminderForm({ ...reminderForm, installmentDaysBefore: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="submit"
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow cursor-pointer"
-                  >
-                    <Save className="w-4 h-4" /> Salva Regole Scadenze
-                  </button>
-                </div>
-              </form>
-            </div>
           )}
 
           {/* SEZIONE 11: BACKUP ED ESPORTAZIONE AVANZATA */}

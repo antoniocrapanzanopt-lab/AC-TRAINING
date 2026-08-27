@@ -321,7 +321,14 @@ CREATE TABLE IF NOT EXISTS public.workout_sessions (
     start_time TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     end_time TIMESTAMPTZ,
     notes TEXT,
-    rpe INTEGER CHECK (rpe >= 1 AND rpe <= 10)
+    rpe INTEGER CHECK (rpe >= 1 AND rpe <= 10),
+    status TEXT DEFAULT 'completed',
+    skip_reason TEXT,
+    skip_notes TEXT,
+    coach_justified BOOLEAN DEFAULT NULL,
+    coach_feedback TEXT,
+    week_number INTEGER,
+    day_name TEXT
 );
 
 CREATE TABLE IF NOT EXISTS public.exercise_logs (

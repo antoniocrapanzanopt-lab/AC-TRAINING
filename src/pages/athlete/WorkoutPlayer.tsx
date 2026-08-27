@@ -9,23 +9,32 @@ import {
   Info,
   Plus,
   Trash2,
-  History,
-  Zap,
+  Play,
+  Pause,
+  RotateCcw,
+  Eye,
 } from 'lucide-react';
 
-import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
+import { WorkoutTemplate, WorkoutExercise, ExerciseLog } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useToast } from '../../context/ToastContext';
 import { useMetrics } from '../../context/MetricsContext';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { ExerciseCard } from '../../components/workouts/ExerciseCard';
+import { ExerciseExecutionModal } from '../../components/workouts/ExerciseExecutionModal';
 import { InteractiveRestTimer } from '../../components/workouts/InteractiveRestTimer';
 import { WorkoutCelebrationModal } from '../../components/workouts/WorkoutCelebrationModal';
+import { SkipWorkoutModal } from '../../components/workouts/SkipWorkoutModal';
 import {
   fetchAthletePreviousExerciseHistory,
   PreviousExerciseHistory
 } from '../../utils/workoutHistoryResolver';
+import {
+  initOrResumeAudioContext,
+  playRestCompleteTone,
+  isRestAudioEnabled,
+} from '../../utils/soundEffects';
 import {
   saveActiveWorkoutDraft,
   getActiveWorkoutDraft,
@@ -62,7 +71,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const athleteId = targetAthleteId || currentAthlete?.id || user?.athleteId || user?.id || 'ath-local';
 
   // Sanitizzazione di sicurezza: una sessione di allenamento appartiene a 1 solo Giorno e 1 sola Settimana
-  const activeExercises = React.useMemo(() => {
+  const activeExercises = useMemo(() => {
     if (!exercises || exercises.length === 0) return [];
 
     const targetDay = (exercises[0].day_name || 'Giorno A').trim().toLowerCase();
@@ -81,9 +90,11 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [lastSavedText, setLastSavedText] = useState<string>('Salvato');
 
-  const [expandedExerciseMap, setExpandedExerciseMap] = useState<Record<number, boolean>>({ 0: true });
+  const [activeExerciseModalIndex, setActiveExerciseModalIndex] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(true);
+  const [isWorkoutStarted, setIsWorkoutStarted] = useState(false);
+  const [isSkipModalOpen, setIsSkipModalOpen] = useState(false);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [restTimer, setRestTimer] = useState<number | null>(null);
   const [totalRestSeconds, setTotalRestSeconds] = useState<number>(90);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -97,7 +108,6 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   // STORICO SESSIONI PRECEDENTI (GHOST LOG)
   const [previousHistoryMap, setPreviousHistoryMap] = useState<Record<string, PreviousExerciseHistory>>({});
-  const [isHistoryBannerDismissed, setIsHistoryBannerDismissed] = useState<boolean>(false);
 
   // CELEBRATION SCREEN STATE
   const [celebrationData, setCelebrationData] = useState<{
@@ -198,47 +208,46 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
     // Controlla se esiste una bozza locale per questo atleta e workout
     const savedDraft = getActiveWorkoutDraft(athleteId);
+    const hasAnyCompletedSet = savedDraft?.completedSets && Object.values(savedDraft.completedSets).some((arr) => arr.some(Boolean));
 
-    if (savedDraft && (savedDraft.workout?.id === workout.id || savedDraft.workout?.title === workout.title)) {
-      // Ripristina lo stato precedente
+    if (savedDraft && (savedDraft.workout?.id === workout.id || savedDraft.workout?.title === workout.title) && (hasAnyCompletedSet || (savedDraft.elapsedSeconds && savedDraft.elapsedSeconds > 0))) {
+      // Ripristina lo stato precedente solo se era un allenamento effettivamente iniziato
       setLogs(savedDraft.logs || {});
       setCompletedSets(savedDraft.completedSets || {});
       setExerciseNotes(savedDraft.exerciseNotes || {});
-      setExpandedExerciseMap({ [savedDraft.activeExerciseIdx || 0]: true });
       setSessionId(savedDraft.sessionId || null);
 
       if (savedDraft.startTimestamp) {
         startTimestampRef.current = savedDraft.startTimestamp;
         const diffSec = Math.floor((Date.now() - savedDraft.startTimestamp) / 1000);
-        setElapsedTime(Math.max(savedDraft.elapsedSeconds || 0, diffSec));
+        const currentElapsed = Math.max(savedDraft.elapsedSeconds || 0, diffSec);
+        setElapsedTime(currentElapsed);
+        if (currentElapsed > 0 || hasAnyCompletedSet) {
+          setIsWorkoutStarted(true);
+          setIsTimerRunning(true);
+        }
       }
 
       setLastSavedText(`Ripristinato alle ${new Date(savedDraft.lastSavedTimestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`);
     } else {
-      // Inizializza log vuoti per gli esercizi
+      // Inizializza in MODALITÀ CONSULTAZIONE / ANTEPRIMA (Timer fermo, nessuna sessione avviata)
       const initialLogs: Record<string, { reps: string; weight: string; rpe: string }[]> = {};
       activeExercises.forEach((ex) => {
         initialLogs[ex.id] = Array(ex.sets).fill({ reps: '', weight: '', rpe: '' });
       });
       setLogs(initialLogs);
+      setIsWorkoutStarted(false);
+      setIsTimerRunning(false);
+      setElapsedTime(0);
 
-      // Avvia la sessione reale su Supabase se online
       // Carica storico prestazioni precedenti (Ghost Log)
       if (athleteId && athleteId !== 'ath-local') {
         fetchAthletePreviousExerciseHistory(athleteId).then((history) => {
           setPreviousHistoryMap(history);
         });
       }
-
-      if (!sessionId && navigator.onLine) {
-        startWorkoutSession(workout.id, targetAthleteId).then((res) => {
-          if (res.session) {
-            setSessionId(res.session.id);
-          }
-        });
-      }
     }
-  }, [athleteId, workout, activeExercises, sessionId, startWorkoutSession, targetAthleteId]);
+  }, [athleteId, workout, activeExercises]);
 
   // Carica SEMPRE lo storico delle prestazioni precedenti dell'atleta (Ghost Log)
   useEffect(() => {
@@ -249,46 +258,6 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     }
   }, [athleteId]);
 
-  const hasAnyPreviousHistory = useMemo(() => {
-    return activeExercises.some((ex) => {
-      const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
-      return Boolean(hist?.sets && hist.sets.length > 0);
-    });
-  }, [activeExercises, previousHistoryMap]);
-
-  // Applica in 1 solo tap i carichi e le ripetizioni dell'ultima volta su tutti gli esercizi del workout
-  const handleApplyAllPreviousLoads = useCallback(() => {
-    let appliedCount = 0;
-    setLogs((prevLogs) => {
-      const updatedLogs = { ...prevLogs };
-      activeExercises.forEach((ex) => {
-        const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
-        if (hist?.sets && hist.sets.length > 0) {
-          const currentSets = updatedLogs[ex.id] || Array(ex.sets).fill({ reps: '', weight: '', rpe: '' });
-          const newSets = currentSets.map((s, sIdx) => {
-            const histSet = hist.sets[sIdx] || hist.sets[hist.sets.length - 1];
-            return {
-              ...s,
-              reps: histSet?.reps !== null && histSet?.reps !== undefined ? String(histSet.reps) : s.reps,
-              weight: histSet?.weightKg !== null && histSet?.weightKg !== undefined ? String(histSet.weightKg) : s.weight,
-              rpe: histSet?.rpe !== null && histSet?.rpe !== undefined ? String(histSet.rpe) : s.rpe,
-            };
-          });
-          updatedLogs[ex.id] = newSets;
-          appliedCount++;
-        }
-      });
-      return updatedLogs;
-    });
-
-    if (appliedCount > 0) {
-      setIsHistoryBannerDismissed(true);
-      showSuccess('Carichi applicati', `Pre-compilati i carichi precedenti per ${appliedCount} esercizio/i!`);
-    } else {
-      showSuccess('Nessun dato precedente', 'Non sono presenti sessioni registrate per gli esercizi di oggi.');
-    }
-  }, [activeExercises, previousHistoryMap, showSuccess]);
-
   // ── 3. AUTOSAVE LOCALE DEBOUNCED ANTI-FREEZE ──
   const flushAutosave = useCallback(() => {
     if (!athleteId) return;
@@ -297,6 +266,15 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       autosaveTimeoutRef.current = null;
     }
     const current = draftStateRef.current;
+    const hasAnyCompletedSet = Object.values(current.completedSets || {}).some((arr) => arr.some(Boolean));
+
+    // Se l'allenamento non è stato avviato e non ci sono serie fatte, cancella la bozza
+    if (!isWorkoutStarted && !hasAnyCompletedSet && current.elapsedTime === 0) {
+      clearActiveWorkoutDraft(athleteId);
+      window.dispatchEvent(new Event('athlete_draft_updated'));
+      return;
+    }
+
     const draft: ActiveWorkoutDraft = {
       draftId: `draft-${athleteId}-${workout.id}`,
       sessionId: current.sessionId,
@@ -319,9 +297,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     };
 
     saveActiveWorkoutDraft(draft);
+    window.dispatchEvent(new Event('athlete_draft_updated'));
     const timeStr = new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
     setLastSavedText(`Salvato alle ${timeStr}`);
-  }, [athleteId, workout, activeExercises, targetAthleteId]);
+  }, [athleteId, workout, activeExercises, targetAthleteId, isWorkoutStarted]);
 
   const scheduleAutosave = useCallback((immediate = false) => {
     if (immediate) {
@@ -361,7 +340,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   useEffect(() => {
     const checkTimer = () => {
       if (!restEndTimestampRef.current) {
-        setRestTimer(null);
+        setRestTimer((prev) => (prev !== null ? null : prev));
         return;
       }
       const remaining = Math.max(0, Math.ceil((restEndTimestampRef.current - Date.now()) / 1000));
@@ -370,10 +349,16 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       } else {
         restEndTimestampRef.current = null;
         setRestTimer(null);
+        if (isRestAudioEnabled()) {
+          playRestCompleteTone();
+        }
+        if (navigator.vibrate) {
+          navigator.vibrate([120, 60, 200]);
+        }
       }
     };
 
-    const interval = setInterval(checkTimer, 400);
+    const interval = setInterval(checkTimer, 300);
 
     const handleVisibilityOrFocus = () => {
       if (!document.hidden) {
@@ -393,17 +378,58 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   }, []);
 
   const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleToggleExerciseActive = useCallback((idx: number) => {
-    setExpandedExerciseMap((prev) => ({
-      ...prev,
-      [idx]: !prev[idx],
-    }));
-  }, []);
+  const handleStartOrResumeTimer = useCallback(() => {
+    setIsWorkoutStarted(true);
+    startTimestampRef.current = Date.now() - elapsedTime * 1000;
+    setIsTimerRunning(true);
+
+    if (!sessionId && navigator.onLine) {
+      startWorkoutSession(workout.id, targetAthleteId).then((res) => {
+        if (res.session) {
+          setSessionId(res.session.id);
+        }
+      });
+    }
+
+    scheduleAutosave(true);
+    showSuccess('Allenamento Avviato', 'Cronometro partito! Buon allenamento 💪');
+  }, [elapsedTime, sessionId, workout.id, targetAthleteId, startWorkoutSession, scheduleAutosave, showSuccess]);
+
+  const handlePauseTimer = useCallback(() => {
+    setIsTimerRunning(false);
+    scheduleAutosave(true);
+  }, [scheduleAutosave]);
+
+  const handleResetTimer = useCallback(() => {
+    setIsTimerRunning(false);
+    setIsWorkoutStarted(false);
+    setElapsedTime(0);
+    startTimestampRef.current = Date.now();
+
+    // Re-inizializza i log vuoti
+    const resetLogs: Record<string, { reps: string; weight: string; rpe: string }[]> = {};
+    activeExercises.forEach((ex) => {
+      resetLogs[ex.id] = Array(ex.sets).fill({ reps: '', weight: '', rpe: '' });
+    });
+    setLogs(resetLogs);
+    setCompletedSets({});
+    setExerciseNotes({});
+
+    // Cancella esplicitamente la bozza locale in modo che la dashboard non mostri più "Riprendi allenamento"
+    clearActiveWorkoutDraft(athleteId);
+    window.dispatchEvent(new Event('athlete_draft_updated'));
+
+    showSuccess('Sessione Resettata', 'Il cronometro e i dati sono stati azzerati.');
+  }, [athleteId, activeExercises, showSuccess]);
 
   const handleLogChange = useCallback((exerciseId: string, setIndex: number, field: 'reps' | 'weight' | 'rpe', value: string) => {
     setLogs((prev) => {
@@ -421,6 +447,19 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       currentList[setIdx] = isNowCompleted;
 
       if (isNowCompleted) {
+        initOrResumeAudioContext();
+        if (!isWorkoutStarted) {
+          setIsWorkoutStarted(true);
+          setIsTimerRunning(true);
+          startTimestampRef.current = Date.now() - elapsedTime * 1000;
+          if (!sessionId && navigator.onLine) {
+            startWorkoutSession(workout.id, targetAthleteId).then((res) => {
+              if (res.session) {
+                setSessionId(res.session.id);
+              }
+            });
+          }
+        }
         const safeRest = restSeconds > 0 ? restSeconds : 90;
         restEndTimestampRef.current = Date.now() + safeRest * 1000;
         setTotalRestSeconds(safeRest);
@@ -482,7 +521,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         effectiveSessionId = crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
       }
 
-      const logsToSave: any[] = [];
+      const logsToSave: Partial<ExerciseLog>[] = [];
       const prResults: string[] = [];
       const bestLoadsMap = new Map<string, { exerciseId: string; exerciseName: string; weightKg: number; reps: number }>();
 
@@ -495,19 +534,35 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           const setLog = exLogs[idx] || { reps: '', weight: '', rpe: '' };
           const isCompleted = !!completedMap[idx];
 
-          let repsNum = setLog.reps ? parseInt(setLog.reps, 10) : 0;
-          let weightNum = setLog.weight ? parseFloat(setLog.weight) : 0;
+          let repsNum = setLog.reps ? parseInt(String(setLog.reps).replace(/[^0-9]/g, ''), 10) : 0;
+          let weightNum = setLog.weight ? parseFloat(String(setLog.weight).replace(',', '.')) : 0;
 
           // Se la serie è stata spuntata/completata ma non sono stati digitati i numeri a mano
           if (isCompleted && repsNum === 0) {
-            repsNum = parseInt(ex.reps_target, 10) || 10;
+            const parsedTargetReps = parseInt(String(ex.reps_target || '').replace(/[^0-9]/g, ''), 10);
+            if (parsedTargetReps > 0) {
+              repsNum = parsedTargetReps;
+            } else {
+              const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
+              const histSet = hist?.sets?.[idx] || hist?.sets?.[hist.sets.length - 1];
+              repsNum = Number(histSet?.reps) || 10;
+            }
           }
-          if (isCompleted && weightNum === 0 && ex.target_weight) {
-            weightNum = parseFloat(ex.target_weight) || 0;
+          if (isCompleted && weightNum === 0) {
+            if (ex.target_weight) {
+              weightNum = parseFloat(String(ex.target_weight).replace(',', '.')) || 0;
+            }
+            if (weightNum === 0) {
+              const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
+              const histSet = hist?.sets?.[idx] || hist?.sets?.[hist.sets.length - 1];
+              if (histSet?.weightKg) {
+                weightNum = Number(histSet.weightKg) || 0;
+              }
+            }
           }
 
           if (repsNum > 0 || weightNum > 0 || isCompleted || setLog.rpe || userFeedback) {
-            const noteParts = [];
+            const noteParts: string[] = [];
             if (setLog.rpe) noteParts.push(`RPE: ${setLog.rpe}`);
             if (userFeedback && idx === 0) noteParts.push(`Feedback: ${userFeedback}`);
 
@@ -517,7 +572,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               set_number: idx + 1,
               reps_completed: repsNum || 1,
               weight_kg: weightNum || 0,
-              notes: noteParts.length > 0 ? noteParts.join(' | ') : null,
+              notes: noteParts.length > 0 ? noteParts.join(' | ') : undefined,
             });
 
             // Raggruppa i migliori carichi per il check PR veloce
@@ -561,8 +616,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       }`;
       const nowIso = new Date().toISOString();
       const startIso = new Date(startTimestampRef.current).toISOString();
-      const weekNum = (activeExercises[0] as any)?.week_number || 1;
-      const dayName = (activeExercises[0] as any)?.day_name || 'Giorno A';
+      const weekNum = activeExercises[0]?.week_number || 1;
+      const dayName = activeExercises[0]?.day_name || 'Giorno A';
 
       // Backup locale istantaneo dei log completati
       try {
@@ -605,7 +660,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             jointPain,
             pump,
             jointPainNotes: painDetailsFormatted,
-            logsToSave,
+            logsToSave: logsToSave as PendingCompletedWorkout['logsToSave'],
             createdAt: Date.now(),
           };
           queueCompletedWorkoutForSync(pendingItem);
@@ -630,7 +685,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           jointPain,
           pump,
           jointPainNotes: painDetailsFormatted,
-          logsToSave,
+          logsToSave: logsToSave as PendingCompletedWorkout['logsToSave'],
           createdAt: Date.now(),
         };
         queueCompletedWorkoutForSync(pendingItem);
@@ -652,7 +707,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                 dayName,
                 exerciseName: p.exercise || 'Esercizio con fastidio',
                 noteText: `Questionario Fine Workout — Dolori Articolari: ${jointPain}/5 | Esercizio: "${p.exercise || 'Non specificato'}" | Zona: "${p.bodyPart || 'Non specificata'}"`,
-                severity: isHighSeverity ? 'high' : 'medium',
+                severity: isHighSeverity ? ('high' as const) : ('medium' as const),
                 date: 'Oggi',
                 category: 'pain',
               }))
@@ -665,7 +720,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                 dayName,
                 exerciseName: 'Questionario Fine Workout',
                 noteText: `Questionario Fine Workout — Fatica: ${difficulty}/5 | Dolori Articolari: ${jointPain}/5`,
-                severity: isHighSeverity ? 'high' : 'medium',
+                severity: isHighSeverity ? ('high' as const) : ('medium' as const),
                 date: 'Oggi',
                 category: 'pain',
               }];
@@ -697,24 +752,18 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         } catch (_) {}
       }
 
-      // Calcola Volume Totale Sollevato & Serie per la Celebration Screen
-      let calculatedVolumeKg = 0;
-      let completedSetsTotal = 0;
-      let totalSetsPlanned = 0;
+      // Calcola Volume Totale Sollevato & Serie per la Celebration Screen direttamente dai log effettivi salvati
+      const calculatedVolumeKg = logsToSave.reduce(
+        (sum, item) => sum + ((Number(item.weight_kg) || 0) * (Number(item.reps_completed) || 0)),
+        0
+      );
 
-      activeExercises.forEach((ex) => {
-        totalSetsPlanned += ex.sets;
-        const exLogs = logs[ex.id] || [];
-        const exSetsMap = completedSets[ex.id] || [];
-        exLogs.forEach((l, sIdx) => {
-          if (exSetsMap[sIdx]) {
-            completedSetsTotal += 1;
-            const w = parseFloat(l.weight) || 0;
-            const r = parseInt(l.reps, 10) || 0;
-            calculatedVolumeKg += w * r;
-          }
-        });
-      });
+      const completedSetsTotal = activeExercises.reduce((acc, ex) => {
+        const completedMap = completedSets[ex.id] || [];
+        return acc + completedMap.filter(Boolean).length;
+      }, 0);
+
+      const totalSetsPlanned = activeExercises.reduce((acc, ex) => acc + (ex.sets || 0), 0);
 
       // Aggiorna progresso locale e rimuovi bozza attiva
       try {
@@ -732,21 +781,48 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         workoutTitle: workout.title,
         durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
         totalVolumeKg: Math.round(calculatedVolumeKg),
-        completedSetsCount: completedSetsTotal,
+        completedSetsCount: completedSetsTotal > 0 ? completedSetsTotal : logsToSave.length,
         totalSetsCount: totalSetsPlanned,
         newPRs: prResults,
         earnedXP: 100 + (prResults.length * 50),
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn('Errore in executeWorkoutSave, fallback completamento immediato:', err);
       clearActiveWorkoutDraft(athleteId);
       setIsSaving(false);
 
+      let fallbackVolume = 0;
+      let fallbackCompletedSets = 0;
+
+      activeExercises.forEach((ex) => {
+        const exLogs = logs[ex.id] || [];
+        const completedMap = completedSets[ex.id] || [];
+        for (let idx = 0; idx < ex.sets; idx++) {
+          const l = exLogs[idx];
+          const isDone = !!completedMap[idx];
+          if (isDone) fallbackCompletedSets++;
+
+          let w = l?.weight ? parseFloat(String(l.weight).replace(',', '.')) || 0 : 0;
+          let r = l?.reps ? parseInt(String(l.reps).replace(/[^0-9]/g, ''), 10) || 0 : 0;
+
+          if (isDone && w === 0 && ex.target_weight) {
+            w = parseFloat(String(ex.target_weight).replace(',', '.')) || 0;
+          }
+          if (isDone && r === 0 && ex.reps_target) {
+            r = parseInt(String(ex.reps_target).replace(/[^0-9]/g, ''), 10) || 10;
+          }
+
+          if (w > 0 && r > 0) {
+            fallbackVolume += w * r;
+          }
+        }
+      });
+
       setCelebrationData({
         workoutTitle: workout.title,
         durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
-        totalVolumeKg: 0,
-        completedSetsCount: 0,
+        totalVolumeKg: Math.round(fallbackVolume),
+        completedSetsCount: fallbackCompletedSets,
         totalSetsCount: activeExercises.reduce((acc, e) => acc + e.sets, 0),
         newPRs: [],
         earnedXP: 100,
@@ -756,60 +832,139 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
   return (
     <div className="fixed inset-0 bg-[var(--color-bg)] z-50 flex flex-col font-sans overflow-hidden">
-      {/* ── HEADER LIVE CON STATO OFFLINE & SYNC DISCRETO CON SUPPORTO SAFE AREA iOS ── */}
-      <div className="bg-[var(--color-surface)]/95 backdrop-blur-xl border-b border-[var(--color-border)] px-3.5 sm:px-4 pt-[calc(0.875rem+env(safe-area-inset-top,0px))] pb-3.5 sm:pb-4 flex items-center justify-between shadow-md relative z-20">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              flushAutosave();
-              onClose();
-            }}
-            className="p-2 -ml-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text)] rounded-full bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] transition-colors cursor-pointer"
-            title="Chiudi sessione"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-sm font-black text-[var(--color-text)] line-clamp-1 leading-tight">{workout.title}</h1>
-            <div className="flex items-center gap-2 text-xs font-mono text-[var(--color-primary)]">
-              <span className="flex items-center gap-1 font-bold">
-                <Clock className="w-3 h-3" />
-                {formatTime(elapsedTime)}
-              </span>
+      {/* ── HEADER LIVE ELEGANTE, PIÙ ALTO E SPAZIOSO ── */}
+      <div className="bg-[var(--color-surface)]/95 backdrop-blur-xl border-b border-[var(--color-border)] px-4 sm:px-6 lg:px-8 pt-[calc(1rem+env(safe-area-inset-top,0px))] pb-4 sm:pb-5 shadow-lg relative z-20 shrink-0">
+        <div className="max-w-4xl xl:max-w-5xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => {
+                flushAutosave();
+                onClose();
+              }}
+              className="w-10 h-10 sm:w-11 sm:h-11 text-[var(--color-text-muted)] hover:text-[var(--color-text)] rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] border border-[var(--color-border)] flex items-center justify-center transition-colors cursor-pointer shrink-0 shadow-sm"
+              title="Chiudi sessione"
+            >
+              <X className="w-5 h-5 sm:w-6 sm:h-6" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base sm:text-xl font-black text-[var(--color-text)] truncate leading-tight tracking-tight">
+                {workout.title}
+              </h1>
 
-              {/* STATO SYNC / OFFLINE DISCRETO */}
-              <span className="text-[10px] text-[var(--color-text-muted)] font-sans flex items-center gap-1 border-l border-[var(--color-border)] pl-2">
-                {isOnline ? (
-                  <span className="flex items-center gap-1 text-emerald-600 font-bold" title={lastSavedText}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="hidden sm:inline">{lastSavedText}</span>
-                    <span className="sm:hidden">Salvato</span>
+              {/* Sub-header: o badge consultazione o controlli timer */}
+              {!isWorkoutStarted ? (
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 font-bold text-xs flex items-center gap-1.5 shadow-sm">
+                    <Eye className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Anteprima Scheda</span>
                   </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-amber-600 font-bold">
-                    <WifiOff className="w-3 h-3 text-amber-600" />
-                    <span>Offline (Dati al sicuro)</span>
+                  <span className="text-xs text-[var(--color-text-muted)] font-mono">
+                    Timer pronto (00:00)
                   </span>
-                )}
-              </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                  {/* Timer Badge Interattivo con Controlli Play / Pausa / Reset */}
+                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border transition-all shadow-sm ${
+                    isTimerRunning
+                      ? 'bg-amber-500/15 border-amber-500/35 text-[var(--color-primary)]'
+                      : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+                  }`}>
+                    <span className="font-mono text-xs sm:text-sm font-black flex items-center gap-1.5">
+                      <Clock className={`w-3.5 h-3.5 ${isTimerRunning ? 'text-[var(--color-primary)] animate-pulse' : 'text-slate-400'}`} />
+                      {formatTime(elapsedTime)}
+                    </span>
+
+                    {/* Divider */}
+                    <div className="w-[1px] h-3.5 bg-slate-700/60 mx-0.5" />
+
+                    {/* Pulsante Pausa / Riprendi */}
+                    <button
+                      type="button"
+                      onClick={isTimerRunning ? handlePauseTimer : handleStartOrResumeTimer}
+                      className={`p-1 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+                        isTimerRunning
+                          ? 'text-amber-300 hover:bg-amber-500/20'
+                          : 'text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1 px-1.5'
+                      }`}
+                      title={isTimerRunning ? 'Metti in pausa il cronometro' : 'Riprendi il cronometro'}
+                    >
+                      {isTimerRunning ? (
+                        <Pause className="w-3.5 h-3.5 fill-current" />
+                      ) : (
+                        <>
+                          <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+                          <span className="text-[10px] font-black uppercase">Riprendi</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Pulsante Reset */}
+                    <button
+                      type="button"
+                      onClick={handleResetTimer}
+                      className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                      title="Resetta il cronometro a 00:00"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* STATO SYNC / OFFLINE DISCRETO */}
+                  <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1.5 font-medium">
+                    {isOnline ? (
+                      <span className="flex items-center gap-1.5 text-emerald-600 font-bold" title={lastSavedText}>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>{lastSavedText}</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-amber-600 font-bold">
+                        <WifiOff className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Offline (Dati al sicuro)</span>
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
-        </div>
 
-        <button
-          type="button"
-          onClick={handleOpenFinishFlow}
-          disabled={isSaving}
-          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer shrink-0"
-        >
-          {isSaving ? (
-            <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+          {/* Pulsante Azione Top Bar Destra */}
+          {!isWorkoutStarted ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsSkipModalOpen(true)}
+                className="px-3.5 py-2.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/25 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>Salta Seduta</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleStartOrResumeTimer}
+                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 px-5 sm:px-6 py-2.5 sm:py-3 rounded-2xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 active:scale-95 transition-all cursor-pointer shrink-0"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                <span>Inizia Allenamento</span>
+              </button>
+            </div>
           ) : (
-            <Check className="w-4 h-4 stroke-[3]" />
+            <button
+              type="button"
+              onClick={handleOpenFinishFlow}
+              disabled={isSaving}
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 px-5 sm:px-6 py-2.5 sm:py-3 rounded-2xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 active:scale-95 transition-all disabled:opacity-50 cursor-pointer shrink-0"
+            >
+              {isSaving ? (
+                <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+              ) : (
+                <Check className="w-4 h-4 sm:w-5 sm:h-5 stroke-[3.5]" />
+              )}
+              <span>{isSaving ? 'Salvataggio...' : 'Fine Sessione'}</span>
+            </button>
           )}
-          <span>{isSaving ? 'Salvataggio...' : 'Fine'}</span>
-        </button>
+        </div>
       </div>
 
       {/* REST TIMER PRO INTERATTIVO & SATINATO */}
@@ -822,62 +977,86 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         />
       )}
 
-      {/* QUICK ACTIONS BANNER: APPLICA TUTTI I CARICHI PRECEDENTI */}
-      {hasAnyPreviousHistory && !isHistoryBannerDismissed && (
-        <div className="bg-[var(--color-surface-strong)] border-b border-[var(--color-border)] px-4 py-2 flex items-center justify-between gap-2.5 text-xs shadow-sm shrink-0 transition-all animate-in fade-in duration-200">
-          <div className="flex items-center gap-2 text-sky-600 font-bold min-w-0">
-            <History className="w-4 h-4 text-sky-600 shrink-0" />
-            <span className="truncate">Storico carichi precedenti disponibile</span>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={handleApplyAllPreviousLoads}
-              className="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-700 hover:text-sky-800 border border-sky-500/40 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 transition-all active:scale-95 cursor-pointer shadow-sm"
-              title="Pre-compila automaticamente i carichi dell'ultima volta su tutti gli esercizi di oggi"
-            >
-              <Zap className="w-3.5 h-3.5 fill-current text-sky-600" />
-              <span>Pre-compila tutti i carichi</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsHistoryBannerDismissed(true)}
-              className="p-1.5 rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-panel)] transition-all cursor-pointer"
-              title="Nascondi questo avviso"
-              aria-label="Chiudi avviso storico carichi"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+      {/* SCROLLABLE EXERCISES LIST - OTTIMIZZATO PER SPAZIO E LARGHEZZA */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-32 bg-[var(--color-bg)]">
+        <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-4 sm:space-y-5">
+          {activeExercises.map((ex, idx) => {
+            const isCompleted = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
+
+            return (
+              <React.Fragment key={ex.id}>
+                <ExerciseCard
+                  exercise={ex}
+                  index={idx}
+                  isCompleted={isCompleted}
+                  completedSetsMap={completedSets[ex.id] || []}
+                  previousHistory={previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()]}
+                  onOpenExecutionModal={() => setActiveExerciseModalIndex(idx)}
+                />
+              </React.Fragment>
+            );
+          })}
+          {/* Card di opzione Salto/Imprevisto in fondo alla visualizzazione scheda */}
+          {!isWorkoutStarted && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-center sm:text-left mt-6">
+              <div>
+                <h4 className="text-xs sm:text-sm font-bold text-[var(--color-text)]">
+                  Non riesci a svolgere questa seduta?
+                </h4>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                  Puoi saltarla e comunicare la motivazione direttamente al tuo coach.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSkipModalOpen(true)}
+                className="px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer shrink-0 self-center sm:self-auto"
+              >
+                Salta Seduta
+              </button>
+            </div>
+          )}
         </div>
-      )}
-
-      {/* SCROLLABLE EXERCISES LIST */}
-      <div className="flex-1 overflow-y-auto p-4 pb-32 space-y-4 bg-[var(--color-bg)]">
-        {activeExercises.map((ex, idx) => {
-          const isExpanded = Boolean(expandedExerciseMap[idx]);
-          const isCompleted = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
-
-          return (
-            <React.Fragment key={ex.id}>
-              <ExerciseCard
-                exercise={ex}
-                index={idx}
-                isActive={isExpanded}
-                isCompleted={isCompleted}
-                logs={logs[ex.id] || []}
-                completedSetsMap={completedSets[ex.id] || []}
-                noteFeedback={exerciseNotes[ex.id] || ''}
-                previousHistory={previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()]}
-                onToggleActive={() => handleToggleExerciseActive(idx)}
-                onLogChange={(setIdx, field, val) => handleLogChange(ex.id, setIdx, field, val)}
-                onNoteFeedbackChange={(val) => handleNoteChange(ex.id, val)}
-                onToggleSetComplete={(setIdx) => handleToggleSetComplete(ex.id, setIdx, ex.rest_seconds)}
-              />
-            </React.Fragment>
-          );
-        })}
       </div>
+
+      {/* ── MODALE DI COMPILAZIONE FOCALIZZATA ESERCIZIO ── */}
+      {activeExerciseModalIndex !== null && activeExercises[activeExerciseModalIndex] && (() => {
+        const currentEx = activeExercises[activeExerciseModalIndex];
+        return (
+          <ExerciseExecutionModal
+            isOpen={true}
+            exercise={currentEx}
+            exerciseIndex={activeExerciseModalIndex}
+            totalExercises={activeExercises.length}
+            logs={logs[currentEx.id] || []}
+            completedSetsMap={completedSets[currentEx.id] || []}
+            noteFeedback={exerciseNotes[currentEx.id] || ''}
+            previousHistory={previousHistoryMap[currentEx.id] || previousHistoryMap[currentEx.name.toLowerCase().trim()]}
+            restTimer={restTimer}
+            totalRestSeconds={totalRestSeconds}
+            onSkipRest={handleSkipRest}
+            onAddRestTime={handleAddRestTime}
+            onLogChange={(setIdx, field, val) => handleLogChange(currentEx.id, setIdx, field, val)}
+            onNoteFeedbackChange={(val) => handleNoteChange(currentEx.id, val)}
+            onToggleSetComplete={(setIdx) => handleToggleSetComplete(currentEx.id, setIdx, currentEx.rest_seconds)}
+            onNavigateNext={() => {
+              if (activeExerciseModalIndex < activeExercises.length - 1) {
+                setActiveExerciseModalIndex(activeExerciseModalIndex + 1);
+              } else {
+                setActiveExerciseModalIndex(null);
+              }
+            }}
+            onNavigatePrev={() => {
+              if (activeExerciseModalIndex > 0) {
+                setActiveExerciseModalIndex(activeExerciseModalIndex - 1);
+              }
+            }}
+            hasNext={activeExerciseModalIndex < activeExercises.length - 1}
+            hasPrev={activeExerciseModalIndex > 0}
+            onClose={() => setActiveExerciseModalIndex(null)}
+          />
+        );
+      })()}
 
       {/* ── QUESTIONARIO POST-ALLENAMENTO MODAL ── */}
       {showQuestionnaireModal && (() => {
@@ -888,12 +1067,34 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         activeExercises.forEach((ex) => {
           totalSetsPlanned += ex.sets;
           const exLogs = logs[ex.id] || [];
+          const completedMap = completedSets[ex.id] || [];
           let exerciseHasAnyWeight = false;
 
           for (let i = 0; i < ex.sets; i++) {
             const l = exLogs[i];
-            const w = parseFloat(l?.weight || '') || 0;
-            const r = parseInt(l?.reps || '', 10) || 0;
+            const isDone = !!completedMap[i];
+            let w = l?.weight ? parseFloat(String(l.weight).replace(',', '.')) || 0 : 0;
+            let r = l?.reps ? parseInt(String(l.reps).replace(/[^0-9]/g, ''), 10) || 0 : 0;
+
+            if (isDone && w === 0 && ex.target_weight) {
+              w = parseFloat(String(ex.target_weight).replace(',', '.')) || 0;
+            }
+            if (isDone && w === 0) {
+              const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
+              const histSet = hist?.sets?.[i] || hist?.sets?.[hist.sets.length - 1];
+              if (histSet?.weightKg) {
+                w = Number(histSet.weightKg) || 0;
+              }
+            }
+            if (isDone && r === 0 && ex.reps_target) {
+              r = parseInt(String(ex.reps_target).replace(/[^0-9]/g, ''), 10) || 10;
+            }
+            if (isDone && r === 0) {
+              const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
+              const histSet = hist?.sets?.[i] || hist?.sets?.[hist.sets.length - 1];
+              r = Number(histSet?.reps) || 10;
+            }
+
             if (w > 0 && r > 0) {
               setsWithWeightAndReps++;
               exerciseHasAnyWeight = true;
@@ -1160,6 +1361,22 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           athleteName={currentAthlete?.firstName || user?.name || 'Campione'}
           onClose={() => {
             setCelebrationData(null);
+            onClose();
+          }}
+        />
+      )}
+
+      {/* ── MODALE SALTO SEDUTA CON GIUSTIFICAZIONE ── */}
+      {isSkipModalOpen && (
+        <SkipWorkoutModal
+          isOpen={isSkipModalOpen}
+          onClose={() => setIsSkipModalOpen(false)}
+          workout={workout}
+          weekNumber={activeExercises[0]?.week_number || 1}
+          dayName={activeExercises[0]?.day_name || 'Giorno A'}
+          athleteId={targetAthleteId || athleteId}
+          onSuccess={() => {
+            clearActiveWorkoutDraft(targetAthleteId || athleteId);
             onClose();
           }}
         />

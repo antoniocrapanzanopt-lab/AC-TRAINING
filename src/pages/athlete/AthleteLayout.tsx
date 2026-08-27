@@ -6,7 +6,7 @@ import {
   LogOut,
   Dumbbell,
   User,
-  Scale,
+  TrendingUp,
   MessageCircle,
   Settings,
 } from 'lucide-react';
@@ -17,7 +17,6 @@ import { AthleteProgressView } from './AthleteProgressView';
 import { AthleteProfileView } from './AthleteProfileView';
 import { AthleteSettingsView } from './AthleteSettingsView';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
-import { AthleteMetric } from '../../types/metrics';
 import { getActiveWorkoutDraft } from '../../lib/offline/offlineWorkoutStorage';
 import { useMetrics } from '../../context/MetricsContext';
 
@@ -54,7 +53,7 @@ export const AthleteLayout: React.FC = () => {
   // 2. Alert Bozza Allenamento Attiva in Sospeso
   const hasActiveDraft = useMemo(() => {
     if (!athleteId) return false;
-    return !!getActiveWorkoutDraft(athleteId);
+    return Boolean(getActiveWorkoutDraft(athleteId));
   }, [athleteId]);
 
   // 3. Alert Profilo (es. Certificato Medico in Scadenza / Scaduto)
@@ -63,13 +62,13 @@ export const AthleteLayout: React.FC = () => {
     const expiry = new Date(currentAthlete.medicalCertificateExpiryDate);
     const today = new Date();
     const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays <= 15; // Scaduto o in scadenza entro 15 giorni
+    return diffDays <= 15;
   }, [currentAthlete]);
 
   // 4. Alert Check Misure in Scadenza / Scaduto Oggi
   const hasCheckDueAlert = useMemo(() => {
     if (!athleteId) return false;
-    const list = metrics.filter((m: AthleteMetric) => String(m.athlete_id) === String(athleteId));
+    const list = metrics.filter((m) => String(m.athlete_id) === String(athleteId));
     const sorted = [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const latestDate = sorted[0]?.date || null;
     const scheduleState = getAthleteScheduleState(athleteId, latestDate);
@@ -91,7 +90,6 @@ export const AthleteLayout: React.FC = () => {
     id: 'home' | 'progress' | 'messages' | 'profile' | 'settings';
     label: string;
     icon: React.FC<{ className?: string }>;
-    accentColor: string;
     badgeCount?: number;
     hasAlertDot?: boolean;
   }[] = [
@@ -99,35 +97,30 @@ export const AthleteLayout: React.FC = () => {
       id: 'home',
       label: 'Oggi',
       icon: Dumbbell,
-      accentColor: 'text-sky-400',
       hasAlertDot: hasActiveDraft,
     },
     {
       id: 'progress',
       label: 'Progressi',
-      icon: Scale,
-      accentColor: 'text-emerald-400',
+      icon: TrendingUp,
       hasAlertDot: hasCheckDueAlert,
     },
     {
       id: 'messages',
       label: 'Messaggi',
       icon: MessageCircle,
-      accentColor: 'text-purple-400',
       badgeCount: unreadMessagesCount,
     },
     {
       id: 'profile',
       label: 'Profilo',
       icon: User,
-      accentColor: 'text-[var(--color-primary)]',
       hasAlertDot: hasProfileAlert,
     },
     {
       id: 'settings',
       label: 'Impostazioni',
       icon: Settings,
-      accentColor: 'text-amber-400',
     },
   ];
 
@@ -190,7 +183,7 @@ export const AthleteLayout: React.FC = () => {
 
       {/* ─── FLOATING DYNAMIC ISLAND NAVBAR CON BADGE DI NOTIFICA IN-APP & SAFE AREA ─── */}
       <div className="fixed bottom-[max(0.75rem,calc(env(safe-area-inset-bottom,0px)+0.5rem))] inset-x-0 z-40 px-3 sm:px-4 flex items-center justify-center pointer-events-none">
-        <nav className="w-full max-w-lg bg-[var(--color-surface)]/95 backdrop-blur-2xl border border-[var(--color-border)] p-1.5 rounded-[28px] grid grid-cols-5 gap-1 shadow-[0_12px_40px_rgba(0,0,0,0.15)] pointer-events-auto transition-colors duration-200">
+        <nav className="w-full max-w-lg bg-slate-950/95 backdrop-blur-2xl border border-slate-800/90 p-1.5 rounded-[24px] grid grid-cols-5 gap-1 shadow-[0_16px_40px_rgba(0,0,0,0.65)] pointer-events-auto transition-colors duration-200">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -200,22 +193,22 @@ export const AthleteLayout: React.FC = () => {
                 key={item.id}
                 type="button"
                 onClick={() => setActiveTab(item.id)}
-                className={`flex flex-col items-center justify-center py-2 px-1 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 min-h-[50px] relative ${
+                className={`flex flex-col items-center justify-center py-2 px-1 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 min-h-[54px] relative ${
                   isActive
-                    ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
-                    : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] font-semibold'
+                    ? 'bg-amber-400 text-slate-950 font-black shadow-lg shadow-amber-400/25'
+                    : 'text-slate-200 hover:text-white hover:bg-slate-800/70 font-semibold'
                 }`}
               >
-                <div className="relative flex items-center justify-center mb-0.5">
-                  <Icon className={`w-4 h-4 shrink-0 transition-transform ${isActive ? 'stroke-[2.5] scale-110' : item.accentColor}`} />
+                <div className="relative flex items-center justify-center mb-1">
+                  <Icon className={`w-5 h-5 shrink-0 transition-transform ${isActive ? 'stroke-[2.5] text-slate-950 scale-105' : 'text-slate-200'}`} />
                   
                   {/* Badge Numerico Messaggi Non Letti */}
                   {Boolean(item.badgeCount && item.badgeCount > 0) && (
                     <span
-                      className={`absolute -top-1.5 -right-2.5 min-w-[16px] h-[16px] px-1 rounded-full text-[9px] font-black flex items-center justify-center shadow-md border ${
+                      className={`absolute -top-1.5 -right-2.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-black flex items-center justify-center shadow-md border ${
                         isActive
-                          ? 'bg-slate-950 text-[var(--color-primary)] border-[var(--color-primary)]'
-                          : 'bg-rose-500 text-white border-[var(--color-surface)]'
+                          ? 'bg-slate-950 text-amber-400 border-amber-400'
+                          : 'bg-rose-500 text-white border-slate-950'
                       }`}
                     >
                       {item.badgeCount! > 9 ? '9+' : item.badgeCount}
@@ -225,16 +218,20 @@ export const AthleteLayout: React.FC = () => {
                   {/* Dot di Alert per Bozza Attiva, Profilo o Check in scadenza */}
                   {Boolean(item.hasAlertDot && (!item.badgeCount || item.badgeCount === 0)) && (
                     <span
-                      className={`absolute -top-0.5 -right-1 w-2 h-2 rounded-full ring-2 ${
+                      className={`absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full ring-2 ${
                         isActive
-                          ? 'bg-slate-950 ring-[var(--color-primary)]'
-                          : 'bg-amber-500 ring-[var(--color-surface)]'
+                          ? 'bg-slate-950 ring-amber-400'
+                          : 'bg-amber-400 ring-slate-950'
                       }`}
                     />
                   )}
                 </div>
 
-                <span className="leading-tight text-[10px] sm:text-[11px] truncate max-w-full text-center">{item.label}</span>
+                <span className={`leading-tight text-[11px] truncate max-w-full text-center tracking-tight ${
+                  isActive ? 'font-black text-slate-950' : 'font-bold text-slate-200'
+                }`}>
+                  {item.label}
+                </span>
               </button>
             );
           })}

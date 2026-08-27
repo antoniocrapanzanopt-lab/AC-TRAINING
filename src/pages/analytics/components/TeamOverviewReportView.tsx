@@ -125,11 +125,17 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
       else if (prio.type === 'inactivity') category = 'inactivity';
       else if (prio.type === 'plateau') category = 'stagnation';
 
+      const athReport = reportData.athletesReports.find((a) => a.athleteId === prio.athleteId);
+      const exName = athReport?.painDetailsSummary || prio.title.replace(/^Fastidio su\s*/i, '');
+
       onOpenCopilot(prio.athleteId, {
         athleteId: prio.athleteId,
         athleteName: prio.athleteName,
         category,
         summary: prio.title,
+        rationale: prio.rationale,
+        exerciseName: exName,
+        noteText: prio.rationale,
         severity: prio.urgency === 'high' ? 'high' : 'medium',
       });
     } else {
@@ -633,6 +639,9 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
                               athleteName: ath.athleteName,
                               category,
                               summary: ath.singleDecisionTitle,
+                              rationale: ath.singleDecisionRationale,
+                              exerciseName: ath.painDetailsSummary,
+                              noteText: ath.painDetailsSummary ? `Fastidio su ${ath.painDetailsSummary}: ${ath.singleDecisionRationale}` : ath.singleDecisionRationale,
                               severity: ath.singleDecisionType === 'pain' ? 'high' : 'medium',
                             });
                           } else {

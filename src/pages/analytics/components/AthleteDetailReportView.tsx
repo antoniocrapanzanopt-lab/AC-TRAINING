@@ -37,6 +37,12 @@ import {
   Athlete,
 } from '../../../types';
 import { AthleteSelectDropdown } from './AthleteSelectDropdown';
+import {
+  AthleteWorkoutHistorySection,
+  RawWorkoutSession,
+  RawExerciseLogItem,
+  ExerciseMeta,
+} from './AthleteWorkoutHistorySection';
 
 interface AthleteDetailReportViewProps {
   athleteReport: AthleteReportSummary;
@@ -45,6 +51,10 @@ interface AthleteDetailReportViewProps {
   timeframe: TimeframeOption;
   currentRangeLabel: string;
   previousRangeLabel: string;
+  sessions?: RawWorkoutSession[];
+  logs?: RawExerciseLogItem[];
+  exerciseMetaMap?: Map<string, ExerciseMeta>;
+  onDataUpdated?: () => Promise<void> | void;
   onTimeframeChange: (tf: TimeframeOption) => void;
   onSelectAthlete: (athleteId: string) => void;
   onBackToOverview: () => void;
@@ -60,6 +70,10 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
   timeframe,
   currentRangeLabel,
   previousRangeLabel,
+  sessions = [],
+  logs = [],
+  exerciseMetaMap = new Map(),
+  onDataUpdated = () => {},
   onTimeframeChange,
   onSelectAthlete,
   onBackToOverview,
@@ -582,7 +596,27 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
         </div>
       </div>
 
-      {/* ─── 6. DIREZIONE CONSIGLIATA ("COME PROSEGUIRE") & AZIONI OPERATIVE RAPIDE ─── */}
+      {/* ─── 6. CRONOLOGIA ALLENAMENTI & ADOZIONE CORREZIONI COACH ─── */}
+      <AthleteWorkoutHistorySection
+        athleteId={athleteReport.athleteId}
+        athleteName={athleteReport.athleteName}
+        activeWorkoutTitle={athleteReport.workoutTitle}
+        sessions={sessions}
+        logs={logs}
+        exerciseMetaMap={exerciseMetaMap}
+        onDataUpdated={onDataUpdated}
+        onNavigateToWorkouts={onNavigateToWorkouts}
+        onNavigateToChat={onNavigateToChat}
+        onOpenCopilot={(aId) => {
+          onOpenCopilot(
+            aId,
+            athleteReport.athleteName,
+            athleteReport.workoutTitle
+          );
+        }}
+      />
+
+      {/* ─── 7. DIREZIONE CONSIGLIATA ("COME PROSEGUIRE") & AZIONI OPERATIVE RAPIDE ─── */}
       <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-[#0c1018] via-slate-950 to-slate-950 border-2 border-[var(--color-primary)]/40 shadow-2xl space-y-6 relative">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shadow-md">

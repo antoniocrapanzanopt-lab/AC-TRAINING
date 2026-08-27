@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { Message, Conversation } from '../types/chat';
 import { useAthletes } from './AthletesContext';
+import { WebPushService } from '../lib/push/pushService';
 
 interface MessagesContextType {
   messages: Message[];
@@ -11,6 +12,7 @@ interface MessagesContextType {
   setActiveConversation: (conv: Conversation | null) => void;
   sendMessage: (receiverId: string, content: string) => Promise<void>;
   markAsRead: (senderId: string) => Promise<void>;
+  markAsUnread: (athleteId: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<{ success: boolean; error?: string }>;
   editMessage: (messageId: string, newContent: string) => Promise<{ success: boolean; error?: string }>;
   deleteConversation: (athleteId: string) => Promise<{ success: boolean; error?: string }>;
@@ -80,9 +82,25 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (payload.eventType === 'INSERT') {
             if (newMsg && (validIds.includes(newMsg.sender_id) || validIds.includes(newMsg.receiver_id))) {
               setMessages((prev) => {
-                if (prev.some(m => m.id === newMsg.id)) return prev;
+                if (prev.some((m) => m.id === newMsg.id)) return prev;
                 return [...prev, newMsg];
               });
+
+              // Notifica nativa di sistema su smartphone/desktop se il messaggio è in arrivo
+              if (newMsg.receiver_id === userId && newMsg.sender_id !== userId) {
+                const ath = athletes.find((a) => a.auth_user_id === newMsg.sender_id || a.id === newMsg.sender_id);
+                const senderName = ath ? `${ath.firstName} ${ath.lastName}` : 'Atleta';
+                let bodyText = newMsg.content;
+                if (bodyText.includes('📷 [Immagine] ')) bodyText = '📷 Ha inviato una foto';
+                else if (bodyText.includes('🎥 [Video] ')) bodyText = '🎥 Ha inviato un video';
+                else if (bodyText.includes('📎 [File] ')) bodyText = '📎 Ha inviato un documento';
+
+                WebPushService.showLocalNotification(`Nuovo messaggio da ${senderName}`, {
+                  body: bodyText,
+                  tag: `chat-${newMsg.sender_id}`,
+                  url: '/messaggi',
+                }).catch(() => {});
+              }
             }
           } else if (payload.eventType === 'UPDATE') {
             setMessages((prev) =>
@@ -349,6 +367,79 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [user, athletes]);
 
+  const markAsUnread = useCallback(async (athleteId: string) => {
+    if (!user) return;
+
+    const targetAthlete = athletes.find(a => a.id === athleteId || a.auth_user_id === athleteId);
+    const validSenderIds = [athleteId, targetAthlete?.id, targetAthlete?.auth_user_id].filter(Boolean) as string[];
+
+    // 1. Trova l'ultimo messaggio della conversazione (priorità a quelli ricevuti dal coach)
+    let foundMsg: Message | undefined;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (validSenderIds.includes(m.sender_id) && m.receiver_id === user.id) {
+        foundMsg = m;
+        break;
+      }
+    }
+    if (!foundMsg) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (validSenderIds.includes(m.sender_id) || validSenderIds.includes(m.receiver_id)) {
+          foundMsg = m;
+          break;
+        }
+      }
+    }
+
+    const targetMsgId = foundMsg?.id;
+
+    // Optimistic Update
+    setMessages((prev) => {
+      let idToMark = targetMsgId;
+      if (!idToMark) {
+        for (let i = prev.length - 1; i >= 0; i--) {
+          const m = prev[i];
+          if ((validSenderIds.includes(m.sender_id) && m.receiver_id === user.id) || 
+              validSenderIds.includes(m.sender_id) || validSenderIds.includes(m.receiver_id)) {
+            idToMark = m.id;
+            break;
+          }
+        }
+      }
+      if (!idToMark) return prev;
+      return prev.map((msg) => (msg.id === idToMark ? { ...msg, is_read: false } : msg));
+    });
+
+    // 2. Persistenza su Supabase
+    try {
+      if (targetMsgId && !targetMsgId.startsWith('temp-')) {
+        await supabase
+          .from('messages')
+          .update({ is_read: false })
+          .eq('id', targetMsgId);
+      } else {
+        const { data: latestMsg } = await supabase
+          .from('messages')
+          .select('id')
+          .in('sender_id', validSenderIds)
+          .eq('receiver_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestMsg?.id) {
+          await supabase
+            .from('messages')
+            .update({ is_read: false })
+            .eq('id', latestMsg.id);
+        }
+      }
+    } catch (err) {
+      console.error('Error marking as unread in Supabase:', err);
+    }
+  }, [user, athletes, messages]);
+
   const deleteMessage = useCallback(async (messageId: string) => {
     // 1. Update ottimistico immediato (0ms)
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
@@ -364,19 +455,21 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('id', messageId);
 
       if (error) {
-        console.error('Error deleting message:', error);
+        console.error('Error deleting message from Supabase:', error);
         return { success: false, error: error.message };
       }
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       console.error('Delete message error:', err);
-      return { success: false, error: err.message };
+      return { success: false, error: errorMsg };
     }
   }, []);
 
   const editMessage = useCallback(async (messageId: string, newContent: string) => {
+    // 1. Update ottimistico immediato (0ms)
     setMessages((prev) =>
-      prev.map((msg) => (msg.id === messageId ? { ...msg, content: newContent } : msg))
+      prev.map((m) => (m.id === messageId ? { ...m, content: newContent } : m))
     );
 
     if (messageId.startsWith('temp-')) {
@@ -390,13 +483,14 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('id', messageId);
 
       if (error) {
-        console.error('Error editing message:', error);
+        console.error('Error editing message in Supabase:', error);
         return { success: false, error: error.message };
       }
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       console.error('Edit message error:', err);
-      return { success: false, error: err.message };
+      return { success: false, error: errorMsg };
     }
   }, []);
 
@@ -404,42 +498,44 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user) return { success: false, error: 'User not authenticated' };
 
     const targetAthlete = athletes.find(a => a.id === athleteId || a.auth_user_id === athleteId);
-    const validIds = Array.from(new Set([
-      athleteId,
-      targetAthlete?.id,
-      targetAthlete?.auth_user_id
-    ].filter(Boolean) as string[]));
+    const validIds = [athleteId, targetAthlete?.id, targetAthlete?.auth_user_id].filter(Boolean) as string[];
 
-    // 1. Update ottimistico immediato
+    // 1. Update ottimistico: rimuovi tutti i messaggi associati (0ms)
     setMessages((prev) =>
       prev.filter(
-        (m) => !validIds.includes(m.sender_id) && !validIds.includes(m.receiver_id)
+        (m) =>
+          !(
+            (validIds.includes(m.sender_id) && m.receiver_id === user.id) ||
+            (m.sender_id === user.id && validIds.includes(m.receiver_id))
+          )
       )
     );
 
+    if (activeConversationId && validIds.includes(activeConversationId)) {
+      setActiveConversationId(null);
+    }
+
+    // 2. Eliminazione definitiva da Supabase
     try {
-      const orCondition = validIds
-        .map((id) => `sender_id.eq.${id},receiver_id.eq.${id}`)
+      const orFilter = validIds
+        .map((id) => `and(sender_id.eq.${id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${id})`)
         .join(',');
 
       const { error } = await supabase
         .from('messages')
         .delete()
-        .or(orCondition);
+        .or(orFilter);
 
       if (error) {
-        console.error('Error deleting conversation:', error);
+        console.error('Error deleting conversation in Supabase:', error);
         return { success: false, error: error.message };
       }
 
-      if (activeConversationId === athleteId) {
-        setActiveConversationId(null);
-      }
-
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       console.error('Delete conversation error:', err);
-      return { success: false, error: err.message };
+      return { success: false, error: errorMsg };
     }
   }, [user, athletes, activeConversationId]);
 
@@ -452,6 +548,7 @@ export const MessagesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setActiveConversation,
         sendMessage,
         markAsRead,
+        markAsUnread,
         deleteMessage,
         editMessage,
         deleteConversation,

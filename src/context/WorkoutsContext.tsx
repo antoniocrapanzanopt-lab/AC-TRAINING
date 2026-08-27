@@ -46,7 +46,14 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [coachTemplates, setCoachTemplates] = useState<WorkoutTemplate[]>([]);
   const [folders, setFolders] = useState<WorkoutFolder[]>([]);
   const [allAssignedWorkouts, setAllAssignedWorkouts] = useState<AthleteAssignedWorkout[]>([]);
-  const [myAssignedWorkouts, setMyAssignedWorkouts] = useState<AthleteAssignedWorkout[]>([]);
+  const [myAssignedWorkouts, setMyAssignedWorkouts] = useState<AthleteAssignedWorkout[]>(() => {
+    try {
+      const cached = localStorage.getItem('builder_cached_my_workouts');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [loading, setLoading] = useState(false);
 
   // --- COACH LOGIC ---
@@ -733,24 +740,28 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const refreshMyWorkouts = useCallback(async () => {
     if (!user || user.role !== 'athlete') return;
-    setLoading(true);
-    
-    // Siccome siamo un atleta, possiamo leggere le nostre assegnazioni grazie alle RLS
-    // Dobbiamo usare l'id dell'atleta. user.id in AuthContext è mappato a athlete.id
-    const { data, error } = await supabase
-      .from('athlete_assigned_workouts')
-      .select(`
-        *,
-        workout:workouts(*)
-      `)
-      .eq('athlete_id', user.athleteId || user.id)
-      .eq('is_active', true)
-      .order('assigned_date', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('athlete_assigned_workouts')
+        .select(`
+          *,
+          workout:workouts(*)
+        `)
+        .eq('athlete_id', user.athleteId || user.id)
+        .eq('is_active', true)
+        .order('assigned_date', { ascending: false });
 
-    if (!error && data) {
-      setMyAssignedWorkouts(data as any);
+      if (!error && data) {
+        setMyAssignedWorkouts(data as any);
+        try {
+          localStorage.setItem('builder_cached_my_workouts', JSON.stringify(data));
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.warn('Errore refreshMyWorkouts:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [user]);
 
   const startWorkoutSession = async (workoutId: string, targetAthleteId?: string) => {

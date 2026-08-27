@@ -213,4 +213,38 @@ export class WebPushService {
       return false;
     }
   }
+
+  // 8. Mostra una notifica nativa di sistema sul dispositivo
+  public static async showLocalNotification(
+    title: string,
+    options?: NotificationOptions & { url?: string }
+  ): Promise<boolean> {
+    if (typeof window === 'undefined' || !('Notification' in window)) return false;
+    if (Notification.permission !== 'granted') return false;
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = (await navigator.serviceWorker.ready.catch(() => null)) || (await this.registerServiceWorker());
+        if (reg && reg.showNotification) {
+          await reg.showNotification(title, {
+            icon: '/ac-logo-transparent.png',
+            badge: '/ac-logo-transparent.png',
+            data: { action_url: options?.url || '/' },
+            ...options,
+          });
+          return true;
+        }
+      }
+
+      // Fallback a Notification classica
+      new Notification(title, {
+        icon: '/ac-logo-transparent.png',
+        ...options,
+      });
+      return true;
+    } catch (err) {
+      console.warn('Errore visualizzazione notifica locale:', err);
+      return false;
+    }
+  }
 }
