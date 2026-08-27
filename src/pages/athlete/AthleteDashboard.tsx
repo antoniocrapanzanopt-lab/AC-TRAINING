@@ -40,12 +40,16 @@ interface WorkoutDayListProps {
   assigned: any;
   onStart: (assigned: any, week: number, day: string) => void;
   activeDraft: ActiveWorkoutDraft | null;
+  user?: any;
+  onProgressUpdate?: (map: Record<string, boolean>) => void;
 }
 
 const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   assigned,
   onStart,
   activeDraft,
+  user,
+  onProgressUpdate,
 }) => {
   const progressKey = `builder_progress_${assigned.athlete_id}_${assigned.workout_id}`;
 
@@ -97,21 +101,42 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
       const wId = assigned.workout_id;
       if (!athId || !wId) return;
 
+      const athIds = Array.from(
+        new Set([athId, user?.athleteId, user?.id].filter(Boolean) as string[])
+      );
+      const wIds = Array.from(
+        new Set([wId, assigned.workout?.id, assigned.workout?.parent_template_id].filter(Boolean) as string[])
+      );
+
       const { data } = await supabase
         .from('workout_sessions')
-        .select('id, end_time, notes, status, skip_reason, skip_notes, coach_justified, week_number, day_name')
-        .eq('athlete_id', athId)
-        .eq('workout_id', wId)
+        .select('id, end_time, notes, status, skip_reason, skip_notes, coach_justified, week_number, day_name, workout_id')
+        .in('athlete_id', athIds)
+        .in('workout_id', wIds)
         .not('end_time', 'is', null)
         .order('start_time', { ascending: true });
+
+      // Unisci le sessioni locali salvate se presenti
+      let localSessionList: any[] = [];
+      try {
+        localSessionList = JSON.parse(localStorage.getItem('builder_local_sessions_backup') || '[]');
+      } catch (_) {}
+
+      const matchingLocal = localSessionList.filter(
+        (ls) => ls && ls.end_time && (wIds.includes(ls.workout_id) || !ls.workout_id)
+      );
+
+      const allSessions = (data || []).concat(
+        matchingLocal.filter((ls) => !(data || []).some((sd: any) => sd.id === ls.id))
+      );
 
       const daysList = days.length > 0 ? days : ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
 
       const currentMap: Record<string, boolean> = {};
       const detailsMap: Record<string, { status?: string; skip_reason?: string; coach_justified?: boolean | null; skip_notes?: string }> = {};
 
-      if (data && data.length > 0) {
-        data.forEach((s: any, idx: number) => {
+      if (allSessions && allSessions.length > 0) {
+        allSessions.forEach((s: any, idx: number) => {
           const wNum = s.week_number || Math.floor(idx / Math.max(1, daysList.length)) + 1;
           const dName = s.day_name || daysList[idx % daysList.length];
           const key = `${wNum}-${dName}`;
@@ -128,10 +153,13 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
       setCompletedMap(currentMap);
       setSessionDetailsMap(detailsMap);
       localStorage.setItem(progressKey, JSON.stringify(currentMap));
+      if (onProgressUpdate) {
+        onProgressUpdate(currentMap);
+      }
     } catch (e) {
       console.warn('Errore sync progressi da DB:', e);
     }
-  }, [assigned.athlete_id, assigned.workout_id, days, progressKey]);
+  }, [assigned.athlete_id, assigned.workout_id, assigned.workout?.id, assigned.workout?.parent_template_id, user, days, progressKey, onProgressUpdate]);
 
   useEffect(() => {
     syncProgressFromDb();
@@ -561,23 +589,39 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   // Identifica la prima scheda attiva e il prossimo allenamento di oggi
   const firstAssigned = myAssignedWorkouts[0];
 
-  // Calcolo dinamico della settimana attiva e del prossimo giorno per l'Hero Card
-  const { heroActiveWeek, heroNextDay, heroWeekCompletedCount, heroTotalDaysInWeek } = useMemo(() => {
-    if (!firstAssigned) return { heroActiveWeek: 1, heroNextDay: 'Giorno A', heroWeekCompletedCount: 0, heroTotalDaysInWeek: 5 };
+  const [globalProgressMap, setGlobalProgressMap] = useState<Record<string, boolean>>(() => {
+    if (!firstAssigned) return {};
     const athId = firstAssigned.athlete_id;
     const wId = firstAssigned.workout_id;
     const progressKey = `builder_progress_${athId}_${wId}`;
-    let completedMap: Record<string, boolean> = {};
     try {
-      completedMap = JSON.parse(localStorage.getItem(progressKey) || '{}');
-    } catch (_) {}
+      return JSON.parse(localStorage.getItem(progressKey) || '{}');
+    } catch (_) {
+      return {};
+    }
+  });
+
+  const handleProgressUpdate = useCallback((newMap: Record<string, boolean>) => {
+    setGlobalProgressMap((prev) => {
+      const prevKeys = Object.keys(prev);
+      const newKeys = Object.keys(newMap);
+      if (prevKeys.length === newKeys.length && prevKeys.every((k) => prev[k] === newMap[k])) {
+        return prev;
+      }
+      return { ...newMap };
+    });
+  }, []);
+
+  // Calcolo dinamico della settimana attiva e del prossimo giorno per l'Hero Card
+  const { heroActiveWeek, heroNextDay, heroWeekCompletedCount, heroTotalDaysInWeek } = useMemo(() => {
+    if (!firstAssigned) return { heroActiveWeek: 1, heroNextDay: 'Giorno A', heroWeekCompletedCount: 0, heroTotalDaysInWeek: 5 };
 
     const totalWeeks = firstAssigned.workout?.total_weeks || 4;
     const dayList = ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
 
     for (let w = 1; w <= totalWeeks; w++) {
-      const doneCount = dayList.filter((d) => completedMap[`${w}-${d}`]).length;
-      const pendingDay = dayList.find((d) => !completedMap[`${w}-${d}`]);
+      const doneCount = dayList.filter((d) => globalProgressMap[`${w}-${d}`]).length;
+      const pendingDay = dayList.find((d) => !globalProgressMap[`${w}-${d}`]);
       if (pendingDay) {
         return {
           heroActiveWeek: w,
@@ -594,7 +638,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       heroWeekCompletedCount: dayList.length,
       heroTotalDaysInWeek: dayList.length,
     };
-  }, [firstAssigned]);
+  }, [firstAssigned, globalProgressMap]);
 
 
 
@@ -759,6 +803,8 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
               assigned={assigned}
               onStart={handleStartWorkout}
               activeDraft={activeDraft}
+              user={user}
+              onProgressUpdate={handleProgressUpdate}
             />
           ))}
         </div>
