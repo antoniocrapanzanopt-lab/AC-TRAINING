@@ -161,13 +161,16 @@ export const syncPendingWorkoutsWithServer = async (): Promise<{ syncedCount: nu
     try {
       let targetSessionId = item.sessionId;
 
-      // Se non esiste ancora un sessionId su DB, creiamo la sessione
+      // 1. Risolvi o crea la sessione master reale su public.workout_sessions
       if (!targetSessionId) {
         const { data: newSess, error: createError } = await supabase
           .from('workout_sessions')
           .insert({
             athlete_id: item.athleteId,
             workout_id: item.workoutId,
+            week_number: item.weekNumber,
+            day_name: item.dayName,
+            status: 'completed',
             start_time: item.startTime,
             end_time: item.endTime,
             rpe: item.rpe,
@@ -179,20 +182,45 @@ export const syncPendingWorkoutsWithServer = async (): Promise<{ syncedCount: nu
         if (createError) throw createError;
         targetSessionId = newSess?.id;
       } else {
-        // Altrimenti chiudiamo la sessione esistente
-        const { error: updateError } = await supabase
+        const { data: updatedData, error: updateError } = await supabase
           .from('workout_sessions')
           .update({
             end_time: item.endTime,
+            status: 'completed',
             rpe: item.rpe,
             notes: item.notes,
+            week_number: item.weekNumber,
+            day_name: item.dayName,
           })
-          .eq('id', targetSessionId);
+          .eq('id', targetSessionId)
+          .select('id');
 
         if (updateError) throw updateError;
+        
+        // Se la sessione con targetSessionId non è stata trovata su Supabase, creala ex-novo
+        if (!updatedData || updatedData.length === 0) {
+          const { data: newSess, error: createError } = await supabase
+            .from('workout_sessions')
+            .insert({
+              athlete_id: item.athleteId,
+              workout_id: item.workoutId,
+              week_number: item.weekNumber,
+              day_name: item.dayName,
+              status: 'completed',
+              start_time: item.startTime,
+              end_time: item.endTime,
+              rpe: item.rpe,
+              notes: item.notes,
+            })
+            .select('id')
+            .single();
+
+          if (createError) throw createError;
+          targetSessionId = newSess?.id;
+        }
       }
 
-      // Inseriamo i logs esercizi
+      // 2. Solo con targetSessionId reale su Supabase, salva gli exercise_logs
       if (item.logsToSave && item.logsToSave.length > 0 && targetSessionId) {
         const logsWithSessionId = item.logsToSave.map((l) => ({
           session_id: targetSessionId,
@@ -207,7 +235,7 @@ export const syncPendingWorkoutsWithServer = async (): Promise<{ syncedCount: nu
         if (logsError) throw logsError;
       }
 
-      // Sincronizzazione alert questionario per il Copilot se presenti
+      // 3. Sincronizzazione alert questionario per il Copilot se presenti
       if (item.jointPain >= 3 || item.jointPainNotes || item.difficulty >= 4) {
         try {
           const existingAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]');
@@ -243,6 +271,11 @@ export const syncPendingWorkoutsWithServer = async (): Promise<{ syncedCount: nu
   // Aggiorna la coda salvata
   localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(remainingQueue));
   window.dispatchEvent(new Event('pending_sync_queue_updated'));
+
+  if (syncedCount > 0) {
+    window.dispatchEvent(new Event('athlete_workout_completed'));
+    window.dispatchEvent(new Event('athlete_draft_updated'));
+  }
 
   return { syncedCount, errorsCount };
 };

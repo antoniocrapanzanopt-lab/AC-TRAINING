@@ -30,8 +30,8 @@ interface WorkoutsContextType {
   // Athlete specific
   myAssignedWorkouts: AthleteAssignedWorkout[];
   refreshMyWorkouts: () => Promise<void>;
-  startWorkoutSession: (workoutId: string, targetAthleteId?: string) => Promise<{ session: WorkoutSession | null, error?: string }>;
-  endWorkoutSession: (sessionId: string, notes?: string, rpe?: number) => Promise<{ success: boolean; error?: string }>;
+  startWorkoutSession: (workoutId: string, targetAthleteId?: string, weekNumber?: number, dayName?: string) => Promise<{ session: WorkoutSession | null, error?: string }>;
+  endWorkoutSession: (sessionId: string, notes?: string, rpe?: number, weekNumber?: number, dayName?: string) => Promise<{ success: boolean; error?: string }>;
   saveExerciseLogs: (logs: Partial<ExerciseLog>[]) => Promise<{ success: boolean; error?: string }>;
   
   loading: boolean;
@@ -764,17 +764,51 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [user]);
 
-  const startWorkoutSession = async (workoutId: string, targetAthleteId?: string) => {
+  const startWorkoutSession = async (workoutId: string, targetAthleteId?: string, weekNumber?: number, dayName?: string) => {
     if (!user) return { session: null, error: 'Unauthorized' };
-    const effectiveAthleteId = targetAthleteId || user.athleteId || user.id;
+    
+    // EVITARE FALLBACK SU COACH: targetAthleteId deve essere fornito, altrimenti usiamo il profilo atleta dell'utente
+    const effectiveAthleteId = targetAthleteId || user.athleteId || (user.role === 'athlete' ? user.id : null);
+    
+    if (!effectiveAthleteId) {
+      console.warn("startWorkoutSession: targetAthleteId mancante. Sessione annullata per evitare assegnazione al coach.");
+      return { session: null, error: 'Identificativo atleta non valido' };
+    }
+
+    // 1. CONTROLLO IDEMPOTENZA: Riprendi sessione in sospeso invece di duplicare
+    try {
+      let query = supabase
+        .from('workout_sessions')
+        .select('*')
+        .eq('athlete_id', effectiveAthleteId)
+        .eq('workout_id', workoutId)
+        .is('end_time', null);
+      
+      if (weekNumber) query = query.eq('week_number', weekNumber);
+      if (dayName) query = query.eq('day_name', dayName);
+      
+      const { data: existingSessions, error: findErr } = await query.order('start_time', { ascending: false }).limit(1);
+      
+      if (!findErr && existingSessions && existingSessions.length > 0) {
+        console.log("Ripresa sessione esistente:", existingSessions[0].id);
+        return { session: existingSessions[0] as WorkoutSession };
+      }
+    } catch (e) {
+      console.warn("Errore controllo sessioni in sospeso", e);
+    }
+
+    const insertPayload: Record<string, unknown> = {
+      athlete_id: effectiveAthleteId,
+      workout_id: workoutId,
+      status: 'in_progress',
+    };
+    if (weekNumber) insertPayload.week_number = weekNumber;
+    if (dayName) insertPayload.day_name = dayName;
 
     try {
       const { data, error } = await supabase
         .from('workout_sessions')
-        .insert({
-          athlete_id: effectiveAthleteId,
-          workout_id: workoutId,
-        })
+        .insert(insertPayload)
         .select()
         .single();
         
@@ -782,38 +816,46 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { session: data as WorkoutSession };
       }
 
-      // Fallback session con UUID valido se Supabase restituisce errore
-      const fallbackSession: WorkoutSession = {
-        id: crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`,
-        athlete_id: effectiveAthleteId,
-        workout_id: workoutId,
-        start_time: new Date().toISOString()
-      };
-      return { session: fallbackSession };
+      const errMsg = error ? error.message : 'Impossibile creare la sessione su Supabase';
+      console.error('[CRITICAL] startWorkoutSession fallito:', errMsg, { insertPayload, error });
+      return { session: null, error: errMsg };
     } catch (error: unknown) {
-      const fallbackSession: WorkoutSession = {
-        id: crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`,
-        athlete_id: effectiveAthleteId,
-        workout_id: workoutId,
-        start_time: new Date().toISOString()
-      };
-      return { session: fallbackSession };
+      const errMsg = error instanceof Error ? error.message : 'Errore imprevisto creazione sessione';
+      console.error('[CRITICAL] startWorkoutSession eccezione:', errMsg, error);
+      return { session: null, error: errMsg };
     }
   };
 
-  const endWorkoutSession = async (sessionId: string, notes?: string, rpe?: number) => {
+  const endWorkoutSession = async (sessionId: string, notes?: string, rpe?: number, weekNumber?: number, dayName?: string) => {
+    if (!sessionId) {
+      console.error('[CRITICAL] endWorkoutSession invocato senza sessionId');
+      return { success: false, error: 'Session ID mancante' };
+    }
+
     try {
-      const updateData: Record<string, unknown> = { end_time: new Date().toISOString() };
+      const updateData: Record<string, unknown> = {
+        end_time: new Date().toISOString(),
+        status: 'completed',
+      };
       if (notes) updateData.notes = notes;
       if (rpe) updateData.rpe = rpe;
+      if (weekNumber) updateData.week_number = weekNumber;
+      if (dayName) updateData.day_name = dayName;
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('workout_sessions')
         .update(updateData)
-        .eq('id', sessionId);
+        .eq('id', sessionId)
+        .select('id');
         
       if (error) {
-        console.warn('endWorkoutSession warning:', error.message);
+        console.error('[CRITICAL] endWorkoutSession errore Supabase:', error.message, { sessionId, updateData });
+        return { success: false, error: error.message };
+      }
+
+      if (!data || data.length === 0) {
+        console.error('[CRITICAL] endWorkoutSession: nessuna sessione trovata o aggiornata nel DB per id:', sessionId);
+        return { success: false, error: 'Sessione non presente nel database' };
       }
 
       // Invia notifica al coach
@@ -846,8 +888,8 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: true };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      console.warn('endWorkoutSession exception:', msg);
-      return { success: true };
+      console.error('[CRITICAL] endWorkoutSession exception:', msg, error);
+      return { success: false, error: msg };
     }
   };
 
@@ -868,12 +910,13 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .insert(sanitizedLogs);
         
       if (error) {
-        console.warn('saveExerciseLogs warning:', error.message);
+        console.error('[CRITICAL] saveExerciseLogs errore Supabase:', error.message, sanitizedLogs);
+        return { success: false, error: error.message };
       }
-      return { success: !error, error: error?.message };
+      return { success: true };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      console.warn('saveExerciseLogs exception:', msg);
+      console.error('[CRITICAL] saveExerciseLogs exception:', msg, error);
       return { success: false, error: msg };
     }
   };

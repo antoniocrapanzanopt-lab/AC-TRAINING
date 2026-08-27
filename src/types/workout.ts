@@ -85,7 +85,7 @@ export interface WorkoutSession {
   end_time?: string;
   notes?: string;
   rpe?: number;
-  status?: 'completed' | 'skipped';
+  status?: 'completed' | 'skipped' | 'in_progress';
   skip_reason?: string;
   skip_notes?: string;
   coach_justified?: boolean | null;

@@ -9,6 +9,12 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
+interface PastSessionExercise {
+  name: string;
+  sets: { setNumber: number; reps: number; weightKg: number }[];
+  notes?: string;
+}
+
 interface PastSession {
   id: string;
   workoutTitle: string;
@@ -23,38 +29,104 @@ interface PastSession {
   skipNotes?: string;
   coachJustified?: boolean | null;
   coachFeedback?: string;
-  exercises: {
-    name: string;
-    sets: { setNumber: number; reps: number; weightKg: number }[];
-    notes?: string;
-  }[];
 }
 
 interface AthleteWorkoutHistoryProps {
   athleteId: string;
+  athleteIds?: string[];
   activeWorkoutTitle?: string;
+  initialSessions?: any[];
 }
 
 export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
   athleteId,
+  athleteIds,
   activeWorkoutTitle,
+  initialSessions,
 }) => {
   const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState<number>(3);
+  const [sessionLogsMap, setSessionLogsMap] = useState<Record<string, PastSessionExercise[]>>({});
+  const [loadingLogsId, setLoadingLogsId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchPastSessions = async () => {
-      if (!athleteId) {
-        setLoadingSessions(false);
-        return;
-      }
+  const idsKey = (athleteIds || []).filter(Boolean).sort().join(',');
+  const targetAthleteIds = React.useMemo(() => {
+    return Array.from(new Set([athleteId, ...(athleteIds || [])].filter(Boolean)));
+  }, [athleteId, idsKey]);
 
-      setLoadingSessions(true);
-      try {
-        const { data, error } = await supabase
+  const mapSessions = React.useCallback((sessionList: Record<string, any>[]): PastSession[] => {
+    return sessionList.map((session) => {
+      const start = new Date(String(session.start_time || ''));
+      const end = new Date(String(session.end_time || ''));
+      const diffMs = end.getTime() - start.getTime();
+      const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
+
+      const rawTitle = session.workouts?.title;
+      const isPlaceholder =
+        !rawTitle ||
+        rawTitle.trim() === '' ||
+        rawTitle.toLowerCase() === 'aaaa' ||
+        rawTitle.toLowerCase() === 'allenamento' ||
+        rawTitle.toLowerCase() === 'allenamento svolto';
+      const finalTitle = isPlaceholder ? (activeWorkoutTitle || 'Scheda Personalizzata') : rawTitle;
+
+      const dateStr = session.end_time ? String(session.end_time).slice(0, 10) : new Date().toISOString().slice(0, 10);
+
+      return {
+        id: String(session.id),
+        workoutTitle: finalTitle,
+        weekNumber: Number(session.week_number) || 1,
+        dayName: String(session.day_name || 'Giorno A'),
+        date: dateStr,
+        durationMinutes: session.status === 'skipped' ? 0 : durationMinutes,
+        rpe: Number(session.rpe) || 0,
+        notes: session.notes ? String(session.notes) : undefined,
+        status: session.status as any,
+        skipReason: session.skip_reason ? String(session.skip_reason) : undefined,
+        skipNotes: session.skip_notes ? String(session.skip_notes) : undefined,
+        coachJustified: session.coach_justified,
+        coachFeedback: session.coach_feedback ? String(session.coach_feedback) : undefined,
+      };
+    });
+  }, [activeWorkoutTitle]);
+
+  const fetchPastSessions = React.useCallback(async () => {
+    if (targetAthleteIds.length === 0) {
+      setLoadingSessions(false);
+      return;
+    }
+
+    setLoadingSessions(true);
+    try {
+      const primaryRes = await supabase
+        .from('workout_sessions')
+        .select(`
+          id,
+          start_time,
+          end_time,
+          rpe,
+          notes,
+          workout_id,
+          status,
+          skip_reason,
+          skip_notes,
+          coach_justified,
+          coach_feedback,
+          week_number,
+          day_name,
+          workouts ( title )
+        `)
+        .in('athlete_id', targetAthleteIds)
+        .not('end_time', 'is', null)
+        .order('end_time', { ascending: false });
+
+      let sessionList: Record<string, unknown>[] = [];
+
+      if (primaryRes.error) {
+        const fallbackRes = await supabase
           .from('workout_sessions')
           .select(`
             id,
@@ -64,106 +136,114 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
             notes,
             workout_id,
             status,
-            skip_reason,
-            skip_notes,
-            coach_justified,
-            coach_feedback,
             week_number,
             day_name,
-            workouts ( title ),
-            exercise_logs (
-              set_number,
-              reps_completed,
-              weight_kg,
-              notes,
-              workout_exercises ( name, week_number, day_name )
-            )
+            workouts ( title )
           `)
-          .eq('athlete_id', athleteId)
+          .in('athlete_id', targetAthleteIds)
           .not('end_time', 'is', null)
           .order('end_time', { ascending: false });
 
-        if (error) throw error;
-
-        if (data) {
-          const mapped: PastSession[] = data.map((session: any) => {
-            const start = new Date(session.start_time);
-            const end = new Date(session.end_time);
-            const diffMs = end.getTime() - start.getTime();
-            const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
-
-            const rawTitle = session.workouts?.title;
-            const isPlaceholder =
-              !rawTitle ||
-              rawTitle.trim() === '' ||
-              rawTitle.toLowerCase() === 'aaaa' ||
-              rawTitle.toLowerCase() === 'allenamento' ||
-              rawTitle.toLowerCase() === 'allenamento svolto';
-            const finalTitle = isPlaceholder ? (activeWorkoutTitle || 'Scheda Personalizzata') : rawTitle;
-
-            const exMap = new Map<string, { sets: any[]; notesSet: Set<string> }>();
-            const logs = session.exercise_logs || [];
-            let detectedWeek: number | undefined = undefined;
-            let detectedDay: string | undefined = undefined;
-
-            logs.forEach((log: any) => {
-              if (log.workout_exercises?.week_number && !detectedWeek) {
-                detectedWeek = log.workout_exercises.week_number;
-              }
-              if (log.workout_exercises?.day_name && !detectedDay) {
-                detectedDay = log.workout_exercises.day_name;
-              }
-
-              const exName = log.workout_exercises?.name || 'Esercizio';
-              if (!exMap.has(exName)) {
-                exMap.set(exName, { sets: [], notesSet: new Set<string>() });
-              }
-              const entry = exMap.get(exName)!;
-              entry.sets.push({
-                setNumber: log.set_number,
-                reps: log.reps_completed || 0,
-                weightKg: log.weight_kg || 0,
-              });
-              if (log.notes) {
-                entry.notesSet.add(log.notes);
-              }
-            });
-
-            const exercises = Array.from(exMap.entries()).map(([name, { sets, notesSet }]) => {
-              sets.sort((a, b) => a.setNumber - b.setNumber);
-              const notes = Array.from(notesSet).join(' | ');
-              return { name, sets, notes };
-            });
-
-            return {
-              id: session.id,
-              workoutTitle: finalTitle,
-              weekNumber: session.week_number || detectedWeek || 1,
-              dayName: session.day_name || detectedDay || 'Giorno A',
-              date: session.end_time.slice(0, 10),
-              durationMinutes: session.status === 'skipped' ? 0 : durationMinutes,
-              rpe: session.rpe || 0,
-              notes: session.notes,
-              status: session.status,
-              skipReason: session.skip_reason,
-              skipNotes: session.skip_notes,
-              coachJustified: session.coach_justified,
-              coachFeedback: session.coach_feedback,
-              exercises,
-            };
-          });
-
-          setPastSessions(mapped);
-        }
-      } catch (err) {
-        console.warn('Errore lettura storico workout atleta:', err);
-      } finally {
-        setLoadingSessions(false);
+        if (fallbackRes.error) throw fallbackRes.error;
+        sessionList = (fallbackRes.data || []) as Record<string, unknown>[];
+      } else {
+        sessionList = (primaryRes.data || []) as Record<string, unknown>[];
       }
+
+      if (sessionList) {
+        setPastSessions(mapSessions(sessionList as Record<string, any>[]));
+      }
+    } catch (err) {
+      console.warn('Errore lettura storico workout atleta:', err);
+    } finally {
+      setLoadingSessions(false);
+    }
+  }, [targetAthleteIds, mapSessions]);
+
+  // Se forniti initialSessions dal parent, usali direttamente senza query extra
+  useEffect(() => {
+    if (initialSessions && initialSessions.length > 0) {
+      setPastSessions(mapSessions(initialSessions));
+      setLoadingSessions(false);
+    } else {
+      fetchPastSessions();
+    }
+  }, [initialSessions, fetchPastSessions, mapSessions]);
+
+  // Lazy load per exercise_logs solo quando una sessione viene espansa
+  const loadLogsForSession = async (sessionId: string) => {
+    if (sessionLogsMap[sessionId] || loadingLogsId === sessionId) return;
+    setLoadingLogsId(sessionId);
+    try {
+      const { data, error } = await supabase
+        .from('exercise_logs')
+        .select(`
+          set_number,
+          reps_completed,
+          weight_kg,
+          notes,
+          workout_exercises ( name, week_number, day_name )
+        `)
+        .eq('session_id', sessionId)
+        .order('set_number', { ascending: true });
+
+      if (!error && data) {
+        const exMap = new Map<string, { sets: any[]; notesSet: Set<string> }>();
+        data.forEach((log: any) => {
+          const exName = log.workout_exercises?.name || 'Esercizio';
+          if (!exMap.has(exName)) {
+            exMap.set(exName, { sets: [], notesSet: new Set<string>() });
+          }
+          const entry = exMap.get(exName)!;
+          entry.sets.push({
+            setNumber: log.set_number,
+            reps: log.reps_completed || 0,
+            weightKg: log.weight_kg || 0,
+          });
+          if (log.notes) {
+            entry.notesSet.add(log.notes);
+          }
+        });
+
+        const exercises: PastSessionExercise[] = Array.from(exMap.entries()).map(([name, { sets, notesSet }]) => ({
+          name,
+          sets: sets.sort((a, b) => a.setNumber - b.setNumber),
+          notes: Array.from(notesSet).join(' | '),
+        }));
+
+        setSessionLogsMap((prev) => ({ ...prev, [sessionId]: exercises }));
+      }
+    } catch (err) {
+      console.warn('Errore lazy-load logs sessione:', err);
+    } finally {
+      setLoadingLogsId(null);
+    }
+  };
+
+  const handleToggleExpand = (sessionId: string) => {
+    if (expandedSessionId === sessionId) {
+      setExpandedSessionId(null);
+    } else {
+      setExpandedSessionId(sessionId);
+      loadLogsForSession(sessionId);
+    }
+  };
+
+  useEffect(() => {
+    fetchPastSessions();
+
+    const handleWorkoutCompleted = () => {
+      setTimeout(() => fetchPastSessions(), 500);
     };
 
-    fetchPastSessions();
-  }, [athleteId, activeWorkoutTitle]);
+    window.addEventListener('athlete_workout_completed', handleWorkoutCompleted);
+    window.addEventListener('athlete_workout_skipped', handleWorkoutCompleted);
+
+    return () => {
+      window.removeEventListener('athlete_workout_completed', handleWorkoutCompleted);
+      window.removeEventListener('athlete_workout_skipped', handleWorkoutCompleted);
+    };
+  }, [fetchPastSessions]);
 
   if (pastSessions.length === 0 && !loadingSessions) {
     return null;
@@ -260,7 +340,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
                     className="p-4 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] transition-all space-y-3 hover:border-[var(--color-primary)]/40 shadow-sm"
                   >
                     <div
-                      onClick={() => setExpandedSessionId(isExpanded ? null : session.id)}
+                      onClick={() => handleToggleExpand(session.id)}
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer select-none"
                     >
                       <div className="flex items-center gap-3">
@@ -304,7 +384,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
                       </div>
                     </div>
 
-                    {/* Dettaglio Esercizi, Carichi e Serie */}
+                    {/* Dettaglio Esercizi, Carichi e Serie (Lazy-Loaded) */}
                     {isExpanded && (
                       <div className="pt-3 border-t border-[var(--color-border)] space-y-3">
                         {session.notes && (
@@ -313,33 +393,46 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
                           </div>
                         )}
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {session.exercises.map((ex, i) => (
-                            <div
-                              key={i}
-                              className="p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] space-y-2"
-                            >
-                              <span className="text-xs font-bold text-[var(--color-text)] block">{ex.name}</span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {ex.sets.map((set, setIdx) => (
-                                  <span
-                                    key={setIdx}
-                                    className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-[var(--color-text)]"
-                                  >
-                                    Set {set.setNumber}:{' '}
-                                    <strong className="text-[var(--color-primary)]">{set.reps} reps</strong> @{' '}
-                                    {set.weightKg}kg
-                                  </span>
-                                ))}
-                              </div>
-                              {ex.notes && (
-                                <div className="mt-1.5 p-2 rounded-lg bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 text-[11px] text-[var(--color-primary)] font-medium leading-relaxed">
-                                  💬 <strong>Feedback:</strong> {ex.notes}
+                        {loadingLogsId === session.id ? (
+                          <div className="py-4 text-center text-[var(--color-text-muted)] text-xs flex items-center justify-center gap-2">
+                            <div className="w-4 h-4 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+                            <span>Caricamento dettagli carichi e serie...</span>
+                          </div>
+                        ) : (sessionLogsMap[session.id] || []).length === 0 ? (
+                          <p className="text-xs text-[var(--color-text-muted)] italic py-2">
+                            {session.status === 'skipped'
+                              ? `Sessione saltata: ${session.skipReason || 'Motivi personali'}`
+                              : 'Nessun carico registrato in questa sessione.'}
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {(sessionLogsMap[session.id] || []).map((ex, i) => (
+                              <div
+                                key={i}
+                                className="p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] space-y-2"
+                              >
+                                <span className="text-xs font-bold text-[var(--color-text)] block">{ex.name}</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {ex.sets.map((set, setIdx) => (
+                                    <span
+                                      key={setIdx}
+                                      className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-[var(--color-text)]"
+                                    >
+                                      Set {set.setNumber}:{' '}
+                                      <strong className="text-[var(--color-primary)]">{set.reps} reps</strong> @{' '}
+                                      {set.weightKg}kg
+                                    </span>
+                                  ))}
                                 </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                                {ex.notes && (
+                                  <div className="mt-1.5 p-2 rounded-lg bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 text-[11px] text-[var(--color-primary)] font-medium leading-relaxed">
+                                    💬 <strong>Feedback:</strong> {ex.notes}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -46,6 +46,10 @@ export const AthleteProfileView: React.FC = () => {
       )
     : null;
 
+  const athleteIds = React.useMemo(() => {
+    return Array.from(new Set([currentAthlete?.id, user?.athleteId, user?.id].filter(Boolean) as string[]));
+  }, [currentAthlete, user]);
+
   const athleteId = currentAthlete?.id || user?.athleteId || user?.id;
 
   const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
@@ -59,42 +63,41 @@ export const AthleteProfileView: React.FC = () => {
   }, [athleteId, fetchMetricsForAthlete, fetchMaxLiftsForAthlete]);
 
   // Carica le sessioni completate in passato dall'atleta
-  useEffect(() => {
-    const fetchPastSessions = async () => {
-      if (!athleteId) return;
-      try {
-        // Fetch scheda attiva per l'atleta come fallback se il titolo è placeholder (es: "aaaa")
-        const { data: activeAssignments } = await supabase
-          .from('athlete_assigned_workouts')
-          .select('workout_id, workouts ( title )')
-          .eq('athlete_id', athleteId)
-          .eq('is_active', true);
+  const fetchPastSessions = React.useCallback(async () => {
+    if (athleteIds.length === 0) return;
+    try {
+      // Fetch scheda attiva per l'atleta come fallback se il titolo è placeholder (es: "aaaa")
+      const { data: activeAssignments } = await supabase
+        .from('athlete_assigned_workouts')
+        .select('workout_id, workouts ( title )')
+        .in('athlete_id', athleteIds)
+        .eq('is_active', true);
 
-        const activeWorkoutTitle = (activeAssignments?.[0]?.workouts as unknown as {title: string} | null)?.title;
+      const activeWorkoutTitle = (activeAssignments?.[0]?.workouts as unknown as {title: string} | null)?.title;
 
-        const { data, error } = await supabase
-          .from('workout_sessions')
-          .select(`
-            id,
-            start_time,
-            end_time,
-            rpe,
+      const { data, error } = await supabase
+        .from('workout_sessions')
+        .select(`
+          id,
+          start_time,
+          end_time,
+          rpe,
+          notes,
+          workout_id,
+          workouts ( title ),
+          exercise_logs (
+            set_number,
+            reps_completed,
+            weight_kg,
             notes,
-            workout_id,
-            workouts ( title ),
-            exercise_logs (
-              set_number,
-              reps_completed,
-              weight_kg,
-              notes,
-              workout_exercises ( name, week_number, day_name )
-            )
-          `)
-          .eq('athlete_id', athleteId)
-          .not('end_time', 'is', null)
-          .order('end_time', { ascending: false });
+            workout_exercises ( name, week_number, day_name )
+          )
+        `)
+        .in('athlete_id', athleteIds)
+        .not('end_time', 'is', null)
+        .order('end_time', { ascending: false });
 
-        if (error) throw error;
+      if (error) throw error;
 
         if (data) {
           const mapped: PastSession[] = data.map((session: any) => {
@@ -158,12 +161,25 @@ export const AthleteProfileView: React.FC = () => {
           setPastSessions(mapped);
         }
       } catch (err) {
-        console.warn('Errore caricamento storico allenamenti:', err);
-      }
+      console.warn('Errore caricamento storico allenamenti:', err);
+    }
+  }, [athleteIds]);
+
+  useEffect(() => {
+    fetchPastSessions();
+
+    const handleWorkoutDone = () => {
+      setTimeout(() => fetchPastSessions(), 500);
     };
 
-    fetchPastSessions();
-  }, [athleteId]);
+    window.addEventListener('athlete_workout_completed', handleWorkoutDone);
+    window.addEventListener('athlete_workout_skipped', handleWorkoutDone);
+
+    return () => {
+      window.removeEventListener('athlete_workout_completed', handleWorkoutDone);
+      window.removeEventListener('athlete_workout_skipped', handleWorkoutDone);
+    };
+  }, [fetchPastSessions]);
 
   // Controllo scadenza certificato medico unificato
   const getCertificateStatus = () => {

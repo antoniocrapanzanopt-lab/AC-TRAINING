@@ -59,7 +59,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   onClose,
 }) => {
   const { startWorkoutSession, endWorkoutSession, saveExerciseLogs } = useWorkouts();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const { checkAndUpdateAutoPR } = useMetrics();
   const { user } = useAuth();
   const { athletes } = useAthletes();
@@ -68,7 +68,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const currentAthlete = user
     ? athletes.find((a) => a.email && a.email.toLowerCase() === user.email.toLowerCase())
     : null;
-  const athleteId = targetAthleteId || currentAthlete?.id || user?.athleteId || user?.id || 'ath-local';
+
+  // Precedenza assoluta al targetAthleteId (es. assegnato dal Coach)
+  // Per evitare fallback errati al profilo del coach (che corrompe i log).
+  const athleteId = targetAthleteId || (user?.role === 'athlete' ? (user?.athleteId || user?.id) : null) || currentAthlete?.id || 'ath-local';
 
   // Sanitizzazione di sicurezza: una sessione di allenamento appartiene a 1 solo Giorno e 1 sola Settimana
   const activeExercises = useMemo(() => {
@@ -393,16 +396,20 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     setIsTimerRunning(true);
 
     if (!sessionId && navigator.onLine) {
-      startWorkoutSession(workout.id, targetAthleteId).then((res) => {
+      const weekNum = activeExercises[0]?.week_number || 1;
+      const dayName = activeExercises[0]?.day_name || 'Giorno A';
+      startWorkoutSession(workout.id, targetAthleteId || athleteId, weekNum, dayName).then((res) => {
         if (res.session) {
           setSessionId(res.session.id);
+        } else if (res.error) {
+          showError('Errore', 'Impossibile avviare la sessione sul server.');
         }
       });
     }
 
     scheduleAutosave(true);
     showSuccess('Allenamento Avviato', 'Cronometro partito! Buon allenamento 💪');
-  }, [elapsedTime, sessionId, workout.id, targetAthleteId, startWorkoutSession, scheduleAutosave, showSuccess]);
+  }, [elapsedTime, sessionId, workout.id, targetAthleteId, athleteId, startWorkoutSession, scheduleAutosave, showSuccess, showError]);
 
   const handlePauseTimer = useCallback(() => {
     setIsTimerRunning(false);
@@ -453,7 +460,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           setIsTimerRunning(true);
           startTimestampRef.current = Date.now() - elapsedTime * 1000;
           if (!sessionId && navigator.onLine) {
-            startWorkoutSession(workout.id, targetAthleteId).then((res) => {
+            const weekNum = activeExercises[0]?.week_number || 1;
+            const dayName = activeExercises[0]?.day_name || 'Giorno A';
+            startWorkoutSession(workout.id, targetAthleteId || athleteId, weekNum, dayName).then((res) => {
               if (res.session) {
                 setSessionId(res.session.id);
               }
@@ -470,7 +479,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       return { ...prev, [exerciseId]: currentList };
     });
     scheduleAutosave(true); // Salvataggio immediato al completamento della serie
-  }, [scheduleAutosave]);
+  }, [scheduleAutosave, isWorkoutStarted, elapsedTime, sessionId, activeExercises, startWorkoutSession, workout.id, targetAthleteId, athleteId]);
 
   const handleSkipRest = useCallback(() => {
     setRestTimer(null);
@@ -507,18 +516,30 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       let effectiveSessionId = sessionId;
       if (!effectiveSessionId && navigator.onLine) {
         try {
-          const startRes = await startWorkoutSession(workout.id, targetAthleteId);
+          const weekNum = activeExercises[0]?.week_number || 1;
+          const dayName = activeExercises[0]?.day_name || 'Giorno A';
+          const startRes = await startWorkoutSession(workout.id, targetAthleteId || athleteId, weekNum, dayName);
           if (startRes.session?.id) {
             effectiveSessionId = startRes.session.id;
             setSessionId(effectiveSessionId);
+          } else {
+            console.error('[CRITICAL] startWorkoutSession ha fallito la persistenza DB:', startRes.error);
+            showError('Errore di Connessione', startRes.error || 'Impossibile registrare la sessione sul database.');
+            setIsSaving(false);
+            return;
           }
-        } catch (e) {
-          console.warn('Errore creazione sessione all\'uscita:', e);
+        } catch (e: any) {
+          console.error('[CRITICAL] Errore creazione sessione all\'uscita:', e);
+          showError('Errore', 'Impossibile comunicare con il database per avviare la sessione.');
+          setIsSaving(false);
+          return;
         }
       }
 
-      if (!effectiveSessionId) {
-        effectiveSessionId = crypto.randomUUID ? crypto.randomUUID() : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
+      if (!effectiveSessionId && navigator.onLine) {
+        showError('Errore Sessione', 'Nessuna sessione attiva presente sul database. Salvataggio interrotto.');
+        setIsSaving(false);
+        return;
       }
 
       const logsToSave: Partial<ExerciseLog>[] = [];
@@ -567,7 +588,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             if (userFeedback && idx === 0) noteParts.push(`Feedback: ${userFeedback}`);
 
             logsToSave.push({
-              session_id: effectiveSessionId,
+              session_id: effectiveSessionId || 'offline-pending',
               exercise_id: ex.id,
               set_number: idx + 1,
               reps_completed: repsNum || 1,
@@ -620,56 +641,37 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       const dayName = activeExercises[0]?.day_name || 'Giorno A';
 
       // Backup locale istantaneo dei log completati
-      try {
-        const localLogsMap = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}');
-        localLogsMap[effectiveSessionId] = logsToSave;
-        localStorage.setItem('builder_completed_session_logs', JSON.stringify(localLogsMap));
-      } catch (_) {}
-
-      // SE ONLINE: Esegui il salvataggio con protezione Timeout di 3.5s per evitare qualsiasi attesa all'atleta
-      if (navigator.onLine) {
+      if (effectiveSessionId) {
         try {
-          const serverSaveTask = (async () => {
-            if (logsToSave.length > 0) {
-              await saveExerciseLogs(logsToSave);
-            }
-            await endWorkoutSession(effectiveSessionId, questionnaireNotes, difficulty * 2);
-          })();
+          const localLogsMap = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}');
+          localLogsMap[effectiveSessionId] = logsToSave;
+          localStorage.setItem('builder_completed_session_logs', JSON.stringify(localLogsMap));
+        } catch (_) {}
+      }
 
-          await Promise.race([
-            serverSaveTask,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Network Timeout')), 3500)),
-          ]);
-        } catch (netErr) {
-          console.warn('Salvataggio server lento o in timeout, salvataggio in coda offline:', netErr);
-          const pendingItem: PendingCompletedWorkout = {
-            id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            sessionId: effectiveSessionId,
-            athleteId,
-            athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
-            workoutId: workout.id,
-            workoutTitle: workout.title,
-            weekNumber: weekNum,
-            dayName,
-            startTime: startIso,
-            endTime: nowIso,
-            durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
-            rpe: difficulty * 2,
-            notes: questionnaireNotes,
-            difficulty,
-            jointPain,
-            pump,
-            jointPainNotes: painDetailsFormatted,
-            logsToSave: logsToSave as PendingCompletedWorkout['logsToSave'],
-            createdAt: Date.now(),
-          };
-          queueCompletedWorkoutForSync(pendingItem);
+      // SE ONLINE: Salva su Supabase con controllo errori rigoroso
+      if (navigator.onLine && effectiveSessionId) {
+        if (logsToSave.length > 0) {
+          const logsRes = await saveExerciseLogs(logsToSave);
+          if (!logsRes.success) {
+            console.error('[CRITICAL] Errore salvataggio exercise_logs su Supabase:', logsRes.error);
+            showError('Errore Salvataggio Carichi', logsRes.error || 'Impossibile registrare le serie sul database. Salvataggio interrotto per proteggere i dati.');
+            setIsSaving(false);
+            return;
+          }
         }
-      } else {
-        // SE OFFLINE
+        const endRes = await endWorkoutSession(effectiveSessionId, questionnaireNotes, difficulty * 2, weekNum, dayName);
+        if (!endRes.success) {
+          console.error('[CRITICAL] endWorkoutSession ha fallito l\'update su Supabase:', endRes.error);
+          showError('Errore Completamento', endRes.error || 'Impossibile contrassegnare la sessione come completata.');
+          setIsSaving(false);
+          return;
+        }
+      } else if (!navigator.onLine) {
+        // SE OFFLINE: accoda per sincronizzazione futura (la sessione DB reale verrà creata/risolta al ritorno online)
         const pendingItem: PendingCompletedWorkout = {
           id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          sessionId: effectiveSessionId,
+          sessionId: effectiveSessionId || null,
           athleteId,
           athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
           workoutId: workout.id,
@@ -767,13 +769,25 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
       // Aggiorna progresso locale e rimuovi bozza attiva
       try {
-        const progressKey = `builder_progress_${athleteId}_${workout.id}`;
-        const existing = JSON.parse(localStorage.getItem(progressKey) || '{}');
-        existing[`${weekNum}-${dayName}`] = true;
-        localStorage.setItem(progressKey, JSON.stringify(existing));
+        const norm = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const keys = [
+          `builder_progress_${athleteId}_${workout.id}`,
+          `builder_progress_${targetAthleteId || athleteId}_${workout.id}`,
+        ];
+        keys.forEach((pk) => {
+          const existing = JSON.parse(localStorage.getItem(pk) || '{}');
+          existing[`${weekNum}-${dayName}`] = true;
+          existing[`${weekNum}-${norm(dayName)}`] = true;
+          localStorage.setItem(pk, JSON.stringify(existing));
+        });
       } catch (_) {}
 
       clearActiveWorkoutDraft(athleteId);
+      if (targetAthleteId) clearActiveWorkoutDraft(targetAthleteId);
+      if (user?.athleteId) clearActiveWorkoutDraft(user.athleteId);
+      if (user?.id) clearActiveWorkoutDraft(user.id);
+      window.dispatchEvent(new Event('athlete_workout_completed'));
+      window.dispatchEvent(new Event('athlete_draft_updated'));
       setIsSaving(false);
 
       // Apri la Celebration Screen
@@ -1361,6 +1375,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           athleteName={currentAthlete?.firstName || user?.name || 'Campione'}
           onClose={() => {
             setCelebrationData(null);
+            window.dispatchEvent(new Event('athlete_workout_completed'));
+            window.dispatchEvent(new Event('athlete_draft_updated'));
             onClose();
           }}
         />

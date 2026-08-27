@@ -116,7 +116,7 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
         }
 
         // 2. Recupera sessioni completate dell'atleta
-        const { data: rawSessions, error } = await supabase
+        const primarySessionsRes = await supabase
           .from('workout_sessions')
           .select(`
             id,
@@ -138,11 +138,36 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
           .not('end_time', 'is', null)
           .order('start_time', { ascending: false });
 
-        if (error) throw error;
+        let rawSessions: Record<string, unknown>[] = [];
+
+        if (primarySessionsRes.error) {
+          const fallbackSessionsRes = await supabase
+            .from('workout_sessions')
+            .select(`
+              id,
+              start_time,
+              end_time,
+              rpe,
+              notes,
+              workout_id,
+              status,
+              week_number,
+              day_name,
+              workouts ( id, title, total_weeks )
+            `)
+            .eq('athlete_id', athleteId)
+            .not('end_time', 'is', null)
+            .order('start_time', { ascending: false });
+
+          if (fallbackSessionsRes.error) throw fallbackSessionsRes.error;
+          rawSessions = (fallbackSessionsRes.data || []) as Record<string, unknown>[];
+        } else {
+          rawSessions = (primarySessionsRes.data || []) as Record<string, unknown>[];
+        }
 
         // Recupero logs per queste sessioni
-        const sessionIds = (rawSessions || []).map((s: any) => s.id);
-        const workoutIds = Array.from(new Set((rawSessions || []).map((s: any) => s.workout_id).filter(Boolean)));
+        const sessionIds = (rawSessions || []).map((s) => String(s.id));
+        const workoutIds = Array.from(new Set((rawSessions || []).map((s) => s.workout_id).filter(Boolean))) as string[];
         const logsBySession = new Map<string, any[]>();
         const exercisesById = new Map<string, { name: string; day_name?: string; week_number?: number }>();
 
@@ -211,9 +236,10 @@ export const ActivityTab: React.FC<ActivityTabProps> = ({ athleteId, athleteName
         } catch (_) {}
 
         if (rawSessions) {
-          // Ordiniamo prima in ordine crescente per stimare settimana/giorno se non registrati
           const chronoSorted = [...rawSessions].sort(
-            (a, b) => new Date(a.end_time || a.start_time).getTime() - new Date(b.end_time || b.start_time).getTime()
+            (a, b) =>
+              new Date(String(a.end_time || a.start_time || '')).getTime() -
+              new Date(String(b.end_time || b.start_time || '')).getTime()
           );
 
           const daysPerWeek = activeWorkoutDaysCount || 3;
