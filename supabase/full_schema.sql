@@ -331,6 +331,12 @@ CREATE TABLE IF NOT EXISTS public.workout_sessions (
     day_name TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_workout_sessions_status_athlete ON public.workout_sessions(athlete_id, status);
+CREATE INDEX IF NOT EXISTS idx_workout_sessions_week_day ON public.workout_sessions(athlete_id, workout_id, week_number, day_name);
+
+COMMENT ON COLUMN public.workout_sessions.status IS 'Stato sessione: completed (svolta) o skipped (saltata)';
+COMMENT ON COLUMN public.workout_sessions.coach_justified IS 'Valutazione coach: NULL (in attesa), TRUE (giustificato/no penalità), FALSE (non giustificato/penalizzato)';
+
 CREATE TABLE IF NOT EXISTS public.exercise_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID REFERENCES public.workout_sessions(id) ON DELETE CASCADE NOT NULL,
