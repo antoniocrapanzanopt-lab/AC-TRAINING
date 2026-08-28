@@ -74,11 +74,14 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
       const finalTitle = isPlaceholder ? (activeWorkoutTitle || 'Scheda Personalizzata') : rawTitle;
 
       const dateStr = session.end_time ? String(session.end_time).slice(0, 10) : new Date().toISOString().slice(0, 10);
+      const rawW = Number(session.week_number) || 1;
+      const totalW = (session.workouts as any)?.total_weeks;
+      const safeW = totalW && totalW > 0 && rawW > totalW ? totalW : rawW;
 
       return {
         id: String(session.id),
         workoutTitle: finalTitle,
-        weekNumber: Number(session.week_number) || 1,
+        weekNumber: safeW,
         dayName: String(session.day_name || 'Giorno A'),
         date: dateStr,
         durationMinutes: session.status === 'skipped' ? 0 : durationMinutes,
@@ -117,7 +120,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
           coach_feedback,
           week_number,
           day_name,
-          workouts ( title )
+          workouts ( title, total_weeks )
         `)
         .in('athlete_id', targetAthleteIds)
         .not('end_time', 'is', null)
@@ -138,7 +141,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
             status,
             week_number,
             day_name,
-            workouts ( title )
+            workouts ( title, total_weeks )
           `)
           .in('athlete_id', targetAthleteIds)
           .not('end_time', 'is', null)

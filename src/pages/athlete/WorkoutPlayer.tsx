@@ -49,6 +49,7 @@ interface WorkoutPlayerProps {
   workout: WorkoutTemplate;
   exercises: WorkoutExercise[];
   targetAthleteId?: string;
+  targetWeekNumber?: number;
   onClose: () => void;
 }
 
@@ -56,6 +57,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   workout,
   exercises,
   targetAthleteId,
+  targetWeekNumber,
   onClose,
 }) => {
   const { startWorkoutSession, endWorkoutSession, saveExerciseLogs } = useWorkouts();
@@ -73,21 +75,30 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   // Per evitare fallback errati al profilo del coach (che corrompe i log).
   const athleteId = targetAthleteId || (user?.role === 'athlete' ? (user?.athleteId || user?.id) : null) || currentAthlete?.id || 'ath-local';
 
+  const totalWeeks = workout?.total_weeks || 1;
+  const currentWeekNumber = useMemo(() => {
+    const candidate = targetWeekNumber || exercises?.[0]?.week_number || 1;
+    const maxW = totalWeeks > 0 ? totalWeeks : 1;
+    return Math.min(maxW, Math.max(1, candidate));
+  }, [targetWeekNumber, exercises, totalWeeks]);
+
   // Sanitizzazione di sicurezza: una sessione di allenamento appartiene a 1 solo Giorno e 1 sola Settimana
   const activeExercises = useMemo(() => {
     if (!exercises || exercises.length === 0) return [];
 
     const targetDay = (exercises[0].day_name || 'Giorno A').trim().toLowerCase();
-    const targetWeek = exercises[0].week_number || 1;
 
     const singleDayExercises = exercises.filter((ex) => {
       const exDay = (ex.day_name || 'Giorno A').trim().toLowerCase();
-      const exWeek = ex.week_number || 1;
-      return exDay === targetDay && exWeek === targetWeek;
+      return exDay === targetDay;
     });
 
-    return singleDayExercises.length > 0 ? singleDayExercises : exercises;
-  }, [exercises]);
+    const list = singleDayExercises.length > 0 ? singleDayExercises : exercises;
+    return list.map((ex) => ({
+      ...ex,
+      week_number: currentWeekNumber,
+    }));
+  }, [exercises, currentWeekNumber]);
 
   // Stato Connessione Realtime
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
@@ -396,7 +407,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     setIsTimerRunning(true);
 
     if (!sessionId && navigator.onLine) {
-      const weekNum = activeExercises[0]?.week_number || 1;
+      const weekNum = currentWeekNumber;
       const dayName = activeExercises[0]?.day_name || 'Giorno A';
       startWorkoutSession(workout.id, targetAthleteId || athleteId, weekNum, dayName).then((res) => {
         if (res.session) {
@@ -460,7 +471,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           setIsTimerRunning(true);
           startTimestampRef.current = Date.now() - elapsedTime * 1000;
           if (!sessionId && navigator.onLine) {
-            const weekNum = activeExercises[0]?.week_number || 1;
+            const weekNum = currentWeekNumber;
             const dayName = activeExercises[0]?.day_name || 'Giorno A';
             startWorkoutSession(workout.id, targetAthleteId || athleteId, weekNum, dayName).then((res) => {
               if (res.session) {
@@ -479,7 +490,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       return { ...prev, [exerciseId]: currentList };
     });
     scheduleAutosave(true); // Salvataggio immediato al completamento della serie
-  }, [scheduleAutosave, isWorkoutStarted, elapsedTime, sessionId, activeExercises, startWorkoutSession, workout.id, targetAthleteId, athleteId]);
+  }, [scheduleAutosave, isWorkoutStarted, elapsedTime, sessionId, activeExercises, startWorkoutSession, workout.id, targetAthleteId, athleteId, currentWeekNumber]);
 
   const handleSkipRest = useCallback(() => {
     setRestTimer(null);
@@ -516,7 +527,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       let effectiveSessionId = sessionId;
       if (!effectiveSessionId && navigator.onLine) {
         try {
-          const weekNum = activeExercises[0]?.week_number || 1;
+          const weekNum = currentWeekNumber;
           const dayName = activeExercises[0]?.day_name || 'Giorno A';
           const startRes = await startWorkoutSession(workout.id, targetAthleteId || athleteId, weekNum, dayName);
           if (startRes.session?.id) {
@@ -637,7 +648,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       }`;
       const nowIso = new Date().toISOString();
       const startIso = new Date(startTimestampRef.current).toISOString();
-      const weekNum = activeExercises[0]?.week_number || 1;
+      const weekNum = currentWeekNumber;
       const dayName = activeExercises[0]?.day_name || 'Giorno A';
 
       // Backup locale istantaneo dei log completati
@@ -1388,7 +1399,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           isOpen={isSkipModalOpen}
           onClose={() => setIsSkipModalOpen(false)}
           workout={workout}
-          weekNumber={activeExercises[0]?.week_number || 1}
+          weekNumber={currentWeekNumber}
           dayName={activeExercises[0]?.day_name || 'Giorno A'}
           athleteId={targetAthleteId || athleteId}
           onSuccess={() => {

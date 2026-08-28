@@ -32,7 +32,7 @@ import { PwaInstallBanner } from '../../components/pwa/PwaInstallBanner';
 import { AthleteWorkoutHistory } from '../../components/athlete/AthleteWorkoutHistory';
 
 interface AthleteDashboardProps {
-  onStartWorkout: (workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string) => void;
+  onStartWorkout: (workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string, targetWeekNumber?: number) => void;
 }
 
 // ─── COMPONENTE GIORNI DI ALLENAMENTO PULITO & LINEARE ─────────────────────────
@@ -449,7 +449,8 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         return l1 === l2 || (l1.length > 0 && l2.length > 0 && (l1.includes(l2) || l2.includes(l1)));
       };
 
-      const targetWeek = selectedWeek || 1;
+      const maxTotalWeeks = assigned.workout?.total_weeks || 1;
+      const targetWeek = Math.min(maxTotalWeeks > 0 ? maxTotalWeeks : 1, Math.max(1, selectedWeek || 1));
       const targetDay = (selectedDay && selectedDay.trim()) || 'Giorno A';
 
       // 1. Filtra per settimana e giorno
@@ -471,7 +472,14 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         filtered = allExercises.filter((ex) => isDayMatch(ex.day_name || 'Giorno A', firstDay));
       }
 
-      console.log(`[AthleteDashboard] Esercizi filtrati per il player: ${filtered.length}`, filtered.map(e => `${e.name} (${e.day_name}, Sett.${e.week_number || 1})`));
+      // Sanitizza e forza SEMPRE settimana e giorno corretti su tutti gli esercizi inviati al player
+      const sanitizedFiltered: WorkoutExercise[] = (filtered.length > 0 ? filtered : allExercises).map((ex) => ({
+        ...ex,
+        week_number: targetWeek,
+        day_name: targetDay,
+      }));
+
+      console.log(`[AthleteDashboard] Esercizi filtrati e sanitizzati per il player: ${sanitizedFiltered.length}`, sanitizedFiltered.map(e => `${e.name} (${e.day_name}, Sett.${e.week_number})`));
 
       const workoutObj = assigned.workout || {
         id: assigned.workout_id,
@@ -480,7 +488,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         total_weeks: assigned.workout?.total_weeks || 1,
       };
 
-      onStartWorkout(workoutObj, filtered, assigned.athlete_id);
+      onStartWorkout(workoutObj, sanitizedFiltered, assigned.athlete_id, targetWeek);
     } catch (err) {
       console.error('[AthleteDashboard] Errore avvio workout:', err);
       showError('Impossibile caricare gli esercizi della scheda');
@@ -489,7 +497,14 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
   const handleResumeDraft = () => {
     if (!activeDraft) return;
-    onStartWorkout(activeDraft.workout, activeDraft.exercises, activeDraft.targetAthleteId);
+    const maxTotalWeeks = activeDraft.workout?.total_weeks || 1;
+    const draftWeek = activeDraft.exercises?.[0]?.week_number || 1;
+    const safeWeek = Math.min(maxTotalWeeks > 0 ? maxTotalWeeks : 1, Math.max(1, draftWeek));
+    const sanitizedExs = activeDraft.exercises.map((ex) => ({
+      ...ex,
+      week_number: safeWeek,
+    }));
+    onStartWorkout(activeDraft.workout, sanitizedExs, activeDraft.targetAthleteId, safeWeek);
   };
 
   const handleDiscardDraft = () => {
@@ -620,7 +635,10 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       const detailsMap: Record<string, { status?: string; skip_reason?: string; coach_justified?: boolean | null; skip_notes?: string }> = {};
 
       rawSessions.forEach((s, idx) => {
-        const wNum = s.week_number || Math.min(totalWeeksCount, Math.floor(idx / Math.max(1, daysList.length)) + 1);
+        const rawWeek = Number(s.week_number);
+        const wNum = rawWeek > 0
+          ? (totalWeeksCount > 0 ? Math.min(totalWeeksCount, rawWeek) : rawWeek)
+          : Math.min(totalWeeksCount, Math.floor(idx / Math.max(1, daysList.length)) + 1);
         const dName = s.day_name || daysList[idx % Math.max(1, daysList.length)];
         [dName, norm(dName)].forEach((key) => {
           currentMap[`${wNum}-${key}`] = true;

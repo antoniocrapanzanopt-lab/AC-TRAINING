@@ -31,6 +31,7 @@ export const AthleteLayout: React.FC = () => {
     workout: WorkoutTemplate;
     exercises: WorkoutExercise[];
     targetAthleteId?: string;
+    targetWeekNumber?: number;
   } | null>(null);
 
   // Risoluzione atleta e ID
@@ -81,6 +82,7 @@ export const AthleteLayout: React.FC = () => {
         workout={activeWorkout.workout}
         exercises={activeWorkout.exercises}
         targetAthleteId={activeWorkout.targetAthleteId}
+        targetWeekNumber={activeWorkout.targetWeekNumber}
         onClose={() => setActiveWorkout(null)}
       />
     );
@@ -166,8 +168,8 @@ export const AthleteLayout: React.FC = () => {
       <main className="flex-1 max-w-2xl w-full mx-auto p-4 sm:p-6 pb-[calc(7rem+env(safe-area-inset-bottom,0px))]">
         {activeTab === 'home' && (
           <AthleteDashboard
-            onStartWorkout={(workout, exercises, targetAthleteId) => {
-              setActiveWorkout({ workout, exercises, targetAthleteId });
+            onStartWorkout={(workout, exercises, targetAthleteId, targetWeekNumber) => {
+              setActiveWorkout({ workout, exercises, targetAthleteId, targetWeekNumber });
             }}
           />
         )}
