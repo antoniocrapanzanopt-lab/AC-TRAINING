@@ -100,6 +100,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     }));
   }, [exercises, currentWeekNumber]);
 
+  const currentDayName = useMemo(() => {
+    return activeExercises?.[0]?.day_name || 'Giorno A';
+  }, [activeExercises]);
+
   // Stato Connessione Realtime
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [lastSavedText, setLastSavedText] = useState<string>('Salvato');
@@ -857,129 +861,109 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
   return (
     <div className="fixed inset-0 bg-[var(--color-bg)] z-50 flex flex-col font-sans overflow-hidden">
-      {/* ── HEADER LIVE ELEGANTE, PIÙ ALTO E SPAZIOSO ── */}
-      <div className="bg-[var(--color-surface)]/95 backdrop-blur-xl border-b border-[var(--color-border)] px-4 sm:px-6 lg:px-8 pt-[calc(1rem+env(safe-area-inset-top,0px))] pb-4 sm:pb-5 shadow-lg relative z-20 shrink-0">
-        <div className="max-w-4xl xl:max-w-5xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
+      {/* ── HEADER LIVE ELEGANTE & SPAZIOSO ── */}
+      <div className="bg-[var(--color-surface)]/95 backdrop-blur-xl border-b border-[var(--color-border)] px-4 sm:px-6 lg:px-8 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-3 sm:pb-4 shadow-lg relative z-20 shrink-0">
+        <div className="max-w-4xl xl:max-w-5xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => {
                 flushAutosave();
                 onClose();
               }}
-              className="w-10 h-10 sm:w-11 sm:h-11 text-[var(--color-text-muted)] hover:text-[var(--color-text)] rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] border border-[var(--color-border)] flex items-center justify-center transition-colors cursor-pointer shrink-0 shadow-sm"
+              className="w-10 h-10 text-[var(--color-text-muted)] hover:text-[var(--color-text)] rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] border border-[var(--color-border)] flex items-center justify-center transition-colors cursor-pointer shrink-0 shadow-sm"
               title="Chiudi sessione"
             >
-              <X className="w-5 h-5 sm:w-6 sm:h-6" />
+              <X className="w-5 h-5" />
             </button>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-base sm:text-xl font-black text-[var(--color-text)] truncate leading-tight tracking-tight">
-                {workout.title}
-              </h1>
 
-              {/* Sub-header: o badge consultazione o controlli timer */}
-              {!isWorkoutStarted ? (
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <span className="px-2.5 py-0.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 font-bold text-xs flex items-center gap-1.5 shadow-sm">
-                    <Eye className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Anteprima Scheda</span>
+            {!isWorkoutStarted ? (
+              /* STATO ANTEPRIMA: SOLO GIORNO + SETTIMANA + ICONA OCCHIO */
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-base sm:text-xl font-black text-[var(--color-text)] truncate">
+                  {currentDayName}
+                </h1>
+                <span className="text-xs sm:text-sm text-[var(--color-text-muted)] font-bold shrink-0">
+                  • Settimana {currentWeekNumber}
+                </span>
+                <span className="p-1 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0" title="Anteprima scheda">
+                  <Eye className="w-3.5 h-3.5" />
+                </span>
+              </div>
+            ) : (
+              /* STATO WORKOUT AVVIATO: CRONOMETRO & STATO SYNC */
+              <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                {/* Timer Badge Interattivo con Controlli Play / Pausa / Reset */}
+                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border transition-all shadow-sm ${
+                  isTimerRunning
+                    ? 'bg-amber-500/15 border-amber-500/35 text-[var(--color-primary)]'
+                    : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+                }`}>
+                  <span className="font-mono text-xs sm:text-sm font-black flex items-center gap-1.5">
+                    <Clock className={`w-3.5 h-3.5 ${isTimerRunning ? 'text-[var(--color-primary)] animate-pulse' : 'text-slate-400'}`} />
+                    {formatTime(elapsedTime)}
                   </span>
-                  <span className="text-xs text-[var(--color-text-muted)] font-mono">
-                    Timer pronto (00:00)
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                  {/* Timer Badge Interattivo con Controlli Play / Pausa / Reset */}
-                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border transition-all shadow-sm ${
-                    isTimerRunning
-                      ? 'bg-amber-500/15 border-amber-500/35 text-[var(--color-primary)]'
-                      : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
-                  }`}>
-                    <span className="font-mono text-xs sm:text-sm font-black flex items-center gap-1.5">
-                      <Clock className={`w-3.5 h-3.5 ${isTimerRunning ? 'text-[var(--color-primary)] animate-pulse' : 'text-slate-400'}`} />
-                      {formatTime(elapsedTime)}
-                    </span>
 
-                    {/* Divider */}
-                    <div className="w-[1px] h-3.5 bg-slate-700/60 mx-0.5" />
+                  {/* Divider */}
+                  <div className="w-[1px] h-3.5 bg-slate-700/60 mx-0.5" />
 
-                    {/* Pulsante Pausa / Riprendi */}
-                    <button
-                      type="button"
-                      onClick={isTimerRunning ? handlePauseTimer : handleStartOrResumeTimer}
-                      className={`p-1 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer ${
-                        isTimerRunning
-                          ? 'text-amber-300 hover:bg-amber-500/20'
-                          : 'text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1 px-1.5'
-                      }`}
-                      title={isTimerRunning ? 'Metti in pausa il cronometro' : 'Riprendi il cronometro'}
-                    >
-                      {isTimerRunning ? (
-                        <Pause className="w-3.5 h-3.5 fill-current" />
-                      ) : (
-                        <>
-                          <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
-                          <span className="text-[10px] font-black uppercase">Riprendi</span>
-                        </>
-                      )}
-                    </button>
-
-                    {/* Pulsante Reset */}
-                    <button
-                      type="button"
-                      onClick={handleResetTimer}
-                      className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                      title="Resetta il cronometro a 00:00"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {/* STATO SYNC / OFFLINE DISCRETO */}
-                  <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1.5 font-medium">
-                    {isOnline ? (
-                      <span className="flex items-center gap-1.5 text-emerald-600 font-bold" title={lastSavedText}>
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>{lastSavedText}</span>
-                      </span>
+                  {/* Pulsante Pausa / Riprendi */}
+                  <button
+                    type="button"
+                    onClick={isTimerRunning ? handlePauseTimer : handleStartOrResumeTimer}
+                    className={`p-1 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+                      isTimerRunning
+                        ? 'text-amber-300 hover:bg-amber-500/20'
+                        : 'text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1 px-1.5'
+                    }`}
+                    title={isTimerRunning ? 'Metti in pausa il cronometro' : 'Riprendi il cronometro'}
+                  >
+                    {isTimerRunning ? (
+                      <Pause className="w-3.5 h-3.5 fill-current" />
                     ) : (
-                      <span className="flex items-center gap-1.5 text-amber-600 font-bold">
-                        <WifiOff className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Offline (Dati al sicuro)</span>
-                      </span>
+                      <>
+                        <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+                        <span className="text-[10px] font-black uppercase">Riprendi</span>
+                      </>
                     )}
-                  </span>
+                  </button>
+
+                  {/* Pulsante Reset */}
+                  <button
+                    type="button"
+                    onClick={handleResetTimer}
+                    className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                    title="Resetta il cronometro a 00:00"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              )}
-            </div>
+
+                {/* STATO SYNC / OFFLINE DISCRETO */}
+                <span className="text-xs text-[var(--color-text-muted)] hidden sm:flex items-center gap-1.5 font-medium">
+                  {isOnline ? (
+                    <span className="flex items-center gap-1.5 text-emerald-600 font-bold" title={lastSavedText}>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>{lastSavedText}</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-amber-600 font-bold">
+                      <WifiOff className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Offline (Dati al sicuro)</span>
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Pulsante Azione Top Bar Destra */}
-          {!isWorkoutStarted ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsSkipModalOpen(true)}
-                className="px-3.5 py-2.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/25 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <span>Salta Seduta</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleStartOrResumeTimer}
-                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 px-5 sm:px-6 py-2.5 sm:py-3 rounded-2xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 active:scale-95 transition-all cursor-pointer shrink-0"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Inizia Allenamento</span>
-              </button>
-            </div>
-          ) : (
+          {/* Pulsante Fine Sessione a Destra (Solo quando l'allenamento è avviato) */}
+          {isWorkoutStarted && (
             <button
               type="button"
               onClick={handleOpenFinishFlow}
               disabled={isSaving}
-              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 px-5 sm:px-6 py-2.5 sm:py-3 rounded-2xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 active:scale-95 transition-all disabled:opacity-50 cursor-pointer shrink-0"
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 px-4 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 active:scale-95 transition-all disabled:opacity-50 cursor-pointer shrink-0"
             >
               {isSaving ? (
                 <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
@@ -1003,8 +987,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       )}
 
       {/* SCROLLABLE EXERCISES LIST - OTTIMIZZATO PER SPAZIO E LARGHEZZA */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-32 bg-[var(--color-bg)]">
-        <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-4 sm:space-y-5">
+      <div className={`flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 ${!isWorkoutStarted ? 'pb-36' : 'pb-28'} bg-[var(--color-bg)]`}>
+        <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-3 sm:space-y-4">
           {activeExercises.map((ex, idx) => {
             const isCompleted = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
 
@@ -1021,6 +1005,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               </React.Fragment>
             );
           })}
+
           {/* Card di opzione Salto/Imprevisto in fondo alla visualizzazione scheda */}
           {!isWorkoutStarted && (
             <div className="p-4 sm:p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-center sm:text-left mt-6">
@@ -1043,6 +1028,22 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           )}
         </div>
       </div>
+
+      {/* ── BARRA FISSA IN BASSO PER INIZIARE ALLENAMENTO (SOLO QUANDO NON AVVIATO) ── */}
+      {!isWorkoutStarted && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-5 bg-[var(--color-surface)]/95 backdrop-blur-xl border-t border-[var(--color-border)] shadow-2xl z-30">
+          <div className="max-w-4xl xl:max-w-5xl mx-auto">
+            <button
+              type="button"
+              onClick={handleStartOrResumeTimer}
+              className="w-full py-4 px-6 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-base flex items-center justify-center gap-2.5 shadow-xl shadow-[var(--color-primary)]/25 active:scale-[0.98] transition-all cursor-pointer"
+            >
+              <Play className="w-5 h-5 fill-current" />
+              <span>Inizia Allenamento</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── MODALE DI COMPILAZIONE FOCALIZZATA ESERCIZIO ── */}
       {activeExerciseModalIndex !== null && activeExercises[activeExerciseModalIndex] && (() => {

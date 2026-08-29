@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Dumbbell,
   FileText,
+  Clock,
 } from 'lucide-react';
 import { WorkoutExercise } from '../../types/workout';
 import { cleanExecutiveNotes } from '../../utils/noteCleaner';
@@ -244,94 +245,91 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
         )}
 
         {/* ── CONTENUTO SCORREVOLE SPAZIOSO ── */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-6">
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 md:p-8 space-y-3.5 sm:space-y-5">
           
-          {/* 1. TARGET COACH PREVENTIVI GRANDI & CHIARI */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 text-center">
-            <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-sm">
-              <span className="text-[11px] sm:text-xs uppercase font-bold text-[var(--color-text-muted)] block mb-1">Serie Previste</span>
-              <span className="text-xl sm:text-2xl font-black text-[var(--color-text)]">{exercise.sets}</span>
+          {/* 1. TARGET COACH PREVENTIVI: STRISCIA ORIZZONTALE SNELLA & LEGGIBILE */}
+          <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] px-4 py-3 rounded-2xl flex items-center justify-between gap-3 text-xs sm:text-sm flex-wrap shadow-sm">
+            <div className="flex items-center gap-2 font-bold text-[var(--color-text)]">
+              <Dumbbell className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
+              <span className="text-[var(--color-primary)] font-black text-sm sm:text-base">{exercise.sets}</span>
+              <span className="text-[var(--color-text-muted)] text-xs">serie ×</span>
+              <span className="font-black text-[var(--color-text)] text-sm sm:text-base">{formattedTarget}</span>
             </div>
-            <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-sm">
-              <span className="text-[11px] sm:text-xs uppercase font-bold text-[var(--color-text-muted)] block mb-1">
-                {isTimeBased ? 'Target Tempo' : 'Target Reps'}
-              </span>
-              <span className="text-xl sm:text-2xl font-black text-[var(--color-primary)]">
-                {formattedTarget}
-              </span>
-            </div>
-            <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-sm">
-              <span className="text-[11px] sm:text-xs uppercase font-bold text-[var(--color-text-muted)] block mb-1">Target RIR/RPE</span>
-              <span className="text-xl sm:text-2xl font-black text-purple-500">{exercise.rir_target || '-'}</span>
-            </div>
-            <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-sm">
-              <span className="text-[11px] sm:text-xs uppercase font-bold text-[var(--color-text-muted)] block mb-1">Recupero</span>
-              <span className="text-xl sm:text-2xl font-black text-emerald-500 font-mono">{exercise.rest_seconds}s</span>
+
+            <div className="flex items-center gap-2">
+              {exercise.rir_target && exercise.rir_target !== '-' && (
+                <span className="px-2.5 py-1 rounded-xl bg-purple-500/15 text-purple-300 font-bold border border-purple-500/30 text-xs">
+                  {exercise.rir_target.toUpperCase().includes('RIR') || exercise.rir_target.toUpperCase().includes('RPE')
+                    ? exercise.rir_target
+                    : `RIR ${exercise.rir_target}`}
+                </span>
+              )}
+              {exercise.rest_seconds ? (
+                <span className="px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30 font-mono text-xs flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                  {exercise.rest_seconds}s
+                </span>
+              ) : null}
             </div>
           </div>
 
-          {/* 2. NOTE ESECUTIVE DEL COACH (Se presenti) */}
+          {/* 2. NOTE ESECUTIVE DEL COACH (Se presenti, slim e discrete) */}
           {cleanNotes && (
-            <div className="p-4 sm:p-5 bg-amber-500/10 border border-amber-500/25 rounded-2xl text-xs sm:text-sm text-[var(--color-text)] leading-relaxed flex items-start gap-3 shadow-sm">
-              <FileText className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-amber-600 block mb-0.5 text-sm sm:text-base">Note Esecuzione del Coach:</span>
-                <span className="leading-relaxed">{cleanNotes}</span>
+            <div className="px-3.5 py-2.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl text-xs sm:text-sm text-[var(--color-text)] flex items-start gap-2.5 shadow-sm">
+              <FileText className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div className="leading-snug">
+                <span className="font-bold text-amber-500 mr-1.5">Note Coach:</span>
+                <span className="text-[var(--color-text)]">{cleanNotes}</span>
               </div>
             </div>
           )}
 
-          {/* 3. BANNER PRE-COMPILAZIONE CARICHI STORICI */}
+          {/* 3. BANNER PRE-COMPILAZIONE CARICHI STORICI (A RIGA SINGOLA COMPATTA) */}
           {previousHistory && previousHistory.sets.length > 0 ? (
-            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--color-panel)] border border-sky-500/30 shadow-sm space-y-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-sky-500 flex items-center gap-2">
-                  <History className="w-4 h-4 text-sky-500 shrink-0" />
-                  Ultima Esecuzione ({previousHistory.formattedDate})
+            <div className="px-3.5 py-2.5 rounded-2xl bg-[var(--color-panel)] border border-sky-500/30 flex items-center justify-between gap-2 shadow-sm text-xs">
+              <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar py-0.5">
+                <span className="text-sky-400 font-black flex items-center gap-1 shrink-0 uppercase tracking-wide text-[11px]">
+                  <History className="w-3.5 h-3.5" />
+                  <span>{previousHistory.formattedDate}:</span>
                 </span>
-
-                <button
-                  type="button"
-                  onClick={() => handleCopyPreviousLoads()}
-                  className={`px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl border text-xs sm:text-sm font-black flex items-center gap-2 transition-all active:scale-95 cursor-pointer shadow-md ${
-                    justApplied
-                      ? 'bg-emerald-500 text-slate-950 border-emerald-400'
-                      : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 border-[var(--color-primary)]'
-                  }`}
-                >
-                  <Zap className="w-4 h-4 fill-current" />
-                  <span>{justApplied ? 'Applicati ✓' : 'Applica Ultimi Carichi'}</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {previousHistory.sets.map((s, idx) => (
+                    <span
+                      key={idx}
+                      className="bg-[var(--color-surface)] px-2 py-0.5 rounded-lg border border-[var(--color-border)] font-mono text-xs text-[var(--color-text)] shrink-0"
+                    >
+                      <span className="text-[var(--color-text-muted)] font-bold text-[10px]">S{s.setNumber}:</span> {s.weightKg || 0}kg × {s.reps || 0}
+                    </span>
+                  ))}
+                </div>
               </div>
 
-              {/* Elenco Serie Storiche */}
-              <div className="flex items-center gap-2.5 overflow-x-auto pb-1 pt-1 no-scrollbar flex-wrap">
-                {previousHistory.sets.map((s, idx) => (
-                  <span
-                    key={idx}
-                    className="bg-[var(--color-surface)] px-3 py-1.5 rounded-xl border border-[var(--color-border)] font-mono text-xs sm:text-sm text-[var(--color-text)] shadow-sm shrink-0 flex items-center gap-1.5"
-                  >
-                    <span className="text-[var(--color-text-muted)] font-bold text-xs">S{s.setNumber}:</span>
-                    <strong className="text-[var(--color-text)] font-black">{s.weightKg || 0}kg</strong>
-                    <span className="text-[var(--color-text-muted)] text-xs">×</span>
-                    <span className="text-[var(--color-text)] font-bold">{s.reps || 0}</span>
-                  </span>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => handleCopyPreviousLoads()}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-black flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0 shadow-sm ${
+                  justApplied
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                    : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 border-[var(--color-primary)]'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 fill-current" />
+                <span>{justApplied ? 'Applicati ✓' : 'Applica'}</span>
+              </button>
             </div>
           ) : (
-            <div className="p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs sm:text-sm text-[var(--color-text-muted)]">
-              <div className="flex items-center gap-2.5">
-                <Sparkles className="w-5 h-5 text-amber-500 shrink-0" />
-                <span>Nessun carico registrato in precedenza per questo esercizio.</span>
+            <div className="px-3.5 py-2 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] flex items-center justify-between gap-2 text-xs text-[var(--color-text-muted)]">
+              <div className="flex items-center gap-2 min-w-0">
+                <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                <span className="truncate">Nessun carico registrato in precedenza.</span>
               </div>
               <button
                 type="button"
                 onClick={handleApplyCoachTargets}
-                className="px-4 py-2 rounded-xl bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-[var(--color-border)] text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer self-start sm:self-auto shrink-0 shadow-sm"
+                className="px-2.5 py-1 rounded-xl bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-[var(--color-border)] text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shrink-0 shadow-sm"
               >
-                <Zap className="w-4 h-4 text-amber-500" />
-                <span>Pre-compila Target ({formattedTarget})</span>
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span>Pre-compila Target</span>
               </button>
             </div>
           )}

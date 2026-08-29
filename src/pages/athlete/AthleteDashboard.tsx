@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Dumbbell,
-  Play,
   RotateCcw,
   WifiOff,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Eye,
-  Flame,
   Calendar,
   ShieldCheck,
   AlertCircle,
@@ -495,25 +492,6 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     }
   };
 
-  const handleResumeDraft = () => {
-    if (!activeDraft) return;
-    const maxTotalWeeks = activeDraft.workout?.total_weeks || 1;
-    const draftWeek = activeDraft.exercises?.[0]?.week_number || 1;
-    const safeWeek = Math.min(maxTotalWeeks > 0 ? maxTotalWeeks : 1, Math.max(1, draftWeek));
-    const sanitizedExs = activeDraft.exercises.map((ex) => ({
-      ...ex,
-      week_number: safeWeek,
-    }));
-    onStartWorkout(activeDraft.workout, sanitizedExs, activeDraft.targetAthleteId, safeWeek);
-  };
-
-  const handleDiscardDraft = () => {
-    if (confirm('Vuoi annullare la sessione salvata e ricominciare da zero?')) {
-      clearActiveWorkoutDraft(athleteId);
-      setActiveDraft(null);
-    }
-  };
-
   // Identifica la prima scheda attiva e il prossimo allenamento di oggi
   const firstAssigned = myAssignedWorkouts[0];
 
@@ -681,39 +659,6 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     };
   }, [syncProgressFromDb]);
 
-  // Calcolo dinamico della settimana attiva e del prossimo giorno per l'Hero Card
-  const { heroActiveWeek, heroNextDay, heroWeekCompletedCount, heroTotalDaysInWeek } = useMemo(() => {
-    if (!firstAssigned) return { heroActiveWeek: 1, heroNextDay: 'Giorno A', heroWeekCompletedCount: 0, heroTotalDaysInWeek: 5 };
-
-    const totalWeeks = firstAssigned.workout?.total_weeks || 5;
-    const dayList = ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
-    const norm = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
-
-    for (let w = 1; w <= totalWeeks; w++) {
-      const doneCount = dayList.filter((d) => globalProgressMap[`${w}-${d}`] || globalProgressMap[`${w}-${norm(d)}`]).length;
-      const pendingDay = dayList.find((d) => !globalProgressMap[`${w}-${d}`] && !globalProgressMap[`${w}-${norm(d)}`]);
-      if (pendingDay) {
-        return {
-          heroActiveWeek: w,
-          heroNextDay: pendingDay,
-          heroWeekCompletedCount: doneCount,
-          heroTotalDaysInWeek: dayList.length,
-        };
-      }
-    }
-
-    return {
-      heroActiveWeek: totalWeeks,
-      heroNextDay: 'Giorno A',
-      heroWeekCompletedCount: dayList.length,
-      heroTotalDaysInWeek: dayList.length,
-    };
-  }, [firstAssigned, globalProgressMap]);
-
-
-
-  const heroProgressPercent = Math.min(100, Math.round((heroWeekCompletedCount / heroTotalDaysInWeek) * 100));
-
   if (loading && myAssignedWorkouts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -740,94 +685,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       {/* ─── BANNER INVITO AGGIUNGI AC ALLA HOME ─── */}
       <PwaInstallBanner />
 
-      {/* ─── 2. FOCUS CARD PRINCIPALE (UNA SOLA CARD DI AZIONE DIRETTA) ─── */}
-      {activeDraft ? (
-        // STATO A: SESSIONE DA RIPRENDERE
-        <div className="p-5 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-primary)] shadow-xl shadow-[var(--color-primary)]/10 space-y-4">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40 flex items-center justify-center shrink-0 shadow-md">
-              <RotateCcw className="w-6 h-6 animate-pulse" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-primary)] block">
-                Sessione in sospeso
-              </span>
-              <h3 className="text-lg sm:text-xl font-black text-[var(--color-text)] truncate">
-                {activeDraft.workout?.title}
-              </h3>
-              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                Ultimo salvataggio alle {new Date(activeDraft.lastSavedTimestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-              </p>
-            </div>
-          </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
-            <button
-              type="button"
-              onClick={handleResumeDraft}
-              className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 transition-all cursor-pointer active:scale-95"
-            >
-              <Play className="w-4 h-4 fill-current" />
-              <span>Riprendi Sessione</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleDiscardDraft}
-              className="w-full sm:w-auto py-3 px-4 rounded-2xl text-[var(--color-text-muted)] hover:text-rose-500 text-xs font-bold hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-center"
-            >
-              Scarta
-            </button>
-          </div>
-        </div>
-      ) : firstAssigned ? (
-        // STATO B: LA SEDUTA DI OGGI PRONTA
-        <div className="p-5 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-primary)]/40 shadow-lg space-y-4">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0 shadow-md">
-              <Flame className="w-6 h-6" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-primary)]">
-                  Seduta di Oggi
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-[10px] font-black border border-emerald-500/30">
-                  Settimana {heroActiveWeek}
-                </span>
-              </div>
-              <h3 className="text-lg sm:text-xl font-black text-[var(--color-text)] truncate mt-0.5">
-                {heroNextDay} • {firstAssigned.workout?.title}
-              </h3>
-            </div>
-          </div>
-
-          {/* Barra di Progresso Settimana Pulita */}
-          <div className="space-y-1.5 pt-1">
-            <div className="flex items-center justify-between text-xs text-[var(--color-text-muted)] font-bold">
-              <span>Avanzamento Settimana {heroActiveWeek}</span>
-              <span className="font-mono text-[var(--color-text)]">{heroWeekCompletedCount}/{heroTotalDaysInWeek} sedute ({heroProgressPercent}%)</span>
-            </div>
-            <div className="h-2 w-full bg-[var(--color-surface-strong)] rounded-full overflow-hidden border border-[var(--color-border)] p-0.5">
-              <div
-                className="h-full bg-gradient-to-r from-amber-500 to-[var(--color-primary)] rounded-full transition-all duration-500"
-                style={{ width: `${heroProgressPercent}%` }}
-              />
-            </div>
-          </div>
-
-          {/* CTA Grande per aprire la scheda di oggi */}
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => handleStartWorkout(firstAssigned, heroActiveWeek, heroNextDay)}
-              className="w-full py-3.5 px-6 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 transition-all cursor-pointer active:scale-95"
-            >
-              <Eye className="w-4 h-4" />
-              <span>Apri Scheda di Oggi ({heroNextDay})</span>
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       {/* ─── 3. BANNER CODA SINCRONIZZAZIONE OFFLINE ─── */}
       {pendingSyncCount > 0 && (

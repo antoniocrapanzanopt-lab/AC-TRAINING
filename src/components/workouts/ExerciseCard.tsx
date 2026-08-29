@@ -3,6 +3,8 @@ import {
   Check,
   Video,
   ChevronRight,
+  Clock,
+  Dumbbell,
 } from 'lucide-react';
 import { WorkoutExercise } from '../../types/workout';
 import { ExerciseAnatomyModal } from './ExerciseAnatomyModal';
@@ -81,7 +83,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   return (
     <div
       onClick={handleCardClick}
-      className={`group rounded-3xl transition-all duration-200 overflow-hidden border cursor-pointer select-none relative ${
+      className={`group rounded-2xl sm:rounded-3xl transition-all duration-200 overflow-hidden border cursor-pointer select-none relative ${
         isCompleted
           ? 'bg-[var(--color-panel)] border-emerald-500/40 shadow-sm hover:border-emerald-500 hover:shadow-md'
           : completedCount > 0
@@ -89,7 +91,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           : 'bg-[var(--color-panel)] border-[var(--color-panel-border)] hover:border-[var(--color-primary)]/40 hover:bg-[var(--color-surface)] shadow-sm'
       }`}
     >
-      {/* Barra Progresso Sottile Superiore */}
+      {/* Barra Progresso Superiore */}
       {completedCount > 0 && (
         <div className="h-1.5 w-full bg-[var(--color-surface-strong)] overflow-hidden">
           <div
@@ -99,93 +101,93 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
         </div>
       )}
 
-      {/* 1. Header: Numero Progressivo, Nome Esercizio, Badge Progresso & Azioni Rapide */}
-      <div className="p-4 sm:p-5 md:p-6 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5 sm:gap-4 flex-1 min-w-0">
-          {/* Numero progressivo o Icona di Completamento */}
-          <div
-            className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl flex items-center justify-center font-black text-base sm:text-lg shrink-0 transition-transform group-hover:scale-105 shadow-sm ${
-              isCompleted
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : completedCount > 0
-                ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20'
-                : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border border-[var(--color-border)]'
-            }`}
-          >
-            {isCompleted ? <Check className="w-6 h-6 sm:w-7 sm:h-7 stroke-[3.5]" /> : index + 1}
-          </div>
-
-          {/* Nome Esercizio e Dettagli */}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              {isCompleted ? (
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 text-xs font-black border border-emerald-500/30">
-                  ✓ Completato ({completedCount}/{totalSets})
-                </span>
-              ) : completedCount > 0 ? (
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 text-xs font-black border border-amber-500/30">
-                  In corso ({completedCount}/{totalSets} serie)
-                </span>
-              ) : (
-                <span className="text-xs font-bold text-[var(--color-text-muted)]">
-                  {totalSets} {totalSets === 1 ? 'Serie' : 'Serie'}
-                </span>
-              )}
+      <div className="p-4 sm:p-5 space-y-3">
+        {/* 1. Header: Numero, Titolo Grande Leggibile, Video Tutorial & Freccia */}
+        <div className="flex items-center justify-between gap-3.5">
+          <div className="flex items-center gap-3 sm:gap-3.5 flex-1 min-w-0">
+            {/* Numero progressivo solido e leggibile */}
+            <div
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center font-black text-sm sm:text-base shrink-0 transition-transform group-hover:scale-105 shadow-sm ${
+                isCompleted
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                  : completedCount > 0
+                  ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/20'
+                  : 'bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-[var(--color-border)]'
+              }`}
+            >
+              {isCompleted ? <Check className="w-5 h-5 sm:w-6 sm:h-6 stroke-[3.5]" /> : index + 1}
             </div>
 
-            <h3 className="font-black text-base sm:text-xl leading-snug tracking-tight text-[var(--color-text)] break-words group-hover:text-[var(--color-primary)] transition-colors">
-              {exercise.name}
-            </h3>
+            {/* Titolo Esercizio in Grassetto Grande */}
+            <div className="min-w-0 flex-1">
+              <h3 className="font-black text-base sm:text-lg leading-tight tracking-tight text-[var(--color-text)] truncate group-hover:text-[var(--color-primary)] transition-colors">
+                {exercise.name}
+              </h3>
+              {isCompleted ? (
+                <span className="text-[11px] font-bold text-emerald-500 flex items-center gap-1 mt-0.5">
+                  ✓ Completato ({completedCount}/{totalSets} serie)
+                </span>
+              ) : completedCount > 0 ? (
+                <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1 mt-0.5">
+                  In corso ({completedCount}/{totalSets} serie)
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Azioni Header: Video Tutorial & Freccia Apri */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAnatomyModal(true);
+              }}
+              className="w-10 h-10 rounded-2xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-400 hover:text-white transition-all active:scale-95 cursor-pointer shadow-sm flex items-center justify-center shrink-0"
+              title="Video Tutorial & Guida Esecuzione 3D"
+            >
+              <Video className="w-5 h-5" />
+            </button>
+
+            <div
+              className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                isCompleted
+                  ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
+                  : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border border-[var(--color-border)] group-hover:bg-[var(--color-primary)] group-hover:text-slate-950 group-hover:border-[var(--color-primary)]'
+              }`}
+            >
+              <ChevronRight className="w-5 h-5 transition-transform group-hover:translate-x-0.5" />
+            </div>
           </div>
         </div>
 
-        {/* Azioni Header: Video Tutorial & Icona Apri */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowAnatomyModal(true);
-            }}
-            className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-600 hover:text-white transition-all active:scale-95 cursor-pointer shadow-sm flex items-center justify-center shrink-0"
-            title="Video Tutorial & Guida Esecuzione 3D"
-          >
-            <Video className="w-5 h-5 sm:w-6 sm:h-6 text-sky-600" />
-          </button>
-
-          <div
-            className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all ${
-              isCompleted
-                ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 group-hover:bg-emerald-500 group-hover:text-slate-950'
-                : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border border-[var(--color-border)] group-hover:bg-[var(--color-primary)] group-hover:text-slate-950 group-hover:border-[var(--color-primary)]'
-            }`}
-          >
-            <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 transition-transform group-hover:translate-x-0.5" />
+        {/* 2. Barra Metriche Prescritte (Orizzontale, Spaziosa & Leggibile) */}
+        <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-[var(--color-border)]/70 text-xs sm:text-sm">
+          {/* Serie x Reps / Tempo */}
+          <div className="flex items-center gap-1.5 font-bold text-[var(--color-text)]">
+            <Dumbbell className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
+            <span className="text-[var(--color-primary)] font-black text-sm">{exercise.sets}</span>
+            <span className="text-[var(--color-text-muted)] text-xs">serie ×</span>
+            <span className="text-[var(--color-text)] font-black text-sm">{formattedTarget}</span>
           </div>
-        </div>
-      </div>
 
-      {/* 2. Target Prescritto dal Coach (Reps, Sets, RPE, Rest) */}
-      <div className="px-4 sm:px-5 md:px-6 pb-4 sm:pb-5 md:pb-6 grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5 text-center text-xs">
-        <div className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] p-3 sm:p-3.5 rounded-2xl">
-          <span className="text-[11px] sm:text-xs uppercase font-bold text-[var(--color-text-muted)] block mb-0.5">Serie</span>
-          <span className="text-base sm:text-lg font-black text-[var(--color-text)]">{exercise.sets}</span>
-        </div>
-        <div className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] p-3 sm:p-3.5 rounded-2xl">
-          <span className="text-[11px] sm:text-xs uppercase font-bold text-[var(--color-text-muted)] block mb-0.5">
-            {isTimeBased ? 'Target Tempo' : 'Target Reps'}
-          </span>
-          <span className="text-base sm:text-lg font-black text-[var(--color-primary)]">
-            {formattedTarget}
-          </span>
-        </div>
-        <div className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] p-3 sm:p-3.5 rounded-2xl">
-          <span className="text-[11px] sm:text-xs uppercase font-bold text-[var(--color-text-muted)] block mb-0.5">Target RIR/RPE</span>
-          <span className="text-base sm:text-lg font-black text-purple-500">{exercise.rir_target || '-'}</span>
-        </div>
-        <div className="bg-[var(--color-surface-strong)] border border-[var(--color-border)] p-3 sm:p-3.5 rounded-2xl">
-          <span className="text-[11px] sm:text-xs uppercase font-bold text-[var(--color-text-muted)] block mb-0.5">Recupero</span>
-          <span className="text-base sm:text-lg font-black text-emerald-500 font-mono">{exercise.rest_seconds}s</span>
+          {/* Badge RIR/RPE & Recupero */}
+          <div className="flex items-center gap-2">
+            {exercise.rir_target && exercise.rir_target !== '-' && (
+              <span className="px-2.5 py-1 rounded-xl bg-purple-500/15 text-purple-300 font-bold border border-purple-500/30 text-xs">
+                {exercise.rir_target.toUpperCase().includes('RIR') || exercise.rir_target.toUpperCase().includes('RPE')
+                  ? exercise.rir_target
+                  : `RIR ${exercise.rir_target}`}
+              </span>
+            )}
+
+            {exercise.rest_seconds ? (
+              <span className="px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30 font-mono text-xs flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                {exercise.rest_seconds}s
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 
