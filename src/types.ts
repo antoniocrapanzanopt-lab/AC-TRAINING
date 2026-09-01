@@ -954,3 +954,5 @@ export interface TeamOverviewReportData {
   athletesReports: AthleteReportSummary[];
 }
 
+export * from './types/questionnaire';
+

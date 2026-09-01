@@ -25,6 +25,8 @@ import {
   AthleteReportSummary,
   DecisionPriorityItem,
 } from '../../../types';
+import { AthleteAdherenceBadge } from '../../../components/coach/AthleteAdherenceBadge';
+import { fetchBatchAthletesAdherence, AdherenceScoreResult } from '../../../services/adherenceService';
 
 interface TeamOverviewReportViewProps {
   reportData: TeamOverviewReportData;
@@ -50,6 +52,21 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [selectedUnassignedIds, setSelectedUnassignedIds] = useState<string[]>([]);
+  const [adherenceMap, setAdherenceMap] = useState<Record<string, AdherenceScoreResult>>({});
+
+  React.useEffect(() => {
+    if (!reportData.athletesReports || reportData.athletesReports.length === 0) return;
+    let isMounted = true;
+
+    const ids = reportData.athletesReports.map((a) => a.athleteId).filter(Boolean);
+    fetchBatchAthletesAdherence(ids).then((batchMap) => {
+      if (isMounted) {
+        setAdherenceMap((prev) => ({ ...prev, ...batchMap }));
+      }
+    });
+
+    return () => { isMounted = false; };
+  }, [reportData.athletesReports]);
 
   const timeframeButtons: { id: TimeframeOption; label: string; short: string }[] = [
     { id: 'weekly', label: 'Settimanale', short: '7gg' },
@@ -194,12 +211,6 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
     }
   };
 
-  const getScoreColor = (score: number, isUnstarted?: boolean) => {
-    if (isUnstarted || score === 0) return 'text-slate-400 bg-slate-800/60 border-slate-700/80';
-    if (score >= 80) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
-    if (score >= 60) return 'text-amber-400 bg-amber-500/10 border-amber-500/30';
-    return 'text-rose-400 bg-rose-500/10 border-rose-500/30';
-  };
 
   return (
     <div className="space-y-6">
@@ -558,15 +569,7 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
 
                       <div className="flex items-center gap-2 shrink-0">
                         {getTrendBadge(ath)}
-                        <span
-                          className={`text-xs font-mono font-black px-2 py-0.5 rounded-lg border ${getScoreColor(
-                            ath.overallScore,
-                            ath.completedSessions.current === 0
-                          )}`}
-                          title={ath.completedSessions.current === 0 ? 'In attesa del primo allenamento' : 'Punteggio Performance'}
-                        >
-                          {ath.completedSessions.current === 0 ? '--/100' : `${ath.overallScore}/100`}
-                        </span>
+                        <AthleteAdherenceBadge adherence={adherenceMap[ath.athleteId]} size="sm" />
                       </div>
                     </div>
 

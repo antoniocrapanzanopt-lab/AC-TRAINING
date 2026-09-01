@@ -859,6 +859,15 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     }
   };
 
+  // Individua l'indice dell'esercizio attivo corrente (il primo non ancora completato)
+  const currentActiveExerciseIndex = useMemo(() => {
+    const firstUnfinished = activeExercises.findIndex((ex) => {
+      const isDone = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
+      return !isDone;
+    });
+    return firstUnfinished !== -1 ? firstUnfinished : 0;
+  }, [activeExercises, completedSets]);
+
   return (
     <div className="fixed inset-0 bg-[var(--color-bg)] z-50 flex flex-col font-sans overflow-hidden">
       {/* ── HEADER LIVE ELEGANTE & SPAZIOSO ── */}
@@ -871,8 +880,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                 flushAutosave();
                 onClose();
               }}
-              className="w-10 h-10 text-[var(--color-text-muted)] hover:text-[var(--color-text)] rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] border border-[var(--color-border)] flex items-center justify-center transition-colors cursor-pointer shrink-0 shadow-sm"
+              className="min-w-[44px] min-h-[44px] w-11 h-11 text-[var(--color-text-muted)] hover:text-[var(--color-text)] rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] border border-[var(--color-border)] flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0 shadow-sm"
               title="Chiudi sessione"
+              aria-label="Chiudi sessione"
             >
               <X className="w-5 h-5" />
             </button>
@@ -932,23 +942,23 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                   <button
                     type="button"
                     onClick={handleResetTimer}
-                    className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                    title="Resetta il cronometro a 00:00"
+                    className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-all active:scale-95 cursor-pointer"
+                    title="Azzera il cronometro"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
+                    <RotateCcw className="w-3 h-3" />
                   </button>
                 </div>
 
-                {/* STATO SYNC / OFFLINE DISCRETO */}
+                {/* Badge Stato Salvataggio */}
                 <span className="text-xs text-[var(--color-text-muted)] hidden sm:flex items-center gap-1.5 font-medium">
                   {isOnline ? (
-                    <span className="flex items-center gap-1.5 text-emerald-600 font-bold" title={lastSavedText}>
+                    <span className="flex items-center gap-1.5 text-emerald-500 font-bold" title={lastSavedText}>
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                       <span>{lastSavedText}</span>
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1.5 text-amber-600 font-bold">
-                      <WifiOff className="w-3.5 h-3.5 text-amber-600" />
+                    <span className="flex items-center gap-1.5 text-amber-500 font-bold">
+                      <WifiOff className="w-3.5 h-3.5 text-amber-500" />
                       <span>Offline (Dati al sicuro)</span>
                     </span>
                   )}
@@ -957,22 +967,20 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             )}
           </div>
 
-          {/* Pulsante Fine Sessione a Destra (Solo quando l'allenamento è avviato) */}
-          {isWorkoutStarted && (
-            <button
-              type="button"
-              onClick={handleOpenFinishFlow}
-              disabled={isSaving}
-              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 px-4 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-lg shadow-[var(--color-primary)]/20 active:scale-95 transition-all disabled:opacity-50 cursor-pointer shrink-0"
-            >
-              {isSaving ? (
-                <div className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
-              ) : (
-                <Check className="w-4 h-4 sm:w-5 sm:h-5 stroke-[3.5]" />
-              )}
-              <span>{isSaving ? 'Salvataggio...' : 'Fine Sessione'}</span>
-            </button>
-          )}
+          {/* Destra: Azioni Header */}
+          <div className="flex items-center gap-2 shrink-0">
+            {isWorkoutStarted && (
+              <button
+                type="button"
+                onClick={handleOpenFinishFlow}
+                disabled={isSaving}
+                className="min-h-[44px] px-4 sm:px-6 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer"
+              >
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>Completa</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -991,12 +999,14 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-3 sm:space-y-4">
           {activeExercises.map((ex, idx) => {
             const isCompleted = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
+            const isActive = idx === currentActiveExerciseIndex;
 
             return (
               <React.Fragment key={ex.id}>
                 <ExerciseCard
                   exercise={ex}
                   index={idx}
+                  isActive={isActive}
                   isCompleted={isCompleted}
                   completedSetsMap={completedSets[ex.id] || []}
                   previousHistory={previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()]}
@@ -1006,23 +1016,28 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             );
           })}
 
-          {/* Card di opzione Salto/Imprevisto in fondo alla visualizzazione scheda */}
+          {/* Card di supporto Imprevisto / Modulazione Seduta */}
           {!isWorkoutStarted && (
-            <div className="p-4 sm:p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-center sm:text-left mt-6">
-              <div>
-                <h4 className="text-xs sm:text-sm font-bold text-[var(--color-text)]">
-                  Non riesci a svolgere questa seduta?
-                </h4>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                  Puoi saltarla e comunicare la motivazione direttamente al tuo coach.
-                </p>
+            <div className="p-4 sm:p-5 rounded-3xl bg-[var(--color-surface)]/90 border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left mt-8 shadow-sm">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 mt-0.5 shadow-sm">
+                  <Info className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm sm:text-base font-black text-[var(--color-text)]">
+                    Hai un imprevisto o non ti senti al 100%?
+                  </h4>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed max-w-xl">
+                    Comunica subito al tuo coach se oggi non puoi allenarti: adatteremo il percorso e la frequenza settimanale senza alcuno stress.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSkipModalOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer shrink-0 self-center sm:self-auto"
+                className="min-h-[44px] px-4 py-2.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-black transition-all active:scale-95 cursor-pointer shrink-0 self-start sm:self-auto shadow-sm flex items-center gap-1.5"
               >
-                Salta Seduta
+                <span>Comunica Imprevisto</span>
               </button>
             </div>
           )}

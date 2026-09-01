@@ -99,7 +99,7 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
                   {anatomy.pattern}
                 </span>
               </div>
-              <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] truncate leading-snug mt-0.5">
+              <h2 className="text-base sm:text-lg font-black text-[var(--color-text)] break-words line-clamp-2 leading-snug mt-0.5">
                 {exercise.name}
               </h2>
             </div>
@@ -108,8 +108,9 @@ export const ExerciseAnatomyModal: React.FC<ExerciseAnatomyModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)] transition-colors cursor-pointer shrink-0"
+            className="min-w-[44px] min-h-[44px] w-11 h-11 rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)] transition-all active:scale-95 flex items-center justify-center cursor-pointer shrink-0"
             title="Chiudi"
+            aria-label="Chiudi"
           >
             <X className="w-5 h-5" />
           </button>

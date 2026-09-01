@@ -27,6 +27,12 @@ import {
 } from '../../lib/offline/offlineWorkoutStorage';
 import { PwaInstallBanner } from '../../components/pwa/PwaInstallBanner';
 import { AthleteWorkoutHistory } from '../../components/athlete/AthleteWorkoutHistory';
+import { AthleteQuestionnaireWizard } from '../../components/questionnaires/AthleteQuestionnaireWizard';
+import { AthleteAdherenceCard } from '../../components/athlete/AthleteAdherenceCard';
+import { getAthleteOnboardingResponse } from '../../services/questionnaireService';
+import { fetchAthleteAdherenceData, AdherenceScoreResult } from '../../services/adherenceService';
+import { AthleteOnboardingRecord } from '../../types/questionnaire';
+import { Sparkles } from 'lucide-react';
 
 interface AthleteDashboardProps {
   onStartWorkout: (workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string, targetWeekNumber?: number) => void;
@@ -317,6 +323,38 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   );
 };
 
+// ─── SKELETON SCHEDA ALLENAMENTO NON BLOCCANTE ────────────────────────────────
+const WorkoutDaysSkeleton: React.FC = () => (
+  <div className="space-y-4 pt-2 animate-pulse">
+    <div className="flex items-center justify-between">
+      <div className="h-4 w-36 bg-slate-800 rounded-md" />
+      <div className="flex gap-1.5">
+        <div className="w-8 h-8 rounded-xl bg-slate-800" />
+        <div className="w-8 h-8 rounded-xl bg-slate-800" />
+      </div>
+    </div>
+    <div className="flex gap-2 overflow-hidden py-1">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="h-8 w-20 bg-slate-800 rounded-2xl shrink-0" />
+      ))}
+    </div>
+    <div className="space-y-2.5 pt-1">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="p-4 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-slate-800" />
+            <div className="space-y-1.5">
+              <div className="h-4 w-28 bg-slate-800 rounded-md" />
+              <div className="h-3 w-40 bg-slate-800/60 rounded-md" />
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-2xl bg-slate-800" />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 // ─── DASHBOARD PRINCIPALE HOME OPERATIVA ATLETA ─────────────────────────────
 export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorkout }) => {
   const { myAssignedWorkouts, getExercisesForWorkout, loading } = useWorkouts();
@@ -343,8 +381,91 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     return '';
   }, [user]);
 
-  const [activeDraft, setActiveDraft] = useState<ActiveWorkoutDraft | null>(null);
+  const [activeDraft, setActiveDraft] = useState<ActiveWorkoutDraft | null>(() => {
+    if (typeof window !== 'undefined' && athleteId) {
+      try {
+        return getActiveWorkoutDraft(athleteId);
+      } catch {}
+    }
+    return null;
+  });
+
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
+  const [onboardingRecord, setOnboardingRecord] = useState<AthleteOnboardingRecord | null>(null);
+  const [isLoadingOnboarding, setIsLoadingOnboarding] = useState<boolean>(false);
+
+  const [adherenceData, setAdherenceData] = useState<AdherenceScoreResult | null>(() => {
+    if (typeof window !== 'undefined' && athleteId) {
+      try {
+        const saved = localStorage.getItem(`ac_cached_adherence_${athleteId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
+  const [isLoadingAdherence, setIsLoadingAdherence] = useState<boolean>(false);
+  const [isUpdatingAdherence, setIsUpdatingAdherence] = useState<boolean>(false);
+
+  // Caricamento in background non bloccante di Indice Aderenza & Onboarding
+  useEffect(() => {
+    if (!athleteId) return;
+    let isMounted = true;
+
+    // 1. Revalidazione silenziosa Indice Aderenza in background
+    const loadAdherence = (isBackground = true) => {
+      if (isBackground) {
+        setIsUpdatingAdherence(true);
+      } else if (!adherenceData) {
+        setIsLoadingAdherence(true);
+      }
+
+      fetchAthleteAdherenceData(athleteId)
+        .then((data) => {
+          if (isMounted) {
+            setAdherenceData(data);
+            try {
+              localStorage.setItem(`ac_cached_adherence_${athleteId}`, JSON.stringify(data));
+            } catch {}
+          }
+        })
+        .catch((e) => console.warn('[AthleteDashboard] Errore aderenza background:', e))
+        .finally(() => {
+          if (isMounted) {
+            setIsLoadingAdherence(false);
+            setIsUpdatingAdherence(false);
+          }
+        });
+    };
+
+    loadAdherence(Boolean(adherenceData));
+
+    // 2. Caricamento differito del questionario onboarding (dopo 300ms)
+    const onboardingTimer = setTimeout(() => {
+      setIsLoadingOnboarding(true);
+      getAthleteOnboardingResponse(athleteId)
+        .then((rec) => {
+          if (isMounted) setOnboardingRecord(rec);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (isMounted) setIsLoadingOnboarding(false);
+        });
+    }, 300);
+
+    const handleAdherenceRefresh = () => loadAdherence(true);
+    window.addEventListener('athlete_draft_updated', handleAdherenceRefresh);
+    window.addEventListener('pending_sync_queue_updated', handleAdherenceRefresh);
+    window.addEventListener('focus', handleAdherenceRefresh);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(onboardingTimer);
+      window.removeEventListener('athlete_draft_updated', handleAdherenceRefresh);
+      window.removeEventListener('pending_sync_queue_updated', handleAdherenceRefresh);
+      window.removeEventListener('focus', handleAdherenceRefresh);
+    };
+  }, [athleteId]);
 
   const checkDraftAndQueue = useCallback(() => {
     if (athleteId) {
@@ -659,18 +780,26 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     };
   }, [syncProgressFromDb]);
 
-  if (loading && myAssignedWorkouts.length === 0) {
+  if (isOnboardingModalOpen) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="w-12 h-12 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-slate-400 font-bold text-sm">Caricamento del tuo percorso...</p>
+      <div className="py-4">
+        <AthleteQuestionnaireWizard
+          athleteId={athleteId}
+          athleteName={athleteFirstName}
+          onClose={() => setIsOnboardingModalOpen(false)}
+          onComplete={(newRec) => {
+            setOnboardingRecord(newRec);
+            setIsOnboardingModalOpen(false);
+            showSuccess('Questionario inviato!', 'I tuoi dati sono stati registrati con successo.');
+          }}
+        />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 pb-32 font-sans max-w-3xl mx-auto">
-      {/* ─── 1. HEADER: SALUTO PULITO & MINIMALE ─── */}
+    <div className="space-y-6 pb-32 font-sans max-w-3xl mx-auto animate-in fade-in duration-200">
+      {/* ─── 1. HEADER: SALUTO PULITO & MINIMALE (0 MS) ─── */}
       <div className="space-y-1">
         <h2 className="text-2xl sm:text-3xl font-black text-[var(--color-text)] tracking-tight">
           {athleteFirstName ? `Ciao ${athleteFirstName} 👋` : 'Il tuo Allenamento'}
@@ -678,6 +807,8 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         <p className="text-xs sm:text-sm text-[var(--color-text-muted)]">
           {firstAssigned?.workout?.title
             ? `Programma attivo: ${firstAssigned.workout.title}`
+            : loading
+            ? 'Caricamento del tuo programma...'
             : 'La tua home per raggiungere i tuoi obiettivi.'}
         </p>
       </div>
@@ -685,7 +816,46 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       {/* ─── BANNER INVITO AGGIUNGI AC ALLA HOME ─── */}
       <PwaInstallBanner />
 
+      {/* ─── BANNER ONBOARDING QUESTIONARIO SE NON COMPLETATO ─── */}
+      {!isLoadingOnboarding && (!onboardingRecord || onboardingRecord.status !== 'completed') && (
+        <div className="p-5 rounded-3xl bg-gradient-to-r from-amber-500/15 via-[var(--color-primary)]/10 to-amber-500/5 border border-[var(--color-primary)]/40 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in duration-300">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)] text-black text-[10px] font-black uppercase">
+                Primo Check-in
+              </span>
+              {onboardingRecord?.currentStep && onboardingRecord.currentStep > 1 && (
+                <span className="text-[11px] font-bold text-amber-400">
+                  • Bozza salvata al Passo {onboardingRecord.currentStep}
+                </span>
+              )}
+            </div>
+            <h3 className="text-base font-black text-white">
+              Compila il Questionario Anamnesi Iniziale
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed max-w-lg">
+              Aiuta il tuo coach a definire i tuoi massimali, orari, preferenze alimentari e prevenire fastidi articolari prima di iniziare.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsOnboardingModalOpen(true)}
+            className="px-5 py-3 rounded-2xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-lg shrink-0 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>{onboardingRecord?.currentStep && onboardingRecord.currentStep > 1 ? 'Riprendi Compilazione' : 'Compila in 5 Minuti'}</span>
+          </button>
+        </div>
+      )}
 
+      {/* ─── 2. INDICE ADERENZA AL PERCORSO (STALE-WHILE-REVALIDATE IMMEDIATO) ─── */}
+      {adherenceData && (
+        <AthleteAdherenceCard
+          adherence={adherenceData}
+          loading={isLoadingAdherence}
+          isUpdating={isUpdatingAdherence}
+        />
+      )}
 
       {/* ─── 3. BANNER CODA SINCRONIZZAZIONE OFFLINE ─── */}
       {pendingSyncCount > 0 && (
@@ -713,7 +883,9 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       )}
 
       {/* ─── 4. TUTTI I GIORNI DELLA SCHEDA IN ELENCO LINEARE PULITO ─── */}
-      {myAssignedWorkouts.length === 0 ? (
+      {loading && myAssignedWorkouts.length === 0 ? (
+        <WorkoutDaysSkeleton />
+      ) : myAssignedWorkouts.length === 0 ? (
         <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-8 sm:p-12 text-center space-y-3 shadow-md">
           <div className="w-14 h-14 bg-[var(--color-surface-strong)] rounded-2xl flex items-center justify-center mx-auto text-[var(--color-text-muted)]">
             <Dumbbell className="w-7 h-7" />

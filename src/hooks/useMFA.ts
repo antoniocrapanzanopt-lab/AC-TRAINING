@@ -6,54 +6,87 @@ import { MFAState } from '../types';
 export const useMFA = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mfaState, setMfaState] = useState<MFAState>({
-    currentAAL: null,
-    nextAAL: null,
-    hasVerifiedFactors: false,
-    hasUnverifiedFactors: false,
-    isLoading: true,
-    error: null
+  const [mfaState, setMfaState] = useState<MFAState>(() => {
+    // Inizializzazione non bloccante (isLoading: false per non bloccare il critical path)
+    return {
+      currentAAL: null,
+      nextAAL: null,
+      hasVerifiedFactors: false,
+      hasUnverifiedFactors: false,
+      isLoading: false,
+      error: null,
+    };
   });
   const [factors, setFactors] = useState<Factor[]>([]);
 
   const loadMFAStatus = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      if (!session?.user) {
         setMfaState({
           currentAAL: null,
           nextAAL: null,
           hasVerifiedFactors: false,
           hasUnverifiedFactors: false,
           isLoading: false,
-          error: null
+          error: null,
         });
         setFactors([]);
         return;
       }
 
-      const { data: aalData, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (aalError) throw aalError;
+      // 1. Estrazione rapida sincrona da JWT sessione (0 ms)
+      let fastAAL: 'aal1' | 'aal2' = 'aal1';
+      try {
+        const token = session.access_token;
+        if (token) {
+          const payloadPart = token.split('.')[1];
+          if (payloadPart) {
+            const decoded = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')));
+            if (decoded?.aal === 'aal2' || decoded?.aal === 'aal1') {
+              fastAAL = decoded.aal;
+            }
+          }
+        }
+      } catch {}
 
-      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
-      if (factorsError) throw factorsError;
+      // 2. Lettura cache fattori verificati per utente
+      const userId = session.user.id;
+      const cachedVerified = localStorage.getItem(`ac_mfa_has_verified_${userId}`) === 'true';
 
-      const allFactors = factorsData?.all || [];
+      // Aggiornamento immediato ottimistico
+      setMfaState(prev => ({
+        ...prev,
+        currentAAL: fastAAL,
+        hasVerifiedFactors: cachedVerified || prev.hasVerifiedFactors,
+      }));
+
+      // 3. Esecuzione query MFA in parallelo senza waterfall
+      const [aalRes, factorsRes] = await Promise.all([
+        supabase.auth.mfa.getAuthenticatorAssuranceLevel().catch(() => null),
+        supabase.auth.mfa.listFactors().catch(() => null),
+      ]);
+
+      const allFactors = factorsRes?.data?.all || [];
       const verified = allFactors.some(f => f.status === 'verified');
       const unverified = allFactors.some(f => f.status === 'unverified');
 
+      try {
+        localStorage.setItem(`ac_mfa_has_verified_${userId}`, verified ? 'true' : 'false');
+      } catch {}
+
       setFactors(allFactors);
       setMfaState({
-        currentAAL: (aalData?.currentLevel as 'aal1' | 'aal2') || 'aal1',
-        nextAAL: (aalData?.nextLevel as 'aal2' | null) || null,
+        currentAAL: (aalRes?.data?.currentLevel as 'aal1' | 'aal2') || fastAAL,
+        nextAAL: (aalRes?.data?.nextLevel as 'aal2' | null) || null,
         hasVerifiedFactors: verified,
         hasUnverifiedFactors: unverified,
         isLoading: false,
-        error: null
+        error: null,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Errore nel caricamento dello stato MFA';
-      console.error('Error loading MFA:', msg);
+      console.warn('[useMFA] Warning caricamento MFA:', msg);
       setMfaState(prev => ({ ...prev, isLoading: false, error: msg }));
     }
   }, []);

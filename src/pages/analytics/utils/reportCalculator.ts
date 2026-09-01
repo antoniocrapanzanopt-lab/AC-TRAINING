@@ -389,27 +389,28 @@ export function buildAthleteReport(
     });
   });
 
-  // 6. Calcolo Score Complessivo (0-100)
+  // 6. Calcolo Score Complessivo (0-100) — Allineato alla Formula Ufficiale Indice Aderenza (40/30/20/10)
   const hasPreviousPeriod = previousSessions.length > 0 && prevVol > 0;
-  let overallScore = 75;
+  let overallScore = 0;
   if (!hasAssignment || totalCompletedInHistory === 0) {
     overallScore = 0;
   } else {
-    let score = 70;
-    if (currentAttendancePct >= 90) score += 15;
-    else if (currentAttendancePct >= 75) score += 8;
-    else score -= 12;
+    // 1. Sedute (40%)
+    const workoutScore = Math.min(100, Math.round((currentSessions.length / Math.max(1, targetSessionsInPeriod)) * 100));
+    // 2. Serie (30%)
+    const setsScore = Math.min(100, Math.round((currentLogs.length / Math.max(1, targetSessionsInPeriod * 14)) * 100));
+    // 3. Feedback & RPE (20%)
+    const feedbackCount = currentLogs.filter((l) => Boolean(l.notes && l.notes.trim().length > 0)).length + currentSessions.filter((s) => Boolean(s.notes || (s.rpe && s.rpe > 0))).length;
+    const feedbackScore = currentLogs.length > 0 ? Math.min(100, Math.round((feedbackCount / Math.max(1, currentLogs.length)) * 100)) : (currentSessions.length > 0 ? 80 : 0);
+    // 4. Check-in (10%)
+    const checkinScore = 100;
 
-    if (hasPreviousPeriod) {
-      if (totalVolumeKg.deltaPercent > 5) score += 10;
-      else if (totalVolumeKg.deltaPercent < -10) score -= 10;
-    }
-
-    if (currentPainCount > 0) score -= Math.min(25, currentPainCount * 12);
-    if (currentAvgRpe >= 7 && currentAvgRpe <= 8.5) score += 5;
-    else if (currentAvgRpe > 9) score -= 8;
-
-    overallScore = Math.max(20, Math.min(99, Math.round(score)));
+    overallScore = Math.min(100, Math.max(0, Math.round(
+      workoutScore * 0.40 +
+      setsScore * 0.30 +
+      feedbackScore * 0.20 +
+      checkinScore * 0.10
+    )));
   }
 
   // 7. Trend

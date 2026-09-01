@@ -55,12 +55,16 @@ import { TimelineTab } from '../../components/athletes/TimelineTab';
 import { MetricsTab } from '../../components/athletes/MetricsTab';
 import { NutritionMonitoringView } from '../../components/nutrition/NutritionMonitoringView';
 import { NutritionRevisionsView } from '../../components/nutrition/NutritionRevisionsView';
+import { CoachAnamnesisDossier } from '../../components/questionnaires/CoachAnamnesisDossier';
+import { AthleteAdherenceBadge } from '../../components/coach/AthleteAdherenceBadge';
+import { fetchAthleteAdherenceData, AdherenceScoreResult } from '../../services/adherenceService';
 import { Scale, TrendingUp, TrendingDown } from 'lucide-react';
 
 // ─── Tipi Tab ─────────────────────────────────────────────────────────────────
 
 type DetailTab =
   | 'panoramica'
+  | 'anamnesi'
   | 'metriche'
   | 'nutrizione'
   | 'note'
@@ -333,6 +337,30 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
     );
   }, [allAssignedWorkouts, athleteId, coachTemplates]);
 
+  const [adherenceData, setAdherenceData] = useState<AdherenceScoreResult | null>(null);
+
+  // Caricamento Indice Aderenza
+  useEffect(() => {
+    if (!athleteId) return;
+    let isMounted = true;
+
+    const loadAdherence = () => {
+      fetchAthleteAdherenceData(athleteId)
+        .then((data) => {
+          if (isMounted) setAdherenceData(data);
+        })
+        .catch((e) => console.warn('[AthleteDetailPage] Errore caricamento aderenza:', e));
+    };
+
+    loadAdherence();
+    window.addEventListener('focus', loadAdherence);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', loadAdherence);
+    };
+  }, [athleteId]);
+
   // Caricamento metriche fisiche
   React.useEffect(() => {
     if (athleteId) {
@@ -474,6 +502,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
   // Badge Conteggio Tabs
   const tabList: { id: DetailTab; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'panoramica', label: 'Panoramica', icon: <User className="w-4 h-4" /> },
+    { id: 'anamnesi', label: 'Anamnesi & Dossier', icon: <FileText className="w-4 h-4 text-[var(--color-primary)]" /> },
     { id: 'metriche', label: 'Progressi & Fabbisogno', icon: <Scale className="w-4 h-4" /> },
     { id: 'nutrizione', label: 'Nutrizione & Macro', icon: <Flame className="w-4 h-4" /> },
     { id: 'note', label: 'Note', icon: <StickyNote className="w-4 h-4" />, count: athleteNotes.length },
@@ -487,6 +516,15 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
 
   const renderTab = (): React.ReactNode => {
     switch (activeTab) {
+      case 'anamnesi':
+        return (
+          <CoachAnamnesisDossier
+            athleteId={athlete.id}
+            athleteName={safeFullName}
+            onNavigateToWorkouts={() => setAppActiveTab('schede')}
+            onNavigateToNutrition={() => setAppActiveTab('fabbisogno')}
+          />
+        );
       case 'metriche':
         return (
           <MetricsTab
@@ -501,6 +539,10 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
       case 'panoramica':
         return (
           <div className="space-y-4">
+            {/* ── 0. INDICE ADERENZA AL PERCORSO ── */}
+            {adherenceData && (
+              <AthleteAdherenceBadge adherence={adherenceData} size="lg" />
+            )}
 
             {/* ── 1. SCHEDA ALLENAMENTO ATTIVA ── */}
             <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl space-y-3">
@@ -560,13 +602,22 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                   </div>
                   <span className="text-sm font-black text-white tracking-tight">🎯 Obiettivi dell'Atleta</span>
                 </div>
-                <button
-                  onClick={() => { setEditModalSection('obiettivi'); setIsEditModalOpen(true); }}
-                  className="flex items-center gap-1 text-[11px] font-bold text-[var(--color-primary)] hover:text-white px-2.5 py-1 rounded-lg hover:bg-[var(--color-primary)]/15 transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span>Modifica</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setActiveTab('anamnesi')}
+                    className="flex items-center gap-1 text-[11px] font-black text-black bg-[var(--color-primary)] px-2.5 py-1 rounded-lg hover:bg-[var(--color-primary-hover)] transition-all shadow-sm cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Dossier Anamnesi</span>
+                  </button>
+                  <button
+                    onClick={() => { setEditModalSection('obiettivi'); setIsEditModalOpen(true); }}
+                    className="flex items-center gap-1 text-[11px] font-bold text-[var(--color-primary)] hover:text-white px-2.5 py-1 rounded-lg hover:bg-[var(--color-primary)]/15 transition-colors cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Modifica</span>
+                  </button>
+                </div>
               </div>
               <div className="px-5 py-5 space-y-4">
                 {/* Tag discipline */}
@@ -854,6 +905,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h2 className="text-2xl font-black text-white tracking-tight">{safeFullName}</h2>
                   <AthleteStatusBadge status={athlete.status} />
+                  {adherenceData && <AthleteAdherenceBadge adherence={adherenceData} />}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap font-medium">
                   {athlete.phone && (

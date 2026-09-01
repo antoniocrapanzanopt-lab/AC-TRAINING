@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Brain,
   RefreshCw,
@@ -17,12 +17,44 @@ import {
 import { buildTeamOverviewReport } from './utils/reportCalculator';
 import { TeamOverviewReportView } from './components/TeamOverviewReportView';
 import { AthleteDetailReportView } from './components/AthleteDetailReportView';
+import { TeamOverviewSkeleton, AthleteDetailSkeleton } from './components/AnalyticsSkeletons';
 import { AICopilotActionModal, CopilotAlertContext } from '../dashboard/components/AICopilotActionModal';
+
+// ─── CACHE GLOBALE IN MEMORIA (2 MINUTI TTL) ─────────────────────────────────
+interface AnalysisDataCache {
+  sessions: any[];
+  logs: any[];
+  assignments: any[];
+  exerciseNamesMap: Map<string, string>;
+  exerciseMetaMap: Map<string, { name: string; day_name?: string; week_number?: number }>;
+  athleteIdsKey: string;
+  timestamp: number;
+}
+
+let globalAnalysisCache: AnalysisDataCache | null = null;
+const ANALYSIS_CACHE_TTL = 120 * 1000;
 
 export const AnalysisReportsPage: React.FC = () => {
   const { athletes, selectedAthleteId: globalAthleteId, setSelectedAthleteId } = useAthletes();
   const { allAssignedWorkouts } = useWorkouts();
   const { setActiveTab } = useApp();
+
+  const mountTimeRef = useRef<number>(Date.now());
+  const athleteIdsKey = useMemo(() => (athletes || []).map((a) => a.id).sort().join(','), [athletes]);
+
+  // Profilazione e misurazione tempi di render (First Shell vs Meaningful Content)
+  useEffect(() => {
+    const elapsed = Date.now() - mountTimeRef.current;
+    console.log(`[Performance & Copilot Metrics] First Shell Render: ${elapsed}ms | Cached: ${hasValidCache ? 'YES (0ms blocking)' : 'NO (progressive skeleton)'}`);
+  }, []);
+
+  // Controlla se abbiamo dati in cache validi per questi atleti
+  const hasValidCache = useMemo(() => {
+    if (!globalAnalysisCache) return false;
+    const isFresh = Date.now() - globalAnalysisCache.timestamp < ANALYSIS_CACHE_TTL;
+    const isSameAthletes = globalAnalysisCache.athleteIdsKey === athleteIdsKey;
+    return isFresh && isSameAthletes;
+  }, [athleteIdsKey]);
 
   // Orizzonte Temporale Selezionato (Default: Mensile)
   const [timeframe, setTimeframe] = useState<TimeframeOption>('monthly');
@@ -34,13 +66,16 @@ export const AnalysisReportsPage: React.FC = () => {
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [copilotContext, setCopilotContext] = useState<CopilotAlertContext | null>(null);
 
-  // Dati Reali
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [exerciseNamesMap, setExerciseNamesMap] = useState<Map<string, string>>(new Map());
-  const [exerciseMetaMap, setExerciseMetaMap] = useState<Map<string, { name: string; day_name?: string; week_number?: number }>>(new Map());
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  // Dati Reali (Inizializzati subito da cache se disponibili per First Meaningful Paint istantaneo a 0ms)
+  const [sessions, setSessions] = useState<any[]>(() => hasValidCache ? globalAnalysisCache!.sessions : []);
+  const [logs, setLogs] = useState<any[]>(() => hasValidCache ? globalAnalysisCache!.logs : []);
+  const [assignments, setAssignments] = useState<any[]>(() => hasValidCache ? globalAnalysisCache!.assignments : []);
+  const [exerciseNamesMap, setExerciseNamesMap] = useState<Map<string, string>>(() => hasValidCache ? globalAnalysisCache!.exerciseNamesMap : new Map());
+  const [exerciseMetaMap, setExerciseMetaMap] = useState<Map<string, { name: string; day_name?: string; week_number?: number }>>(() => hasValidCache ? globalAnalysisCache!.exerciseMetaMap : new Map());
+
+  // Stato caricamento: false se abbiamo la cache, true solo al primo caricamento a freddo
+  const [isLoading, setIsLoading] = useState<boolean>(() => !hasValidCache);
+  const [isUpdatingBackground, setIsUpdatingBackground] = useState<boolean>(false);
 
   // Sincronizza con atleta globale se selezionato in precedenza
   useEffect(() => {
@@ -49,10 +84,9 @@ export const AnalysisReportsPage: React.FC = () => {
     }
   }, [globalAthleteId]);
 
-  const isFetchingRef = React.useRef(false);
-  const athleteIdsKey = useMemo(() => (athletes || []).map((a) => a.id).sort().join(','), [athletes]);
+  const isFetchingRef = useRef(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (forceRefresh = false) => {
     if (!athletes || athletes.length === 0) {
       setIsLoading(false);
       return;
@@ -60,12 +94,16 @@ export const AnalysisReportsPage: React.FC = () => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
+    const startFetch = Date.now();
+    if (!hasValidCache || forceRefresh) {
+      setIsUpdatingBackground(true);
+    }
+
     try {
       const athleteIds = athletes.map((a) => a.id);
+      const oneYearAgoIso = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
 
-      // 1. Carica assegnazioni schede e sessioni in parallelo
-      const twoYearsAgoIso = new Date(Date.now() - 730 * 24 * 60 * 60 * 1000).toISOString();
-
+      // ─── STAGE 1 (PRIORITÀ ALTA): Assegnazioni + Sessioni ───
       const [assignRes, sessionRes] = await Promise.all([
         supabase
           .from('athlete_assigned_workouts')
@@ -91,10 +129,10 @@ export const AnalysisReportsPage: React.FC = () => {
             workouts ( id, title, total_weeks )
           `)
           .in('athlete_id', athleteIds)
-          .gte('start_time', twoYearsAgoIso)
+          .gte('start_time', oneYearAgoIso)
           .not('end_time', 'is', null)
           .order('start_time', { ascending: false })
-          .limit(200),
+          .limit(150),
       ]);
 
       const mergedAssignments: any[] = assignRes.data || [];
@@ -112,7 +150,6 @@ export const AnalysisReportsPage: React.FC = () => {
           });
         }
       });
-      setAssignments(mergedAssignments);
 
       // Carica sessioni da backup locale se presenti
       let localSessionList: any[] = [];
@@ -124,9 +161,16 @@ export const AnalysisReportsPage: React.FC = () => {
       const allSessions = (sessionRes.data || []).concat(
         completedLocalSessions.filter((ls) => !(sessionRes.data || []).some((sd: any) => sd.id === ls.id))
       );
-      setSessions(allSessions);
 
-      // 2. Carica log degli esercizi
+      // Aggiorna subito Stage 1: la panoramica e le priorità possono già iniziare a renderizzare!
+      setAssignments(mergedAssignments);
+      setSessions(allSessions);
+      setIsLoading(false);
+
+      const stage1Time = Date.now() - startFetch;
+      console.log(`[Performance & Copilot] Stage 1 completato in ${stage1Time}ms (Overview & Decisioni pronte)`);
+
+      // ─── STAGE 2 (PRIORITÀ SECONDARIA): Log Esercizi & Metadati ───
       const sessionIds = allSessions.map((s) => s.id);
       let allLogs: any[] = [];
       if (sessionIds.length > 0) {
@@ -141,7 +185,7 @@ export const AnalysisReportsPage: React.FC = () => {
             weight_kg,
             notes
           `)
-          .in('session_id', sessionIds.slice(0, 150));
+          .in('session_id', sessionIds.slice(0, 120));
         allLogs = logData || [];
       }
 
@@ -156,8 +200,11 @@ export const AnalysisReportsPage: React.FC = () => {
       } catch (_) {}
       setLogs(allLogs);
 
-      // 3. Dizionario Nomi & Metadati Esercizi
+      // Dizionario Nomi & Metadati Esercizi
       const uniqueExIds = Array.from(new Set(allLogs.map((l) => l.exercise_id).filter(Boolean)));
+      let namesMap = new Map<string, string>();
+      let metaMap = new Map<string, { name: string; day_name?: string; week_number?: number }>();
+
       if (uniqueExIds.length > 0) {
         const { data: exData } = await supabase
           .from('workout_exercises')
@@ -165,8 +212,6 @@ export const AnalysisReportsPage: React.FC = () => {
           .in('id', uniqueExIds);
 
         if (exData) {
-          const namesMap = new Map<string, string>();
-          const metaMap = new Map<string, { name: string; day_name?: string; week_number?: number }>();
           exData.forEach((e) => {
             namesMap.set(e.id, e.name);
             metaMap.set(e.id, {
@@ -179,19 +224,34 @@ export const AnalysisReportsPage: React.FC = () => {
           setExerciseMetaMap(metaMap);
         }
       }
+
+      // Salva nella Cache Globale
+      globalAnalysisCache = {
+        sessions: allSessions,
+        logs: allLogs,
+        assignments: mergedAssignments,
+        exerciseNamesMap: namesMap,
+        exerciseMetaMap: metaMap,
+        athleteIdsKey,
+        timestamp: Date.now(),
+      };
+
+      const totalTime = Date.now() - startFetch;
+      console.log(`[Performance & Copilot] Fully Loaded in ${totalTime}ms (Tutti i grafici e dettagli sincronizzati)`);
     } catch (err) {
-      console.warn('Errore caricamento dati Performance & Copilot:', err);
+      console.warn('[Performance & Copilot] Errore caricamento:', err);
     } finally {
       setIsLoading(false);
+      setIsUpdatingBackground(false);
       isFetchingRef.current = false;
     }
-  }, [athletes, allAssignedWorkouts]);
+  }, [athletes, allAssignedWorkouts, athleteIdsKey, hasValidCache]);
 
   useEffect(() => {
     loadData();
   }, [athleteIdsKey, loadData]);
 
-  // Calcolo Report Globale Squadra e Atleti
+  // Calcolo Report Globale Squadra e Atleti (Memoizzato)
   const teamReportData: TeamOverviewReportData = useMemo(() => {
     return buildTeamOverviewReport(
       timeframe,
@@ -261,9 +321,11 @@ export const AnalysisReportsPage: React.FC = () => {
     }
   };
 
+  const hasReportData = teamReportData && teamReportData.athletesReports.length > 0;
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12 animate-in fade-in duration-200">
-      {/* ─── HEADER PRINCIPALE SEZIONE ─── */}
+      {/* ─── 1. HEADER & TOOLBAR PRINCIPALE (SEMPRE RENDERIZZATO SUBITO A 0 MS) ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/20 to-amber-600/10 border border-[var(--color-primary)]/40 flex items-center justify-center text-[var(--color-primary)] shadow-lg shrink-0">
@@ -278,6 +340,12 @@ export const AnalysisReportsPage: React.FC = () => {
                 <TrendingUp className="w-3 h-3" />
                 Centro Decisionale
               </span>
+              {isUpdatingBackground && (
+                <span className="text-[10px] font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                  <RefreshCw className="w-2.5 h-2.5 animate-spin text-[var(--color-primary)]" />
+                  Sincronizzazione...
+                </span>
+              )}
             </div>
             <p className="text-xs sm:text-sm text-slate-400 font-medium mt-0.5">
               Confronta i progressi degli atleti e decidi il prossimo intervento.
@@ -322,22 +390,20 @@ export const AnalysisReportsPage: React.FC = () => {
           {/* Bottone Ricarica */}
           <button
             type="button"
-            onClick={loadData}
-            disabled={isLoading}
+            onClick={() => loadData(true)}
+            disabled={isUpdatingBackground}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white hover:border-slate-700 transition-all cursor-pointer shadow-sm"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isUpdatingBackground ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Aggiorna</span>
           </button>
         </div>
       </div>
 
-      {/* ─── CONTENUTO PRINCIPALE (VISTA GENERALE O DETTAGLIO ATLETA) ─── */}
-      {isLoading ? (
-        <div className="py-24 flex flex-col items-center justify-center space-y-4">
-          <div className="w-10 h-10 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-bold text-slate-400">Analisi avanzata e calcolo decisioni in corso...</p>
-        </div>
+      {/* ─── 2. CONTENUTO PRINCIPALE PROGRESSIVO (SKELETON SE VUOTO, ALTRIMENTI VISTA VIVA) ─── */}
+      {isLoading && !hasReportData ? (
+        /* SKELETON PROGRESSIVO NON BLOCCANTE */
+        selectedAthleteId ? <AthleteDetailSkeleton /> : <TeamOverviewSkeleton />
       ) : selectedAthleteReport ? (
         /* VISTA DETTAGLIO ATLETA */
         <AthleteDetailReportView
@@ -350,7 +416,7 @@ export const AnalysisReportsPage: React.FC = () => {
           sessions={sessions}
           logs={logs}
           exerciseMetaMap={exerciseMetaMap}
-          onDataUpdated={loadData}
+          onDataUpdated={() => loadData(true)}
           onTimeframeChange={setTimeframe}
           onSelectAthlete={handleSelectAthlete}
           onBackToOverview={handleBackToOverview}
@@ -378,7 +444,7 @@ export const AnalysisReportsPage: React.FC = () => {
         />
       )}
 
-      {/* ─── MODALE COPILOT DECISIONALE ─── */}
+      {/* ─── 3. MODALE COPILOT DECISIONALE ─── */}
       {isCopilotOpen && copilotContext && (
         <AICopilotActionModal
           isOpen={isCopilotOpen}
@@ -395,7 +461,7 @@ export const AnalysisReportsPage: React.FC = () => {
               localStorage.setItem('builder_copilot_dismissed_alerts', JSON.stringify(Array.from(set)));
             } catch (_) {}
             setIsCopilotOpen(false);
-            loadData();
+            loadData(true);
           }}
         />
       )}

@@ -28,6 +28,8 @@ import {
   athleteStatusLabel,
   paymentStatusLabel,
 } from '../../components/athletes/AthleteBadges';
+import { AthleteAdherenceBadge } from '../../components/coach/AthleteAdherenceBadge';
+import { fetchBatchAthletesAdherence, AdherenceScoreResult } from '../../services/adherenceService';
 import { AthleteModal } from '../../components/athletes/AthleteModal';
 import { AthleteDetailPage } from './AthleteDetailPage';
 
@@ -250,6 +252,23 @@ export const AthletesPage: React.FC = () => {
   }>({ open: false, title: '', message: '', onConfirm: () => undefined });
 
   const closeConfirm = () => setConfirmModal(prev => ({ ...prev, open: false }));
+
+  // ─── Caricamento Indice Aderenza per tutti gli atleti (Single Source of Truth Consolidata) ───
+  const [adherenceMap, setAdherenceMap] = useState<Record<string, AdherenceScoreResult>>({});
+
+  useEffect(() => {
+    if (!athletes || athletes.length === 0) return;
+    let isMounted = true;
+
+    const ids = athletes.map((a) => a.id).filter(Boolean);
+    fetchBatchAthletesAdherence(ids).then((batchMap) => {
+      if (isMounted) {
+        setAdherenceMap((prev) => ({ ...prev, ...batchMap }));
+      }
+    });
+
+    return () => { isMounted = false; };
+  }, [athletes]);
 
   // ─── Lista filtrata e ordinata ────────────────────────────────────────────
 
@@ -592,6 +611,9 @@ export const AthletesPage: React.FC = () => {
                 </th>
                 <ThSort field="fullName" label="Atleta" />
                 <ThSort field="status" label="Stato" />
+                <th className="px-4 py-3.5 text-left">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Aderenza</span>
+                </th>
                 <th className="px-5 py-3.5 text-left">
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Scheda</span>
                 </th>
@@ -602,7 +624,7 @@ export const AthletesPage: React.FC = () => {
             <tbody className="divide-y divide-[var(--color-panel-border)]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center">
+                  <td colSpan={7} className="py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center">
                         <Search className="w-6 h-6 text-slate-600" />
@@ -676,6 +698,11 @@ export const AthletesPage: React.FC = () => {
                       {/* Stato */}
                       <td className="px-5 py-4">
                         <AthleteStatusBadge status={athlete.status} />
+                      </td>
+
+                      {/* Aderenza */}
+                      <td className="px-4 py-4">
+                        <AthleteAdherenceBadge adherence={adherenceMap[athlete.id]} size="sm" />
                       </td>
 
                       {/* Scheda */}

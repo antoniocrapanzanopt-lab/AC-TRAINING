@@ -11,33 +11,19 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useMetrics } from '../../context/MetricsContext';
-import { supabase } from '../../lib/supabase';
 import { getDaysRemaining } from '../../lib/statusEngine';
 import { ChangeLogTab } from '../../components/athletes/ChangeLogTab';
 import { AthleteNextAppointmentCard } from '../../components/athlete/AthleteNextAppointmentCard';
-import { AthleteTrophiesSection } from '../../components/athlete/AthleteTrophiesSection';
 import { AthleteCommunicationsFeed } from '../../components/athlete/AthleteCommunicationsFeed';
-
-interface PastSession {
-  id: string;
-  workoutTitle: string;
-  weekNumber?: number;
-  dayName?: string;
-  date: string;
-  durationMinutes: number;
-  rpe: number;
-  notes?: string;
-  exercises: {
-    name: string;
-    sets: { setNumber: number; reps: number; weightKg: number }[];
-    notes?: string;
-  }[];
-}
+import { AthleteQuestionnaireWizard } from '../../components/questionnaires/AthleteQuestionnaireWizard';
+import { getAthleteOnboardingResponse } from '../../services/questionnaireService';
+import { AthleteOnboardingRecord } from '../../types/questionnaire';
+import { FileText, Sparkles } from 'lucide-react';
 
 export const AthleteProfileView: React.FC = () => {
   const { user } = useAuth();
   const { athletes } = useAthletes();
-  const { maxLifts, metrics, fetchMetricsForAthlete, fetchMaxLiftsForAthlete } = useMetrics();
+  const { maxLifts, fetchMaxLiftsForAthlete } = useMetrics();
 
   const currentAthlete = user 
     ? athletes.find(a => 
@@ -46,140 +32,24 @@ export const AthleteProfileView: React.FC = () => {
       )
     : null;
 
-  const athleteIds = React.useMemo(() => {
-    return Array.from(new Set([currentAthlete?.id, user?.athleteId, user?.id].filter(Boolean) as string[]));
-  }, [currentAthlete, user]);
-
   const athleteId = currentAthlete?.id || user?.athleteId || user?.id;
 
-  const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
+  const [onboardingRecord, setOnboardingRecord] = useState<AthleteOnboardingRecord | null>(null);
 
-  // Carica metriche e max lift per il calcolo dei trofei
+  // Carica stato questionario onboarding
   useEffect(() => {
     if (athleteId) {
-      fetchMetricsForAthlete(athleteId);
+      getAthleteOnboardingResponse(athleteId).then((rec) => setOnboardingRecord(rec));
+    }
+  }, [athleteId]);
+
+  // Carica massimali (PR)
+  useEffect(() => {
+    if (athleteId) {
       fetchMaxLiftsForAthlete(athleteId);
     }
-  }, [athleteId, fetchMetricsForAthlete, fetchMaxLiftsForAthlete]);
-
-  // Carica le sessioni completate in passato dall'atleta
-  const fetchPastSessions = React.useCallback(async () => {
-    if (athleteIds.length === 0) return;
-    try {
-      // Fetch scheda attiva per l'atleta come fallback se il titolo è placeholder (es: "aaaa")
-      const { data: activeAssignments } = await supabase
-        .from('athlete_assigned_workouts')
-        .select('workout_id, workouts ( title )')
-        .in('athlete_id', athleteIds)
-        .eq('is_active', true);
-
-      const activeWorkoutTitle = (activeAssignments?.[0]?.workouts as unknown as {title: string} | null)?.title;
-
-      const { data, error } = await supabase
-        .from('workout_sessions')
-        .select(`
-          id,
-          start_time,
-          end_time,
-          rpe,
-          notes,
-          workout_id,
-          workouts ( title ),
-          exercise_logs (
-            set_number,
-            reps_completed,
-            weight_kg,
-            notes,
-            workout_exercises ( name, week_number, day_name )
-          )
-        `)
-        .in('athlete_id', athleteIds)
-        .not('end_time', 'is', null)
-        .order('end_time', { ascending: false });
-
-      if (error) throw error;
-
-        if (data) {
-          const mapped: PastSession[] = data.map((session: any) => {
-            const start = new Date(session.start_time);
-            const end = new Date(session.end_time);
-            const diffMs = end.getTime() - start.getTime();
-            const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
-
-            // Titolo Scheda con fallback se placeholder
-            const rawTitle = session.workouts?.title;
-            const isPlaceholder = !rawTitle || rawTitle.trim() === '' || rawTitle.toLowerCase() === 'aaaa' || rawTitle.toLowerCase() === 'allenamento' || rawTitle.toLowerCase() === 'allenamento svolto';
-            const finalTitle = isPlaceholder ? (activeWorkoutTitle || 'Scheda Personalizzata') : rawTitle;
-
-            const exMap = new Map<string, { sets: any[]; notesSet: Set<string> }>();
-            const logs = session.exercise_logs || [];
-            let detectedWeek: number | undefined = undefined;
-            let detectedDay: string | undefined = undefined;
-
-            logs.forEach((log: any) => {
-              if (log.workout_exercises?.week_number && !detectedWeek) {
-                detectedWeek = log.workout_exercises.week_number;
-              }
-              if (log.workout_exercises?.day_name && !detectedDay) {
-                detectedDay = log.workout_exercises.day_name;
-              }
-
-              const exName = log.workout_exercises?.name || 'Esercizio';
-              if (!exMap.has(exName)) {
-                exMap.set(exName, { sets: [], notesSet: new Set<string>() });
-              }
-              const entry = exMap.get(exName)!;
-              entry.sets.push({
-                setNumber: log.set_number,
-                reps: log.reps_completed || 0,
-                weightKg: log.weight_kg || 0,
-              });
-              if (log.notes) {
-                entry.notesSet.add(log.notes);
-              }
-            });
-
-            const exercises = Array.from(exMap.entries()).map(([name, { sets, notesSet }]) => {
-              sets.sort((a, b) => a.setNumber - b.setNumber);
-              const notes = Array.from(notesSet).join(' | ');
-              return { name, sets, notes };
-            });
-
-            return {
-              id: session.id,
-              workoutTitle: finalTitle,
-              weekNumber: detectedWeek || 1,
-              dayName: detectedDay || 'Giorno A',
-              date: session.end_time.slice(0, 10),
-              durationMinutes,
-              rpe: session.rpe || 0,
-              notes: session.notes,
-              exercises,
-            };
-          });
-
-          setPastSessions(mapped);
-        }
-      } catch (err) {
-      console.warn('Errore caricamento storico allenamenti:', err);
-    }
-  }, [athleteIds]);
-
-  useEffect(() => {
-    fetchPastSessions();
-
-    const handleWorkoutDone = () => {
-      setTimeout(() => fetchPastSessions(), 500);
-    };
-
-    window.addEventListener('athlete_workout_completed', handleWorkoutDone);
-    window.addEventListener('athlete_workout_skipped', handleWorkoutDone);
-
-    return () => {
-      window.removeEventListener('athlete_workout_completed', handleWorkoutDone);
-      window.removeEventListener('athlete_workout_skipped', handleWorkoutDone);
-    };
-  }, [fetchPastSessions]);
+  }, [athleteId, fetchMaxLiftsForAthlete]);
 
   // Controllo scadenza certificato medico unificato
   const getCertificateStatus = () => {
@@ -201,6 +71,22 @@ export const AthleteProfileView: React.FC = () => {
 
   // Filtra massimali dell'atleta
   const athletePRs = maxLifts.filter(m => m.athlete_id === athleteId || !m.athlete_id);
+
+  if (isOnboardingModalOpen) {
+    return (
+      <div className="py-4 max-w-3xl mx-auto">
+        <AthleteQuestionnaireWizard
+          athleteId={athleteId || 'ath-local'}
+          athleteName={currentAthlete?.firstName || user?.name}
+          onClose={() => setIsOnboardingModalOpen(false)}
+          onComplete={(newRec) => {
+            setOnboardingRecord(newRec);
+            setIsOnboardingModalOpen(false);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-32 font-sans">
@@ -294,6 +180,49 @@ export const AthleteProfileView: React.FC = () => {
         </div>
       </div>
 
+      {/* 2.5 Scheda Anamnesi & Onboarding Atleta */}
+      <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0">
+            <FileText className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-[var(--color-text)]">
+                Questionario Anamnesi Iniziale
+              </h3>
+              {onboardingRecord?.status === 'completed' ? (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase">
+                  Completato
+                </span>
+              ) : onboardingRecord?.currentStep && onboardingRecord.currentStep > 1 ? (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-black uppercase">
+                  Bozza (Passo {onboardingRecord.currentStep})
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-black uppercase">
+                  Da Compilare
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+              {onboardingRecord?.status === 'completed'
+                ? `Parametri, obiettivi e safety check registrati il ${new Date(onboardingRecord.completedAt || onboardingRecord.updatedAt).toLocaleDateString('it-IT')}.`
+                : 'Compila o aggiorna i tuoi dati biometrici, infortuni e preferenze operative.'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsOnboardingModalOpen(true)}
+          className="px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow shrink-0 flex items-center justify-center gap-1.5 cursor-pointer"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>{onboardingRecord?.status === 'completed' ? 'Visualizza / Modifica' : 'Compila Anamnesi'}</span>
+        </button>
+      </div>
+
       {/* 3. Prossimo Appuntamento & Calendario */}
       <AthleteNextAppointmentCard targetAthleteId={athleteId} />
 
@@ -315,12 +244,6 @@ export const AthleteProfileView: React.FC = () => {
         </div>
       )}
 
-      {/* 5. Sezione Trofei, Livelli & Gamification */}
-      <AthleteTrophiesSection
-        completedWorkoutsCount={pastSessions.length}
-        maxLifts={maxLifts.filter((l) => String(l.athlete_id) === String(athleteId))}
-        metrics={metrics.filter((m) => String(m.athlete_id) === String(athleteId))}
-      />
 
       {/* 5. Change Log / Storico Variazioni Programma */}
       {athleteId && (

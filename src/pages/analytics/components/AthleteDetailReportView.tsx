@@ -43,6 +43,8 @@ import {
   RawExerciseLogItem,
   ExerciseMeta,
 } from './AthleteWorkoutHistorySection';
+import { AthleteAdherenceBadge } from '../../../components/coach/AthleteAdherenceBadge';
+import { fetchAthleteAdherenceData, AdherenceScoreResult } from '../../../services/adherenceService';
 
 interface AthleteDetailReportViewProps {
   athleteReport: AthleteReportSummary;
@@ -82,6 +84,17 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
   onOpenCopilot,
 }) => {
   const isUnassigned = athleteReport.programStatus === 'unassigned';
+
+  const [adherenceData, setAdherenceData] = React.useState<AdherenceScoreResult | null>(null);
+
+  React.useEffect(() => {
+    if (!athleteReport.athleteId) return;
+    let isMounted = true;
+    fetchAthleteAdherenceData(athleteReport.athleteId).then((res) => {
+      if (isMounted) setAdherenceData(res);
+    });
+    return () => { isMounted = false; };
+  }, [athleteReport.athleteId]);
 
   const timeframeButtons: { id: TimeframeOption; label: string; short: string }[] = [
     { id: 'weekly', label: 'Settimanale', short: '7gg' },
@@ -146,12 +159,6 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
     }
   };
 
-  const getScoreColor = (score: number, isUnstarted?: boolean) => {
-    if (isUnassigned || isUnstarted || score === 0) return 'text-slate-400 border-slate-700 bg-slate-900';
-    if (score >= 80) return 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10';
-    if (score >= 60) return 'text-amber-400 border-amber-500/40 bg-amber-500/10';
-    return 'text-rose-400 border-rose-500/40 bg-rose-500/10';
-  };
 
   return (
     <div className="space-y-6">
@@ -257,23 +264,23 @@ export const AthleteDetailReportView: React.FC<AthleteDetailReportViewProps> = (
             </div>
           </div>
 
-          {/* Health & Performance Score Card */}
-          <div className="flex items-center gap-4 bg-slate-950/80 p-3.5 px-5 rounded-2xl border border-slate-800 shrink-0 self-start md:self-auto">
-            <div className="text-left">
-              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
-                Punteggio Andamento
-              </span>
-              <span className="text-xs text-slate-500 font-medium">Performance & Salute</span>
-            </div>
-            <div className={`text-2xl sm:text-3xl font-black font-mono px-3.5 py-1 rounded-xl border ${getScoreColor(athleteReport.overallScore, athleteReport.completedSessions.current === 0)}`}>
-              {isUnassigned || athleteReport.completedSessions.current === 0 ? (
-                <span className="text-slate-400 text-lg">--/100</span>
-              ) : (
-                <>
-                  {athleteReport.overallScore}<span className="text-xs text-slate-400 font-normal">/100</span>
-                </>
-              )}
-            </div>
+          {/* Official Adherence Score Card */}
+          <div className="shrink-0 self-start md:self-auto">
+            {adherenceData ? (
+              <AthleteAdherenceBadge adherence={adherenceData} size="md" />
+            ) : (
+              <div className="flex items-center gap-4 bg-slate-950/80 p-3.5 px-5 rounded-2xl border border-slate-800">
+                <div className="text-left">
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
+                    Indice Aderenza
+                  </span>
+                  <span className="text-xs text-slate-500 font-medium">Ufficiale (28 gg)</span>
+                </div>
+                <div className="text-2xl font-black font-mono px-3.5 py-1 rounded-xl border border-slate-800 text-slate-400">
+                  {isUnassigned ? '--/100' : '...'}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

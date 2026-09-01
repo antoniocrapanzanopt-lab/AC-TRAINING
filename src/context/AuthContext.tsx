@@ -6,7 +6,7 @@ import { getStorageItem, setStorageItem } from '../lib/storage';
 import { hasPermission } from '../lib/permissionsMatrix';
 import { supabase } from '../lib/supabase';
 import { useMFA } from '../hooks/useMFA';
-import { resolveMFAAccessState, AuthScreenState } from '../lib/mfaEngine';
+import { AuthScreenState } from '../lib/mfaEngine';
 
 export interface AuthContextType {
   user: UserProfile | null;
@@ -123,38 +123,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Check if the user is an athlete
-    await supabase.rpc('link_athlete_account');
+    try {
+      // Check if the user is an athlete
+      await supabase.rpc('link_athlete_account');
 
-    const { data: athleteData } = await supabase
-      .from('athletes')
-      .select('id, first_name, last_name, auth_user_id')
-      .ilike('email', email.trim())
-      .maybeSingle();
+      const { data: athleteData } = await supabase
+        .from('athletes')
+        .select('id, first_name, last_name, auth_user_id')
+        .ilike('email', email.trim())
+        .maybeSingle();
 
-    if (athleteData) {
-      setUser({
-        id: sessionUserArg.id,
-        athleteId: athleteData.id,
-        name: `${athleteData.first_name} ${athleteData.last_name}`,
-        email: email,
-        role: 'athlete',
-        canViewFinancials: false,
-        hasSeenDisclaimer: localSeen || metadataSeen,
-      });
-    } else {
-      console.warn('Security: utente non autorizzato, logout forzato.', email);
-      await supabase.auth.signOut();
-      setUser(null);
-      setSessionUser(null);
+      if (athleteData) {
+        setUser({
+          id: sessionUserArg.id,
+          athleteId: athleteData.id,
+          name: `${athleteData.first_name} ${athleteData.last_name}`,
+          email: email,
+          role: 'athlete',
+          canViewFinancials: false,
+          hasSeenDisclaimer: localSeen || metadataSeen,
+        });
+      } else {
+        console.warn('Security: utente non autorizzato, logout forzato.', email);
+        await supabase.auth.signOut();
+        setUser(null);
+        setSessionUser(null);
+      }
+    } catch (err: unknown) {
+      console.warn('Errore in checkUserRoleAndSet:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
+    // Timeout di sicurezza: non bloccare mai la schermata su "Caricamento in corso..." per più di 3 secondi
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
+
     // 1. Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      checkUserRoleAndSet(session?.user);
+      checkUserRoleAndSet(session?.user).finally(() => {
+        clearTimeout(safetyTimeout);
+      });
+    }).catch(() => {
+      setLoading(false);
+      clearTimeout(safetyTimeout);
     });
 
     // 2. Listen for auth changes
@@ -168,7 +183,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimeout);
+      subscription.unsubscribe();
+    };
   }, [checkUserRoleAndSet, mfa.loadMFAStatus]);
 
   const markDisclaimerAsSeen = useCallback(async () => {
@@ -326,12 +344,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const authScreenState = useMemo(() => {
-    return resolveMFAAccessState(sessionUser, mfa.mfaState, user?.role || 'athlete');
-  }, [user, sessionUser, mfa.mfaState]);
+    // 1. Nessuna sessione attiva
+    if (!sessionUser) return 'LOGIN';
+
+    // 2. Se stiamo ancora caricando il profilo utente dal database, rimani in LOADING
+    if (loading || !user) return 'LOADING';
+
+    const realRole = user.role;
+    const mfaRequired = realRole === 'owner' || realRole === 'admin';
+
+    // 3. Se l'utente non ha un ruolo che richiede MFA obbligatoria (es. coach, atleta, receptionist)
+    // Non bloccare mai con LOADING o SETUP_REQUIRED
+    if (!mfaRequired) {
+      if (mfa.mfaState.hasVerifiedFactors) {
+        const isAal1 = mfa.mfaState.currentAAL === 'aal1' || mfa.mfaState.currentAAL === null;
+        return isAal1 ? 'CHALLENGE_REQUIRED' : 'ALLOWED';
+      }
+      return 'ALLOWED';
+    }
+
+    // 4. Per owner/admin:
+    // Se la sessione è già AAL2 (es. verificata dal token JWT), sblocca all'istante
+    if (mfa.mfaState.currentAAL === 'aal2') {
+      return 'ALLOWED';
+    }
+
+    // Se ha fattori registrati ed è AAL1, chiedi challenge
+    if (mfa.mfaState.hasVerifiedFactors) {
+      return 'CHALLENGE_REQUIRED';
+    }
+
+    // Se stiamo ancora verificando se ha fattori, mantieni LOADING
+    if (mfa.mfaState.isLoading) {
+      return 'LOADING';
+    }
+
+    // Altrimenti richiede setup
+    return 'SETUP_REQUIRED';
+  }, [user, sessionUser, loading, mfa.mfaState]);
+
 
   // Non mostrare l'app finché non controlliamo la sessione
   if (loading) {
-    return <div className="h-screen w-screen bg-black flex items-center justify-center text-white">Caricamento in corso...</div>;
+    return (
+      <div className="h-screen w-screen bg-black flex flex-col items-center justify-center gap-3">
+        <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Caricamento...
+        </span>
+      </div>
+    );
   }
 
   return (

@@ -37,19 +37,19 @@ export const ExerciseHistoryModal: React.FC<ExerciseHistoryModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 font-sans">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 font-sans">
       <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header Modal */}
-        <div className="p-4 sm:p-5 border-b border-[var(--color-border)] flex items-center justify-between bg-[var(--color-surface)]">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-600 shrink-0">
+        <div className="p-4 sm:p-5 border-b border-[var(--color-border)] flex items-center justify-between bg-[var(--color-surface)] gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-10 h-10 rounded-2xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 shrink-0">
               <History className="w-5 h-5" />
             </div>
-            <div className="min-w-0">
-              <span className="text-[10px] font-black uppercase tracking-wider text-sky-600 block">
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-sky-400 block">
                 Storico Prestazioni Esercizio
               </span>
-              <h3 className="text-base sm:text-lg font-black text-[var(--color-text)] truncate">
+              <h3 className="text-base sm:text-lg font-black text-[var(--color-text)] break-words line-clamp-2 leading-snug">
                 {exerciseName}
               </h3>
             </div>
@@ -57,7 +57,9 @@ export const ExerciseHistoryModal: React.FC<ExerciseHistoryModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] rounded-xl transition-colors cursor-pointer"
+            className="min-w-[44px] min-h-[44px] w-11 h-11 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] rounded-2xl transition-all active:scale-95 flex items-center justify-center cursor-pointer shrink-0"
+            title="Chiudi"
+            aria-label="Chiudi"
           >
             <X className="w-5 h-5" />
           </button>
