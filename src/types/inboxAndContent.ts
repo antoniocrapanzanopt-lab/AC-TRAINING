@@ -68,6 +68,8 @@ export type ContentStatus =
   | 'published' 
   | 'repurpose';
 
+import { InstagramCarousel } from './carousel';
+
 export interface InstagramContent {
   id: string;
   coach_id: string;
@@ -83,6 +85,7 @@ export interface InstagramContent {
   scheduled_for?: string | null;
   published_at?: string | null;
   internal_notes?: string | null;
+  carousel_data?: InstagramCarousel | null;
   performance_metrics?: {
     views?: number;
     likes?: number;

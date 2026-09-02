@@ -100,6 +100,30 @@
     height: 0px;
   }
 
+  .editor-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(245, 158, 11, 0.4) rgba(15, 23, 42, 0.6);
+  }
+
+  .editor-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .editor-scrollbar::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.6);
+    border-radius: 9999px;
+  }
+
+  .editor-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(245, 158, 11, 0.35);
+    border-radius: 9999px;
+  }
+
+  .editor-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(245, 158, 11, 0.6);
+  }
+
   /* ─── Supporto Safe Area iOS (Notch, Dynamic Island & Home Bar) ─── */
   .safe-top-header {
     padding-top: max(0.75rem, env(safe-area-inset-top, 0px));

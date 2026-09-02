@@ -2030,6 +2030,7 @@ CREATE TABLE IF NOT EXISTS public.instagram_contents (
     scheduled_for TIMESTAMPTZ,
     published_at TIMESTAMPTZ,
     internal_notes TEXT,
+    carousel_data JSONB DEFAULT NULL,
     performance_metrics JSONB DEFAULT '{"views": 0, "likes": 0, "saves": 0, "shares": 0, "leads": 0}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

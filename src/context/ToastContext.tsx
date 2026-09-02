@@ -31,12 +31,17 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         timestamp: Date.now(),
       };
 
-      setToasts((prev) => [...prev, newToast]);
+      setToasts((prev) => {
+        // Evita duplicati identici già a schermo
+        const filtered = prev.filter((t) => t.title !== title);
+        // Mantieni al massimo le ultime 2 notifiche
+        return [...filtered.slice(-1), newToast];
+      });
 
-      // Autochiusura dopo 4 secondi
+      // Autochiusura dopo 2.5 secondi
       setTimeout(() => {
         removeToast(id);
-      }, 4000);
+      }, 2500);
     },
     [removeToast]
   );
