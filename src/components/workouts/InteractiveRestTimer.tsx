@@ -109,15 +109,9 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
           </div>
 
           <div>
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-primary)] block">
                 Recupero Attivo
-              </span>
-              <span
-                className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 font-mono font-bold inline-flex items-center gap-1 border border-amber-500/30"
-                title="Il cronometro è attivo anche sulla schermata di blocco dello smartphone"
-              >
-                📱 Lock Screen
               </span>
               <button
                 type="button"

@@ -36,14 +36,6 @@ import {
   isRestAudioEnabled,
 } from '../../utils/soundEffects';
 import {
-  requestWorkoutWakeLock,
-  releaseWorkoutWakeLock,
-  updateLockScreenTimer,
-  notifyRestCompleteOnLockScreen,
-  stopLockScreenTimer,
-  isWakeLockSupported,
-} from '../../services/workoutDisplayAndLockService';
-import {
   saveActiveWorkoutDraft,
   getActiveWorkoutDraft,
   clearActiveWorkoutDraft,
@@ -130,19 +122,6 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [logs, setLogs] = useState<Record<string, { reps: string; weight: string; rpe: string }[]>>({});
   // SERIE COMPLETATE: Tracciamento booleano per ogni esercizio/set
   const [completedSets, setCompletedSets] = useState<Record<string, boolean[]>>({});
-
-  // Individua l'indice dell'esercizio attivo corrente (il primo non ancora completato)
-  const currentActiveExerciseIndex = useMemo(() => {
-    const firstUnfinished = activeExercises.findIndex((ex) => {
-      const isDone = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
-      return !isDone;
-    });
-    return firstUnfinished !== -1 ? firstUnfinished : 0;
-  }, [activeExercises, completedSets]);
-
-  // Stato Screen Wake Lock (Display sempre attivo)
-  const [isWakeLockActive, setIsWakeLockActive] = useState<boolean>(false);
-
   // NOTE FEEDBACK: Note dell'atleta per singolo esercizio
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   // STORICO SESSIONI PRECEDENTI (GHOST LOG)
@@ -375,23 +354,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     };
   }, [isTimerRunning]);
 
-  const handleSkipRest = useCallback(() => {
-    setRestTimer(null);
-    restEndTimestampRef.current = null;
-    stopLockScreenTimer();
-  }, []);
-
-  const handleAddRestTime = useCallback((seconds: number) => {
-    if (restEndTimestampRef.current) {
-      const newEnd = restEndTimestampRef.current + seconds * 1000;
-      restEndTimestampRef.current = newEnd;
-      const remaining = Math.max(0, Math.ceil((newEnd - Date.now()) / 1000));
-      setRestTimer(remaining);
-      setTotalRestSeconds((prev) => Math.max(prev + seconds, remaining));
-    }
-  }, []);
-
-  // Cronometro Recupero Tra Serie & Sincronizzazione con la Lock Screen
+  // Cronometro Recupero Tra Serie (Risolto: Non si interrompe mai al cambio esercizio o scrolling)
   useEffect(() => {
     const checkTimer = () => {
       if (!restEndTimestampRef.current) {
@@ -401,26 +364,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       const remaining = Math.max(0, Math.ceil((restEndTimestampRef.current - Date.now()) / 1000));
       if (remaining > 0) {
         setRestTimer(remaining);
-
-        // Aggiorna in tempo reale la schermata di blocco dello smartphone
-        const currentEx = activeExercises[currentActiveExerciseIndex];
-        const currentSetNum = (completedSets[currentEx?.id]?.filter(Boolean).length || 0) + 1;
-        updateLockScreenTimer({
-          remainingSeconds: remaining,
-          totalSeconds: totalRestSeconds,
-          exerciseName: currentEx?.name || 'Recupero Esercizio',
-          setNumber: currentSetNum,
-          totalSets: currentEx?.sets || 3,
-          workoutTitle: workout?.title || 'AC Training Session',
-          onSkipRest: handleSkipRest,
-          onAddRestTime: handleAddRestTime,
-        });
       } else {
         restEndTimestampRef.current = null;
         setRestTimer(null);
-
-        // Notifica visiva in lock screen + suoni e vibrazione
-        notifyRestCompleteOnLockScreen(activeExercises[currentActiveExerciseIndex]?.name);
         if (isRestAudioEnabled()) {
           playRestCompleteTone();
         }
@@ -447,37 +393,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
     };
-  }, [activeExercises, currentActiveExerciseIndex, completedSets, totalRestSeconds, workout?.title, handleSkipRest, handleAddRestTime]);
-
-  // Gestione Screen Wake Lock (Schermo sempre attivo durante il workout per evitare standby)
-  useEffect(() => {
-    let mounted = true;
-    requestWorkoutWakeLock().then((active) => {
-      if (mounted) setIsWakeLockActive(active);
-    });
-
-    return () => {
-      mounted = false;
-      releaseWorkoutWakeLock();
-      stopLockScreenTimer();
-    };
   }, []);
-
-  const toggleWakeLock = useCallback(async () => {
-    if (isWakeLockActive) {
-      await releaseWorkoutWakeLock();
-      setIsWakeLockActive(false);
-      showSuccess('Standby Standard Ripristinato', 'Lo schermo seguirà le impostazioni del dispositivo.');
-    } else {
-      const success = await requestWorkoutWakeLock();
-      setIsWakeLockActive(success);
-      if (success) {
-        showSuccess('Schermo Sempre Attivo', 'Il display rimarrà acceso durante l\'allenamento.');
-      } else {
-        showError('Screen Wake Lock Non Supportato', 'Il browser non consente di mantenere il display sempre attivo.');
-      }
-    }
-  }, [isWakeLockActive, showSuccess, showError]);
 
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -579,6 +495,21 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     });
     scheduleAutosave(true); // Salvataggio immediato al completamento della serie
   }, [scheduleAutosave, isWorkoutStarted, elapsedTime, sessionId, activeExercises, startWorkoutSession, workout.id, targetAthleteId, athleteId, currentWeekNumber]);
+
+  const handleSkipRest = useCallback(() => {
+    setRestTimer(null);
+    restEndTimestampRef.current = null;
+  }, []);
+
+  const handleAddRestTime = useCallback((seconds: number) => {
+    if (restEndTimestampRef.current) {
+      const newEnd = restEndTimestampRef.current + seconds * 1000;
+      restEndTimestampRef.current = newEnd;
+      const remaining = Math.max(0, Math.ceil((newEnd - Date.now()) / 1000));
+      setRestTimer(remaining);
+      setTotalRestSeconds((prev) => Math.max(prev + seconds, remaining));
+    }
+  }, []);
 
   const handleNoteChange = useCallback((exerciseId: string, val: string) => {
     setExerciseNotes((prev) => ({ ...prev, [exerciseId]: val }));
@@ -928,6 +859,15 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     }
   };
 
+  // Individua l'indice dell'esercizio attivo corrente (il primo non ancora completato)
+  const currentActiveExerciseIndex = useMemo(() => {
+    const firstUnfinished = activeExercises.findIndex((ex) => {
+      const isDone = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
+      return !isDone;
+    });
+    return firstUnfinished !== -1 ? firstUnfinished : 0;
+  }, [activeExercises, completedSets]);
+
   return (
     <div className="fixed inset-0 bg-[var(--color-bg)] z-50 flex flex-col font-sans overflow-hidden">
       {/* ── HEADER LIVE ELEGANTE & SPAZIOSO ── */}
@@ -1023,21 +963,6 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                     </span>
                   )}
                 </span>
-                {/* Toggle Schermo Sempre Acceso (Screen Wake Lock) */}
-                {isWakeLockSupported() && (
-                  <button
-                    type="button"
-                    onClick={toggleWakeLock}
-                    className={`hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-mono font-bold border transition cursor-pointer ${
-                      isWakeLockActive
-                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 shadow-sm'
-                        : 'bg-slate-900/80 text-slate-500 border-slate-800 hover:text-slate-300'
-                    }`}
-                    title={isWakeLockActive ? 'Schermo sempre attivo (Standby disattivato)' : 'Standby standard attivo (clicca per tenere lo schermo sempre acceso)'}
-                  >
-                    <span>{isWakeLockActive ? '💡 Schermo ON' : '💤 Standby'}</span>
-                  </button>
-                )}
               </div>
             )}
           </div>
