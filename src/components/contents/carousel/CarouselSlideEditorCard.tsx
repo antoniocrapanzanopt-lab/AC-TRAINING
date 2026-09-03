@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   CarouselSlide,
   SlideType,
@@ -8,6 +8,12 @@ import {
   SlideImagePosition,
 } from '../../../types/carousel';
 import {
+  CAROUSEL_AI_OPERATIONS,
+  CarouselAIOperationType,
+} from '../../../services/geminiCarouselOptimizer';
+import {
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   ChevronDown,
   Copy,
@@ -23,8 +29,8 @@ import {
   Layout,
   Type,
   BookOpen,
-  MessageSquare,
   GitBranch,
+  Sliders,
 } from 'lucide-react';
 
 interface CarouselSlideEditorCardProps {
@@ -40,6 +46,9 @@ interface CarouselSlideEditorCardProps {
   onDelete: () => void;
   onRegenerate: () => void;
   onGeminiOptimize?: () => void;
+  onTriggerAIOperation?: (action: CarouselAIOperationType) => void;
+  onNavigatePrev?: () => void;
+  onNavigateNext?: () => void;
   isOptimizingWithGemini?: boolean;
   autoFocusTitle?: boolean;
 }
@@ -80,11 +89,48 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   onDelete,
   onRegenerate,
   onGeminiOptimize,
+  onTriggerAIOperation,
+  onNavigatePrev,
+  onNavigateNext,
   isOptimizingWithGemini = false,
   autoFocusTitle = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const headlineInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const aiMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Modalità Semplice di default con memoria di sessione
+  const [isStyleExpanded, setIsStyleExpanded] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('carousel_style_expanded') === 'true';
+    }
+    return false;
+  });
+
+  const [isAIMenuOpen, setIsAIMenuOpen] = useState<boolean>(false);
+
+  const toggleStylePanel = () => {
+    setIsStyleExpanded((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('carousel_style_expanded', String(next));
+      }
+      return next;
+    });
+  };
+
+  // Chiudi menu AI se si clicca fuori
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (aiMenuRef.current && !aiMenuRef.current.contains(e.target as Node)) {
+        setIsAIMenuOpen(false);
+      }
+    };
+    if (isAIMenuOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isAIMenuOpen]);
 
   // Auto-focus sul titolo della slide attiva
   useEffect(() => {
@@ -106,8 +152,8 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   ].join(' ').trim();
 
   const totalChars = allText.length;
-  const totalWords = allText ? allText.split(/\s+/).length : 0;
-  const isOverflowing = totalWords > 55 || totalChars > 360;
+  const totalWords = allText ? allText.split(/\s+/).filter(Boolean).length : 0;
+  const isOverflowing = totalWords > 50 || totalChars > 340;
 
   const currentLayout: SlideLayoutId = slide.layout || (index === 0 ? 'dual_tone_cover' : index === totalSlides - 1 ? 'final_cta' : 'numbered_list');
 
@@ -131,7 +177,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
     const bullets = slide.bulletPoints || [];
     onChange({
       ...slide,
-      bulletPoints: [...bullets, 'Nuovo punto chiave...'],
+      bulletPoints: [...bullets, 'Nuovo punto pratico...'],
     });
   };
 
@@ -152,6 +198,15 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
     });
   };
 
+  const executeAIOperation = (actionId: CarouselAIOperationType) => {
+    setIsAIMenuOpen(false);
+    if (onTriggerAIOperation) {
+      onTriggerAIOperation(actionId);
+    } else if (onGeminiOptimize) {
+      onGeminiOptimize();
+    }
+  };
+
   return (
     <div
       onClick={onSelect}
@@ -161,34 +216,216 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
           : 'bg-slate-950/80 border-slate-800 hover:border-slate-700 hover:bg-slate-900/40'
       }`}
     >
-      {/* HEADER CARD: NUMERO SLIDE, TIPO, LAYOUT & AZIONI */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="px-2.5 py-1 rounded-xl bg-slate-800 border border-slate-700 text-xs font-black font-mono text-white flex items-center gap-1">
-            <span>Slide {index + 1} di {totalSlides}</span>
-          </span>
-          
-          {/* Selettore Tipo Slide */}
-          <select
-            value={slide.type}
-            onChange={(e) => onChange({ ...slide, type: e.target.value as SlideType })}
-            onClick={(e) => e.stopPropagation()}
-            className="px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
-          >
-            {SLIDE_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+      {/* ─── 1. HEADER DI NAVIGAZIONE & GERARCHIA SLIDE X DI Y ─── */}
+      <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-800/80 flex-wrap">
+        
+        {/* SINISTRA: SLIDE X DI Y + TASTI NAVIGAZIONE PRECEDENTE/SUCCESSIVA */}
+        <div className="flex items-center gap-2">
+          {/* Navigazione Precedente */}
+          {onNavigatePrev && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigatePrev();
+              }}
+              disabled={index === 0}
+              className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 text-slate-300 text-xs font-bold transition cursor-pointer disabled:cursor-not-allowed flex items-center gap-1"
+              title="Slide precedente (Tasto ◄)"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Prec.</span>
+            </button>
+          )}
 
-          {/* Selettore Layout Slide */}
-          <div className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-700" onClick={(e) => e.stopPropagation()}>
-            <Layout className="w-3 h-3 text-amber-400" />
+          {/* Badge EVIDENTE: Slide X di Y */}
+          <div className="px-3 py-1 rounded-xl bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/40 text-amber-300 font-mono font-black text-xs flex items-center gap-1.5 shadow-sm">
+            <span>Slide {index + 1} di {totalSlides}</span>
+          </div>
+
+          {/* Navigazione Successiva */}
+          {onNavigateNext && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigateNext();
+              }}
+              disabled={index >= totalSlides - 1}
+              className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-slate-800 text-slate-300 text-xs font-bold transition cursor-pointer disabled:cursor-not-allowed flex items-center gap-1"
+              title="Slide successiva (Tasto ►)"
+            >
+              <span className="hidden sm:inline">Succ.</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* DESTRA: METRICHE CARATTERI, MENU AI E AZIONI RAPIDE */}
+        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          {/* Badge Conteggio Parole */}
+          <span
+            className={`text-[10px] font-mono px-2 py-0.5 rounded-lg border ${
+              isOverflowing
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 font-bold animate-pulse'
+                : 'bg-slate-950 text-slate-400 border-slate-800'
+            }`}
+            title={isOverflowing ? 'Attenzione: oltre 50 parole, rischia overflow su mobile' : 'Lunghezza ideale per mobile'}
+          >
+            {totalWords} parole
+          </span>
+
+          {/* MENU CONTESTUALE AI: "MIGLIORA QUESTA SLIDE" */}
+          <div className="relative" ref={aiMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsAIMenuOpen((prev) => !prev)}
+              disabled={isOptimizingWithGemini}
+              className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-purple-600/30 via-amber-500/20 to-purple-600/30 hover:from-purple-600/50 hover:to-amber-500/30 text-amber-200 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
+              title="Apri menu azioni AI Gemini 3.8 Flash per questa slide"
+            >
+              <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isOptimizingWithGemini ? 'animate-spin' : ''}`} />
+              <span>{isOptimizingWithGemini ? 'Elaborazione...' : '✨ Migliora questa slide'}</span>
+              <ChevronDown className="w-3 h-3 text-amber-400/80" />
+            </button>
+
+            {/* DROPDOWN DELLE 8 AZIONI CONTESTUALI */}
+            {isAIMenuOpen && (
+              <div className="absolute right-0 mt-1.5 w-64 bg-slate-950 border border-slate-700/90 rounded-2xl shadow-2xl p-1.5 z-40 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="px-2 py-1 text-[10px] font-mono font-bold text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                  <span>Azioni Gemini 3.8 Flash</span>
+                  <span className="text-amber-400 font-normal">Mostra diff prima</span>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto custom-scrollbar space-y-0.5">
+                  {CAROUSEL_AI_OPERATIONS.map((op) => (
+                    <button
+                      key={op.id}
+                      type="button"
+                      onClick={() => executeAIOperation(op.id)}
+                      className="w-full text-left p-2 rounded-xl hover:bg-slate-900 transition flex items-start gap-2 text-xs group cursor-pointer"
+                    >
+                      <span className="text-sm shrink-0 mt-0.5">{op.icon}</span>
+                      <div className="min-w-0">
+                        <span className="font-bold text-white group-hover:text-amber-300 block truncate">
+                          {op.label}
+                        </span>
+                        <span className="text-[10px] text-slate-400 line-clamp-1 block">
+                          {op.desc}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {onRegenerate && (
+            <button
+              type="button"
+              onClick={onRegenerate}
+              title="Cambia layout rapido"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-purple-300 hover:bg-purple-500/15 transition cursor-pointer"
+            >
+              <Layout className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* Riordino Su/Giù */}
+          {index > 0 && (
+            <button
+              type="button"
+              onClick={onMoveUp}
+              title="Sposta prima (Su)"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {index < totalSlides - 1 && (
+            <button
+              type="button"
+              onClick={onMoveDown}
+              title="Sposta dopo (Giù)"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {/* Duplica */}
+          <button
+            type="button"
+            onClick={onDuplicate}
+            title="Duplica slide"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-slate-800 transition cursor-pointer"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Elimina */}
+          {totalSlides > 1 && (
+            <button
+              type="button"
+              onClick={onDelete}
+              title="Elimina slide"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* BANNER WARNING OVERFLOW TESTO (NON BLOCCANTE) */}
+      {isOverflowing && (
+        <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>
+              <strong>Attenzione leggibilità ({totalWords} parole):</strong> Consigliamo max 45-50 parole per garantire un&apos;impaginazione pulita e leggibile da mobile.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => executeAIOperation('reduce_text')}
+            className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[10px] font-bold shrink-0 border border-amber-500/40 transition cursor-pointer"
+          >
+            Sintetizza con AI
+          </button>
+        </div>
+      )}
+
+      {/* ─── 2. MODALITÀ SEMPLICE (DEFAULT): I CAMPI FONDAMENTALI ─── */}
+      <div className="space-y-3.5">
+        
+        {/* SELEZIONE TIPO SLIDE & LAYOUT GRAFICO */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5" onClick={(e) => e.stopPropagation()}>
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-400">Tipo Slide</label>
+            <select
+              value={slide.type}
+              onChange={(e) => onChange({ ...slide, type: e.target.value as SlideType })}
+              className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700/80 rounded-xl text-xs font-bold text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
+            >
+              {SLIDE_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+              <Layout className="w-3 h-3 text-amber-400" /> Layout Visivo
+            </label>
             <select
               value={currentLayout}
               onChange={(e) => onChange({ ...slide, layout: e.target.value as SlideLayoutId })}
-              className="bg-transparent text-xs font-bold text-amber-300 focus:outline-none cursor-pointer"
+              className="w-full px-3 py-1.5 bg-slate-950 border border-amber-500/40 rounded-xl text-xs font-bold text-amber-300 focus:outline-none focus:border-amber-400 cursor-pointer"
             >
               {SLIDE_LAYOUTS.map((l) => (
                 <option key={l.value} value={l.value} className="bg-slate-900 text-white">
@@ -199,543 +436,193 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
           </div>
         </div>
 
-        {/* METRICHE CARATTERI & WARNING OVERFLOW */}
-        <div className="flex items-center gap-2">
-          <span
-            className={`text-[10px] font-mono px-2 py-0.5 rounded-lg border ${
-              isOverflowing
-                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 font-bold animate-pulse'
-                : 'bg-slate-900 text-slate-400 border-slate-800'
-            }`}
-          >
-            {totalChars} car. • {totalWords} p.
-          </span>
-
-          {/* PULSANTE GEMINI 3.7 FLASH & AZIONI SULLA SLIDE */}
-          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-            {onGeminiOptimize && (
-              <button
-                type="button"
-                onClick={onGeminiOptimize}
-                disabled={isOptimizingWithGemini}
-                className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-purple-600/30 via-amber-500/20 to-purple-600/30 hover:from-purple-600/40 hover:to-amber-500/30 text-amber-200 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
-                title="Migliora layout, impaginazione, font e posizionamento immagini con Gemini 3.8 Flash"
-              >
-                <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isOptimizingWithGemini ? 'animate-spin' : ''}`} />
-                <span>{isOptimizingWithGemini ? 'Ottimizzazione...' : '⚡ Migliora con Gemini 3.8'}</span>
-              </button>
-            )}
-
-            {index > 0 && (
-              <button
-                type="button"
-                onClick={onMoveUp}
-                title="Sposta prima (Su)"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-              >
-                <ChevronUp className="w-3.5 h-3.5" />
-              </button>
-            )}
-
-            {index < totalSlides - 1 && (
-              <button
-                type="button"
-                onClick={onMoveDown}
-                title="Sposta dopo (Giù)"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-              >
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onRegenerate}
-              title="Cambia layout rapido"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-purple-300 hover:bg-purple-500/15 transition cursor-pointer"
-            >
-              <Layout className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={onDuplicate}
-              title="Duplica slide"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-slate-800 transition cursor-pointer"
-            >
-              <Copy className="w-3.5 h-3.5" />
-            </button>
-
-            {totalSlides > 1 && (
-              <button
-                type="button"
-                onClick={onDelete}
-                title="Elimina slide"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 transition cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* BANNER WARNING OVERFLOW TESTO (NON BLOCCANTE) */}
-      {isOverflowing && (
-        <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
-          <span>
-            <strong>Attenzione leggibilità ({totalWords} parole):</strong> Consigliamo massimo 45-50 parole per garantire un'impaginazione pulita e leggibile da mobile.
-          </span>
-        </div>
-      )}
-
-      {/* 1. TIPOGRAFIA & DIMENSIONE ESATTA IN PIXEL (PX) */}
-      <div className="p-3.5 bg-slate-950/90 rounded-2xl border border-slate-800 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-            <Type className="w-3.5 h-3.5 text-amber-400" />
-            <span>Personalizzazione Caratteri & Grandezza (px)</span>
-          </span>
-
-          {/* Allineamento Testo */}
-          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-700 text-xs">
-            <button
-              type="button"
-              onClick={() => onChange({ ...slide, textAlign: 'left' })}
-              className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
-                (!slide.textAlign || slide.textAlign === 'left') ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Allinea a sinistra"
-            >
-              ◀
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange({ ...slide, textAlign: 'center' })}
-              className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
-                slide.textAlign === 'center' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Allinea al centro"
-            >
-              ⏺
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange({ ...slide, textAlign: 'right' })}
-              className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
-                slide.textAlign === 'right' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Allinea a destra"
-            >
-              ▶
-            </button>
-          </div>
-        </div>
-
-        {/* FAMIGLIE DI FONT (TITOLO + CORPO) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {/* Selettore Font Titoli */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-400">Font Titoli</label>
-            <select
-              value={slide.titleFont || 'Inter'}
-              onChange={(e) => onChange({ ...slide, titleFont: e.target.value as TitleFontFamily })}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
-            >
-              <option value="Bebas Neue">Bebas Neue (Impatto Alto)</option>
-              <option value="Montserrat">Montserrat (Geometrico)</option>
-              <option value="Outfit">Outfit (Bold Moderno)</option>
-              <option value="Inter">Inter (Tecnico Pulito)</option>
-            </select>
-          </div>
-
-          {/* Selettore Font Corpo */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-400">Font Corpo / Dettagli</label>
-            <select
-              value={slide.bodyFont || 'Inter'}
-              onChange={(e) => onChange({ ...slide, bodyFont: e.target.value as BodyFontFamily })}
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 cursor-pointer focus:outline-none focus:border-amber-500"
-            >
-              <option value="Inter">Inter</option>
-              <option value="Roboto">Roboto</option>
-              <option value="Montserrat">Montserrat</option>
-              <option value="Outfit">Outfit</option>
-            </select>
-          </div>
-        </div>
-
-        {/* REGOLAZIONE ESATTA IN PIXEL (PX) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
-          {/* Grandezza Titolo in px */}
-          <div className="space-y-1.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-            <div className="flex items-center justify-between text-[11px]">
-              <div className="flex items-center gap-1.5">
-                <label className="font-bold text-slate-300">Grandezza Titolo</label>
-                <div className="flex items-center gap-1">
-                  {[44, 84, 120, 200].map((sz) => (
-                    <button
-                      key={sz}
-                      type="button"
-                      onClick={() => onChange({ ...slide, titleFontSizePx: sz })}
-                      className="px-1.5 py-0.2 rounded bg-slate-800 hover:bg-amber-500/20 text-[9px] text-amber-300/80 hover:text-amber-200 border border-slate-700/60 font-mono transition cursor-pointer"
-                      title={`Imposta titolo a ${sz}px`}
-                    >
-                      {sz}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center gap-1 font-mono">
-                <input
-                  type="number"
-                  min="20"
-                  max="200"
-                  value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val)) {
-                      onChange({ ...slide, titleFontSizePx: Math.max(20, Math.min(200, val)) });
-                    }
-                  }}
-                  className="w-14 px-1.5 py-0.5 bg-slate-950 border border-amber-500/50 rounded text-center text-amber-300 font-bold focus:outline-none focus:border-amber-400"
-                />
-                <span className="text-slate-500">px</span>
-              </div>
-            </div>
-            <input
-              type="range"
-              min="24"
-              max="200"
-              step="2"
-              value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
-              onChange={(e) => onChange({ ...slide, titleFontSizePx: parseInt(e.target.value, 10) })}
-              className="w-full accent-amber-500 cursor-pointer"
-            />
-            <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
-              <span>24px (Compatto)</span>
-              <span>100px</span>
-              <span>200px (Max Impatto)</span>
-            </div>
-          </div>
-
-          {/* Grandezza Corpo in px */}
-          <div className="space-y-1.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-            <div className="flex items-center justify-between text-[11px]">
-              <label className="font-bold text-slate-300">Grandezza Testo & Liste</label>
-              <div className="flex items-center gap-1 font-mono">
-                <input
-                  type="number"
-                  min="16"
-                  max="48"
-                  value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val)) {
-                      onChange({ ...slide, bodyFontSizePx: Math.max(14, Math.min(50, val)) });
-                    }
-                  }}
-                  className="w-12 px-1.5 py-0.5 bg-slate-950 border border-purple-500/50 rounded text-center text-purple-300 font-bold focus:outline-none focus:border-purple-400"
-                />
-                <span className="text-slate-500">px</span>
-              </div>
-            </div>
-            <input
-              type="range"
-              min="18"
-              max="40"
-              step="1"
-              value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
-              onChange={(e) => onChange({ ...slide, bodyFontSizePx: parseInt(e.target.value, 10) })}
-              className="w-full accent-purple-500 cursor-pointer"
-            />
-            <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
-              <span>18px (Minimo)</span>
-              <span>26px</span>
-              <span>40px (Grande)</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. TITOLO A 2 TONI (BIANCO + ACCENTO) */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-slate-300">Titolo Slide (Riga 1 - Bianco) *</label>
-          <span className="text-[10px] text-amber-400/80 font-mono">↵ Premi Invio per andare a capo</span>
-        </div>
-        <textarea
-          ref={headlineInputRef}
-          rows={2}
-          value={slide.headline}
-          onChange={(e) => onChange({ ...slide, headline: e.target.value })}
-          placeholder="es. CEDIMENTO TECNICO (premi Invio per spezzare le righe a piacere)"
-          className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-bold resize-y min-h-[56px] leading-relaxed"
-        />
-
-        <div className="space-y-1">
+        {/* TITOLO A 2 TONI (BIANCO + ACCENTO) CON INVIO PER A CAPO */}
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-              <span>✨ Testo Evidenziato / Riga 2 (Colore Accento)</span>
-            </label>
-            <span className="text-[10px] text-amber-400/70 font-mono">↵ Invio per a capo</span>
+            <label className="text-xs font-bold text-slate-300">Titolo Slide (Riga 1 - Bianco) *</label>
+            <span className="text-[10px] text-amber-400/80 font-mono">↵ Premi Invio per andare a capo</span>
           </div>
           <textarea
-            rows={1}
-            value={slide.headlineHighlight || ''}
-            onChange={(e) => onChange({ ...slide, headlineHighlight: e.target.value })}
-            placeholder="es. O MUSCOLARE? (premi Invio per andare a capo)"
-            className="w-full px-3.5 py-1.5 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-amber-300 placeholder-amber-500/40 focus:outline-none focus:border-amber-400 font-bold resize-y min-h-[42px] leading-relaxed"
+            ref={headlineInputRef}
+            rows={2}
+            value={slide.headline}
+            onChange={(e) => onChange({ ...slide, headline: e.target.value })}
+            placeholder="es. CEDIMENTO TECNICO (premi Invio per spezzare le righe a piacere)"
+            className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-bold resize-y min-h-[56px] leading-relaxed"
+          />
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                <span>✨ Testo Evidenziato / Riga 2 (Colore Accento)</span>
+              </label>
+              <span className="text-[10px] text-amber-400/70 font-mono">↵ Invio per a capo</span>
+            </div>
+            <textarea
+              rows={1}
+              value={slide.headlineHighlight || ''}
+              onChange={(e) => onChange({ ...slide, headlineHighlight: e.target.value })}
+              placeholder="es. O MUSCOLARE? (premi Invio per andare a capo)"
+              className="w-full px-3.5 py-1.5 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-amber-300 placeholder-amber-500/40 focus:outline-none focus:border-amber-400 font-bold resize-y min-h-[42px] leading-relaxed"
+            />
+          </div>
+        </div>
+
+        {/* SOTTOTITOLO / INTRO */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-400">Sottotitolo / Gancio Dati</label>
+            <span className="text-[10px] text-slate-500 font-mono">↵ Invio per a capo</span>
+          </div>
+          <textarea
+            rows={2}
+            value={slide.subheadline || ''}
+            onChange={(e) => onChange({ ...slide, subheadline: e.target.value })}
+            placeholder="es. VEDIAMO COSA MOSTRANO DAVVERO I DATI! (premi Invio per andare a capo)"
+            className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-y min-h-[50px] leading-relaxed"
           />
         </div>
-      </div>
 
-      {/* 2. SOTTOTITOLO / INTRO */}
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-slate-400">Sottotitolo / Gancio Dati</label>
-          <span className="text-[10px] text-slate-500 font-mono">↵ Invio per a capo</span>
-        </div>
-        <textarea
-          rows={2}
-          value={slide.subheadline || ''}
-          onChange={(e) => onChange({ ...slide, subheadline: e.target.value })}
-          placeholder="es. VEDIAMO COSA MOSTRANO DAVVERO I DATI! (premi Invio per andare a capo)"
-          className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-y min-h-[50px] leading-relaxed"
-        />
-      </div>
-
-      {/* 3. CAMPI SPECIALI IN BASE AL LAYOUT */}
-      {currentLayout === 'diagram_flow' ? (
-        /* FLUSSO DIAGRAMMA (PREMESSA -> FRECCIA -> RISULTATO -> PUNCHLINE) */
-        <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950 border border-purple-500/30">
-          <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-            <GitBranch className="w-3.5 h-3.5" />
-            Configurazione Diagramma di Flusso
-          </span>
-
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-slate-400">Step 1 (Premessa)</label>
-            <input
-              type="text"
-              value={slide.diagramStep1 || ''}
-              onChange={(e) => onChange({ ...slide, diagramStep1: e.target.value })}
-              placeholder="es. Non riuscire più a completare il compito stabilito (ROM o tecnica)"
-              className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
-            />
+        {/* CORPO DEL TESTO */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-300">Corpo del Testo / Spiegazione</label>
+            <span className="text-[10px] text-slate-500">Formattazione libera per mobile</span>
           </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-400">Step 2 (Definizione)</label>
-              <input
-                type="text"
-                value={slide.diagramStep2 || ''}
-                onChange={(e) => onChange({ ...slide, diagramStep2: e.target.value })}
-                placeholder="es. Quello che viene definito:"
-                className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-amber-400">Risultato Evidenziato</label>
-              <input
-                type="text"
-                value={slide.diagramHighlightResult || ''}
-                onChange={(e) => onChange({ ...slide, diagramHighlightResult: e.target.value })}
-                placeholder="es. TASK FAILURE!"
-                className="w-full px-3 py-1.5 bg-slate-900 border border-amber-500/50 rounded-xl text-xs text-amber-300 font-bold"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-amber-300 flex items-center gap-1">
-              <MessageSquare className="w-3 h-3 text-amber-400" /> Pillola Coach / Transizione
-            </label>
-            <input
-              type="text"
-              value={slide.punchlineQuote || ''}
-              onChange={(e) => onChange({ ...slide, punchlineQuote: e.target.value })}
-              placeholder="es. ED È PROPRIO QUI CHE NASCE IL PRIMO EQUIVOCO..."
-              className="w-full px-3 py-1.5 bg-slate-900 border border-amber-500/40 rounded-xl text-xs text-amber-200 font-bold"
-            />
-          </div>
-        </div>
-      ) : currentLayout === 'error_vs_correct' ? (
-        /* ERRORE VS CORRETTO */
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-rose-400 flex items-center gap-1">
-              <span>❌ Errore Comune</span>
-            </label>
-            <textarea
-              rows={2}
-              value={slide.wrongText || ''}
-              onChange={(e) => onChange({ ...slide, wrongText: e.target.value })}
-              placeholder="es. Curvare la schiena e strappare il carico all'inizio..."
-              className="w-full px-3 py-2 bg-rose-500/5 border border-rose-500/30 rounded-xl text-xs text-rose-100 placeholder-rose-400/40 focus:outline-none focus:border-rose-400 resize-none"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-              <span>✅ Correzione Ottimale</span>
-            </label>
-            <textarea
-              rows={2}
-              value={slide.correctText || ''}
-              onChange={(e) => onChange({ ...slide, correctText: e.target.value })}
-              placeholder="es. Spingere i piedi nel pavimento e attivare i dorsali..."
-              className="w-full px-3 py-2 bg-emerald-500/5 border border-emerald-500/30 rounded-xl text-xs text-emerald-100 placeholder-emerald-400/40 focus:outline-none focus:border-emerald-400 resize-none"
-            />
-          </div>
-        </div>
-      ) : (
-        /* CORPO TESTO STANDARD */
-        <div className="space-y-1">
-          <label className="text-xs font-bold text-slate-400">Corpo del Testo</label>
           <textarea
             rows={3}
             value={slide.bodyText || ''}
             onChange={(e) => onChange({ ...slide, bodyText: e.target.value })}
-            placeholder="Spiegazione chiara ed essenziale del concetto..."
-            className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none leading-relaxed"
+            placeholder="Scrivi qui la spiegazione, le regole da seguire o l'approfondimento..."
+            className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-y min-h-[75px] leading-relaxed"
           />
         </div>
-      )}
 
-      {/* 4. PUNTI ELENCO / NODI CONNESSI */}
-      {currentLayout !== 'error_vs_correct' && currentLayout !== 'diagram_flow' && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-400">
-              {currentLayout === 'connected_icon_list' ? 'Nodi Connessi con Icone' : 'Punti Elenco (Bullet List)'}
-            </label>
-            <button
-              type="button"
-              onClick={handleAddBullet}
-              className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-0.5 cursor-pointer"
-            >
-              <Plus className="w-3 h-3" /> Aggiungi punto
-            </button>
-          </div>
-
-          {slide.bulletPoints && slide.bulletPoints.length > 0 ? (
-            <div className="space-y-2">
-              {slide.bulletPoints.map((bullet, bIdx) => (
-                <div key={bIdx} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={bullet}
-                    onChange={(e) => handleUpdateBullet(bIdx, e.target.value)}
-                    placeholder="es. 🎯 sanno dove vogliono andare."
-                    className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveBullet(bIdx)}
-                    className="p-1.5 text-slate-500 hover:text-rose-400 transition cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+        {/* ─── CAMPI SPECIFICI IN BASE AL LAYOUT ATTIVO ─── */}
+        {currentLayout === 'diagram_flow' && (
+          <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950 border border-purple-500/30">
+            <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+              <GitBranch className="w-3.5 h-3.5" /> Flusso Diagramma (Premessa ➔ Risultato)
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <input
+                type="text"
+                value={slide.diagramStep1 || ''}
+                onChange={(e) => onChange({ ...slide, diagramStep1: e.target.value })}
+                placeholder="Step 1: Premessa"
+                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white"
+              />
+              <input
+                type="text"
+                value={slide.diagramHighlightResult || ''}
+                onChange={(e) => onChange({ ...slide, diagramHighlightResult: e.target.value })}
+                placeholder="Risultato Evidenziato (es. TASK FAILURE!)"
+                className="w-full px-2.5 py-1.5 bg-slate-900 border border-amber-500/50 rounded-xl text-xs text-amber-300 font-bold"
+              />
             </div>
-          ) : (
-            <span className="text-xs text-slate-500 italic block">Nessun punto elenco (opzionale)</span>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* 5. CATEGORIA TESTATA (■ FISIOLOGIA) & CITAZIONE SCIENTIFICA (PMID) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
-        <div className="space-y-1">
-          <label className="text-[11px] font-bold text-purple-300 flex items-center gap-1">
-            <Tag className="w-3 h-3 text-purple-400" /> Categoria Testata (■ Tag)
-          </label>
-          <input
-            type="text"
-            value={slide.categoryTag || ''}
-            onChange={(e) => onChange({ ...slide, categoryTag: e.target.value })}
-            placeholder="es. ■ FISIOLOGIA DELL'ALLENAMENTO"
-            className="w-full px-2.5 py-1.5 bg-slate-900 border border-purple-500/30 rounded-xl text-xs text-purple-200 focus:outline-none focus:border-purple-400 font-mono"
-          />
-        </div>
+        {currentLayout === 'error_vs_correct' && (
+          <div className="space-y-2.5 p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+            <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <span>⚖️ Confronto Split: Errore vs Correzione Ottimale</span>
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <textarea
+                rows={2}
+                value={slide.wrongText || ''}
+                onChange={(e) => onChange({ ...slide, wrongText: e.target.value })}
+                placeholder="❌ Errore da evitare..."
+                className="w-full px-2.5 py-1.5 bg-rose-950/20 border border-rose-500/40 rounded-xl text-xs text-rose-200 placeholder-rose-500/40 resize-y"
+              />
+              <textarea
+                rows={2}
+                value={slide.correctText || ''}
+                onChange={(e) => onChange({ ...slide, correctText: e.target.value })}
+                placeholder="✅ Correzione biomeccanica ottimale..."
+                className="w-full px-2.5 py-1.5 bg-emerald-950/20 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 placeholder-emerald-500/40 resize-y"
+              />
+            </div>
+          </div>
+        )}
 
-        <div className="space-y-1">
-          <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-            <BookOpen className="w-3 h-3 text-amber-400" /> Fonte / Citazione Studio (PMID)
-          </label>
-          <input
-            type="text"
-            value={slide.citationSource || ''}
-            onChange={(e) => onChange({ ...slide, citationSource: e.target.value })}
-            placeholder="es. Pelland et al 2022: PMID 35247203"
-            className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono"
-          />
-        </div>
-      </div>
+        {/* Punti Elenco (Bullet Points) se layout list o se presenti */}
+        {(currentLayout === 'numbered_list' || currentLayout === 'connected_icon_list' || (slide.bulletPoints && slide.bulletPoints.length > 0)) && (
+          <div className="space-y-2 p-3 bg-slate-950/80 rounded-2xl border border-slate-800" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                <span>Punti Elenco (Bullet List)</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleAddBullet}
+                className="text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" /> Aggiungi punto
+              </button>
+            </div>
 
-      {/* 6. CUE VISIVO / REGIA & NUMERO EVIDENZA */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-800/80">
-        <div className="space-y-1">
-          <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-            <Video className="w-3 h-3 text-purple-400" /> Cue Visivo / Regia Slide
-          </label>
-          <input
-            type="text"
-            value={slide.visualCue || ''}
-            onChange={(e) => onChange({ ...slide, visualCue: e.target.value })}
-            placeholder="es. Inquadratura con freccia rossa"
-            className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-purple-500"
-          />
-        </div>
+            {(!slide.bulletPoints || slide.bulletPoints.length === 0) ? (
+              <p className="text-[11px] text-slate-500 italic">Nessun punto elenco (opzionale)</p>
+            ) : (
+              <div className="space-y-1.5">
+                {slide.bulletPoints.map((b, bIdx) => (
+                  <div key={bIdx} className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono text-amber-400 font-bold w-4 text-center">
+                      {bIdx + 1}.
+                    </span>
+                    <input
+                      type="text"
+                      value={b}
+                      onChange={(e) => handleUpdateBullet(bIdx, e.target.value)}
+                      placeholder="Punto pratico..."
+                      className="flex-1 px-2.5 py-1 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveBullet(bIdx)}
+                      className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
+                      title="Rimuovi punto"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-        <div className="space-y-1">
-          <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-            <Hash className="w-3 h-3 text-amber-400" /> Numero Evidenza / Stat
-          </label>
-          <input
-            type="text"
-            value={slide.statNumber || ''}
-            onChange={(e) => onChange({ ...slide, statNumber: e.target.value })}
-            placeholder="es. 90% o +15kg"
-            className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-amber-400 font-bold focus:outline-none focus:border-amber-500 font-mono"
-          />
-        </div>
-      </div>
-
-      {/* 7. GESTIONE IMMAGINE & POSIZIONE PERSONALIZZABILE */}
-      <div className="pt-3 border-t border-slate-800/80 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        {/* GESTIONE FOTO RAPIDA */}
+        <div className="flex items-center justify-between p-3 bg-slate-950/60 rounded-2xl border border-slate-800" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2.5 min-w-0">
             {slide.imageUrl ? (
               <div className="flex items-center gap-2">
                 <img
                   src={slide.imageUrl}
                   alt="Slide preview"
-                  className="w-10 h-10 rounded-xl object-cover border border-slate-700 shadow"
+                  className="w-9 h-9 rounded-xl object-cover border border-slate-700 shadow"
                 />
                 <div>
                   <span className="text-xs font-bold text-white block">Foto Caricata</span>
                   <button
                     type="button"
                     onClick={() => onChange({ ...slide, imageUrl: null })}
-                    className="text-[11px] text-rose-400 hover:underline cursor-pointer"
+                    className="text-[10px] text-rose-400 hover:underline cursor-pointer"
                   >
                     Rimuovi
                   </button>
                 </div>
               </div>
             ) : (
-              <span className="text-xs text-slate-500 flex items-center gap-1">
-                <ImageIcon className="w-3.5 h-3.5 text-slate-600" /> Sfondo dinamico predefinito
+              <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5 text-slate-500" /> Sfondo dinamico predefinito
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <input
               ref={fileInputRef}
               type="file"
@@ -753,55 +640,291 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             </button>
           </div>
         </div>
+      </div>
 
-        {/* CONTROLLI POSIZIONE & OPACITÀ SE L'IMMAGINE È PRESENTE */}
-        {slide.imageUrl && (
-          <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800/80 space-y-3">
-            {/* Selettore Posizione Immagine */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-300">Posizione Immagine nella Slide</label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                {[
-                  { id: 'bottom_cutout', label: '⬇️ In Basso', desc: 'Taglio / Soggetto' },
-                  { id: 'right_side', label: '➡️ A Destra', desc: 'Split 50/50' },
-                  { id: 'top_half', label: '⬆️ In Alto', desc: 'Metà Superiore' },
-                  { id: 'background_full', label: '🌌 Sfondo Intero', desc: 'Full Bleed' },
-                ].map((pos) => (
-                  <button
-                    key={pos.id}
-                    type="button"
-                    onClick={() => onChange({ ...slide, imagePosition: pos.id as SlideImagePosition })}
-                    className={`p-2 rounded-xl border text-left cursor-pointer transition text-xs ${
-                      (slide.imagePosition || 'bottom_cutout') === pos.id
-                        ? 'bg-amber-500/20 border-amber-500/70 text-amber-200 ring-1 ring-amber-500/30'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                    }`}
-                  >
-                    <span className="font-bold block">{pos.label}</span>
-                    <span className="text-[9px] text-slate-500 block">{pos.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+      {/* ─── 3. PANNELLO A SOFFIETTO: PERSONALIZZA STILE & DETTAGLI AVANZATI ─── */}
+      <div className="pt-2 border-t border-slate-800/80" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={toggleStylePanel}
+          className="w-full p-2.5 rounded-2xl bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between text-xs font-bold text-slate-300 hover:text-white cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <Sliders className="w-3.5 h-3.5 text-amber-400" />
+            <span>Personalizza Stile & Dettagli Avanzati</span>
+            <span className="text-[10px] text-slate-500 font-normal">
+              (Font, px, allineamento, citazioni, regia)
+            </span>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isStyleExpanded ? 'rotate-180 text-amber-400' : ''}`} />
+        </button>
 
-            {/* Slider Opacità Immagine */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="font-bold text-slate-400">Opacità / Contrasto Foto</span>
-                <span className="font-mono text-amber-300 font-bold">
-                  {Math.round((slide.imageOpacity !== undefined ? slide.imageOpacity : 0.6) * 100)}%
+        {isStyleExpanded && (
+          <div className="mt-3 p-4 bg-slate-950/90 rounded-2xl border border-slate-800 space-y-4 animate-in fade-in slide-in-from-top-2 duration-150">
+            
+            {/* TIPOGRAFIA & ALLINEAMENTO */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <Type className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Caratteri & Allineamento</span>
                 </span>
+
+                {/* Allineamento Testo */}
+                <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-700 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => onChange({ ...slide, textAlign: 'left' })}
+                    className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
+                      (!slide.textAlign || slide.textAlign === 'left') ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Allinea a sinistra"
+                  >
+                    ◀
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange({ ...slide, textAlign: 'center' })}
+                    className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
+                      slide.textAlign === 'center' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Allinea al centro"
+                  >
+                    ⏺
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange({ ...slide, textAlign: 'right' })}
+                    className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
+                      slide.textAlign === 'right' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Allinea a destra"
+                  >
+                    ▶
+                  </button>
+                </div>
               </div>
-              <input
-                type="range"
-                min="0.1"
-                max="1.0"
-                step="0.05"
-                value={slide.imageOpacity !== undefined ? slide.imageOpacity : 0.6}
-                onChange={(e) => onChange({ ...slide, imageOpacity: parseFloat(e.target.value) })}
-                className="w-full accent-amber-500 cursor-pointer"
-              />
+
+              {/* Famiglie di Font */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400">Font Titoli</label>
+                  <select
+                    value={slide.titleFont || 'Inter'}
+                    onChange={(e) => onChange({ ...slide, titleFont: e.target.value as TitleFontFamily })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
+                  >
+                    <option value="Bebas Neue">Bebas Neue (Impatto Alto)</option>
+                    <option value="Montserrat">Montserrat (Geometrico)</option>
+                    <option value="Outfit">Outfit (Bold Moderno)</option>
+                    <option value="Inter">Inter (Tecnico Pulito)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400">Font Corpo / Dettagli</label>
+                  <select
+                    value={slide.bodyFont || 'Inter'}
+                    onChange={(e) => onChange({ ...slide, bodyFont: e.target.value as BodyFontFamily })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 cursor-pointer focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="Inter">Inter</option>
+                    <option value="Roboto">Roboto</option>
+                    <option value="Montserrat">Montserrat</option>
+                    <option value="Outfit">Outfit</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Slider Grandezza Titolo in px (fino a 200px) */}
+              <div className="space-y-1.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                <div className="flex items-center justify-between text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <label className="font-bold text-slate-300">Grandezza Titolo</label>
+                    <div className="flex items-center gap-1">
+                      {[44, 84, 120, 200].map((sz) => (
+                        <button
+                          key={sz}
+                          type="button"
+                          onClick={() => onChange({ ...slide, titleFontSizePx: sz })}
+                          className="px-1.5 py-0.2 rounded bg-slate-800 hover:bg-amber-500/20 text-[9px] text-amber-300/80 hover:text-amber-200 border border-slate-700/60 font-mono transition cursor-pointer"
+                          title={`Imposta titolo a ${sz}px`}
+                        >
+                          {sz}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 font-mono">
+                    <input
+                      type="number"
+                      min="20"
+                      max="200"
+                      value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) {
+                          onChange({ ...slide, titleFontSizePx: Math.max(20, Math.min(200, val)) });
+                        }
+                      }}
+                      className="w-14 px-1.5 py-0.5 bg-slate-950 border border-amber-500/50 rounded text-center text-amber-300 font-bold focus:outline-none focus:border-amber-400"
+                    />
+                    <span className="text-slate-500">px</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="24"
+                  max="200"
+                  step="2"
+                  value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
+                  onChange={(e) => onChange({ ...slide, titleFontSizePx: parseInt(e.target.value, 10) })}
+                  className="w-full accent-amber-500 cursor-pointer"
+                />
+                <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
+                  <span>24px (Compatto)</span>
+                  <span>100px</span>
+                  <span>200px (Max Impatto)</span>
+                </div>
+              </div>
+
+              {/* Slider Grandezza Corpo in px */}
+              <div className="space-y-1.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                <div className="flex items-center justify-between text-[11px]">
+                  <label className="font-bold text-slate-300">Grandezza Testo & Liste</label>
+                  <div className="flex items-center gap-1 font-mono">
+                    <input
+                      type="number"
+                      min="16"
+                      max="48"
+                      value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) {
+                          onChange({ ...slide, bodyFontSizePx: Math.max(14, Math.min(50, val)) });
+                        }
+                      }}
+                      className="w-12 px-1.5 py-0.5 bg-slate-950 border border-purple-500/50 rounded text-center text-purple-300 font-bold focus:outline-none focus:border-purple-400"
+                    />
+                    <span className="text-slate-500">px</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="18"
+                  max="40"
+                  step="1"
+                  value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
+                  onChange={(e) => onChange({ ...slide, bodyFontSizePx: parseInt(e.target.value, 10) })}
+                  className="w-full accent-purple-500 cursor-pointer"
+                />
+                <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
+                  <span>18px (Minimo)</span>
+                  <span>26px</span>
+                  <span>40px (Grande)</span>
+                </div>
+              </div>
             </div>
+
+            {/* METADATI SCIENTIFICI, TAG & REGIA */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-800">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                  <Tag className="w-3 h-3 text-purple-400" /> Categoria Testata (■ Tag)
+                </label>
+                <input
+                  type="text"
+                  value={slide.categoryTag || ''}
+                  onChange={(e) => onChange({ ...slide, categoryTag: e.target.value })}
+                  placeholder="es. ■ FISIOLOGIA DELL'ALLENAMENTO"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-purple-500/30 rounded-xl text-xs text-purple-200 focus:outline-none focus:border-purple-400 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                  <BookOpen className="w-3 h-3 text-amber-400" /> Fonte / Studio (PMID)
+                </label>
+                <input
+                  type="text"
+                  value={slide.citationSource || ''}
+                  onChange={(e) => onChange({ ...slide, citationSource: e.target.value })}
+                  placeholder="es. Pelland et al 2022: PMID 35247203"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                  <Video className="w-3 h-3 text-purple-400" /> Cue Visivo / Regia Slide
+                </label>
+                <input
+                  type="text"
+                  value={slide.visualCue || ''}
+                  onChange={(e) => onChange({ ...slide, visualCue: e.target.value })}
+                  placeholder="es. Inquadratura con freccia rossa"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                  <Hash className="w-3 h-3 text-amber-400" /> Numero Evidenza / Stat
+                </label>
+                <input
+                  type="text"
+                  value={slide.statNumber || ''}
+                  onChange={(e) => onChange({ ...slide, statNumber: e.target.value })}
+                  placeholder="es. 90% o +15kg"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-amber-400 font-bold focus:outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* CONTROLLI POSIZIONE IMMAGINE (SE FOTO PRESENTE) */}
+            {slide.imageUrl && (
+              <div className="pt-2 border-t border-slate-800 space-y-2">
+                <label className="text-[11px] font-bold text-slate-300">Posizione & Opacità Immagine</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {[
+                    { id: 'bottom_cutout', label: '⬇️ In Basso', desc: 'Taglio' },
+                    { id: 'right_side', label: '➡️ A Destra', desc: 'Split' },
+                    { id: 'top_half', label: '⬆️ In Alto', desc: 'Metà' },
+                    { id: 'background_full', label: '🌌 Sfondo', desc: 'Full' },
+                  ].map((pos) => (
+                    <button
+                      key={pos.id}
+                      type="button"
+                      onClick={() => onChange({ ...slide, imagePosition: pos.id as SlideImagePosition })}
+                      className={`p-2 rounded-xl border text-left cursor-pointer transition text-xs ${
+                        (slide.imagePosition || 'bottom_cutout') === pos.id
+                          ? 'bg-amber-500/20 border-amber-500/70 text-amber-200 ring-1 ring-amber-500/30'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="font-bold block">{pos.label}</span>
+                      <span className="text-[10px] text-slate-500">{pos.desc}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <span className="text-[11px] text-slate-400">Opacità:</span>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="1"
+                    step="0.05"
+                    value={slide.imageOpacity ?? 0.6}
+                    onChange={(e) => onChange({ ...slide, imageOpacity: parseFloat(e.target.value) })}
+                    className="flex-1 accent-amber-500 cursor-pointer"
+                  />
+                  <span className="text-[11px] font-mono text-amber-300">
+                    {Math.round((slide.imageOpacity ?? 0.6) * 100)}%
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

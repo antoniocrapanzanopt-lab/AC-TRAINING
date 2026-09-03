@@ -19,10 +19,14 @@ import {
 import {
   optimizeSlideWithGemini,
   optimizeEntireCarouselWithGemini,
+  CarouselAIOperationType,
+  CAROUSEL_AI_OPERATIONS,
 } from '../../../services/geminiCarouselOptimizer';
 import { CarouselSlideEditorCard } from './CarouselSlideEditorCard';
 import { CarouselCanvasPreview } from './CarouselCanvasPreview';
 import { BrandKitModal } from './BrandKitModal';
+import { CarouselAIDiffModal } from './CarouselAIDiffModal';
+import { CarouselQualityChecklistModal } from './CarouselQualityChecklistModal';
 import { useToast } from '../../../context/ToastContext';
 import {
   ArrowLeft,
@@ -38,6 +42,9 @@ import {
   Eye,
   Edit3,
   Loader2,
+  ShieldCheck,
+  Expand,
+  Minimize2,
 } from 'lucide-react';
 
 interface CarouselStudioModalProps {
@@ -90,9 +97,35 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
   const [isGeminiOptimizing, setIsGeminiOptimizing] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<string>('');
   const [isBrandKitOpen, setIsBrandKitOpen] = useState<boolean>(false);
+  const [isQualityModalOpen, setIsQualityModalOpen] = useState<boolean>(false);
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [lastSavedText, setLastSavedText] = useState<string>('ora');
+
+  // Stato modale confronto Diff AI
+  const [aiDiffState, setAiDiffState] = useState<{
+    isOpen: boolean;
+    originalSlide: CarouselSlide | null;
+    proposedSlide: CarouselSlide | null;
+    actionName: string;
+  }>({
+    isOpen: false,
+    originalSlide: null,
+    proposedSlide: null,
+    actionName: '',
+  });
+
+  // Stato dialog conferma export per overflow critico
+  const [overflowConfirmDialog, setOverflowConfirmDialog] = useState<{
+    isOpen: boolean;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    message: '',
+    onConfirm: () => {},
+  });
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const latestCarouselRef = useRef<InstagramCarousel>(carousel);
@@ -107,7 +140,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
   const safeIndex = Math.min(Math.max(0, selectedSlideIndex), Math.max(0, slides.length - 1));
   const activeSlide = slides[safeIndex] || slides[0];
 
-  // Esecuzione autosave con debounce tra 600 e 1000 ms (750ms)
+  // Esecuzione autosave con debounce rigoroso a 800 ms
   const triggerDebouncedAutosave = useCallback(
     (updatedCarousel: InstagramCarousel) => {
       setSaveStatus('saving');
@@ -123,7 +156,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
         } catch {
           setSaveStatus('error');
         }
-      }, 750);
+      }, 800);
     },
     [onSaveCarousel]
   );
@@ -138,6 +171,19 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     setSaveStatus('saved');
   }, [onSaveCarousel]);
 
+  // Protezione beforeunload se ci sono modifiche in salvataggio
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (saveStatus === 'saving') {
+        e.preventDefault();
+        e.returnValue = 'Ci sono modifiche in fase di salvataggio. Vuoi uscire comunque?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [saveStatus]);
+
   // Aggiornamento singola slide
   const handleUpdateSlide = (updatedSlide: CarouselSlide) => {
     const updatedSlides = slides.map((s) => (s.id === updatedSlide.id ? updatedSlide : s));
@@ -150,7 +196,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     triggerDebouncedAutosave(updatedCarousel);
   };
 
-  // Cambio template (mantiene invariati testi, immagini e CTA)
+  // Cambio template
   const handleSelectTemplate = (templateId: CarouselTemplateId) => {
     const updatedCarousel: InstagramCarousel = {
       ...carousel,
@@ -161,7 +207,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     triggerDebouncedAutosave(updatedCarousel);
   };
 
-  // Spostamento slide
+  // Spostamento slide con rinumerazione atomica
   const handleMoveSlide = (index: number, direction: 'up' | 'down') => {
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= slides.length) return;
@@ -177,7 +223,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     setSelectedSlideIndex(targetIndex);
   };
 
-  // Duplicazione slide
+  // Duplicazione slide con rinumerazione automatica
   const handleDuplicateSlide = (index: number) => {
     if (slides.length >= 10) {
       showError('Instagram supporta un massimo di 10 slide per carosello.');
@@ -201,7 +247,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     setSelectedSlideIndex(index + 1);
   };
 
-  // Eliminazione slide
+  // Eliminazione slide con rinumerazione atomica
   const handleDeleteSlide = (index: number) => {
     if (slides.length <= 1) {
       showError('Il carosello deve avere almeno 1 slide.');
@@ -216,7 +262,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     setSelectedSlideIndex(Math.max(0, index - 1));
   };
 
-  // Aggiunta nuova slide
+  // Aggiunta nuova slide con rinumerazione atomica
   const handleAddNewSlide = () => {
     if (slides.length >= 10) {
       showError('Limite massimo raggiunto: Instagram supporta fino a 10 slide.');
@@ -243,7 +289,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     setSelectedSlideIndex(slides.length);
   };
 
-  // Rigenerazione singola slide con AI
+  // Rigenerazione singola slide con template locale
   const handleRegenerateSlide = (index: number) => {
     const target = slides[index];
     const regenerated = regenerateSingleSlide(target, content.title || 'questo esercizio', slides.length);
@@ -259,14 +305,22 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     showSuccess('Struttura carosello rigenerata con AI!');
   };
 
-  // Ottimizzazione avanzata singola slide con Google Gemini 3.8 Flash
-  const handleGeminiOptimizeSlide = async (index: number) => {
+  // Trigger azione contestuale AI con Gemini 3.8 Flash e apertura diff obbligatorio
+  const handleTriggerAIOperation = async (action: CarouselAIOperationType = 'improve_all') => {
+    if (!activeSlide) return;
     setIsGeminiOptimizing(true);
     try {
-      const target = slides[index];
-      const optimized = await optimizeSlideWithGemini(target, content, index, slides.length);
-      handleUpdateSlide(optimized);
-      showSuccess('✨ Slide Perfezionata con Gemini 3.8 Flash!', 'Layout, caratteri e posizionamento ottimizzati.');
+      const actionOption = CAROUSEL_AI_OPERATIONS.find((o) => o.id === action);
+      const actionLabel = actionOption?.label || 'Miglioramento Slide';
+      const optimized = await optimizeSlideWithGemini(activeSlide, content, safeIndex, slides.length, action);
+
+      // Mostra sempre il diff visivo prima di qualsiasi applicazione
+      setAiDiffState({
+        isOpen: true,
+        originalSlide: activeSlide,
+        proposedSlide: optimized,
+        actionName: actionLabel,
+      });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Errore durante l\'ottimizzazione';
       showError('Errore Gemini 3.8 Flash', errMsg);
@@ -275,7 +329,14 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     }
   };
 
-  // Ottimizzazione avanzata intero carosello con Google Gemini 3.8 Flash
+  // Applicazione esplicita delle modifiche proposte da Gemini
+  const handleApplyAIDiff = (appliedSlide: CarouselSlide) => {
+    handleUpdateSlide(appliedSlide);
+    setAiDiffState({ isOpen: false, originalSlide: null, proposedSlide: null, actionName: '' });
+    showSuccess('✨ Modifiche AI applicate!', `Slide ${safeIndex + 1} aggiornata con successo.`);
+  };
+
+  // Ottimizzazione intero carosello con Gemini 3.8 Flash
   const handleGeminiOptimizeAll = async () => {
     setIsGeminiOptimizing(true);
     try {
@@ -291,8 +352,29 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     }
   };
 
-  // Esportazione ZIP
-  const handleExportZip = async () => {
+  // Esportazione ZIP con controllo overflow critico non bloccante
+  const handleExportZip = async (force: boolean = false) => {
+    if (!force) {
+      const criticalSlides = slides
+        .map((s, idx) => {
+          const words = (s.headline + ' ' + (s.subheadline || '') + ' ' + (s.bodyText || '')).trim().split(/\s+/).filter(Boolean).length;
+          return { index: idx + 1, words };
+        })
+        .filter((s) => s.words > 60);
+
+      if (criticalSlides.length > 0) {
+        setOverflowConfirmDialog({
+          isOpen: true,
+          message: `Attenzione: la Slide ${criticalSlides[0].index} contiene ${criticalSlides[0].words} parole. L'immagine potrebbe risultare molto densa da smartphone. Vuoi esportare comunque lo ZIP o preferisci sintetizzarla prima?`,
+          onConfirm: () => {
+            setOverflowConfirmDialog({ isOpen: false, message: '', onConfirm: () => {} });
+            handleExportZip(true);
+          },
+        });
+        return;
+      }
+    }
+
     flushAutosave();
     setIsExportingZip(true);
     setExportProgress('Inizializzazione rendering slide 1080x1350...');
@@ -373,7 +455,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
             </div>
             <div>
               <h2 className="text-sm font-black text-white flex items-center gap-1.5">
-                <span>Editor Carosello</span>
+                <span>Carousel Studio</span>
                 <span className="text-[11px] font-mono font-bold text-amber-400">• 1080×1350</span>
               </h2>
 
@@ -382,7 +464,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                 {saveStatus === 'saving' ? (
                   <span className="text-amber-400 font-medium flex items-center gap-1">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Salvataggio in corso...</span>
+                    <span>Salvataggio...</span>
                   </span>
                 ) : saveStatus === 'saved' ? (
                   <span className="text-emerald-400 font-medium flex items-center gap-1">
@@ -400,7 +482,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
           </div>
         </div>
 
-        {/* CENTRO: SELETTORE DEI 5 TEMPLATE */}
+        {/* CENTRO: SELETTORE TEMPLATE */}
         <div className="hidden lg:flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
           {TEMPLATE_OPTIONS.map((tmpl) => (
             <button
@@ -419,7 +501,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
           ))}
         </div>
 
-        {/* DESTRA: BRAND KIT, EXPORT ZIP & SALVA */}
+        {/* DESTRA: BRAND KIT, FOCUS MODE, EXPORT ZIP & SALVA */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Switcher Tab Mobile */}
           <div className="flex xl:hidden bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
@@ -445,32 +527,58 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
             </button>
           </div>
 
+          {/* Modalità Focus Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsFocusMode((prev) => !prev)}
+            className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+              isFocusMode
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow'
+                : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+            }`}
+            title={isFocusMode ? 'Mostra colonna miniature' : 'Nascondi colonna miniature per editing focalizzato'}
+          >
+            {isFocusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Expand className="w-3.5 h-3.5" />}
+            <span className="hidden md:inline">{isFocusMode ? 'Esci Focus' : 'Focus'}</span>
+          </button>
+
+          {/* Checklist Qualità Button */}
+          <button
+            type="button"
+            onClick={() => setIsQualityModalOpen(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-amber-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            title="Apri la checklist qualità a 7 criteri"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline font-mono">{qualityAudit.score}/100</span>
+          </button>
+
           {/* Brand Kit */}
           <button
             type="button"
             onClick={() => setIsBrandKitOpen(true)}
-            className="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-amber-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-purple-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
           >
-            <Palette className="w-3.5 h-3.5 text-amber-400" />
+            <Palette className="w-3.5 h-3.5 text-purple-400" />
             <span className="hidden sm:inline">Brand Kit</span>
           </button>
 
-          {/* Ottimizza Tutto con Gemini 3.7 Flash */}
+          {/* Ottimizza Tutto con Gemini 3.8 Flash */}
           <button
             type="button"
             onClick={handleGeminiOptimizeAll}
             disabled={isGeminiOptimizing}
             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600/30 via-amber-500/20 to-purple-600/30 hover:from-purple-600/50 hover:to-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
-            title="Ottimizza layout, impaginazione, font e posizionamento immagini di tutte le slide con Gemini 3.8 Flash"
+            title="Ottimizza intero carosello con Gemini 3.8 Flash"
           >
             <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isGeminiOptimizing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{isGeminiOptimizing ? 'Ottimizzazione...' : '⚡ Gemini 3.8 Flash'}</span>
+            <span className="hidden sm:inline">{isGeminiOptimizing ? 'Ottimizzazione...' : '⚡ Gemini 3.8'}</span>
           </button>
 
           {/* Scarica ZIP */}
           <button
             type="button"
-            onClick={handleExportZip}
+            onClick={() => handleExportZip(false)}
             disabled={isExportingZip}
             className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-md transition cursor-pointer disabled:opacity-50"
           >
@@ -500,85 +608,92 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
       {/* ─── 2. MAIN WORKSPACE FULLSCREEN A 3 COLONNE (MINIATURE | EDITOR SLIDE | ANTEPRIMA 1080x1350) ─── */}
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 overflow-hidden bg-slate-950">
         
-        {/* ─── COLONNA 1 (SINISTRA - 2/12): LISTA MINIATURE VERTICALI DELLE SLIDE ─── */}
-        <div className={`lg:col-span-2 xl:col-span-2 flex flex-col h-full min-h-0 bg-slate-900/60 border border-slate-800 rounded-3xl p-3.5 space-y-3 overflow-hidden ${
-          mobileTab === 'preview' ? 'hidden xl:flex' : 'flex'
-        }`}>
-          
-          {/* HEADER MINIATURE CON + NUOVA SLIDE E RIGENERA AI */}
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 shrink-0">
-            <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
-              <span>Slide ({slides.length}/10)</span>
-            </span>
+        {/* ─── COLONNA 1 (SINISTRA): LISTA MINIATURE VERTICALI DELLE SLIDE ─── */}
+        {!isFocusMode && (
+          <div className={`lg:col-span-2 xl:col-span-2 flex flex-col h-full min-h-0 bg-slate-900/60 border border-slate-800 rounded-3xl p-3.5 space-y-3 overflow-hidden ${
+            mobileTab === 'preview' ? 'hidden xl:flex' : 'flex'
+          }`}>
+            
+            {/* Header Miniature con + Nuova Slide e Rigenera */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 shrink-0">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                <span>Slide ({slides.length}/10)</span>
+              </span>
 
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleAddNewSlide}
-                className="px-2 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
-              >
-                <Plus className="w-3 h-3" /> Aggiungi
-              </button>
-              <button
-                type="button"
-                onClick={handleRegenerateAll}
-                title="Rigenera struttura con AI"
-                className="p-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 transition cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleAddNewSlide}
+                  className="px-2 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" /> Aggiungi
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRegenerateAll}
+                  title="Rigenera struttura con AI"
+                  className="p-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 transition cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Lista Verticale delle Slide */}
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+              {slides.map((s, idx) => {
+                const isSelected = idx === safeIndex;
+                const wordCount = (s.headline + ' ' + (s.subheadline || '') + ' ' + s.bodyText).trim().split(/\s+/).filter(Boolean).length;
+                const hasOverflow = wordCount > 50;
+
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => setSelectedSlideIndex(idx)}
+                    className={`p-2 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                      isSelected
+                        ? 'bg-amber-500/15 border-amber-500/70 text-amber-200 shadow-md ring-1 ring-amber-500/30'
+                        : 'bg-slate-950/70 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-5 h-5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+                      <span className="text-sm shrink-0">{TYPE_ICONS[s.type] || '📄'}</span>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold truncate text-white">
+                          {s.headline || `Slide ${idx + 1}`}
+                        </p>
+                        <span className="text-[9px] text-slate-500 block truncate">
+                          {s.layout?.replace('_', ' ') || s.type}
+                        </span>
+                      </div>
+                    </div>
+
+                    {hasOverflow && (
+                      <span
+                        className="text-[9px] font-mono font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0"
+                        title="Testo denso per mobile (>50 parole)"
+                      >
+                        ⚠️ {wordCount}p
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-500 text-center font-mono">
+              💡 ◄ / ► per scorrere
             </div>
           </div>
+        )}
 
-          {/* LISTA VERTICALE DELLE SCHEDE SLIDE */}
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2 pr-1">
-            {slides.map((s, idx) => {
-              const isSelected = idx === safeIndex;
-              const wordCount = (s.headline + ' ' + (s.subheadline || '') + ' ' + s.bodyText).trim().split(/\s+/).length;
-              const hasOverflow = wordCount > 50;
-
-              return (
-                <div
-                  key={s.id}
-                  onClick={() => setSelectedSlideIndex(idx)}
-                  className={`p-2 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                    isSelected
-                      ? 'bg-amber-500/15 border-amber-500/70 text-amber-200 shadow-md ring-1 ring-amber-500/30'
-                      : 'bg-slate-950/70 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-5 h-5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
-                      {String(idx + 1).padStart(2, '0')}
-                    </span>
-                    <span className="text-sm shrink-0">{TYPE_ICONS[s.type] || '📄'}</span>
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold truncate text-white">
-                        {s.headline || `Slide ${idx + 1}`}
-                      </p>
-                      <span className="text-[9px] text-slate-500 block truncate">
-                        {s.layout?.replace('_', ' ') || s.type}
-                      </span>
-                    </div>
-                  </div>
-
-                  {hasOverflow && (
-                    <span title="Testo denso per mobile">
-                      <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-500 text-center font-mono">
-            💡 ◄ / ► per scorrere
-          </div>
-        </div>
-
-        {/* ─── COLONNA 2 (CENTRO - 5/12): EDITOR SINGOLA SLIDE ─── */}
-        <div className={`lg:col-span-5 xl:col-span-5 flex flex-col h-full min-h-0 overflow-y-auto custom-scrollbar pr-1 ${
+        {/* ─── COLONNA 2 (CENTRO): EDITOR SINGOLA SLIDE ─── */}
+        <div className={`${
+          isFocusMode ? 'lg:col-span-6 xl:col-span-6' : 'lg:col-span-5 xl:col-span-5'
+        } flex flex-col h-full min-h-0 overflow-y-auto custom-scrollbar pr-1 ${
           mobileTab === 'preview' ? 'hidden xl:flex' : 'flex'
         }`}>
           {activeSlide ? (
@@ -595,7 +710,10 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
               onDuplicate={() => handleDuplicateSlide(safeIndex)}
               onDelete={() => handleDeleteSlide(safeIndex)}
               onRegenerate={() => handleRegenerateSlide(safeIndex)}
-              onGeminiOptimize={() => handleGeminiOptimizeSlide(safeIndex)}
+              onGeminiOptimize={() => handleTriggerAIOperation('improve_all')}
+              onTriggerAIOperation={handleTriggerAIOperation}
+              onNavigatePrev={() => setSelectedSlideIndex((prev) => Math.max(0, prev - 1))}
+              onNavigateNext={() => setSelectedSlideIndex((prev) => Math.min(slides.length - 1, prev + 1))}
               isOptimizingWithGemini={isGeminiOptimizing}
             />
           ) : (
@@ -605,12 +723,14 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
           )}
         </div>
 
-        {/* ─── COLONNA 3 (DESTRA - 5/12): ANTEPRIMA LIVE 1080x1350 INGRANDITA ─── */}
-        <div className={`lg:col-span-5 xl:col-span-5 flex flex-col h-full min-h-0 bg-slate-900/40 border border-slate-800 rounded-3xl p-4 overflow-y-auto custom-scrollbar items-center justify-between ${
+        {/* ─── COLONNA 3 (DESTRA): ANTEPRIMA LIVE 1080x1350 ─── */}
+        <div className={`${
+          isFocusMode ? 'lg:col-span-6 xl:col-span-6' : 'lg:col-span-5 xl:col-span-5'
+        } flex flex-col h-full min-h-0 bg-slate-900/40 border border-slate-800 rounded-3xl p-4 overflow-y-auto custom-scrollbar items-center justify-between ${
           mobileTab === 'editor' ? 'hidden xl:flex' : 'flex'
         }`}>
           
-          {/* ANTEPRIMA CANVAS 4:5 */}
+          {/* Anteprima Canvas 4:5 con Zoom e Mockup IG */}
           <div className="w-full flex flex-col items-center">
             {activeSlide && (
               <CarouselCanvasPreview
@@ -620,13 +740,23 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                 currentIndex={safeIndex}
                 onSelectSlide={setSelectedSlideIndex}
                 fullCarousel={carousel}
+                isFocusMode={isFocusMode}
+                onToggleFocusMode={() => setIsFocusMode((prev) => !prev)}
               />
             )}
           </div>
 
-          {/* PULSANTI RAPIDI IN FONDO ALL'ANTEPRIMA */}
+          {/* Pulsanti Rapidi in Fondo all'Anteprima */}
           <div className="w-full pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span className="font-mono">Qualità AI: {qualityAudit.score}/100</span>
+            <button
+              type="button"
+              onClick={() => setIsQualityModalOpen(true)}
+              className="flex items-center gap-1.5 text-xs text-amber-300 font-mono font-bold bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/30 hover:bg-amber-500/20 transition cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Checklist Qualità: {qualityAudit.score}/100</span>
+            </button>
+
             <button
               type="button"
               onClick={() => exportCarouselAsPdfPreview(carousel)}
@@ -638,6 +768,72 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ─── 3. MODALI INTEGRATE (DIFF AI, CHECKLIST QUALITÀ, BRAND KIT, OVERFLOW CONFIRM) ─── */}
+
+      {/* MODALE CONFRONTO DIFF AI GEMINI 3.8 FLASH */}
+      {aiDiffState.isOpen && aiDiffState.originalSlide && aiDiffState.proposedSlide && (
+        <CarouselAIDiffModal
+          isOpen={aiDiffState.isOpen}
+          onClose={() => setAiDiffState({ isOpen: false, originalSlide: null, proposedSlide: null, actionName: '' })}
+          originalSlide={aiDiffState.originalSlide}
+          proposedSlide={aiDiffState.proposedSlide}
+          actionName={aiDiffState.actionName}
+          slideIndex={safeIndex}
+          totalSlides={slides.length}
+          onApply={handleApplyAIDiff}
+        />
+      )}
+
+      {/* MODALE CHECKLIST QUALITÀ A 7 CRITERI */}
+      {isQualityModalOpen && (
+        <CarouselQualityChecklistModal
+          isOpen={isQualityModalOpen}
+          onClose={() => setIsQualityModalOpen(false)}
+          carousel={carousel}
+          onSelectSlide={(idx) => setSelectedSlideIndex(idx)}
+          onOptimizeSlide={(_idx) => handleTriggerAIOperation('improve_all')}
+        />
+      )}
+
+      {/* DIALOG CONFERMA EXPORT CRITICO (NON BLOCCANTE) */}
+      {overflowConfirmDialog.isOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setOverflowConfirmDialog({ isOpen: false, message: '', onConfirm: () => {} })}
+        >
+          <div
+            className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-5 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5 text-amber-400">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <h3 className="text-sm font-bold text-white">Avviso Esportazione ZIP</h3>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              {overflowConfirmDialog.message}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setOverflowConfirmDialog({ isOpen: false, message: '', onConfirm: () => {} })}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
+              >
+                Correggi Prima
+              </button>
+              <button
+                type="button"
+                onClick={overflowConfirmDialog.onConfirm}
+                className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition cursor-pointer shadow-md"
+              >
+                Esporta Comunque
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODALE BRAND KIT */}
       {isBrandKitOpen && (

@@ -46,14 +46,44 @@ interface GeminiSlideOptimizationResponse {
   correctText?: string;
 }
 
+export type CarouselAIOperationType =
+  | 'improve_all'
+  | 'improve_title'
+  | 'reduce_text'
+  | 'make_direct'
+  | 'make_technical'
+  | 'make_persuasive'
+  | 'convert_bullets'
+  | 'generate_alternatives'
+  | 'check_clarity';
+
+export interface AIOperationOption {
+  id: CarouselAIOperationType;
+  label: string;
+  desc: string;
+  icon: string;
+}
+
+export const CAROUSEL_AI_OPERATIONS: AIOperationOption[] = [
+  { id: 'improve_all', label: 'Migliora tutta la slide', desc: 'Ottimizza titolo, impaginazione, font e posizionamento', icon: '✨' },
+  { id: 'improve_title', label: 'Migliora solo il titolo', desc: 'Titolo a due toni magnetico, grande e incisivo', icon: '📝' },
+  { id: 'reduce_text', label: 'Riduci testo (<40 parole)', desc: 'Sintetizza per massima leggibilità da smartphone', icon: '✂️' },
+  { id: 'make_direct', label: 'Rendi diretto & hook forte', desc: 'Elimina preamboli, vai dritto al punto con impatto', icon: '⚡' },
+  { id: 'make_technical', label: 'Rendi tecnico & scientifico', desc: 'Usa biomeccanica, leve e kinesiologia del Metodo AC', icon: '🧬' },
+  { id: 'make_persuasive', label: 'Rendi persuasivo (CTA & Save)', desc: 'Spingi alla conservazione e interazione nel post', icon: '🎯' },
+  { id: 'convert_bullets', label: 'Trasforma in bullet points', desc: 'Riorganizza il testo in 3-4 punti pratici numerati', icon: '🔢' },
+  { id: 'check_clarity', label: 'Verifica chiarezza & errori', desc: 'Controlla leggibilità, punteggiatura e fluidità', icon: '🔍' },
+];
+
 /**
- * Ottimizza una singola slide con Google Gemini 3.7 Flash
+ * Ottimizza una singola slide con Google Gemini 3.8 Flash con supporto per azione contestuale specifica
  */
 export async function optimizeSlideWithGemini(
   slide: CarouselSlide,
   content: Partial<InstagramContent>,
   slideIndex: number,
-  totalSlides: number
+  totalSlides: number,
+  action: CarouselAIOperationType = 'improve_all'
 ): Promise<CarouselSlide> {
   const isCover = slideIndex === 0;
   const isCta = slideIndex === totalSlides - 1;
@@ -82,10 +112,39 @@ Regole di design per i Caroselli Coaching:
 
 Rispondi ESCLUSIVAMENTE in formato JSON valido senza blocchi markdown.`;
 
+  let actionInstruction = '';
+  switch (action) {
+    case 'improve_title':
+      actionInstruction = `OBIETTIVO PRIORITARIO: Concentrati sul TITOLO. Riscrivi "headline" e "headlineHighlight" in modo che siano irresistibili, brevi (3-6 parole) e ad altissimo impatto visivo. Mantieni il corpo del testo fedele all'originale.`;
+      break;
+    case 'reduce_text':
+      actionInstruction = `OBIETTIVO PRIORITARIO: SINTESI ESTREMA. Riduci il testo del corpo ("bodyText") sotto le 35-40 parole totali. Elimina prolissità e parole riempitive. Ogni frase deve essere un pugno informativo pulito e rapido per smartphone.`;
+      break;
+    case 'make_direct':
+      actionInstruction = `OBIETTIVO PRIORITARIO: COMUNICAZIONE DIRETTA E PUNCHY. Elimina preamboli. Esprimi la regola o l'errore senza mezzi termini. Hook forte ed energico.`;
+      break;
+    case 'make_technical':
+      actionInstruction = `OBIETTIVO PRIORITARIO: AUTOREVOLEZZA BIOMECCANICA E KINESIOLOGICA. Utilizza i termini scientifici corretti (bracci di leva, tensione meccanica, punto di allungamento, curva di resistenza). Se opportuno, compila o aggiorna "citationSource".`;
+      break;
+    case 'make_persuasive':
+      actionInstruction = `OBIETTIVO PRIORITARIO: RETENTION E INTERAZIONE. Spingi il lettore a salvare il post e commentare. Formula una chiusura incisiva e motivante.`;
+      break;
+    case 'convert_bullets':
+      actionInstruction = `OBIETTIVO PRIORITARIO: TRASFORMAZIONE IN PUNTI ELENCO. Converti il corpo del testo in 3 o 4 bullet points pratici e concisi (array "bulletPoints") e imposta layout su "numbered_list" o "connected_icon_list".`;
+      break;
+    case 'check_clarity':
+      actionInstruction = `OBIETTIVO PRIORITARIO: MASSIMA CHIAREZZA E LEGGIBILITÀ. Correggi punteggiatura, spaziature, ritorni a capo ed elimina ambiguità semantiche.`;
+      break;
+    default:
+      actionInstruction = `OBIETTIVO PRIORITARIO: Ottimizza a 360° la slide per layout, titolo a 2 toni, leggibilità mobile e valore formativo.`;
+  }
+
   const userPrompt = `Ottimizza questa slide (${slideIndex + 1} di ${totalSlides}) del carosello:
 Argomento Generale: ${content.title || 'Allenamento e Biomeccanica'}
 Gancio: ${content.hook || ''}
 Pillar: ${content.pillar || 'technique_execution'}
+Azione Richiesta: ${action}
+${actionInstruction}
 
 Stato Attuale Slide:
 - Titolo attuale: ${slide.headline}
