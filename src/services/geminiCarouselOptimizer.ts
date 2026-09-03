@@ -126,7 +126,7 @@ Genera l'oggetto JSON con:
   const aiResult = await generateContentWithGemini({
     systemPrompt,
     userPrompt,
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash',
     temperature: 0.5,
   });
 

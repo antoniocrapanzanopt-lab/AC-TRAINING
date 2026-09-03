@@ -100,14 +100,17 @@ export function clearGeminiApiKey() {
 
 /**
  * Chiamata diretta a Google Gemini API (utilizzata come fallback locale se l'Edge Function non è ancora deployata)
+ * con failover automatico tra versioni del modello (gemini-3.8-flash, gemini-3.7-flash, ecc.)
  */
 async function callGeminiDirect(
   options: AIGenerationOptions,
   apiKey: string,
   model: string
 ): Promise<string> {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  
+  const candidateModels = Array.from(
+    new Set([model, 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'].filter(Boolean))
+  );
+
   interface GeminiPart {
     text: string;
   }
@@ -146,29 +149,59 @@ async function callGeminiDirect(
     generationConfig.responseMimeType = options.responseMimeType;
   }
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents,
-      generationConfig,
-    }),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Google Gemini API error (${response.status}): ${errText}`);
+  for (const currentModel of candidateModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents,
+          generationConfig,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        // Se il modello è deprecato, non disponibile (404) o non supportato per la chiave, tenta il prossimo candidato
+        if (
+          response.status === 404 ||
+          errText.includes('NOT_FOUND') ||
+          errText.includes('no longer available') ||
+          errText.includes('not found for API version')
+        ) {
+          console.warn(`[AI Gateway] Modello ${currentModel} non disponibile (${response.status}), tentativo con il modello successivo...`);
+          lastError = new Error(`Google Gemini API error (${response.status}): ${errText}`);
+          continue;
+        }
+        throw new Error(`Google Gemini API error (${response.status}): ${errText}`);
+      }
+
+      const json = await response.json();
+      const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error('Nessun testo generato da Google Gemini API.');
+      }
+
+      return text;
+    } catch (err: unknown) {
+      if (
+        err instanceof Error &&
+        (err.message.includes('404') || err.message.includes('NOT_FOUND') || err.message.includes('no longer available'))
+      ) {
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
   }
 
-  const json = await response.json();
-  const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error('Nessun testo generato da Google Gemini API.');
-  }
-
-  return text;
+  throw lastError || new Error(`Impossibile generare contenuto: tutti i modelli Gemini candidati hanno fallito.`);
 }
 
 /**

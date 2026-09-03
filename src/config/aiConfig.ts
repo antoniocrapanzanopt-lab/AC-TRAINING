@@ -9,10 +9,10 @@ export const AI_CONFIG = {
 
   // Configurazione Google Gemini
   GEMINI: {
-    DISPLAY_NAME: 'Google Gemini 3.7 Flash',
-    MODEL_ID: 'gemini-3.7-flash',
-    SHORT_NAME: 'Gemini 3.7 Flash',
-    TAGLINE: 'Google Gemini 3.7 Flash (Integrato nel progetto)',
+    DISPLAY_NAME: 'Google Gemini 3.8 Flash',
+    MODEL_ID: 'gemini-3.8-flash',
+    SHORT_NAME: 'Gemini 3.8 Flash',
+    TAGLINE: 'Google Gemini 3.8 Flash (Integrato nel progetto)',
   },
 
   // Configurazione OpenAI

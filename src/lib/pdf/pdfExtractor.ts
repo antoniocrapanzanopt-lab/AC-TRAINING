@@ -56,7 +56,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
 export const parsePDFWithDirectGemini = async (
   file: File,
   apiKey: string,
-  modelName: string = 'gemini-3.7-flash'
+  modelName: string = 'gemini-3.8-flash'
 ): Promise<ParsedPDFWorkout> => {
   const base64 = await fileToBase64(file);
 
@@ -103,6 +103,7 @@ REGOLE CRITICHE DI ESTRAZIONE:
 
   const modelsToTry = [
     modelName,
+    'gemini-3.8-flash',
     'gemini-3.7-flash',
     'gemini-3.6-flash',
     'gemini-2.5-flash',

@@ -68,7 +68,7 @@ export async function processInboxContentWithAI(
   const activeKey = (envKey || storageKey || '').trim();
 
   if (activeKey) {
-    const modelsToTry = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'];
+    const modelsToTry = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
     for (const model of modelsToTry) {
       try {
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;

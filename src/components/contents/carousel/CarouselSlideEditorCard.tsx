@@ -219,10 +219,10 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                 onClick={onGeminiOptimize}
                 disabled={isOptimizingWithGemini}
                 className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-purple-600/30 via-amber-500/20 to-purple-600/30 hover:from-purple-600/40 hover:to-amber-500/30 text-amber-200 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
-                title="Migliora layout, impaginazione, font e posizionamento immagini con Gemini 3.7 Flash"
+                title="Migliora layout, impaginazione, font e posizionamento immagini con Gemini 3.8 Flash"
               >
                 <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isOptimizingWithGemini ? 'animate-spin' : ''}`} />
-                <span>{isOptimizingWithGemini ? 'Ottimizzazione...' : '⚡ Migliora con Gemini 3.7'}</span>
+                <span>{isOptimizingWithGemini ? 'Ottimizzazione...' : '⚡ Migliora con Gemini 3.8'}</span>
               </button>
             )}
 

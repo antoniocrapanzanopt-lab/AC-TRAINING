@@ -80,28 +80,35 @@ Rispondi ESCLUSIVAMENTE in formato JSON valido aderente a questo schema:
 Genera l'analisi biomeccanica ottimale con Google Gemini 3.7 Flash.`;
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-          },
-        }),
+    const modelsToTry = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+    let rawText = '';
+
+    for (const model of modelsToTry) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
+              generationConfig: {
+                temperature: 0.2,
+                responseMimeType: 'application/json',
+              },
+            }),
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (rawText) break;
+        }
+      } catch {
+        // Prova il prossimo modello
       }
-    );
-
-    if (!response.ok) {
-      console.warn(`Gemini 3.7 Flash API error (${response.status}), fallback attivato`);
-      return fallbackOutput;
     }
-
-    const data = await response.json();
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!rawText) return fallbackOutput;
 
@@ -119,10 +126,10 @@ Genera l'analisi biomeccanica ottimale con Google Gemini 3.7 Flash.`;
         after: parsed.diffAfter || fallbackOutput.diffPreview.after,
       },
       chatMessage: parsed.chatMessage || fallbackOutput.chatMessage,
-      modelUsed: 'Google Gemini 3.7 Flash',
+      modelUsed: 'Google Gemini 3.8 Flash',
     };
   } catch (err) {
-    console.warn('Errore chiamata Gemini 3.7 Flash:', err);
+    console.warn('Errore chiamata Gemini 3.8 Flash:', err);
     return fallbackOutput;
   }
 }

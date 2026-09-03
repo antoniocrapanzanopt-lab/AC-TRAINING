@@ -259,33 +259,33 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     showSuccess('Struttura carosello rigenerata con AI!');
   };
 
-  // Ottimizzazione avanzata singola slide con Google Gemini 3.7 Flash
+  // Ottimizzazione avanzata singola slide con Google Gemini 3.8 Flash
   const handleGeminiOptimizeSlide = async (index: number) => {
     setIsGeminiOptimizing(true);
     try {
       const target = slides[index];
       const optimized = await optimizeSlideWithGemini(target, content, index, slides.length);
       handleUpdateSlide(optimized);
-      showSuccess('✨ Slide Perfezionata con Gemini 3.7 Flash!', 'Layout, caratteri e posizionamento ottimizzati.');
+      showSuccess('✨ Slide Perfezionata con Gemini 3.8 Flash!', 'Layout, caratteri e posizionamento ottimizzati.');
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Errore durante l\'ottimizzazione';
-      showError('Errore Gemini 3.7 Flash', errMsg);
+      showError('Errore Gemini 3.8 Flash', errMsg);
     } finally {
       setIsGeminiOptimizing(false);
     }
   };
 
-  // Ottimizzazione avanzata intero carosello con Google Gemini 3.7 Flash
+  // Ottimizzazione avanzata intero carosello con Google Gemini 3.8 Flash
   const handleGeminiOptimizeAll = async () => {
     setIsGeminiOptimizing(true);
     try {
       const optimized = await optimizeEntireCarouselWithGemini(carousel, content);
       setCarousel(optimized);
       triggerDebouncedAutosave(optimized);
-      showSuccess('🚀 Carosello Perfezionato con Gemini 3.7 Flash!', 'Tutte le slide, layout e impaginazione sono stati ottimizzati.');
+      showSuccess('🚀 Carosello Perfezionato con Gemini 3.8 Flash!', 'Tutte le slide, layout e impaginazione sono stati ottimizzati.');
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Errore durante l\'ottimizzazione';
-      showError('Errore Gemini 3.7 Flash', errMsg);
+      showError('Errore Gemini 3.8 Flash', errMsg);
     } finally {
       setIsGeminiOptimizing(false);
     }
@@ -461,10 +461,10 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
             onClick={handleGeminiOptimizeAll}
             disabled={isGeminiOptimizing}
             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600/30 via-amber-500/20 to-purple-600/30 hover:from-purple-600/50 hover:to-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
-            title="Ottimizza layout, impaginazione, font e posizionamento immagini di tutte le slide con Gemini 3.7 Flash"
+            title="Ottimizza layout, impaginazione, font e posizionamento immagini di tutte le slide con Gemini 3.8 Flash"
           >
             <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isGeminiOptimizing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{isGeminiOptimizing ? 'Ottimizzazione...' : '⚡ Gemini 3.7 Flash'}</span>
+            <span className="hidden sm:inline">{isGeminiOptimizing ? 'Ottimizzazione...' : '⚡ Gemini 3.8 Flash'}</span>
           </button>
 
           {/* Scarica ZIP */}

@@ -77,7 +77,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
   const [showApiKeyConfig, setShowApiKeyConfig] = useState(false);
   const [tempApiKey, setTempApiKey] = useState('');
   const [isAnalyzingGemini, setIsAnalyzingGemini] = useState(false);
-  const [modelUsed, setModelUsed] = useState('Google Gemini 3.7 Flash');
+  const [modelUsed, setModelUsed] = useState('Google Gemini 3.8 Flash');
 
   // Comando manuale del coach
   const [customCommand, setCustomCommand] = useState('');
@@ -398,10 +398,10 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
                   type="button"
                   onClick={() => setShowApiKeyConfig(!showApiKeyConfig)}
                   className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-900 border border-amber-500/30 text-amber-400 hover:border-amber-400 transition-colors text-[10px] font-bold cursor-pointer"
-                  title="Configura o verifica la chiave API Google Gemini 3.7 Flash"
+                  title="Configura o verifica la chiave API Google Gemini 3.8 Flash"
                 >
                   <Cpu className="w-3 h-3 text-amber-400" />
-                  <span>{geminiApiKey ? '⚡ Gemini 3.7 Flash' : 'Configura API Key'}</span>
+                  <span>{geminiApiKey ? '⚡ Gemini 3.8 Flash' : 'Configura API Key'}</span>
                 </button>
               </div>
 

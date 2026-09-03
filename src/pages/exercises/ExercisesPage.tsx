@@ -403,10 +403,10 @@ export const ExercisesPage: React.FC = () => {
           <button
             onClick={() => { setOptimizerTargetExercise(null); setIsBiomechanicsOptimizerOpen(true); }}
             className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-white border border-amber-500/30 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
-            title="Ottimizza e rigenera la biomeccanica degli esercizi con Google Gemini 3.7 Flash"
+            title="Ottimizza e rigenera la biomeccanica degli esercizi con Google Gemini 3.8 Flash"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Biomeccanica Gemini 3.7</span>
+            <span>Biomeccanica Gemini 3.8</span>
           </button>
 
           <button

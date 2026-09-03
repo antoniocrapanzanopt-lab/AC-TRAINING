@@ -98,10 +98,11 @@ async function callDirectGeminiAPI(
   apiKey: string,
   systemPrompt: string,
   userPrompt: string,
-  modelName: string = 'gemini-3.7-flash'
+  modelName: string = 'gemini-3.8-flash'
 ): Promise<{ text: string; model: string }> {
   const modelsToTry = [
     modelName,
+    'gemini-3.8-flash',
     'gemini-3.7-flash',
     'gemini-3.6-flash',
     'gemini-2.5-flash',
@@ -274,11 +275,11 @@ Restituisci unicamente il JSON conforme alla seguente interfaccia:
 `.trim();
 
   let rawJson = '';
-  let modelUsed = 'gemini-3.7-flash';
+  let modelUsed = 'gemini-3.8-flash';
 
   if (apiKey) {
     // Chiamata diretta con chiave Gemini dell'utente / coach
-    const res = await callDirectGeminiAPI(apiKey, systemPrompt, userPrompt, 'gemini-3.7-flash');
+    const res = await callDirectGeminiAPI(apiKey, systemPrompt, userPrompt, 'gemini-3.8-flash');
     rawJson = res.text;
     modelUsed = res.model;
   } else {
