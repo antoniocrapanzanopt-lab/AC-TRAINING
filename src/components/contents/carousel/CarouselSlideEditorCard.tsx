@@ -84,7 +84,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   autoFocusTitle = false,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const headlineInputRef = useRef<HTMLInputElement | null>(null);
+  const headlineInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Auto-focus sul titolo della slide attiva
   useEffect(() => {
@@ -371,37 +371,52 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
           {/* Grandezza Titolo in px */}
           <div className="space-y-1.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
             <div className="flex items-center justify-between text-[11px]">
-              <label className="font-bold text-slate-300">Grandezza Titolo</label>
+              <div className="flex items-center gap-1.5">
+                <label className="font-bold text-slate-300">Grandezza Titolo</label>
+                <div className="flex items-center gap-1">
+                  {[44, 84, 120, 200].map((sz) => (
+                    <button
+                      key={sz}
+                      type="button"
+                      onClick={() => onChange({ ...slide, titleFontSizePx: sz })}
+                      className="px-1.5 py-0.2 rounded bg-slate-800 hover:bg-amber-500/20 text-[9px] text-amber-300/80 hover:text-amber-200 border border-slate-700/60 font-mono transition cursor-pointer"
+                      title={`Imposta titolo a ${sz}px`}
+                    >
+                      {sz}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex items-center gap-1 font-mono">
                 <input
                   type="number"
-                  min="24"
-                  max="96"
+                  min="20"
+                  max="200"
                   value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
                   onChange={(e) => {
                     const val = parseInt(e.target.value, 10);
                     if (!isNaN(val)) {
-                      onChange({ ...slide, titleFontSizePx: Math.max(20, Math.min(100, val)) });
+                      onChange({ ...slide, titleFontSizePx: Math.max(20, Math.min(200, val)) });
                     }
                   }}
-                  className="w-12 px-1.5 py-0.5 bg-slate-950 border border-amber-500/50 rounded text-center text-amber-300 font-bold focus:outline-none focus:border-amber-400"
+                  className="w-14 px-1.5 py-0.5 bg-slate-950 border border-amber-500/50 rounded text-center text-amber-300 font-bold focus:outline-none focus:border-amber-400"
                 />
                 <span className="text-slate-500">px</span>
               </div>
             </div>
             <input
               type="range"
-              min="28"
-              max="84"
+              min="24"
+              max="200"
               step="2"
               value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
               onChange={(e) => onChange({ ...slide, titleFontSizePx: parseInt(e.target.value, 10) })}
               className="w-full accent-amber-500 cursor-pointer"
             />
             <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
-              <span>28px (Compatto)</span>
-              <span>52px</span>
-              <span>84px (Gigante)</span>
+              <span>24px (Compatto)</span>
+              <span>100px</span>
+              <span>200px (Max Impatto)</span>
             </div>
           </div>
 
@@ -446,39 +461,48 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
 
       {/* 2. TITOLO A 2 TONI (BIANCO + ACCENTO) */}
       <div className="space-y-2">
-        <label className="text-xs font-bold text-slate-300">Titolo Slide (Riga 1 - Bianco) *</label>
-        <input
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-slate-300">Titolo Slide (Riga 1 - Bianco) *</label>
+          <span className="text-[10px] text-amber-400/80 font-mono">↵ Premi Invio per andare a capo</span>
+        </div>
+        <textarea
           ref={headlineInputRef}
-          type="text"
+          rows={2}
           value={slide.headline}
           onChange={(e) => onChange({ ...slide, headline: e.target.value })}
-          placeholder="es. CEDIMENTO TECNICO (o NESSUNO CAMBIA)"
-          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-bold"
+          placeholder="es. CEDIMENTO TECNICO (premi Invio per spezzare le righe a piacere)"
+          className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-bold resize-y min-h-[56px] leading-relaxed"
         />
 
         <div className="space-y-1">
-          <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-            <span>✨ Testo Evidenziato / Riga 2 (Colore Accento)</span>
-          </label>
-          <input
-            type="text"
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+              <span>✨ Testo Evidenziato / Riga 2 (Colore Accento)</span>
+            </label>
+            <span className="text-[10px] text-amber-400/70 font-mono">↵ Invio per a capo</span>
+          </div>
+          <textarea
+            rows={1}
             value={slide.headlineHighlight || ''}
             onChange={(e) => onChange({ ...slide, headlineHighlight: e.target.value })}
-            placeholder="es. O MUSCOLARE? (o QUALCOSA DI NUOVO)"
-            className="w-full px-3.5 py-2 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-amber-300 placeholder-amber-500/40 focus:outline-none focus:border-amber-400 font-bold"
+            placeholder="es. O MUSCOLARE? (premi Invio per andare a capo)"
+            className="w-full px-3.5 py-1.5 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-amber-300 placeholder-amber-500/40 focus:outline-none focus:border-amber-400 font-bold resize-y min-h-[42px] leading-relaxed"
           />
         </div>
       </div>
 
       {/* 2. SOTTOTITOLO / INTRO */}
       <div className="space-y-1">
-        <label className="text-xs font-bold text-slate-400">Sottotitolo / Gancio Dati</label>
-        <input
-          type="text"
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-slate-400">Sottotitolo / Gancio Dati</label>
+          <span className="text-[10px] text-slate-500 font-mono">↵ Invio per a capo</span>
+        </div>
+        <textarea
+          rows={2}
           value={slide.subheadline || ''}
           onChange={(e) => onChange({ ...slide, subheadline: e.target.value })}
-          placeholder="es. VEDIAMO COSA MOSTRANO DAVVERO I DATI! (o Le persone cambiano quando:)"
-          className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+          placeholder="es. VEDIAMO COSA MOSTRANO DAVVERO I DATI! (premi Invio per andare a capo)"
+          className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-y min-h-[50px] leading-relaxed"
         />
       </div>
 

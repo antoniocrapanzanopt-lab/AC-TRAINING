@@ -619,6 +619,7 @@ export const renderSlideToCanvas = async (
   // ─── LAYOUT 3: DUAL TONE COVER (STILE SCREENSHOT 3: TITOLO ALTERNATO BIANCO/VIOLA GIGANTE) ───
   } else if (layout === 'dual_tone_cover') {
     const fontSize = titleFontSize;
+    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
     
     // Riga 1: Titolo Bianco
     ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
@@ -626,8 +627,9 @@ export const renderSlideToCanvas = async (
     ctx.textBaseline = 'top';
     const lines1 = wrapText(ctx, slide.headline, contentWidth);
     for (const l of lines1) {
+      if (startY > bottomSafeY - 100) break;
       ctx.fillText(l, marginX, startY);
-      startY += fontSize + 10;
+      startY += titleLineStep;
     }
 
     // Riga 2: Titolo Evidenziato Accento
@@ -636,8 +638,9 @@ export const renderSlideToCanvas = async (
       ctx.fillStyle = accentColor;
       const lines2 = wrapText(ctx, slide.headlineHighlight, contentWidth);
       for (const l of lines2) {
+        if (startY > bottomSafeY - 100) break;
         ctx.fillText(l, marginX, startY);
-        startY += fontSize + 10;
+        startY += titleLineStep;
       }
     }
 
@@ -717,13 +720,15 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT A: ERROR VS CORRECT (CONFRONTO SPLIT) ───
   } else if (layout === 'error_vs_correct') {
-    ctx.font = `900 48px ${titleFont}, system-ui, sans-serif`;
+    const fontSize = titleFontSize;
+    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
+    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
     ctx.fillStyle = primaryTextColor;
     ctx.textBaseline = 'top';
     const headlineLines = wrapText(ctx, slide.headline, contentWidth);
     for (const line of headlineLines) {
       ctx.fillText(line, marginX, startY);
-      startY += 60;
+      startY += titleLineStep;
     }
 
     if (slide.subheadline) {
@@ -800,13 +805,15 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT B: NUMBERED LIST / ELENCO PUNTATO CON CARD ───
   } else if (layout === 'numbered_list') {
-    ctx.font = `900 48px ${titleFont}, system-ui, sans-serif`;
+    const fontSize = titleFontSize;
+    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
+    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
     ctx.fillStyle = primaryTextColor;
     ctx.textBaseline = 'top';
     const headlineLines = wrapText(ctx, slide.headline, contentWidth);
     for (const line of headlineLines) {
       ctx.fillText(line, marginX, startY);
-      startY += 58;
+      startY += titleLineStep;
     }
 
     if (slide.subheadline) {
@@ -879,13 +886,15 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT C: STEP BY STEP / PROGRESSIONE TIMELINE ───
   } else if (layout === 'step_by_step') {
-    ctx.font = `900 48px ${titleFont}, system-ui, sans-serif`;
+    const fontSize = titleFontSize;
+    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
+    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
     ctx.fillStyle = primaryTextColor;
     ctx.textBaseline = 'top';
     const headlineLines = wrapText(ctx, slide.headline, contentWidth);
     for (const line of headlineLines) {
       ctx.fillText(line, marginX, startY);
-      startY += 58;
+      startY += titleLineStep;
     }
 
     if (slide.subheadline) {
@@ -962,13 +971,15 @@ export const renderSlideToCanvas = async (
 
     // Titolo Gigante Centrato
     const fontSize = titleFontSize;
+    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
     ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
     ctx.fillStyle = primaryTextColor;
     ctx.textBaseline = 'top';
     const headlineLines = wrapText(ctx, slide.headline, contentWidth);
     for (const line of headlineLines) {
+      if (startY > bottomSafeY - 100) break;
       ctx.fillText(line, CANVAS_WIDTH / 2, startY);
-      startY += fontSize + 16;
+      startY += titleLineStep;
     }
 
     // Headline Highlight (seconda riga) se presente
@@ -977,8 +988,9 @@ export const renderSlideToCanvas = async (
       ctx.fillStyle = accentColor;
       const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
       for (const hl of hlLines) {
+        if (startY > bottomSafeY - 100) break;
         ctx.fillText(hl, CANVAS_WIDTH / 2, startY);
-        startY += fontSize + 16;
+        startY += titleLineStep;
       }
     }
 
@@ -1059,13 +1071,15 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT E: FINAL CTA / CHIUSURA BRAND ───
   } else if (layout === 'final_cta') {
-    ctx.font = `900 52px ${titleFont}, system-ui, sans-serif`;
+    const fontSize = titleFontSize;
+    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
+    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
     ctx.fillStyle = primaryTextColor;
     ctx.textBaseline = 'top';
     const headlineLines = wrapText(ctx, slide.headline, contentWidth);
     for (const line of headlineLines) {
       ctx.fillText(line, marginX, startY);
-      startY += 62;
+      startY += titleLineStep;
     }
 
     if (slide.subheadline) {
@@ -1110,22 +1124,24 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT DEFAULT: TEXT LEFT ───
   } else {
-    ctx.font = `900 50px ${titleFont}, system-ui, sans-serif`;
+    const fontSize = titleFontSize;
+    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
+    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
     ctx.fillStyle = primaryTextColor;
     ctx.textBaseline = 'top';
     const headlineLines = wrapText(ctx, slide.headline, contentWidth);
     for (const line of headlineLines) {
       ctx.fillText(line, marginX, startY);
-      startY += 60;
+      startY += titleLineStep;
     }
 
     if (slide.headlineHighlight) {
-      ctx.font = `900 50px ${titleFont}, system-ui, sans-serif`;
+      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
       ctx.fillStyle = accentColor;
       const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
       for (const hl of hlLines) {
         ctx.fillText(hl, marginX, startY);
-        startY += 60;
+        startY += titleLineStep;
       }
     }
 
