@@ -755,16 +755,19 @@ export const renderSlideToCanvas = async (
 
     startY += 20;
 
-    const boxHeight = 220;
     const wrongBoxY = startY;
 
-    // BOX ❌ ERRORE (Rosso)
+    // BOX ❌ ERRORE (Rosso) - Altezza Dinamica
+    ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
+    const wrongLines = wrapText(ctx, slide.wrongText || slide.bodyText || 'Movimento scorretto', contentWidth - 50);
+    const wrongBoxHeight = Math.max(160, 75 + wrongLines.length * 36 + 15);
+
     ctx.fillStyle = 'rgba(244, 63, 94, 0.08)';
-    drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, boxHeight, 18);
+    drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, wrongBoxHeight, 18);
     ctx.fill();
     ctx.strokeStyle = 'rgba(244, 63, 94, 0.35)';
     ctx.lineWidth = 1.5;
-    drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, boxHeight, 18);
+    drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, wrongBoxHeight, 18);
     ctx.stroke();
 
     ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
@@ -773,21 +776,23 @@ export const renderSlideToCanvas = async (
 
     ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
     ctx.fillStyle = '#FFE4E6';
-    const wrongLines = wrapText(ctx, slide.wrongText || slide.bodyText || 'Movimento scorretto', contentWidth - 50);
     let wY = wrongBoxY + 70;
     for (const line of wrongLines) {
       ctx.fillText(line, marginX + 25, wY);
       wY += 36;
     }
 
-    // BOX ✅ CORREZIONE (Verde)
-    const correctBoxY = wrongBoxY + boxHeight + 25;
+    // BOX ✅ CORREZIONE (Verde) - Altezza Dinamica
+    const correctLines = wrapText(ctx, slide.correctText || slide.subheadline || 'Adattamento corretto delle leve', contentWidth - 50);
+    const correctBoxHeight = Math.max(160, 75 + correctLines.length * 36 + 15);
+    const correctBoxY = wrongBoxY + wrongBoxHeight + 20;
+
     ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
-    drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, boxHeight, 18);
+    drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, correctBoxHeight, 18);
     ctx.fill();
     ctx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
     ctx.lineWidth = 1.5;
-    drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, boxHeight, 18);
+    drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, correctBoxHeight, 18);
     ctx.stroke();
 
     ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
@@ -796,7 +801,6 @@ export const renderSlideToCanvas = async (
 
     ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
     ctx.fillStyle = '#D1FAE5';
-    const correctLines = wrapText(ctx, slide.correctText || slide.subheadline || 'Adattamento corretto delle leve', contentWidth - 50);
     let cY = correctBoxY + 70;
     for (const line of correctLines) {
       ctx.fillText(line, marginX + 25, cY);
@@ -1093,34 +1097,53 @@ export const renderSlideToCanvas = async (
       }
     }
 
-    startY += 30;
+    startY += 25;
 
-    const ctaBoxY = Math.max(startY, CANVAS_HEIGHT - 380);
+    // Calcolo dinamico dell'altezza e posizionamento del box CTA per evitare sovrapposizioni tra testo e firma
+    ctx.font = `500 ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
+    const ctaBodyLines = wrapText(ctx, slide.bodyText || 'Commenta per ricevere l\'analisi video in DM.', contentWidth - 70);
+    const bodyTextHeight = ctaBodyLines.length * (bodyFontSize + 12);
+    const signatureHeight = brandKit.authorSignature ? 40 : 10;
+    const boxPaddingTop = 80;
+    const boxBottomPadding = 25;
+    const totalBoxHeight = Math.max(180, boxPaddingTop + bodyTextHeight + signatureHeight + boxBottomPadding);
+
+    // Posizionamento del box rispettando sia lo startY sia la safe area inferiore del footer
+    const ctaBoxY = Math.min(
+      Math.max(startY, CANVAS_HEIGHT - totalBoxHeight - 120),
+      bottomSafeY - totalBoxHeight - 15
+    );
+
     ctx.fillStyle = `${accentColor}22`;
-    drawRoundedRect(ctx, marginX, ctaBoxY, contentWidth, 190, 24);
+    drawRoundedRect(ctx, marginX, ctaBoxY, contentWidth, totalBoxHeight, 24);
     ctx.fill();
 
     ctx.strokeStyle = accentColor;
     ctx.lineWidth = 2.5;
-    drawRoundedRect(ctx, marginX, ctaBoxY, contentWidth, 190, 24);
+    drawRoundedRect(ctx, marginX, ctaBoxY, contentWidth, totalBoxHeight, 24);
     ctx.stroke();
 
+    // Titolo Box CTA
     ctx.font = `900 30px ${titleFont}, system-ui, sans-serif`;
     ctx.fillStyle = accentColor;
     ctx.fillText('💾 SALVA IL POST & COMMENTA', marginX + 35, ctaBoxY + 35);
 
+    // Testo del corpo dinamico
     ctx.font = `500 ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
     ctx.fillStyle = '#FEF3C7';
-    const ctaBodyLines = wrapText(ctx, slide.bodyText || 'Commenta per ricevere l\'analisi video in DM.', contentWidth - 70);
-    let ctaBodyY = ctaBoxY + 80;
+    let currentY = ctaBoxY + 80;
     for (const bl of ctaBodyLines) {
-      ctx.fillText(bl, marginX + 35, ctaBodyY);
-      ctaBodyY += bodyFontSize + 10;
+      ctx.fillText(bl, marginX + 35, currentY);
+      currentY += bodyFontSize + 12;
     }
 
-    ctx.font = `600 20px ${bodyFont}, system-ui, sans-serif`;
-    ctx.fillStyle = '#94A3B8';
-    ctx.fillText(brandKit.authorSignature, marginX + 35, ctaBoxY + 155);
+    // Firma Brand posizionata SEMPRE sotto al testo, mai sovrapposta
+    if (brandKit.authorSignature) {
+      currentY += 15;
+      ctx.font = `600 20px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = '#94A3B8';
+      ctx.fillText(brandKit.authorSignature, marginX + 35, currentY);
+    }
 
   // ─── LAYOUT DEFAULT: TEXT LEFT ───
   } else {
