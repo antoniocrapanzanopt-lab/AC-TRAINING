@@ -109,7 +109,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   const totalWords = allText ? allText.split(/\s+/).length : 0;
   const isOverflowing = totalWords > 55 || totalChars > 360;
 
-  const currentLayout: SlideLayoutId = slide.layout || (index === 0 ? 'text_center' : index === totalSlides - 1 ? 'final_cta' : 'numbered_list');
+  const currentLayout: SlideLayoutId = slide.layout || (index === 0 ? 'dual_tone_cover' : index === totalSlides - 1 ? 'final_cta' : 'numbered_list');
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -573,7 +573,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
           <label className="text-xs font-bold text-slate-400">Corpo del Testo</label>
           <textarea
             rows={3}
-            value={slide.bodyText}
+            value={slide.bodyText || ''}
             onChange={(e) => onChange({ ...slide, bodyText: e.target.value })}
             placeholder="Spiegazione chiara ed essenziale del concetto..."
             className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none leading-relaxed"
