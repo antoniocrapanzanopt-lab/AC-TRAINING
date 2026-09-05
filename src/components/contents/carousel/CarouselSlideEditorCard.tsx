@@ -5,6 +5,7 @@ import {
   SlideLayoutId,
   TitleFontFamily,
   BodyFontFamily,
+  SubtitleFontFamily,
   SlideImagePosition,
   CoverHookAlternative,
   SlideQualityIssue,
@@ -38,6 +39,10 @@ import {
   Sliders,
   MoveVertical,
   Package,
+  Bold,
+  Underline,
+  Palette,
+  RotateCcw,
 } from 'lucide-react';
 
 interface CarouselSlideEditorCardProps {
@@ -118,8 +123,39 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   captionText,
 }) => {
   const headlineInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const subtitleInputRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const aiMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const handleFormatTextSelection = (
+    textareaRef: React.RefObject<HTMLTextAreaElement | null>,
+    currentText: string,
+    openTag: string,
+    closeTag: string,
+    onTextChange: (newText: string) => void,
+    onFallbackToggle?: () => void
+  ) => {
+    const el = textareaRef.current;
+    if (!el) {
+      onFallbackToggle?.();
+      return;
+    }
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start === undefined || end === undefined || start === end) {
+      onFallbackToggle?.();
+      return;
+    }
+    const selected = currentText.substring(start, end);
+    const before = currentText.substring(0, start);
+    const after = currentText.substring(end);
+    const updated = `${before}${openTag}${selected}${closeTag}${after}`;
+    onTextChange(updated);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + openTag.length, end + openTag.length);
+    }, 10);
+  };
 
   // Modalità Semplice di default con stato in-memory
   const [internalStyleExpanded, setInternalStyleExpanded] = useState<boolean>(false);
@@ -932,12 +968,206 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
         </div>
 
         {/* SOTTOTITOLO / INTRO */}
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-400">Sottotitolo / Gancio Dati</label>
+            <label className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+              <span>Sottotitolo / Gancio Dati</span>
+              {slide.subtitleColor && (
+                <span
+                  className="w-2.5 h-2.5 rounded-full border border-slate-700 shadow"
+                  style={{ backgroundColor: slide.subtitleColor }}
+                  title={`Colore attivo: ${slide.subtitleColor}`}
+                />
+              )}
+            </label>
             <span className="text-[10px] text-slate-500 font-mono">↵ Invio per a capo</span>
           </div>
+
+          {/* BARRA FORMATTAZIONE TIPOGRAFICA SOTTOTITOLO */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 p-1.5 bg-slate-950/80 rounded-xl border border-slate-800/80 shadow-sm">
+            {/* Sinistra: Selezione Font e Dimensioni px */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Selettore Font */}
+              <select
+                value={slide.subtitleFont || 'Outfit'}
+                onChange={(e) => onChange({ ...slide, subtitleFont: e.target.value as SubtitleFontFamily })}
+                className="bg-slate-900 border border-slate-700/80 rounded-lg px-2 py-1 text-[11px] font-bold text-amber-200/90 focus:outline-none focus:border-amber-500 cursor-pointer"
+                title="Font Sottotitolo"
+              >
+                <option value="Outfit">Outfit</option>
+                <option value="Montserrat">Montserrat</option>
+                <option value="Bebas Neue">Bebas Neue</option>
+                <option value="Inter">Inter</option>
+                <option value="Roboto">Roboto</option>
+              </select>
+
+              {/* Input px */}
+              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700/80 font-mono">
+                <input
+                  type="number"
+                  min="14"
+                  max="72"
+                  value={slide.subtitleFontSizePx || 28}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val)) {
+                      onChange({ ...slide, subtitleFontSizePx: Math.max(14, Math.min(80, val)) });
+                    }
+                  }}
+                  className="w-8 bg-transparent text-center text-[11px] font-bold text-white focus:outline-none"
+                  title="Dimensione esatta in pixel"
+                />
+                <span className="text-[10px] text-slate-400">px</span>
+              </div>
+
+              {/* Chip rapidi px */}
+              <div className="flex items-center gap-0.5">
+                {[22, 28, 36, 48].map((px) => (
+                  <button
+                    key={px}
+                    type="button"
+                    onClick={() => onChange({ ...slide, subtitleFontSizePx: px })}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition cursor-pointer border ${
+                      (slide.subtitleFontSizePx || 28) === px
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 font-bold'
+                        : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border-slate-800'
+                    }`}
+                    title={`Imposta a ${px}px`}
+                  >
+                    {px}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Destra: Grassetto (B), Sottolineato (U), Palette Colori & Custom Picker */}
+            <div className="flex items-center gap-1 flex-wrap">
+              {/* B (Grassetto) */}
+              <button
+                type="button"
+                onClick={() =>
+                  handleFormatTextSelection(
+                    subtitleInputRef,
+                    slide.subheadline || '',
+                    '**',
+                    '**',
+                    (text) => onChange({ ...slide, subheadline: text }),
+                    () =>
+                      onChange({
+                        ...slide,
+                        subtitleBold: slide.subtitleBold === false ? true : false,
+                      })
+                  )
+                }
+                className={`px-2 py-1 rounded-lg text-xs font-black transition cursor-pointer border flex items-center justify-center ${
+                  slide.subtitleBold !== false
+                    ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
+                }`}
+                title="Grassetto (B) - Clicca per l'intero campo o seleziona una porzione di testo"
+              >
+                <Bold className="w-3 h-3" />
+              </button>
+
+              {/* U (Sottolineato) */}
+              <button
+                type="button"
+                onClick={() =>
+                  handleFormatTextSelection(
+                    subtitleInputRef,
+                    slide.subheadline || '',
+                    '<u>',
+                    '</u>',
+                    (text) => onChange({ ...slide, subheadline: text }),
+                    () =>
+                      onChange({
+                        ...slide,
+                        subtitleUnderline: !slide.subtitleUnderline,
+                      })
+                  )
+                }
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer border flex items-center justify-center ${
+                  slide.subtitleUnderline
+                    ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
+                }`}
+                title="Sottolineato (U) - Clicca per l'intero campo o seleziona una porzione di testo"
+              >
+                <Underline className="w-3 h-3" />
+              </button>
+
+              {/* Palette Colori */}
+              <div className="flex items-center gap-1 pl-1 border-l border-slate-800">
+                {[
+                  { label: 'Bianco', value: '#FFFFFF', bg: '#FFFFFF' },
+                  { label: 'Giallo Oro', value: '#F5C518', bg: '#F5C518' },
+                  { label: 'Ambra', value: '#F59E0B', bg: '#F59E0B' },
+                  { label: 'Cyan', value: '#38BDF8', bg: '#38BDF8' },
+                  { label: 'Smeraldo', value: '#10B981', bg: '#10B981' },
+                  { label: 'Rosa / Rosso', value: '#F43F5E', bg: '#F43F5E' },
+                  { label: 'Grigio Chiaro', value: '#94A3B8', bg: '#94A3B8' },
+                ].map((col) => {
+                  const isCurrent = slide.subtitleColor?.toUpperCase() === col.value.toUpperCase();
+                  return (
+                    <button
+                      key={col.value}
+                      type="button"
+                      onClick={() =>
+                        handleFormatTextSelection(
+                          subtitleInputRef,
+                          slide.subheadline || '',
+                          `<color:${col.value}>`,
+                          '</color>',
+                          (text) => onChange({ ...slide, subheadline: text }),
+                          () => onChange({ ...slide, subtitleColor: col.value })
+                        )
+                      }
+                      className={`w-4 h-4 rounded-full transition cursor-pointer border ${
+                        isCurrent
+                          ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-950 scale-110 border-white'
+                          : 'border-slate-700 hover:scale-110 opacity-85 hover:opacity-100'
+                      }`}
+                      style={{ backgroundColor: col.bg }}
+                      title={`Colore ${col.label} (${col.value})`}
+                    />
+                  );
+                })}
+
+                {/* Selettore colore HTML nativo */}
+                <label
+                  className="relative w-5 h-5 rounded-md bg-slate-900 border border-slate-700 flex items-center justify-center cursor-pointer hover:border-amber-500 overflow-hidden"
+                  title="Colore personalizzato"
+                >
+                  <Palette className="w-3 h-3 text-slate-300" />
+                  <input
+                    type="color"
+                    value={slide.subtitleColor || '#E2E8F0'}
+                    onChange={(e) => onChange({ ...slide, subtitleColor: e.target.value })}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                </label>
+
+                {/* Reset Colore */}
+                {slide.subtitleColor && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...slide };
+                      delete updated.subtitleColor;
+                      onChange(updated);
+                    }}
+                    className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition"
+                    title="Ripristina colore predefinito"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <textarea
+            ref={subtitleInputRef}
             rows={2}
             value={slide.subheadline || ''}
             onChange={(e) => onChange({ ...slide, subheadline: e.target.value })}
@@ -949,9 +1179,195 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
         {/* CORPO DEL TESTO */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-300">Corpo del Testo / Spiegazione</label>
+            <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <span>Corpo del Testo / Spiegazione</span>
+              {slide.bodyColor && (
+                <span
+                  className="w-2.5 h-2.5 rounded-full border border-slate-700 shadow"
+                  style={{ backgroundColor: slide.bodyColor }}
+                  title={`Colore attivo: ${slide.bodyColor}`}
+                />
+              )}
+            </label>
             <span className="text-[10px] text-slate-500">Formattazione libera per mobile</span>
           </div>
+
+          {/* BARRA FORMATTAZIONE TIPOGRAFICA CORPO DEL TESTO */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 p-1.5 bg-slate-950/80 rounded-xl border border-slate-800/80 shadow-sm">
+            {/* Sinistra: Selezione Font e Dimensioni px */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Selettore Font */}
+              <select
+                value={slide.bodyFont || 'Inter'}
+                onChange={(e) => onChange({ ...slide, bodyFont: e.target.value as BodyFontFamily })}
+                className="bg-slate-900 border border-slate-700/80 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
+                title="Font Corpo del Testo"
+              >
+                <option value="Inter">Inter</option>
+                <option value="Roboto">Roboto</option>
+                <option value="Montserrat">Montserrat</option>
+                <option value="Outfit">Outfit</option>
+              </select>
+
+              {/* Input px */}
+              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700/80 font-mono">
+                <input
+                  type="number"
+                  min="14"
+                  max="54"
+                  value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val)) {
+                      onChange({ ...slide, bodyFontSizePx: Math.max(12, Math.min(60, val)) });
+                    }
+                  }}
+                  className="w-8 bg-transparent text-center text-[11px] font-bold text-white focus:outline-none"
+                  title="Dimensione esatta in pixel"
+                />
+                <span className="text-[10px] text-slate-400">px</span>
+              </div>
+
+              {/* Chip rapidi px */}
+              <div className="flex items-center gap-0.5">
+                {[18, 22, 26, 32].map((px) => {
+                  const currentPx = slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26);
+                  return (
+                    <button
+                      key={px}
+                      type="button"
+                      onClick={() => onChange({ ...slide, bodyFontSizePx: px })}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition cursor-pointer border ${
+                        currentPx === px
+                          ? 'bg-purple-500/25 text-purple-300 border-purple-500/60 font-bold'
+                          : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border-slate-800'
+                      }`}
+                      title={`Imposta corpo a ${px}px`}
+                    >
+                      {px}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Destra: Grassetto (B), Sottolineato (U), Palette Colori & Custom Picker */}
+            <div className="flex items-center gap-1 flex-wrap">
+              {/* B (Grassetto) */}
+              <button
+                type="button"
+                onClick={() =>
+                  handleFormatTextSelection(
+                    bodyInputRef,
+                    slide.bodyText || '',
+                    '**',
+                    '**',
+                    (text) => onChange({ ...slide, bodyText: text }),
+                    () => onChange({ ...slide, bodyBold: !slide.bodyBold })
+                  )
+                }
+                className={`px-2 py-1 rounded-lg text-xs font-black transition cursor-pointer border flex items-center justify-center ${
+                  slide.bodyBold
+                    ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
+                }`}
+                title="Grassetto (B) - Clicca per l'intero campo o seleziona una porzione di testo"
+              >
+                <Bold className="w-3 h-3" />
+              </button>
+
+              {/* U (Sottolineato) */}
+              <button
+                type="button"
+                onClick={() =>
+                  handleFormatTextSelection(
+                    bodyInputRef,
+                    slide.bodyText || '',
+                    '<u>',
+                    '</u>',
+                    (text) => onChange({ ...slide, bodyText: text }),
+                    () => onChange({ ...slide, bodyUnderline: !slide.bodyUnderline })
+                  )
+                }
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer border flex items-center justify-center ${
+                  slide.bodyUnderline
+                    ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
+                }`}
+                title="Sottolineato (U) - Clicca per l'intero campo o seleziona una porzione di testo"
+              >
+                <Underline className="w-3 h-3" />
+              </button>
+
+              {/* Palette Colori */}
+              <div className="flex items-center gap-1 pl-1 border-l border-slate-800">
+                {[
+                  { label: 'Slate Chiaro', value: '#CBD5E1', bg: '#CBD5E1' },
+                  { label: 'Bianco Puro', value: '#FFFFFF', bg: '#FFFFFF' },
+                  { label: 'Giallo Oro', value: '#F5C518', bg: '#F5C518' },
+                  { label: 'Cyan', value: '#38BDF8', bg: '#38BDF8' },
+                  { label: 'Smeraldo', value: '#10B981', bg: '#10B981' },
+                  { label: 'Rosa / Rosso', value: '#F43F5E', bg: '#F43F5E' },
+                ].map((col) => {
+                  const isCurrent = slide.bodyColor?.toUpperCase() === col.value.toUpperCase();
+                  return (
+                    <button
+                      key={col.value}
+                      type="button"
+                      onClick={() =>
+                        handleFormatTextSelection(
+                          bodyInputRef,
+                          slide.bodyText || '',
+                          `<color:${col.value}>`,
+                          '</color>',
+                          (text) => onChange({ ...slide, bodyText: text }),
+                          () => onChange({ ...slide, bodyColor: col.value })
+                        )
+                      }
+                      className={`w-4 h-4 rounded-full transition cursor-pointer border ${
+                        isCurrent
+                          ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-950 scale-110 border-white'
+                          : 'border-slate-700 hover:scale-110 opacity-85 hover:opacity-100'
+                      }`}
+                      style={{ backgroundColor: col.bg }}
+                      title={`Colore ${col.label} (${col.value})`}
+                    />
+                  );
+                })}
+
+                {/* Selettore colore HTML nativo */}
+                <label
+                  className="relative w-5 h-5 rounded-md bg-slate-900 border border-slate-700 flex items-center justify-center cursor-pointer hover:border-amber-500 overflow-hidden"
+                  title="Colore personalizzato corpo"
+                >
+                  <Palette className="w-3 h-3 text-slate-300" />
+                  <input
+                    type="color"
+                    value={slide.bodyColor || '#CBD5E1'}
+                    onChange={(e) => onChange({ ...slide, bodyColor: e.target.value })}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                </label>
+
+                {/* Reset Colore */}
+                {slide.bodyColor && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...slide };
+                      delete updated.bodyColor;
+                      onChange(updated);
+                    }}
+                    className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition"
+                    title="Ripristina colore predefinito"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <textarea
             ref={bodyInputRef}
             rows={3}
@@ -1351,7 +1767,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
               </div>
 
               {/* Famiglie di Font */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400">Font Titoli</label>
                   <select
@@ -1363,6 +1779,21 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                     <option value="Montserrat">Montserrat (Geometrico)</option>
                     <option value="Outfit">Outfit (Bold Moderno)</option>
                     <option value="Inter">Inter (Tecnico Pulito)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400">Font Sottotitoli</label>
+                  <select
+                    value={slide.subtitleFont || 'Outfit'}
+                    onChange={(e) => onChange({ ...slide, subtitleFont: e.target.value as SubtitleFontFamily })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-amber-200 cursor-pointer focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="Outfit">Outfit</option>
+                    <option value="Montserrat">Montserrat</option>
+                    <option value="Bebas Neue">Bebas Neue</option>
+                    <option value="Inter">Inter</option>
+                    <option value="Roboto">Roboto</option>
                   </select>
                 </div>
 
@@ -1430,6 +1861,58 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                   <span>24px (Compatto)</span>
                   <span>100px</span>
                   <span>200px (Max Impatto)</span>
+                </div>
+              </div>
+
+              {/* Slider Grandezza Sottotitolo in px */}
+              <div className="space-y-1.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                <div className="flex items-center justify-between text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <label className="font-bold text-slate-300">Grandezza Sottotitolo</label>
+                    <div className="flex items-center gap-1">
+                      {[22, 28, 36, 48].map((sz) => (
+                        <button
+                          key={sz}
+                          type="button"
+                          onClick={() => onChange({ ...slide, subtitleFontSizePx: sz })}
+                          className="px-1.5 py-0.2 rounded bg-slate-800 hover:bg-amber-500/20 text-[9px] text-amber-300/80 hover:text-amber-200 border border-slate-700/60 font-mono transition cursor-pointer"
+                          title={`Imposta sottotitolo a ${sz}px`}
+                        >
+                          {sz}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 font-mono">
+                    <input
+                      type="number"
+                      min="14"
+                      max="72"
+                      value={slide.subtitleFontSizePx || 28}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) {
+                          onChange({ ...slide, subtitleFontSizePx: Math.max(14, Math.min(80, val)) });
+                        }
+                      }}
+                      className="w-12 px-1.5 py-0.5 bg-slate-950 border border-amber-500/50 rounded text-center text-amber-300 font-bold focus:outline-none focus:border-amber-400"
+                    />
+                    <span className="text-slate-500">px</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="14"
+                  max="72"
+                  step="1"
+                  value={slide.subtitleFontSizePx || 28}
+                  onChange={(e) => onChange({ ...slide, subtitleFontSizePx: parseInt(e.target.value, 10) })}
+                  className="w-full accent-amber-500 cursor-pointer"
+                />
+                <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
+                  <span>14px</span>
+                  <span>28px (Default)</span>
+                  <span>72px (Grande)</span>
                 </div>
               </div>
 

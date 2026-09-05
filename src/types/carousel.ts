@@ -32,6 +32,7 @@ export type SlideImagePosition = 'bottom_cutout' | 'right_side' | 'top_half' | '
 
 export type TitleFontFamily = 'Inter' | 'Outfit' | 'Montserrat' | 'Bebas Neue';
 export type BodyFontFamily = 'Inter' | 'Roboto' | 'Montserrat' | 'Outfit' | 'System';
+export type SubtitleFontFamily = 'Inter' | 'Outfit' | 'Montserrat' | 'Bebas Neue' | 'Roboto' | 'System';
 
 export type CarouselStatus = 'draft' | 'needs_review' | 'ready' | 'exported';
 
@@ -101,6 +102,14 @@ export interface CarouselSlide {
   bodyFontSize?: BodyFontSize;
   titleFontSizePx?: number;     // Dimensione Titolo esatta in px (es. 28 - 80 px)
   bodyFontSizePx?: number;      // Dimensione Corpo esatta in px (es. 18 - 40 px)
+  subtitleFont?: SubtitleFontFamily; // Override font sottotitolo per singola slide
+  subtitleFontSizePx?: number;  // Dimensione Sottotitolo esatta in px (es. 16 - 72 px)
+  subtitleColor?: string;       // Override colore sottotitolo (es. #FFFFFF, #F5C518)
+  subtitleBold?: boolean;       // Grassetto per sottotitolo
+  subtitleUnderline?: boolean;  // Sottolineato per sottotitolo
+  bodyColor?: string;           // Override colore corpo del testo (es. #CBD5E1, #FFFFFF)
+  bodyBold?: boolean;           // Grassetto per corpo del testo
+  bodyUnderline?: boolean;      // Sottolineato per corpo del testo
   showLogo?: boolean;
   showSlideNumber?: boolean;
   statNumber?: string;          // es. "90%", "+15kg", "3 Errori"

@@ -61,6 +61,233 @@ const wrapText = (
   return lines;
 };
 
+interface DrawRichTextOptions {
+  fontFamily: string;
+  fontSize: number;
+  color: string;
+  isBold?: boolean;
+  isUnderline?: boolean;
+  maxWidth: number;
+  lineStep?: number;
+  align?: CanvasTextAlign;
+  maxBottomY?: number;
+}
+
+interface TextToken {
+  text: string;
+  bold: boolean;
+  underline: boolean;
+  color: string;
+}
+
+interface WordItem {
+  word: string;
+  bold: boolean;
+  underline: boolean;
+  color: string;
+}
+
+/**
+ * Parsing di tag inline: **grassetto**, <u>sottolineato</u>, <color:#HEX>colore</color>
+ */
+const parseRichTokens = (
+  raw: string,
+  defaultColor: string,
+  defaultBold: boolean,
+  defaultUnderline: boolean
+): TextToken[] => {
+  if (!raw) return [];
+  const tokens: TextToken[] = [];
+  const tagRegex = /(?:\*\*(.*?)\*\*|<u>(.*?)<\/u>|<color:([^>]+)>(.*?)<\/color>)/i;
+
+  let remaining = raw;
+  while (remaining.length > 0) {
+    const match = remaining.match(tagRegex);
+    if (!match || match.index === undefined) {
+      tokens.push({
+        text: remaining,
+        bold: defaultBold,
+        underline: defaultUnderline,
+        color: defaultColor,
+      });
+      break;
+    }
+
+    if (match.index > 0) {
+      tokens.push({
+        text: remaining.slice(0, match.index),
+        bold: defaultBold,
+        underline: defaultUnderline,
+        color: defaultColor,
+      });
+    }
+
+    if (match[1] !== undefined) {
+      // **bold** (supporta tag annidati)
+      tokens.push(...parseRichTokens(match[1], defaultColor, true, defaultUnderline));
+    } else if (match[2] !== undefined) {
+      // <u>underline</u> (supporta tag annidati)
+      tokens.push(...parseRichTokens(match[2], defaultColor, defaultBold, true));
+    } else if (match[3] !== undefined && match[4] !== undefined) {
+      // <color:HEX> (supporta tag annidati)
+      tokens.push(...parseRichTokens(match[4], match[3], defaultBold, defaultUnderline));
+    }
+
+    remaining = remaining.slice(match.index + match[0].length);
+  }
+
+  return tokens;
+};
+
+/**
+ * Disegna blocchi di testo formattati con supporto per font custom, px, colore, grassetto,
+ * sottolineatura e tag inline (**bold**, <u>underline</u>, <color:#HEX>text</color>)
+ */
+export const drawRichTextLines = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  startX: number,
+  startY: number,
+  options: DrawRichTextOptions
+): number => {
+  if (!text) return startY;
+  const {
+    fontFamily,
+    fontSize,
+    color,
+    isBold = false,
+    isUnderline = false,
+    maxWidth,
+    align = 'left',
+    maxBottomY = CANVAS_HEIGHT - 50,
+  } = options;
+
+  const lineStep = options.lineStep || Math.round(fontSize * 1.36);
+  const baseline = ctx.textBaseline || 'top';
+  let currentY = startY;
+
+  // Split per paragrafi (rispetta gli "a capo" dell'utente)
+  const paragraphs = text.split('\n');
+
+  for (const para of paragraphs) {
+    if (currentY > maxBottomY) break;
+    if (!para.trim()) {
+      currentY += Math.round(lineStep * 0.7);
+      continue;
+    }
+
+    // Parsing token per formattazione inline o globale
+    const tokens = parseRichTokens(para, color, isBold, isUnderline);
+
+    // Esplodi token in singole parole preservando gli stili
+    const words: WordItem[] = [];
+    for (const token of tokens) {
+      const parts = token.text.split(' ');
+      parts.forEach((p) => {
+        if (p.length > 0) {
+          words.push({
+            word: p,
+            bold: token.bold,
+            underline: token.underline,
+            color: token.color,
+          });
+        }
+      });
+    }
+
+    if (words.length === 0) continue;
+
+    // Raggruppa in righe rispettando maxWidth
+    const lines: WordItem[][] = [];
+    let currentLine: WordItem[] = [];
+    let currentLineWidth = 0;
+
+    for (const item of words) {
+      const weight = item.bold ? '700' : '400';
+      ctx.font = `${weight} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
+      const wordW = ctx.measureText(item.word).width;
+      const spaceW = ctx.measureText(' ').width;
+
+      const addedW = currentLine.length > 0 ? spaceW + wordW : wordW;
+
+      if (currentLineWidth + addedW > maxWidth && currentLine.length > 0) {
+        lines.push(currentLine);
+        currentLine = [item];
+        currentLineWidth = wordW;
+      } else {
+        currentLine.push(item);
+        currentLineWidth += addedW;
+      }
+    }
+    if (currentLine.length > 0) {
+      lines.push(currentLine);
+    }
+
+    // Disegna ciascuna riga
+    for (const line of lines) {
+      if (currentY > maxBottomY) break;
+
+      // Calcola larghezza totale della riga per allineamento
+      let totalLineWidth = 0;
+      const wordWidths: number[] = [];
+      let spaceWidth = 0;
+
+      for (let i = 0; i < line.length; i++) {
+        const item = line[i];
+        const weight = item.bold ? '700' : '400';
+        ctx.font = `${weight} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
+        const w = ctx.measureText(item.word).width;
+        wordWidths.push(w);
+        totalLineWidth += w;
+        if (i === 0) {
+          spaceWidth = ctx.measureText(' ').width;
+        }
+      }
+      totalLineWidth += spaceWidth * Math.max(0, line.length - 1);
+
+      let lineX = startX;
+      if (align === 'center') {
+        lineX = startX - totalLineWidth / 2;
+      } else if (align === 'right') {
+        lineX = startX - totalLineWidth;
+      }
+
+      // Renderizza parola per parola
+      ctx.textAlign = 'left';
+      let wordX = lineX;
+
+      for (let i = 0; i < line.length; i++) {
+        const item = line[i];
+        const weight = item.bold ? '700' : '400';
+        ctx.font = `${weight} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
+        ctx.fillStyle = item.color;
+
+        ctx.fillText(item.word, wordX, currentY);
+
+        const w = wordWidths[i];
+
+        // Sottolineatura
+        if (item.underline) {
+          const thickness = Math.max(2, Math.round(fontSize * 0.08));
+          let underlineY = currentY + Math.round(fontSize * 0.95);
+          if (baseline === 'middle') {
+            underlineY = currentY + Math.round(fontSize * 0.55);
+          } else if (baseline === 'alphabetic' || baseline === 'bottom') {
+            underlineY = currentY + 4;
+          }
+          ctx.fillRect(wordX, underlineY, w, thickness);
+        }
+
+        wordX += w + spaceWidth;
+      }
+
+      currentY += lineStep;
+    }
+  }
+
+  return currentY;
+};
+
 /**
  * Disegna un rettangolo arrotondato
  */
@@ -185,6 +412,22 @@ export const renderSlideToCanvas = async (
 
   const primaryTextColor = '#FFFFFF';
   const secondaryTextColor = templateId === 'personal_story' ? '#E2E8F0' : '#94A3B8';
+
+  // Sottotitolo / Gancio Dati: Font, Dimensioni px, Colore, Grassetto, Sottolineato
+  const subtitleFont = slide.subtitleFont || bodyFont;
+  const defaultSubtitleSize = (layout === 'dual_tone_cover' || layout === 'text_center') ? 28 : 26;
+  const subtitleFontSize = slide.subtitleFontSizePx || defaultSubtitleSize;
+  const defaultSubtitleColor = (layout === 'dual_tone_cover' || layout === 'connected_icon_list' || layout === 'final_cta') ? '#E2E8F0' : accentColor;
+  const subtitleColor = slide.subtitleColor || defaultSubtitleColor;
+  const isSubtitleBold = slide.subtitleBold !== undefined ? slide.subtitleBold : true;
+  const isSubtitleUnderline = !!slide.subtitleUnderline;
+
+  // Corpo del Testo / Spiegazione: Dimensioni px, Colore, Grassetto, Sottolineato
+  const defaultBodyColor = layout === 'dual_tone_cover' ? '#CBD5E1' : secondaryTextColor;
+  const bodyColor = slide.bodyColor || defaultBodyColor;
+  const isBodyBold = !!slide.bodyBold;
+  const isBodyUnderline = !!slide.bodyUnderline;
+
   const isFirstSlide = slide.order === 1;
   const isLastSlide = slide.order === totalSlides;
 
@@ -499,14 +742,17 @@ export const renderSlideToCanvas = async (
 
     // Sottotitolo / Intro
     if (slide.subheadline) {
-      ctx.font = `600 28px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = '#E2E8F0';
-      const subLines = wrapText(ctx, slide.subheadline, contentWidth);
-      for (const sl of subLines) {
-        ctx.fillText(sl, marginX, startY);
-        startY += 38;
-      }
-      startY += 20;
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.subheadline, marginX, startY, {
+        fontFamily: subtitleFont,
+        fontSize: subtitleFontSize,
+        color: subtitleColor,
+        isBold: isSubtitleBold,
+        isUnderline: isSubtitleUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
+      startY += 15;
     }
 
     // Nodi Connessi Verticali
@@ -568,14 +814,16 @@ export const renderSlideToCanvas = async (
     // Frase di chiusura / Body Text
     if (slide.bodyText) {
       startY = nodeY + 15;
-      ctx.font = `500 ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = secondaryTextColor;
       ctx.textBaseline = 'top';
-      const bodyLines = wrapText(ctx, slide.bodyText, contentWidth);
-      for (const bl of bodyLines) {
-        ctx.fillText(bl, marginX, startY);
-        startY += bodyFontSize + 10;
-      }
+      startY = drawRichTextLines(ctx, slide.bodyText, marginX, startY, {
+        fontFamily: bodyFont,
+        fontSize: bodyFontSize,
+        color: bodyColor,
+        isBold: isBodyBold,
+        isUnderline: isBodyUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 80,
+      });
     }
 
   // ─── LAYOUT 2: DIAGRAM FLOW (STILE SCREENSHOT 4: PREMESSA -> FRECCIA -> TASK FAILURE -> PUNCHLINE) ───
@@ -607,7 +855,7 @@ export const renderSlideToCanvas = async (
     if (slide.subheadline) {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
       const subLines = wrapText(ctx, slide.subheadline, contentWidth - 40);
-      const boxH = subLines.length * 36 + 30;
+      const boxH = Math.max(70, subLines.length * Math.round(subtitleFontSize * 1.4) + 26);
       drawRoundedRect(ctx, marginX, startY, contentWidth, boxH, 12);
       ctx.fill();
 
@@ -615,13 +863,16 @@ export const renderSlideToCanvas = async (
       ctx.fillStyle = accentColor;
       ctx.fillRect(marginX, startY, 5, boxH);
 
-      ctx.font = `500 24px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = '#E2E8F0';
-      let bY = startY + 20;
-      for (const sl of subLines) {
-        ctx.fillText(sl, marginX + 25, bY);
-        bY += 34;
-      }
+      ctx.textBaseline = 'top';
+      drawRichTextLines(ctx, slide.subheadline, marginX + 25, startY + 18, {
+        fontFamily: subtitleFont,
+        fontSize: subtitleFontSize,
+        color: subtitleColor,
+        isBold: isSubtitleBold,
+        isUnderline: isSubtitleUnderline,
+        maxWidth: contentWidth - 45,
+        maxBottomY: startY + boxH - 10,
+      });
       startY += boxH + 25;
     }
 
@@ -723,19 +974,22 @@ export const renderSlideToCanvas = async (
 
     // Sottotitolo / Hook
     if (slide.subheadline) {
-      ctx.font = `700 28px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = '#E2E8F0';
-      const subLines = wrapText(ctx, slide.subheadline, contentWidth);
-      for (const sl of subLines) {
-        ctx.fillText(sl, marginX, startY);
-        startY += 38;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.subheadline, marginX, startY, {
+        fontFamily: subtitleFont,
+        fontSize: subtitleFontSize,
+        color: subtitleColor,
+        isBold: isSubtitleBold,
+        isUnderline: isSubtitleUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
       startY += 10;
     }
 
     // Statistica / Numero in evidenza (se presente)
     if (slide.statNumber) {
-      ctx.font = `900 44px ${titleFont}, system-ui, sans-serif`;
+      ctx.font = `900 44px "${titleFont}", system-ui, sans-serif`;
       ctx.fillStyle = accentColor;
       ctx.fillText(slide.statNumber, marginX, startY);
       startY += 52;
@@ -744,14 +998,16 @@ export const renderSlideToCanvas = async (
     // Corpo del Testo (spiegazione/paragrafo cover)
     if (slide.bodyText) {
       startY += 6;
-      ctx.font = `normal ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = '#CBD5E1';
-      const bodyLines = wrapText(ctx, slide.bodyText, contentWidth);
-      for (const bl of bodyLines) {
-        if (startY > bottomSafeY - 110) break;
-        ctx.fillText(bl, marginX, startY);
-        startY += bodyFontSize + 12;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.bodyText, marginX, startY, {
+        fontFamily: bodyFont,
+        fontSize: bodyFontSize,
+        color: bodyColor,
+        isBold: isBodyBold,
+        isUnderline: isBodyUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 110,
+      });
       startY += 10;
     }
 
@@ -821,24 +1077,30 @@ export const renderSlideToCanvas = async (
 
     if (slide.subheadline) {
       startY += 10;
-      ctx.font = `600 26px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const subLines = wrapText(ctx, slide.subheadline, contentWidth);
-      for (const line of subLines) {
-        ctx.fillText(line, marginX, startY);
-        startY += 36;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.subheadline, marginX, startY, {
+        fontFamily: subtitleFont,
+        fontSize: subtitleFontSize,
+        color: subtitleColor,
+        isBold: isSubtitleBold,
+        isUnderline: isSubtitleUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     if (slide.bodyText && slide.bodyText !== slide.wrongText) {
       startY += 10;
-      ctx.font = `normal ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = secondaryTextColor;
-      const bodyLines = wrapText(ctx, slide.bodyText, contentWidth);
-      for (const line of bodyLines) {
-        ctx.fillText(line, marginX, startY);
-        startY += bodyFontSize + 10;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.bodyText, marginX, startY, {
+        fontFamily: bodyFont,
+        fontSize: bodyFontSize,
+        color: bodyColor,
+        isBold: isBodyBold,
+        isUnderline: isBodyUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     startY += 20;
@@ -921,25 +1183,31 @@ export const renderSlideToCanvas = async (
 
     if (slide.subheadline) {
       startY += 10;
-      ctx.font = `600 26px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const subLines = wrapText(ctx, slide.subheadline, contentWidth);
-      for (const line of subLines) {
-        ctx.fillText(line, marginX, startY);
-        startY += 38;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.subheadline, marginX, startY, {
+        fontFamily: subtitleFont,
+        fontSize: subtitleFontSize,
+        color: subtitleColor,
+        isBold: isSubtitleBold,
+        isUnderline: isSubtitleUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
       startY += 10;
     }
 
     // Se c'è bodyText (intro/spiegazione) e ci sono anche bulletPoints, mostriamolo prima delle card
     if (slide.bodyText && slide.bulletPoints && slide.bulletPoints.length > 0) {
-      ctx.font = `normal ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = secondaryTextColor;
-      const bodyLines = wrapText(ctx, slide.bodyText, contentWidth);
-      for (const line of bodyLines) {
-        ctx.fillText(line, marginX, startY);
-        startY += bodyFontSize + 12;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.bodyText, marginX, startY, {
+        fontFamily: bodyFont,
+        fontSize: bodyFontSize,
+        color: bodyColor,
+        isBold: isBodyBold,
+        isUnderline: isBodyUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
       startY += 15;
     }
 
@@ -1013,25 +1281,31 @@ export const renderSlideToCanvas = async (
 
     if (slide.subheadline) {
       startY += 10;
-      ctx.font = `600 26px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const subLines = wrapText(ctx, slide.subheadline, contentWidth);
-      for (const line of subLines) {
-        ctx.fillText(line, marginX, startY);
-        startY += 38;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.subheadline, marginX, startY, {
+        fontFamily: subtitleFont,
+        fontSize: subtitleFontSize,
+        color: subtitleColor,
+        isBold: isSubtitleBold,
+        isUnderline: isSubtitleUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     // Intro se presente insieme a step
     if (slide.bodyText && slide.bulletPoints && slide.bulletPoints.length > 0) {
       startY += 12;
-      ctx.font = `normal ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = secondaryTextColor;
-      const bodyLines = wrapText(ctx, slide.bodyText, contentWidth);
-      for (const line of bodyLines) {
-        ctx.fillText(line, marginX, startY);
-        startY += bodyFontSize + 12;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.bodyText, marginX, startY, {
+        fontFamily: bodyFont,
+        fontSize: bodyFontSize,
+        color: bodyColor,
+        isBold: isBodyBold,
+        isUnderline: isBodyUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
       startY += 15;
     } else {
       startY += 25;
@@ -1117,19 +1391,23 @@ export const renderSlideToCanvas = async (
 
     // Sottotitolo centrato
     if (slide.subheadline) {
-      ctx.font = `600 ${Math.max(22, Math.round(titleFontSize * 0.55))}px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = '#E2E8F0';
-      const subLines = wrapText(ctx, slide.subheadline, contentWidth);
-      for (const line of subLines) {
-        ctx.fillText(line, CANVAS_WIDTH / 2, startY);
-        startY += 44;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.subheadline, CANVAS_WIDTH / 2, startY, {
+        fontFamily: subtitleFont,
+        fontSize: subtitleFontSize,
+        color: subtitleColor,
+        isBold: isSubtitleBold,
+        isUnderline: isSubtitleUnderline,
+        maxWidth: contentWidth,
+        align: 'center',
+        maxBottomY: bottomSafeY - 100,
+      });
       startY += 15;
     }
 
     // Statistica / Numero in evidenza (se presente)
     if (slide.statNumber) {
-      ctx.font = `900 48px ${titleFont}, system-ui, sans-serif`;
+      ctx.font = `900 48px "${titleFont}", system-ui, sans-serif`;
       ctx.fillStyle = accentColor;
       ctx.fillText(slide.statNumber, CANVAS_WIDTH / 2, startY);
       startY += 56;
@@ -1137,14 +1415,17 @@ export const renderSlideToCanvas = async (
 
     // Corpo del Testo centrato (se presente)
     if (slide.bodyText) {
-      ctx.font = `normal ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = secondaryTextColor;
-      const bodyLines = wrapText(ctx, slide.bodyText, contentWidth - 40);
-      for (const line of bodyLines) {
-        if (startY > bottomSafeY - 110) break;
-        ctx.fillText(line, CANVAS_WIDTH / 2, startY);
-        startY += bodyFontSize + 14;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.bodyText, CANVAS_WIDTH / 2, startY, {
+        fontFamily: bodyFont,
+        fontSize: bodyFontSize,
+        color: bodyColor,
+        isBold: isBodyBold,
+        isUnderline: isBodyUnderline,
+        maxWidth: contentWidth - 40,
+        align: 'center',
+        maxBottomY: bottomSafeY - 110,
+      });
       startY += 15;
     }
 
@@ -1211,13 +1492,16 @@ export const renderSlideToCanvas = async (
 
     if (slide.subheadline) {
       startY += 15;
-      ctx.font = `600 28px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = '#CBD5E1';
-      const subLines = wrapText(ctx, slide.subheadline, contentWidth);
-      for (const line of subLines) {
-        ctx.fillText(line, marginX, startY);
-        startY += 40;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.subheadline, marginX, startY, {
+        fontFamily: subtitleFont,
+        fontSize: subtitleFontSize,
+        color: subtitleColor,
+        isBold: isSubtitleBold,
+        isUnderline: isSubtitleUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     startY += 25;
@@ -1252,11 +1536,15 @@ export const renderSlideToCanvas = async (
     ctx.fillText('💾 SALVA IL POST & COMMENTA', marginX + 35, ctaBoxY + 35);
 
     // Testo del corpo dinamico
-    ctx.font = `500 ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-    ctx.fillStyle = '#FEF3C7';
+    ctx.font = `${isBodyBold ? 'bold' : '500'} ${bodyFontSize}px "${bodyFont}", system-ui, sans-serif`;
+    ctx.fillStyle = slide.bodyColor || '#FEF3C7';
     let currentY = ctaBoxY + 80;
     for (const bl of ctaBodyLines) {
       ctx.fillText(bl, marginX + 35, currentY);
+      if (isBodyUnderline && bl.trim()) {
+        const textW = ctx.measureText(bl).width;
+        ctx.fillRect(marginX + 35, currentY + Math.round(bodyFontSize * 0.95), textW, Math.max(2, Math.round(bodyFontSize * 0.08)));
+      }
       currentY += bodyFontSize + 12;
     }
 
@@ -1564,18 +1852,21 @@ export const renderSlideToCanvas = async (
 
     if (slide.subheadline) {
       startY += 12 + contentOffsetY;
-      ctx.font = `600 26px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const subLines = wrapText(ctx, slide.subheadline, contentWidth);
-      for (const line of subLines) {
-        ctx.fillText(line, marginX, startY);
-        startY += 38;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.subheadline, marginX, startY, {
+        fontFamily: subtitleFont,
+        fontSize: subtitleFontSize,
+        color: subtitleColor,
+        isBold: isSubtitleBold,
+        isUnderline: isSubtitleUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     if (slide.statNumber) {
       startY += 15;
-      ctx.font = `900 48px ${titleFont}, system-ui, sans-serif`;
+      ctx.font = `900 48px "${titleFont}", system-ui, sans-serif`;
       ctx.fillStyle = accentColor;
       ctx.fillText(slide.statNumber, marginX, startY);
       startY += 56;
@@ -1583,14 +1874,16 @@ export const renderSlideToCanvas = async (
 
     if (slide.bodyText) {
       startY += 20;
-      ctx.font = `normal ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = secondaryTextColor;
-      const bodyLines = wrapText(ctx, slide.bodyText, contentWidth);
-      for (const line of bodyLines) {
-        if (startY > bottomSafeY - 40) break;
-        ctx.fillText(line, marginX, startY);
-        startY += bodyFontSize + 14;
-      }
+      ctx.textBaseline = 'top';
+      startY = drawRichTextLines(ctx, slide.bodyText, marginX, startY, {
+        fontFamily: bodyFont,
+        fontSize: bodyFontSize,
+        color: bodyColor,
+        isBold: isBodyBold,
+        isUnderline: isBodyUnderline,
+        maxWidth: contentWidth,
+        maxBottomY: bottomSafeY - 40,
+      });
     }
 
     if (slide.bulletPoints && slide.bulletPoints.length > 0) {
