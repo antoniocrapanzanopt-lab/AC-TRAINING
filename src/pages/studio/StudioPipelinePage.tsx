@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { useContents } from '../../context/ContentsContext';
 import { useToast } from '../../context/ToastContext';
@@ -37,11 +38,24 @@ export const StudioPipelinePage: React.FC<StudioPipelinePageProps> = ({
   onNavigateToStudio,
   onQuickNewContent,
 }) => {
-  const { contents, moveStatus } = useContents();
+  const { contents, moveStatus, deleteContentById } = useContents();
   const { showSuccess, showError } = useToast();
 
   const [formatFilter, setFormatFilter] = useState<StudioFormatFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Eliminazione contenuto con conferma
+  const handleDeleteContent = async (item: InstagramContent) => {
+    const confirmDelete = window.confirm(
+      `Sei sicuro di voler eliminare definitivamente "${item.title}"?`
+    );
+    if (!confirmDelete) return;
+    try {
+      await deleteContentById(item.id);
+    } catch {
+      // Notifica già gestita nel context
+    }
+  };
 
   // Spostamento di colonna
   const handleMoveColumn = async (
@@ -334,15 +348,29 @@ export const StudioPipelinePage: React.FC<StudioPipelinePageProps> = ({
                       key={item.id}
                       className="group p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/90 hover:border-amber-500/40 hover:bg-slate-900/90 transition-all shadow-sm space-y-2.5"
                     >
-                      {/* HEADER CARD: BADGE FORMATO + PROGRAMMAZIONE */}
+                      {/* HEADER CARD: BADGE FORMATO + PROGRAMMAZIONE + ELIMINA */}
                       <div className="flex items-center justify-between gap-1.5">
-                        {renderFormatBadge(item.type)}
-                        {item.scheduled_for && (
-                          <span className="text-[10px] font-mono text-amber-300 flex items-center gap-1">
-                            <Calendar className="w-2.5 h-2.5 text-amber-400" />
-                            {new Date(item.scheduled_for).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {renderFormatBadge(item.type)}
+                          {item.scheduled_for && (
+                            <span className="text-[10px] font-mono text-amber-300 flex items-center gap-1">
+                              <Calendar className="w-2.5 h-2.5 text-amber-400" />
+                              {new Date(item.scheduled_for).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteContent(item);
+                          }}
+                          className="p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/15 transition-all cursor-pointer"
+                          title="Elimina contenuto"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
 
                       {/* TITOLO CONTENUTO */}
@@ -379,15 +407,30 @@ export const StudioPipelinePage: React.FC<StudioPipelinePageProps> = ({
                           <ChevronLeft className="w-3.5 h-3.5" />
                         </button>
 
-                        {/* APRI EDITOR / STUDIO DEDICATO */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDedicatedStudio(item)}
-                          className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-semibold flex items-center gap-1 transition-all"
-                        >
-                          <span>Studio</span>
-                          <ExternalLink className="w-2.5 h-2.5" />
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {/* APRI EDITOR / STUDIO DEDICATO */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDedicatedStudio(item)}
+                            className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                          >
+                            <span>Studio</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </button>
+
+                          {/* ELIMINA CONTENUTO */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteContent(item);
+                            }}
+                            className="p-1 rounded bg-slate-800/60 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700/50 hover:border-rose-500/40 transition-all cursor-pointer"
+                            title="Elimina contenuto"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
 
                         {/* TASTO AVANTI COLONNA */}
                         <button

@@ -24,6 +24,7 @@ import {
   SplitSquareVertical,
   Hash,
   Smile,
+  Trash2,
 } from 'lucide-react';
 import {
   InstagramContent,
@@ -179,8 +180,22 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
   mode: propMode,
 }) => {
   const mode: 'create' | 'edit' = propMode || (contentToEdit && contentToEdit.id ? 'edit' : 'create');
-  const { createContent, updateContent } = useContents();
+  const { createContent, updateContent, deleteContentById } = useContents();
   const { showSuccess } = useToast();
+
+  const handleDelete = async () => {
+    if (!contentToEdit?.id) return;
+    const confirmDelete = window.confirm(
+      `Sei sicuro di voler eliminare definitivamente "${title || contentToEdit.title}"?`
+    );
+    if (!confirmDelete) return;
+    try {
+      await deleteContentById(contentToEdit.id);
+      onClose();
+    } catch {
+      // Errore già mostrato da context
+    }
+  };
 
   const [title, setTitle] = useState('');
   const [type, setType] = useState<ContentType>('reel');
@@ -633,6 +648,17 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
               <span>Apri Cover Studio</span>
             </button>
           ) : null}
+
+          {contentToEdit && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              title="Elimina contenuto"
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 transition cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
 
           <button
             type="button"
@@ -1275,13 +1301,25 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
 
       {/* ─── 3. BOTTOM FOOTER BAR (FIXED HEIGHT) ─── */}
       <footer className="h-14 px-6 bg-slate-900/95 border-t border-slate-800 flex items-center justify-between shrink-0 z-20 backdrop-blur-md">
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
-        >
-          Chiudi / Annulla
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+          >
+            Chiudi / Annulla
+          </button>
+          {contentToEdit && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Elimina Contenuto</span>
+            </button>
+          )}
+        </div>
 
         <div className="flex items-center gap-3">
           <button
