@@ -45,6 +45,8 @@ export const StudioReelPage: React.FC<StudioReelPageProps> = ({
   // Campi editor Reel
   const [title, setTitle] = useState('');
   const [hook, setHook] = useState('');
+  const [scriptMode, setScriptMode] = useState<'unified' | 'split'>('unified');
+  const [scriptBody, setScriptBody] = useState('');
   const [problem, setProblem] = useState('');
   const [solution, setSolution] = useState('');
   const [practicalExample, setPracticalExample] = useState('');
@@ -69,8 +71,9 @@ export const StudioReelPage: React.FC<StudioReelPageProps> = ({
       setCta(activeReel.call_to_action || '');
       setCaption(activeReel.caption || '');
       
-      // Prova a estrarre struttura dallo script_body se presente
+      // Se presente script_body, carica nel testo unico e nei fallback
       if (activeReel.script_body) {
+        setScriptBody(activeReel.script_body);
         setSolution(activeReel.script_body);
       }
       if (activeReel.internal_notes) {
@@ -80,6 +83,8 @@ export const StudioReelPage: React.FC<StudioReelPageProps> = ({
       // Default per nuovo reel
       setTitle('Nuovo Reel Tecnico');
       setHook('Il 90% delle persone sbaglia questo dettaglio nello stacco...');
+      const defaultUnified = `[0-15s Problema]: La maggior parte pensa che basti stringere la schiena, ma il carico si sposta sui lombari.\n\n[15-45s Soluzione]: Il trucco reale è spingere il pavimento con le gambe mantenendo i dorsali ingaggiati prima di salire.\n\n[45-55s Dimostrazione]: Guarda la differenza tra farlo senza e con questo accorgimento.\n\n[55-60s CTA]: Salva il reel e provalo nel tuo prossimo allenamento!`;
+      setScriptBody(defaultUnified);
       setProblem('La maggior parte pensa che basti stringere la schiena, ma il carico si sposta sui lombari.');
       setSolution('Il trucco reale è spingere il pavimento con le gambe mantenendo i dorsali ingaggiati prima di salire.');
       setPracticalExample('Guarda la differenza tra farlo senza e con questo accorgimento.');
@@ -127,11 +132,19 @@ export const StudioReelPage: React.FC<StudioReelPageProps> = ({
     setBRollList((prev) => prev.filter((item) => item.id !== id));
   };
 
+  // Helper per calcolare lo script_body in base alla modalità attiva
+  const resolveScriptBody = () => {
+    if (scriptMode === 'unified') {
+      return scriptBody;
+    }
+    return `[HOOK (0-3s)]: ${hook}\n\n[PROBLEMA]: ${problem}\n\n[SOLUZIONE]: ${solution}\n\n[ESEMPIO]: ${practicalExample}\n\n[CTA]: ${cta}`;
+  };
+
   // Salva modifiche al Reel
   const handleSaveReel = async () => {
     try {
       setIsSaving(true);
-      const fullScriptBody = `[HOOK (0-3s)]: ${hook}\n\n[PROBLEMA]: ${problem}\n\n[SOLUZIONE]: ${solution}\n\n[ESEMPIO]: ${practicalExample}\n\n[CTA]: ${cta}`;
+      const fullScriptBody = resolveScriptBody();
 
       if (activeReel) {
         await updateContent(activeReel.id, {
@@ -170,7 +183,7 @@ export const StudioReelPage: React.FC<StudioReelPageProps> = ({
   const handleSendToEditing = async () => {
     try {
       setIsSaving(true);
-      const fullScriptBody = `[HOOK (0-3s)]: ${hook}\n\n[PROBLEMA]: ${problem}\n\n[SOLUZIONE]: ${solution}\n\n[ESEMPIO]: ${practicalExample}\n\n[CTA]: ${cta}`;
+      const fullScriptBody = resolveScriptBody();
 
       if (activeReel) {
         await updateContent(activeReel.id, {
@@ -350,66 +363,190 @@ export const StudioReelPage: React.FC<StudioReelPageProps> = ({
             </p>
           </div>
 
-          {/* STRUTTURA NARRATIVA (PROBLEMA, SOLUZIONE, ESEMPIO, CTA) */}
+          {/* STRUTTURA NARRATIVA (TESTO UNICO O SPLIT) */}
           <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-white font-mono flex items-center gap-2">
-              <FileText className="w-4 h-4 text-sky-400" />
-              Struttura Narrativa del Reel
-            </h2>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-white font-mono flex items-center gap-2">
+                <FileText className="w-4 h-4 text-sky-400" />
+                Testo & Struttura del Reel
+              </h2>
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1 block">
-                  1. Problema & Convinzione Errata (0 - 15s)
-                </label>
-                <textarea
-                  value={problem}
-                  onChange={(e) => setProblem(e.target.value)}
-                  placeholder="Qual è l'errore o il falso mito da smontare?"
-                  rows={2}
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 text-white text-xs resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1 block">
-                  2. Soluzione Tecnica / Principio Biomeccanico (15 - 45s)
-                </label>
-                <textarea
-                  value={solution}
-                  onChange={(e) => setSolution(e.target.value)}
-                  placeholder="La spiegazione scientifica ma pratica del coach..."
-                  rows={3}
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 text-white text-xs resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1 block">
-                  3. Esempio Pratico / Dimostrazione Visiva (45 - 55s)
-                </label>
-                <textarea
-                  value={practicalExample}
-                  onChange={(e) => setPracticalExample(e.target.value)}
-                  placeholder="Cosa mostrare a video come test di verifica..."
-                  rows={2}
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 text-white text-xs resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 mb-1 block">
-                  4. Call to Action Finale (55 - 60s)
-                </label>
-                <input
-                  type="text"
-                  value={cta}
-                  onChange={(e) => setCta(e.target.value)}
-                  placeholder="es. Salva il post per la tua prossima sessione o scrivi INFO nei commenti"
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 text-white text-xs"
-                />
+              {/* TOGGLE MODALITÀ: TESTO UNICO (FLUIDO) VS 4 BLOCCHI */}
+              <div className="flex items-center p-0.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!scriptBody.trim()) {
+                      const parts = [
+                        problem ? `[0-15s Problema]: ${problem}` : '',
+                        solution ? `[15-45s Soluzione]: ${solution}` : '',
+                        practicalExample ? `[45-55s Dimostrazione]: ${practicalExample}` : '',
+                        cta ? `[55-60s CTA]: ${cta}` : '',
+                      ].filter(Boolean);
+                      if (parts.length > 0) {
+                        setScriptBody(parts.join('\n\n'));
+                      }
+                    }
+                    setScriptMode('unified');
+                  }}
+                  className={`px-3 py-1 rounded-md font-semibold transition-all ${
+                    scriptMode === 'unified'
+                      ? 'bg-sky-500 text-slate-950 font-bold shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Testo Unico (Fluido)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScriptMode('split')}
+                  className={`px-3 py-1 rounded-md font-semibold transition-all ${
+                    scriptMode === 'split'
+                      ? 'bg-sky-500 text-slate-950 font-bold shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  4 Blocchi Separati
+                </button>
               </div>
             </div>
+
+            {scriptMode === 'unified' ? (
+              /* MODALITÀ TESTO UNICO FLUIDO: ZERO FATICA A SCRIVERE */
+              <div className="space-y-3">
+                {/* TOOLBAR DI AIUTO TIMING */}
+                <div className="flex items-center justify-between gap-2 flex-wrap text-[11px]">
+                  <span className="text-slate-400">
+                    Scrivi il testo continuo del video. Clicca sui pulsanti per inserire al volo i punti chiave:
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setScriptBody((prev) => (prev ? prev + '\n\n' : '') + '[0-15s Problema]: ')
+                      }
+                      className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 font-mono transition-colors"
+                      title="Inserisci marcatore Problema"
+                    >
+                      + Problema
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setScriptBody((prev) => (prev ? prev + '\n\n' : '') + '[15-45s Soluzione]: ')
+                      }
+                      className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 font-mono transition-colors"
+                      title="Inserisci marcatore Soluzione"
+                    >
+                      + Soluzione
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setScriptBody((prev) => (prev ? prev + '\n\n' : '') + '[45-55s Dimostrazione]: ')
+                      }
+                      className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-mono transition-colors"
+                      title="Inserisci marcatore Esempio/Dimostrazione"
+                    >
+                      + Dimostrazione
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setScriptBody((prev) => (prev ? prev + '\n\n' : '') + '[55-60s CTA]: ')
+                      }
+                      className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-purple-300 border border-slate-700 font-mono transition-colors"
+                      title="Inserisci marcatore Call to Action"
+                    >
+                      + CTA
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const template = `[0-15s Problema]: \n\n[15-45s Soluzione]: \n\n[45-55s Dimostrazione]: \n\n[55-60s CTA]: `;
+                        setScriptBody((prev) => (prev ? prev + '\n\n' + template : template));
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded-md bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono transition-colors"
+                      title="Inserisci schema completo 60 secondi"
+                    >
+                      + Schema 60s
+                    </button>
+                  </div>
+                </div>
+
+                {/* UNICO TEXTAREA FLUIDO E SPAZIOSO */}
+                <div className="relative">
+                  <textarea
+                    value={scriptBody}
+                    onChange={(e) => setScriptBody(e.target.value)}
+                    placeholder="Scrivi qui tutto il testo del tuo Reel in modo fluido e continuo (cosa dici nei primi 15 secondi, spiegazione pratica, dimostrazione ed eventuale invito all'azione)..."
+                    rows={10}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 text-white text-sm leading-relaxed resize-y min-h-[240px] placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-sky-400/50"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1 px-1">
+                    <span className="italic">💡 Nessun box separato: scrivi liberamente tutto d'un fiato.</span>
+                    <span className="font-mono text-slate-400">
+                      {scriptBody.length} caratteri • {scriptBody.trim().split(/\s+/).filter(Boolean).length} parole • ~{Math.max(1, Math.round(scriptBody.trim().split(/\s+/).filter(Boolean).length / 2.5))}s parlato
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* MODALITÀ 4 BLOCCHI SEPARATI (LEGACY) */
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 mb-1 block">
+                    1. Problema & Convinzione Errata (0 - 15s)
+                  </label>
+                  <textarea
+                    value={problem}
+                    onChange={(e) => setProblem(e.target.value)}
+                    placeholder="Qual è l'errore o il falso mito da smontare?"
+                    rows={2}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 text-white text-xs resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 mb-1 block">
+                    2. Soluzione Tecnica / Principio Biomeccanico (15 - 45s)
+                  </label>
+                  <textarea
+                    value={solution}
+                    onChange={(e) => setSolution(e.target.value)}
+                    placeholder="La spiegazione scientifica ma pratica del coach..."
+                    rows={3}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 text-white text-xs resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 mb-1 block">
+                    3. Esempio Pratico / Dimostrazione Visiva (45 - 55s)
+                  </label>
+                  <textarea
+                    value={practicalExample}
+                    onChange={(e) => setPracticalExample(e.target.value)}
+                    placeholder="Cosa mostrare a video come test di verifica..."
+                    rows={2}
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 text-white text-xs resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 mb-1 block">
+                    4. Call to Action Finale (55 - 60s)
+                  </label>
+                  <input
+                    type="text"
+                    value={cta}
+                    onChange={(e) => setCta(e.target.value)}
+                    placeholder="es. Salva il post per la tua prossima sessione o scrivi INFO nei commenti"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-sky-400 text-white text-xs"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
