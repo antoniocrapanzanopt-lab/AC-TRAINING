@@ -725,7 +725,10 @@ export const renderSlideToCanvas = async (
       const iconPool = ['🎯', '🔒', '📈', '💡', '⚡', '🏋️', '🧠'];
 
       bullets.forEach((bullet, idx) => {
-        const icon = iconPool[idx % iconPool.length];
+        // Se il bullet inizia con emoji o icona specifica dell'utente, usa quella
+        const emojiMatch = bullet.match(/^(\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji})\s*/u);
+        const icon = emojiMatch ? emojiMatch[1] : iconPool[idx % iconPool.length];
+        const cleanBullet = emojiMatch ? bullet.slice(emojiMatch[0].length) : bullet;
         const circleRadius = 26;
         const circleCenterX = marginX + circleRadius;
         const circleCenterY = nodeY + circleRadius;
@@ -762,7 +765,7 @@ export const renderSlideToCanvas = async (
         ctx.font = `500 26px ${bodyFont}, system-ui, sans-serif`;
         ctx.fillStyle = '#F8FAFC';
         ctx.textBaseline = 'middle';
-        const textLines = wrapText(ctx, bullet, contentWidth - 80);
+        const textLines = wrapText(ctx, cleanBullet, contentWidth - 80);
         let tY = circleCenterY;
         textLines.forEach((tl) => {
           ctx.fillText(tl, marginX + 75, tY);
@@ -1069,6 +1072,8 @@ export const renderSlideToCanvas = async (
 
     const wrongText = slide.wrongText?.trim();
     const correctText = slide.correctText?.trim();
+    const wrongTitle = slide.wrongTitle?.trim();
+    const correctTitle = slide.correctTitle?.trim();
 
     // BOX ❌ ERRORE (Rosso) - solo se compilato dall'utente
     if (wrongText) {
@@ -1076,7 +1081,8 @@ export const renderSlideToCanvas = async (
       const wrongBoxY = startY;
       ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
       const wrongLines = wrapText(ctx, wrongText, contentWidth - 50);
-      const wrongBoxHeight = Math.max(120, 75 + wrongLines.length * 36 + 15);
+      const hasWrongTitle = Boolean(wrongTitle);
+      const wrongBoxHeight = Math.max(80, (hasWrongTitle ? 65 : 25) + wrongLines.length * 36 + 20);
 
       ctx.fillStyle = 'rgba(244, 63, 94, 0.08)';
       drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, wrongBoxHeight, 18);
@@ -1086,13 +1092,15 @@ export const renderSlideToCanvas = async (
       drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, wrongBoxHeight, 18);
       ctx.stroke();
 
-      ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = '#F43F5E';
-      ctx.fillText('❌ ERRORE COMUNE DA EVITARE:', marginX + 25, wrongBoxY + 30);
+      if (hasWrongTitle) {
+        ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
+        ctx.fillStyle = '#F43F5E';
+        ctx.fillText(wrongTitle!, marginX + 25, wrongBoxY + 30);
+      }
 
       ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
       ctx.fillStyle = '#FFE4E6';
-      let wY = wrongBoxY + 70;
+      let wY = wrongBoxY + (hasWrongTitle ? 70 : 30);
       for (const line of wrongLines) {
         ctx.fillText(line, marginX + 25, wY);
         wY += 36;
@@ -1107,7 +1115,8 @@ export const renderSlideToCanvas = async (
       const correctBoxY = startY;
       ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
       const correctLines = wrapText(ctx, correctText, contentWidth - 50);
-      const correctBoxHeight = Math.max(120, 75 + correctLines.length * 36 + 15);
+      const hasCorrectTitle = Boolean(correctTitle);
+      const correctBoxHeight = Math.max(80, (hasCorrectTitle ? 65 : 25) + correctLines.length * 36 + 20);
 
       ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
       drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, correctBoxHeight, 18);
@@ -1117,13 +1126,15 @@ export const renderSlideToCanvas = async (
       drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, correctBoxHeight, 18);
       ctx.stroke();
 
-      ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = '#10B981';
-      ctx.fillText('✅ CORREZIONE BIOMECCANICA OTTIMALE:', marginX + 25, correctBoxY + 30);
+      if (hasCorrectTitle) {
+        ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
+        ctx.fillStyle = '#10B981';
+        ctx.fillText(correctTitle!, marginX + 25, correctBoxY + 30);
+      }
 
       ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
       ctx.fillStyle = '#D1FAE5';
-      let cY = correctBoxY + 70;
+      let cY = correctBoxY + (hasCorrectTitle ? 70 : 30);
       for (const line of correctLines) {
         ctx.fillText(line, marginX + 25, cY);
         cY += 36;
@@ -1288,12 +1299,17 @@ export const renderSlideToCanvas = async (
     let stepIdx = 1;
 
     for (const st of steps) {
+      // Se il testo dell'utente specifica una label custom (es. "FASE 1:", "PARTE 1:", "REGOLA:"), usa quella
+      const customLabelMatch = st.match(/^([A-ZÀ-Úa-zà-ù0-9\s#]+:)\s*(.*)/);
+      const stepLabel = customLabelMatch ? customLabelMatch[1].replace(/:$/, '').trim() : `STEP ${stepIdx}`;
+      const stepContent = customLabelMatch ? customLabelMatch[2] : st.replace(/^(?:Step\s*\d+:?|[-•])\s*/i, '');
+
       ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
       ctx.fillStyle = accentColor;
-      ctx.fillText(`STEP ${stepIdx}`, marginX + 60, startY);
+      ctx.fillText(stepLabel, marginX + 60, startY);
 
       ctx.font = `500 ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-      const stepLines = wrapText(ctx, st.replace(/^(?:Step\s*\d+:?|[-•])\s*/i, ''), contentWidth - 70);
+      const stepLines = wrapText(ctx, stepContent, contentWidth - 70);
       let sY = startY + 34;
       for (const sl of stepLines) {
         ctx.fillStyle = '#E2E8F0';
@@ -1482,9 +1498,11 @@ export const renderSlideToCanvas = async (
     const ctaBodyLines = slide.bodyText ? wrapText(ctx, slide.bodyText, contentWidth - 70) : [];
     const bodyTextHeight = ctaBodyLines.length > 0 ? ctaBodyLines.length * (bodyFontSize + 12) : 0;
     const signatureHeight = brandKit.authorSignature ? 40 : 10;
-    const boxPaddingTop = ctaBodyLines.length > 0 ? 80 : 50;
+    const ctaTitle = slide.ctaBoxTitle !== undefined ? slide.ctaBoxTitle.trim() : (slide.punchlineQuote?.trim() || '');
+    const hasCtaTitle = Boolean(ctaTitle);
+    const boxPaddingTop = hasCtaTitle ? (ctaBodyLines.length > 0 ? 80 : 50) : 30;
     const boxBottomPadding = 25;
-    const totalBoxHeight = Math.max(140, boxPaddingTop + bodyTextHeight + signatureHeight + boxBottomPadding);
+    const totalBoxHeight = Math.max(100, boxPaddingTop + bodyTextHeight + signatureHeight + boxBottomPadding);
 
     // Posizionamento del box rispettando sia lo startY sia la safe area inferiore del footer
     const ctaBoxY = Math.min(
@@ -1501,13 +1519,15 @@ export const renderSlideToCanvas = async (
     drawRoundedRect(ctx, marginX, ctaBoxY, contentWidth, totalBoxHeight, 24);
     ctx.stroke();
 
-    // Titolo Box CTA
-    ctx.font = `900 30px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = accentColor;
-    ctx.fillText('💾 SALVA IL POST & COMMENTA', marginX + 35, ctaBoxY + 35);
+    // Titolo Box CTA (mostrato solo se definito esplicitamente dall'utente)
+    if (hasCtaTitle) {
+      ctx.font = `900 30px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      ctx.fillText(ctaTitle, marginX + 35, ctaBoxY + 35);
+    }
 
     // Testo del corpo dinamico (solo se presente testo effettivo)
-    let currentY = ctaBoxY + 80;
+    let currentY = ctaBoxY + (hasCtaTitle ? 80 : 30);
     if (ctaBodyLines.length > 0) {
       ctx.font = `${isBodyBold ? 'bold' : '500'} ${bodyFontSize}px "${bodyFont}", system-ui, sans-serif`;
       ctx.fillStyle = slide.bodyColor || '#FEF3C7';
@@ -1520,7 +1540,7 @@ export const renderSlideToCanvas = async (
         currentY += bodyFontSize + 12;
       }
     } else {
-      currentY = ctaBoxY + 50;
+      currentY = ctaBoxY + (hasCtaTitle ? 50 : 25);
     }
 
     // Firma Brand posizionata SEMPRE sotto al testo, mai sovrapposta
@@ -1533,21 +1553,23 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT F: PRODUCT / EXERCISE BREAKDOWN (INFOGRAFICA 4 CALLOUT CON SOGGETTO CENTRALE & PUNTATORI) ───
   } else if (layout === 'product_breakdown') {
-    // 1. Banner Superiore Orizzontale (Sito Web / Handle)
+    // 1. Banner Superiore Orizzontale (Sito Web / Handle) - solo se specificato
     const bannerH = 56;
-    ctx.save();
-    ctx.fillStyle = brandKit.accentColor || '#38BDF8';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, bannerH);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `italic 700 22px ${bodyFont}, monospace`;
-    ctx.fillStyle = '#070A10';
-    const bannerStr = slide.topBannerText || brandKit.authorHandle || `www.${brandKit.brandName.toLowerCase().replace(/\s+/g, '')}.coach`;
-    ctx.fillText(bannerStr, CANVAS_WIDTH / 2, bannerH / 2);
-    ctx.restore();
+    const bannerStr = slide.topBannerText?.trim();
+    if (bannerStr) {
+      ctx.save();
+      ctx.fillStyle = brandKit.accentColor || '#38BDF8';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, bannerH);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `italic 700 22px ${bodyFont}, monospace`;
+      ctx.fillStyle = '#070A10';
+      ctx.fillText(bannerStr, CANVAS_WIDTH / 2, bannerH / 2);
+      ctx.restore();
+    }
 
     // 2. Titolo & Highlight Centrati in Alto
-    let pTitleY = bannerH + 40 + titleOffsetY;
+    let pTitleY = (bannerStr ? bannerH + 40 : topSafeY + 20) + titleOffsetY;
     const pTitleSize = slide.titleFontSizePx || (slide.titleSize === 'xl' ? 52 : slide.titleSize === 'lg' ? 44 : 38);
 
     pTitleY = drawTitleLine(ctx, slide.headline, CANVAS_WIDTH / 2, pTitleY, contentWidth - 40, {

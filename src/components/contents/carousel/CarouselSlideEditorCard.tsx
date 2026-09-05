@@ -501,7 +501,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   const currentLayout: SlideLayoutId = slide.layout || (index === 0 ? 'dual_tone_cover' : index === totalSlides - 1 ? 'final_cta' : 'numbered_list');
 
   const hasLayoutSpecificData = Boolean(
+    slide.wrongTitle ||
     slide.wrongText ||
+    slide.correctTitle ||
     slide.correctText ||
     slide.diagramStep1 ||
     slide.diagramStep2 ||
@@ -517,7 +519,8 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
     slide.calloutBottomRight?.text ||
     slide.badgeCoachName ||
     slide.badgeCoachTitle ||
-    slide.punchlineQuote
+    slide.punchlineQuote ||
+    slide.ctaBoxTitle
   );
 
   const handleLayoutChange = (newLayout: SlideLayoutId) => {
@@ -530,7 +533,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
         delete updated.diagramHighlightResult;
       }
       if (newLayout !== 'error_vs_correct') {
+        delete updated.wrongTitle;
         delete updated.wrongText;
+        delete updated.correctTitle;
         delete updated.correctText;
       }
       if (newLayout !== 'product_breakdown') {
@@ -542,13 +547,18 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
         delete updated.badgeCoachName;
         delete updated.badgeCoachTitle;
       }
+      if (newLayout !== 'final_cta') {
+        delete updated.ctaBoxTitle;
+      }
     }
     onChange(updated);
   };
 
   const handleResetCurrentLayoutFields = () => {
     const updated: CarouselSlide = { ...slide };
+    delete updated.wrongTitle;
     delete updated.wrongText;
+    delete updated.correctTitle;
     delete updated.correctText;
     delete updated.diagramStep1;
     delete updated.diagramStep2;
@@ -561,6 +571,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
     delete updated.badgeCoachName;
     delete updated.badgeCoachTitle;
     delete updated.punchlineQuote;
+    delete updated.ctaBoxTitle;
     onChange(updated);
   };
 
@@ -1470,17 +1481,19 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
         )}
 
         {currentLayout === 'error_vs_correct' && (
-          <div className="space-y-2.5 p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+          <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                <span>⚖️ Confronto Split: Errore vs Correzione Ottimale</span>
+                <span>⚖️ Confronto Split: Errore vs Correzione</span>
               </span>
-              {(slide.wrongText || slide.correctText) && (
+              {(slide.wrongText || slide.correctText || slide.wrongTitle || slide.correctTitle) && (
                 <button
                   type="button"
                   onClick={() => {
                     const updated = { ...slide };
+                    delete updated.wrongTitle;
                     delete updated.wrongText;
+                    delete updated.correctTitle;
                     delete updated.correctText;
                     onChange(updated);
                   }}
@@ -1490,21 +1503,50 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <textarea
-                rows={2}
-                value={slide.wrongText || ''}
-                onChange={(e) => onChange({ ...slide, wrongText: e.target.value })}
-                placeholder="❌ Errore da evitare..."
-                className="w-full px-2.5 py-1.5 bg-rose-950/20 border border-rose-500/40 rounded-xl text-xs text-rose-200 placeholder-rose-500/40 resize-y"
-              />
-              <textarea
-                rows={2}
-                value={slide.correctText || ''}
-                onChange={(e) => onChange({ ...slide, correctText: e.target.value })}
-                placeholder="✅ Correzione biomeccanica ottimale..."
-                className="w-full px-2.5 py-1.5 bg-emerald-950/20 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 placeholder-emerald-500/40 resize-y"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Box Errore */}
+              <div className="space-y-1.5 p-2.5 rounded-xl bg-rose-950/20 border border-rose-500/30">
+                <label className="text-[10px] font-bold text-rose-400 flex items-center justify-between">
+                  <span>Box Rosso (Errore)</span>
+                  <span className="text-[9px] text-slate-500 font-normal">Titolo opzionale</span>
+                </label>
+                <input
+                  type="text"
+                  value={slide.wrongTitle || ''}
+                  onChange={(e) => onChange({ ...slide, wrongTitle: e.target.value })}
+                  placeholder="Titolo (es. ❌ ERRORE DA EVITARE, o vuoto)"
+                  className="w-full px-2.5 py-1 bg-slate-900 border border-rose-500/40 rounded-lg text-xs text-rose-300 font-bold focus:outline-none focus:border-rose-400"
+                />
+                <textarea
+                  rows={2}
+                  value={slide.wrongText || ''}
+                  onChange={(e) => onChange({ ...slide, wrongText: e.target.value })}
+                  placeholder="Descrivi l'errore da evitare..."
+                  className="w-full px-2.5 py-1.5 bg-slate-900/90 border border-rose-500/30 rounded-lg text-xs text-rose-200 placeholder-rose-500/40 resize-y focus:outline-none focus:border-rose-400"
+                />
+              </div>
+
+              {/* Box Correzione */}
+              <div className="space-y-1.5 p-2.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30">
+                <label className="text-[10px] font-bold text-emerald-400 flex items-center justify-between">
+                  <span>Box Verde (Correzione)</span>
+                  <span className="text-[9px] text-slate-500 font-normal">Titolo opzionale</span>
+                </label>
+                <input
+                  type="text"
+                  value={slide.correctTitle || ''}
+                  onChange={(e) => onChange({ ...slide, correctTitle: e.target.value })}
+                  placeholder="Titolo (es. ✅ CORREZIONE OTTIMALE, o vuoto)"
+                  className="w-full px-2.5 py-1 bg-slate-900 border border-emerald-500/40 rounded-lg text-xs text-emerald-300 font-bold focus:outline-none focus:border-emerald-400"
+                />
+                <textarea
+                  rows={2}
+                  value={slide.correctText || ''}
+                  onChange={(e) => onChange({ ...slide, correctText: e.target.value })}
+                  placeholder="Descrivi la correzione biomeccanica o regola..."
+                  className="w-full px-2.5 py-1.5 bg-slate-900/90 border border-emerald-500/30 rounded-lg text-xs text-emerald-200 placeholder-emerald-500/40 resize-y focus:outline-none focus:border-emerald-400"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -1724,6 +1766,39 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                   className="w-full px-2 py-1 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300"
                 />
               </div>
+            </div>
+          </div>
+        )}
+
+        {currentLayout === 'final_cta' && (
+          <div className="space-y-2.5 p-3.5 rounded-2xl bg-slate-950 border border-amber-500/30">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                <span>🚀 Box Call to Action Finale</span>
+              </span>
+              {slide.ctaBoxTitle && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = { ...slide };
+                    delete updated.ctaBoxTitle;
+                    onChange(updated);
+                  }}
+                  className="text-[10px] text-rose-400 hover:text-rose-300 font-medium underline cursor-pointer"
+                >
+                  Svuota titolo
+                </button>
+              )}
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400">Titolo Box CTA (opzionale, lascia vuoto per nessun titolo)</label>
+              <input
+                type="text"
+                value={slide.ctaBoxTitle || ''}
+                onChange={(e) => onChange({ ...slide, ctaBoxTitle: e.target.value })}
+                placeholder="es. 💾 SALVA IL POST & COMMENTA (o lascia vuoto)"
+                className="w-full px-2.5 py-1.5 bg-slate-900 border border-amber-500/40 rounded-xl text-xs text-amber-300 font-bold focus:outline-none focus:border-amber-400"
+              />
             </div>
           </div>
         )}

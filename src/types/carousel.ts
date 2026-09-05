@@ -122,8 +122,11 @@ export interface CarouselSlide {
   showSlideNumber?: boolean;
   statNumber?: string;          // es. "90%", "+15kg", "3 Errori"
   statLabel?: string;           // es. "Delle persone sbaglia lo stacco"
+  wrongTitle?: string;          // Titolo personalizzato box Errore (se vuoto, nessun titolo predefinito)
   wrongText?: string;           // Per layout error_vs_correct (❌ Errore)
+  correctTitle?: string;        // Titolo personalizzato box Correzione (se vuoto, nessun titolo predefinito)
   correctText?: string;         // Per layout error_vs_correct (✅ Correzione)
+  ctaBoxTitle?: string;         // Titolo personalizzato box CTA (per layout final_cta)
   isAiSuggested?: boolean;
 
   // Spostamento & Posizionamento Flessibile dei Testi (in pixel)
