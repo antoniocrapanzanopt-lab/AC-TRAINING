@@ -7,6 +7,7 @@ import { useSubscriptions } from './SubscriptionsContext';
 import { useRenewals } from './RenewalsContext';
 import { useAthletes } from './AthletesContext';
 import { useTasks } from './TasksContext';
+import { useAuth } from './AuthContext';
 import {
   getGoogleCalendarState,
   setGoogleCalendarState,
@@ -31,6 +32,7 @@ interface CalendarContextType {
 const CalendarContext = createContext<CalendarContextType | undefined>(undefined);
 
 export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [customEvents, setCustomEvents] = useState<CalendarEvent[]>([]);
   const [googleEvents, setGoogleEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,7 +61,13 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCustomEvents(cleanEvents);
     setStorageItem(STORAGE_KEYS.CALENDAR, cleanEvents);
 
-    // Inizializza stato Google Calendar (attivo di default)
+    // Se l'utente è un atleta, non sincronizzare né interrogare il Google Calendar del coach
+    if (user?.role === 'athlete') {
+      setIsLoading(false);
+      return;
+    }
+
+    // Inizializza stato Google Calendar (attivo di default per il coach)
     const gState = getGoogleCalendarState();
     const activeEmail = gState.email || 'antonio.crapanzanopt@gmail.com';
     setIsGoogleConnected(true);
@@ -95,7 +103,7 @@ export const CalendarProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       clearInterval(syncInterval);
       window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [user?.role]);
 
   const syncGoogleCalendar = useCallback(async () => {
     if (googleEmail) {

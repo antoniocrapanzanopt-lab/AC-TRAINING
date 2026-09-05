@@ -17,6 +17,7 @@ import {
   SlideImagePosition,
   TitleFontFamily,
   BodyFontFamily,
+  CoverHookAlternative,
 } from '../types/carousel';
 import { InstagramContent } from '../types/inboxAndContent';
 
@@ -65,14 +66,15 @@ export interface AIOperationOption {
 }
 
 export const CAROUSEL_AI_OPERATIONS: AIOperationOption[] = [
-  { id: 'improve_all', label: 'Migliora tutta la slide', desc: 'Ottimizza titolo, impaginazione, font e posizionamento', icon: '✨' },
   { id: 'improve_title', label: 'Migliora solo il titolo', desc: 'Titolo a due toni magnetico, grande e incisivo', icon: '📝' },
   { id: 'reduce_text', label: 'Riduci testo (<40 parole)', desc: 'Sintetizza per massima leggibilità da smartphone', icon: '✂️' },
-  { id: 'make_direct', label: 'Rendi diretto & hook forte', desc: 'Elimina preamboli, vai dritto al punto con impatto', icon: '⚡' },
-  { id: 'make_technical', label: 'Rendi tecnico & scientifico', desc: 'Usa biomeccanica, leve e kinesiologia del Metodo AC', icon: '🧬' },
-  { id: 'make_persuasive', label: 'Rendi persuasivo (CTA & Save)', desc: 'Spingi alla conservazione e interazione nel post', icon: '🎯' },
-  { id: 'convert_bullets', label: 'Trasforma in bullet points', desc: 'Riorganizza il testo in 3-4 punti pratici numerati', icon: '🔢' },
-  { id: 'check_clarity', label: 'Verifica chiarezza & errori', desc: 'Controlla leggibilità, punteggiatura e fluidità', icon: '🔍' },
+  { id: 'make_direct', label: 'Rendi più diretto & hook forte', desc: 'Elimina preamboli, vai dritto al punto con impatto', icon: '⚡' },
+  { id: 'make_technical', label: 'Rendi più tecnico & scientifico', desc: 'Usa biomeccanica, leve e kinesiologia del Metodo AC', icon: '🧬' },
+  { id: 'make_persuasive', label: 'Rendi più persuasivo (CTA & Save)', desc: 'Spingi alla conservazione e interazione nel post', icon: '🎯' },
+  { id: 'convert_bullets', label: 'Crea una lista a punti', desc: 'Riorganizza il testo in 3-4 punti pratici numerati', icon: '🔢' },
+  { id: 'generate_alternatives', label: 'Genera 3 alternative', desc: 'Riformula con diversa angolazione e impatto', icon: '🔄' },
+  { id: 'check_clarity', label: 'Controlla chiarezza & errori', desc: 'Verifica punteggiatura, leggibilità e fluidità', icon: '🔍' },
+  { id: 'improve_all', label: 'Migliora tutta la slide', desc: 'Ottimizza layout, impaginazione, font e posizionamento', icon: '✨' },
 ];
 
 /**
@@ -131,6 +133,9 @@ Rispondi ESCLUSIVAMENTE in formato JSON valido senza blocchi markdown.`;
       break;
     case 'convert_bullets':
       actionInstruction = `OBIETTIVO PRIORITARIO: TRASFORMAZIONE IN PUNTI ELENCO. Converti il corpo del testo in 3 o 4 bullet points pratici e concisi (array "bulletPoints") e imposta layout su "numbered_list" o "connected_icon_list".`;
+      break;
+    case 'generate_alternatives':
+      actionInstruction = `OBIETTIVO PRIORITARIO: GENERAZIONE ALTERNATIVE CREATIVE. Esplora 3 angolazioni comunicative diverse per questa slide (approccio provocatorio, approccio biomeccanico scientifico, approccio pratico per la palestra). Seleziona la formulazione più potente e magnetica sia per il titolo sia per il corpo.`;
       break;
     case 'check_clarity':
       actionInstruction = `OBIETTIVO PRIORITARIO: MASSIMA CHIAREZZA E LEGGIBILITÀ. Correggi punteggiatura, spaziature, ritorni a capo ed elimina ambiguità semantiche.`;
@@ -250,3 +255,226 @@ export async function optimizeEntireCarouselWithGemini(
     updated_at: new Date().toISOString(),
   };
 }
+
+/**
+ * Genera 3 alternative di hook per la copertina con Google Gemini
+ * Angolazioni:
+ * 1. Provocatorio / Curiosità
+ * 2. Scientifico / Biomeccanico
+ * 3. Pratico / Diretto
+ */
+export async function generateCoverHookAlternatives(
+  slide: CarouselSlide,
+  topic: string = 'Allenamento e Ipertrofia'
+): Promise<CoverHookAlternative[]> {
+  const currentTitle = slide.headline || '';
+  const currentHighlight = slide.headlineHighlight || '';
+
+  const systemPrompt = `Sei un Copywriter ed Esperto di Viral Hook per Instagram specializzato in Fitness Coaching e Biomeccanica d'élite.
+Il tuo compito è generare ESATTAMENTE 3 alternative di titoli ad altissimo impatto per la COPERTINA del carosello.
+Ogni alternativa deve avere:
+1. "headline": riga principale (3-6 parole incisive, in MAIUSCOLO).
+2. "headlineHighlight": seconda riga ad alto contrasto (2-4 parole ad effetto, in MAIUSCOLO).
+3. "subheadline": breve frase di gancio esplicativa (12-18 parole).
+4. "angle": una tra "provocative" (provocazione o domanda spiazzante), "scientific" (dati, leve o biomeccanica), "practical" (soluzione pratica immediata).
+5. "angleLabel": etichetta descrittiva (es. "🔥 Provocatorio", "🧬 Scientifico & Dati", "🎯 Diretto & Pratico").
+6. "description": motivazione editoriale del perché questo hook converte.
+
+Rispondi ESCLUSIVAMENTE con un array JSON di 3 oggetti conforme a questa struttura:
+[
+  {
+    "id": "hook_1",
+    "headline": "...",
+    "headlineHighlight": "...",
+    "subheadline": "...",
+    "angle": "provocative",
+    "angleLabel": "🔥 Provocatorio",
+    "description": "..."
+  }
+]`;
+
+  const userPrompt = `Argomento carosello: ${topic}
+Titolo attuale copertina: "${currentTitle} ${currentHighlight}".
+Sottotitolo attuale: "${slide.subheadline || ''}".
+
+Genera 3 varianti irresistibili per fermare lo scroll nel feed Instagram.`;
+
+  try {
+    const aiResult = await generateContentWithGemini({
+      userPrompt,
+      systemPrompt,
+      temperature: 0.7,
+      maxTokens: 800,
+      responseMimeType: 'application/json',
+    });
+
+    const cleaned = aiResult.text.trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+    const parsed = JSON.parse(cleaned) as CoverHookAlternative[];
+    if (Array.isArray(parsed) && parsed.length >= 3) {
+      return parsed.slice(0, 3).map((item, i) => ({
+        ...item,
+        id: item.id || `hook_alt_${i + 1}`,
+      }));
+    }
+  } catch (err) {
+    console.warn('Errore generazione hook con Gemini, uso fallback intelligente:', err);
+  }
+
+  // Fallback euristico di alta qualità nel Metodo AC
+  const isTallOrLonglimbed = /1[.,]85|alt[oi]|longiline|leve|femor|squat/i.test(`${topic} ${currentTitle} ${slide.subheadline || ''}`);
+
+  if (isTallOrLonglimbed) {
+    return [
+      {
+        id: 'hook_alt_1',
+        headline: 'SEI ALTO OLTRE 1,85 M?',
+        headlineHighlight: 'SMETTI DI SQUATTARE COSÌ',
+        subheadline: 'Femori lunghi e busto inclinato: la correzione biomeccanica per stimolare i quadricipiti senza sovraccaricare la schiena.',
+        angle: 'provocative',
+        angleLabel: '🔥 Specifico Uomini Alti',
+        description: 'Chiama direttamente il target e smonta la tecnica standard inadatta a leve lunghe.',
+      },
+      {
+        id: 'hook_alt_2',
+        headline: 'LEVE LUNGHE & SQUAT:',
+        headlineHighlight: 'IL PARADOSSO DEL FEMORE',
+        subheadline: 'Analisi kinesiologica: come alterare il braccio di leva nello squat per colpire davvero i quadricipiti.',
+        angle: 'scientific',
+        angleLabel: '🧬 Scientifico & Leve',
+        description: 'Spiega la fisica del movimento con autorevolezza biomeccanica incontrovertibile.',
+      },
+      {
+        id: 'hook_alt_3',
+        headline: 'COME SQUATTARE SE SEI ALTO:',
+        headlineHighlight: '3 CORREZIONI IMMEDIATE',
+        subheadline: 'Stance, rialzo del tallone e punto di inversione: 3 modifiche per chi ha arti lunghi.',
+        angle: 'practical',
+        angleLabel: '🎯 Diretto & Pratico',
+        description: 'Offre una checklist esecutiva applicabile fin dalla prossima sessione in palestra.',
+      },
+    ];
+  }
+
+  const safeTopic = topic.length > 5 ? topic.toUpperCase() : 'QUESTO MOVIMENTO';
+  return [
+    {
+      id: 'hook_alt_1',
+      headline: 'STAI FACENDO QUESTO ERRORE?',
+      headlineHighlight: 'ECCO COSA DICONO I DATI',
+      subheadline: `La maggior parte degli atleti sbaglia l'approccio su ${topic}. Ecco la correzione biomeccanica.`,
+      angle: 'provocative',
+      angleLabel: '🔥 Provocatorio',
+      description: 'Mette in discussione le convinzioni comuni e genera elevata curiosità.',
+    },
+    {
+      id: 'hook_alt_2',
+      headline: 'ANALISI BIOMECCANICA:',
+      headlineHighlight: safeTopic,
+      subheadline: 'Bracci di leva, tensione muscolare e progressione reale studiata per la massima ipertrofia.',
+      angle: 'scientific',
+      angleLabel: '🧬 Scientifico & Leve',
+      description: 'Posiziona il post come riferimento autorevole fondato su fisica ed anatomia.',
+    },
+    {
+      id: 'hook_alt_3',
+      headline: 'GUIDA PRATICA:',
+      headlineHighlight: 'COME ESEGUIRLO AL 100%',
+      subheadline: '3 passaggi immediati per correggere la tecnica e non sprecare ripetizioni in palestra.',
+      angle: 'practical',
+      angleLabel: '🎯 Diretto & Pratico',
+      description: 'Fornisce una soluzione chiara e azionabile fin dal prossimo allenamento.',
+    },
+  ];
+}
+
+export interface ReadyCTAPlan {
+  headline: string;
+  headlineHighlight: string;
+  bodyText: string;
+  actionVerb: string;
+  triggerKeyword: string;
+  benefit: string;
+  reason: string;
+}
+
+/**
+ * Genera una proposta di Call To Action (CTA) finale completa e pronta all'uso con Gemini 3.8 Flash
+ * Include:
+ * 1. Verbo d'azione esplicito (SALVA, COMMENTA, SCRIVIMI)
+ * 2. Parola chiave trigger (GUIDA, SCHEDA, DM)
+ * 3. Beneficio concreto (per ricevere il protocollo, per non perdere le correzioni)
+ */
+export async function generateReadyCTASlide(
+  _slide: CarouselSlide,
+  topic: string = 'Allenamento e Ipertrofia'
+): Promise<ReadyCTAPlan> {
+  const systemPrompt = `Sei un Copywriter ed Esperto di Conversion Rate Optimization per Instagram per Coach di Fitness e Biomeccanica d'élite (Metodo AC Training).
+Il tuo compito è creare una Call to Action (CTA) finale magnetica e ad alta conversione per l'ultima slide di un carosello.
+
+Requisiti obbligatori:
+1. "headline": riga principale titolo (es. "VUOI IL PROTOCOLLO COMPLETO?", "SALVA LA GUIDA TECNICA") in MAIUSCOLO.
+2. "headlineHighlight": riga evidenziata ad alto contrasto (es. "COMMENTA ORA 'GUIDA'", "PASSA AL LIVELLO SUCCESSIVO") in MAIUSCOLO.
+3. "bodyText": testo persuasivo della CTA con azione concreta (Salva/Commenta), trigger chiaro ("GUIDA") e beneficio specifico (es. "Salva il post per averlo sempre con te durante l'allenamento. Commenta con la parola 'GUIDA' qui sotto per ricevere l'analisi biomeccanica completa direttamente in DM.").
+4. "actionVerb": verbo principale (es. "Salva e Commenta").
+5. "triggerKeyword": parola chiave da commentare o canale (es. "GUIDA" o "DM").
+6. "benefit": beneficio diretto per l'atleta (es. "Ricevi il protocollo completo e la scheda tecnica in DM").
+7. "reason": spiegazione del perché questa CTA converte.
+
+Rispondi ESCLUSIVAMENTE con un oggetto JSON valido conforme a questa interfaccia:
+{
+  "headline": "...",
+  "headlineHighlight": "...",
+  "bodyText": "...",
+  "actionVerb": "...",
+  "triggerKeyword": "...",
+  "benefit": "...",
+  "reason": "..."
+}`;
+
+  const userPrompt = `Argomento carosello: "${topic}".
+Genera una CTA finale irresistibile per massimizzare salvataggi e commenti qualificati.`;
+
+  try {
+    const aiResult = await generateContentWithGemini({
+      userPrompt,
+      systemPrompt,
+      temperature: 0.7,
+      maxTokens: 600,
+      responseMimeType: 'application/json',
+    });
+
+    const cleaned = aiResult.text.trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+    const parsed = JSON.parse(cleaned) as ReadyCTAPlan;
+    if (parsed.headline && parsed.bodyText) {
+      return parsed;
+    }
+  } catch (err) {
+    console.warn('Errore generazione CTA con Gemini, uso fallback Metodo AC:', err);
+  }
+
+  // Fallback di alto livello nel Metodo AC
+  const isTall = /1[.,]85|alt[oi]|longiline|leve|femor|squat/i.test(`${topic} ${_slide.headline || ''} ${_slide.bodyText || ''}`);
+  if (isTall) {
+    return {
+      headline: 'VUOI IL PROTOCOLLO COMPLETO?',
+      headlineHighlight: 'COMMENTA CON "LEVE"',
+      bodyText: `Salva questo post per consultarlo prima del tuo prossimo allenamento gambe.\n\nCommenta con la parola "LEVE" qui sotto per ricevere l'analisi biomeccanica personalizzata per atleti longilinei direttamente in DM.`,
+      actionVerb: 'Salva e Commenta',
+      triggerKeyword: 'LEVE',
+      benefit: 'Ricevi la guida biomeccanica per atleti longilinei in DM',
+      reason: 'Combina retention (salvataggio) e keyword "LEVE" ad alta pertinenza per il target specifico.',
+    };
+  }
+
+  return {
+    headline: 'VUOI IL PROTOCOLLO COMPLETO?',
+    headlineHighlight: 'COMMENTA CON "GUIDA"',
+    bodyText: `Salva questo post per consultarlo prima del tuo prossimo allenamento.\n\nCommenta con la parola "GUIDA" qui sotto per ricevere l'analisi biomeccanica completa su ${topic} direttamente in DM.`,
+    actionVerb: 'Salva e Commenta',
+    triggerKeyword: 'GUIDA',
+    benefit: 'Ricevi il protocollo biomeccanico completo in DM',
+    reason: 'Combina doppio trigger: salvataggio per retention e commento con keyword per viralità.',
+  };
+}
+
+

@@ -13,6 +13,7 @@ import {
   convertInboxToTask,
 } from '../services/inboxConverterService';
 import { useToast } from './ToastContext';
+import { useAuth } from './AuthContext';
 
 interface InboxContextType {
   entries: InboxEntry[];
@@ -32,12 +33,20 @@ interface InboxContextType {
 const InboxContext = createContext<InboxContextType | undefined>(undefined);
 
 export const InboxProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [entries, setEntries] = useState<InboxEntry[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const { showSuccess, showError } = useToast();
 
   const fetchEntries = useCallback(async () => {
+    // Gli atleti non gestiscono la inbox idee del coach: bypass immediato
+    if (user?.role === 'athlete') {
+      setEntries([]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       const data = await getInboxEntries();
@@ -47,7 +56,7 @@ export const InboxProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     fetchEntries();

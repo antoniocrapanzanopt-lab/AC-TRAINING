@@ -1,3 +1,7 @@
+import { InstagramCarousel } from './carousel';
+import { InstagramCoverData } from './cover';
+import { InstagramStorySequence } from './story';
+
 export type InboxCategory = 
   | 'content_idea' 
   | 'client_observation' 
@@ -68,7 +72,6 @@ export type ContentStatus =
   | 'published' 
   | 'repurpose';
 
-import { InstagramCarousel } from './carousel';
 
 export interface InstagramContent {
   id: string;
@@ -86,6 +89,8 @@ export interface InstagramContent {
   published_at?: string | null;
   internal_notes?: string | null;
   carousel_data?: InstagramCarousel | null;
+  cover_data?: InstagramCoverData | null;
+  story_data?: InstagramStorySequence | null;
   performance_metrics?: {
     views?: number;
     likes?: number;

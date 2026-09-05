@@ -8,7 +8,6 @@ import {
   Clock,
   RefreshCw,
   Activity,
-  Calendar,
   FileText,
   Send,
   UserCheck,
@@ -23,8 +22,8 @@ import {
   Flame,
   Brain,
   Bell,
-  Inbox,
-  Video,
+  Sparkles,
+  ArrowUpRight,
 } from 'lucide-react';
 import { NavigationTab } from '../../types';
 import { useAthletes } from '../../context/AthletesContext';
@@ -35,6 +34,7 @@ interface SidebarProps {
   onTabChange: (tab: NavigationTab) => void;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
+  onOpenContentStudio?: () => void;
 }
 
 type MenuSection = {
@@ -70,9 +70,6 @@ const menuSections: MenuSection[] = [
     },
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { id: 'inbox_ai', label: 'Inbox AI & Brain Dump', icon: Inbox },
-      { id: 'contenuti', label: 'Pipeline Contenuti', icon: Video },
-      { id: 'calendario', label: 'Calendario', icon: Calendar },
       { id: 'attivita', label: 'Task & Attività', icon: Activity },
     ],
   },
@@ -157,6 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   isOpenMobile,
   onCloseMobile,
+  onOpenContentStudio,
 }) => {
   const { athletes } = useAthletes();
   const { coachTemplates, allAssignedWorkouts } = useWorkouts();
@@ -332,6 +330,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </button>
                     );
                   })}
+                </div>
+              )}
+
+              {/* TASTO PROMINENTE ESCLUSIVO: APRI CONTENT STUDIO */}
+              {section.id === 'generale' && onOpenContentStudio && (
+                <div className="pt-2 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenContentStudio();
+                      onCloseMobile();
+                    }}
+                    className="w-full group p-3 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-400/10 to-sky-500/10 border border-amber-500/35 hover:border-amber-400 hover:shadow-lg hover:shadow-amber-500/15 transition-all text-left relative overflow-hidden active:scale-[0.98] cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-sm shadow-amber-400/30 group-hover:scale-105 transition-transform">
+                          <Sparkles className="w-4 h-4 fill-slate-950" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-black text-white group-hover:text-amber-300 transition-colors flex items-center gap-1">
+                            <span>AC Content Studio</span>
+                            <ArrowUpRight className="w-3.5 h-3.5 text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                          </span>
+                          <span className="text-[10px] text-amber-400/80 font-mono font-bold block">Social Creator Suite</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-400 line-clamp-1 group-hover:text-slate-300 transition-colors">
+                      Reel, Carousel, Stories, Cover & Analytics
+                    </p>
+                  </button>
                 </div>
               )}
             </div>

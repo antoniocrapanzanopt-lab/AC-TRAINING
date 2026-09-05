@@ -1,10 +1,12 @@
 import { CarouselSlide, CarouselSettings, SlideLayoutId } from '../types/carousel';
+import { calculateImageDrawBounds } from './imageSmartLayoutService';
 
 export const CANVAS_WIDTH = 1080;
 export const CANVAS_HEIGHT = 1350;
 
 interface RenderOptions {
   showSafeAreaGuidelines?: boolean;
+  showGridCropGuide?: boolean;
 }
 
 /**
@@ -234,77 +236,121 @@ export const renderSlideToCanvas = async (
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
-  // ─── 2. IMMAGINE SE PRESENTE (POSIZIONE PERSONALIZZABILE: IN BASSO, A DESTRA, IN ALTO, SFONDO) ───
+  // ─── 2. IMMAGINE SE PRESENTE (POSIZIONAMENTO MANUALE, ZOOM, FIT, OVERLAY) ───
   if (slide.imageUrl) {
     try {
       const img = await loadImage(slide.imageUrl);
       const imgPos = slide.imagePosition || (layout === 'photo_dominant' ? 'top_half' : 'background_full');
-      const opacity = slide.imageOpacity !== undefined ? slide.imageOpacity : 0.6;
+      const opacity = slide.imageOpacity !== undefined ? slide.imageOpacity : 1.0;
+      const zoom = slide.imageZoom || 1.0;
+      const posX = slide.imagePositionX ?? 50;
+      const posY = slide.imagePositionY ?? 50;
+      const fit = slide.imageFit || 'cover';
+      const overlayPercent = slide.imageOverlay !== undefined
+        ? slide.imageOverlay / 100
+        : (imgPos === 'background_full' ? 0.72 : 0);
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       if (imgPos === 'bottom_cutout') {
-        // Taglio/Soggetto in basso (metà inferiore) che sfuma sul fondo
-        const imgH = CANVAS_HEIGHT * 0.54;
-        const imgW = CANVAS_WIDTH;
-        const imgY = CANVAS_HEIGHT - imgH;
+        const areaH = CANVAS_HEIGHT * 0.54;
+        const areaW = CANVAS_WIDTH;
+        const areaY = CANVAS_HEIGHT - areaH;
 
         ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, areaY, areaW, areaH);
+        ctx.clip();
+
+        const bounds = calculateImageDrawBounds(areaW, areaH, img.width, img.height, fit, posX, posY, zoom);
         ctx.globalAlpha = opacity;
-        ctx.drawImage(img, 0, imgY, imgW, imgH);
+        ctx.drawImage(img, bounds.drawX, areaY + bounds.drawY, bounds.drawWidth, bounds.drawHeight);
+
+        if (overlayPercent > 0) {
+          ctx.fillStyle = `rgba(7, 10, 16, ${overlayPercent})`;
+          ctx.fillRect(0, areaY, areaW, areaH);
+        }
         ctx.restore();
 
         // Sfumatura di transizione in cima all'immagine
-        const blendGrad = ctx.createLinearGradient(0, imgY - 40, 0, imgY + 80);
+        const blendGrad = ctx.createLinearGradient(0, areaY - 40, 0, areaY + 80);
         blendGrad.addColorStop(0, bgColor);
         blendGrad.addColorStop(1, 'rgba(7, 10, 16, 0)');
         ctx.fillStyle = blendGrad;
-        ctx.fillRect(0, imgY - 40, CANVAS_WIDTH, 120);
+        ctx.fillRect(0, areaY - 40, CANVAS_WIDTH, 120);
 
       } else if (imgPos === 'right_side') {
-        // Split laterale a destra (50% a destra)
-        const imgW = CANVAS_WIDTH * 0.52;
-        const imgH = CANVAS_HEIGHT;
-        const imgX = CANVAS_WIDTH - imgW;
+        const areaW = CANVAS_WIDTH * 0.52;
+        const areaH = CANVAS_HEIGHT;
+        const areaX = CANVAS_WIDTH - areaW;
 
         ctx.save();
+        ctx.beginPath();
+        ctx.rect(areaX, 0, areaW, areaH);
+        ctx.clip();
+
+        const bounds = calculateImageDrawBounds(areaW, areaH, img.width, img.height, fit, posX, posY, zoom);
         ctx.globalAlpha = opacity;
-        ctx.drawImage(img, imgX, 0, imgW, imgH);
+        ctx.drawImage(img, areaX + bounds.drawX, bounds.drawY, bounds.drawWidth, bounds.drawHeight);
+
+        if (overlayPercent > 0) {
+          ctx.fillStyle = `rgba(7, 10, 16, ${overlayPercent})`;
+          ctx.fillRect(areaX, 0, areaW, areaH);
+        }
         ctx.restore();
 
         // Sfumatura laterale da sinistra a destra
-        const sideGrad = ctx.createLinearGradient(imgX - 60, 0, imgX + 80, 0);
+        const sideGrad = ctx.createLinearGradient(areaX - 60, 0, areaX + 80, 0);
         sideGrad.addColorStop(0, bgColor);
         sideGrad.addColorStop(1, 'rgba(7, 10, 16, 0)');
         ctx.fillStyle = sideGrad;
-        ctx.fillRect(imgX - 60, 0, 140, CANVAS_HEIGHT);
+        ctx.fillRect(areaX - 60, 0, 140, CANVAS_HEIGHT);
 
       } else if (imgPos === 'top_half' || layout === 'photo_dominant') {
-        // Metà superiore
-        const imgHeight = CANVAS_HEIGHT * 0.48;
+        const areaH = CANVAS_HEIGHT * 0.48;
+        const areaW = CANVAS_WIDTH;
+
         ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, areaW, areaH);
+        ctx.clip();
+
+        const bounds = calculateImageDrawBounds(areaW, areaH, img.width, img.height, fit, posX, posY, zoom);
         ctx.globalAlpha = opacity;
-        ctx.drawImage(img, 0, 0, CANVAS_WIDTH, imgHeight);
+        ctx.drawImage(img, bounds.drawX, bounds.drawY, bounds.drawWidth, bounds.drawHeight);
+
+        if (overlayPercent > 0) {
+          ctx.fillStyle = `rgba(7, 10, 16, ${overlayPercent})`;
+          ctx.fillRect(0, 0, areaW, areaH);
+        }
         ctx.restore();
 
-        const blendGrad = ctx.createLinearGradient(0, imgHeight - 160, 0, imgHeight + 40);
+        const blendGrad = ctx.createLinearGradient(0, areaH - 160, 0, areaH + 40);
         blendGrad.addColorStop(0, 'rgba(7, 10, 16, 0)');
         blendGrad.addColorStop(1, bgColor);
         ctx.fillStyle = blendGrad;
-        ctx.fillRect(0, imgHeight - 160, CANVAS_WIDTH, 200);
+        ctx.fillRect(0, areaH - 160, CANVAS_WIDTH, 200);
 
       } else {
-        // Sfondo a tutto schermo con overlay
+        // Sfondo a tutto schermo con supporto completo a zoom, fit e posizione
         ctx.save();
+        const bounds = calculateImageDrawBounds(CANVAS_WIDTH, CANVAS_HEIGHT, img.width, img.height, fit, posX, posY, zoom);
         ctx.globalAlpha = opacity;
-        ctx.drawImage(img, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.drawImage(img, bounds.drawX, bounds.drawY, bounds.drawWidth, bounds.drawHeight);
         ctx.restore();
 
+        // Overlay scuro progressivo
+        const effOverlay = overlayPercent > 0 ? overlayPercent : 0.72;
         const overlayGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-        overlayGrad.addColorStop(0, 'rgba(7, 10, 16, 0.72)');
-        overlayGrad.addColorStop(0.5, 'rgba(7, 10, 16, 0.88)');
-        overlayGrad.addColorStop(1, 'rgba(7, 10, 16, 0.98)');
+        overlayGrad.addColorStop(0, `rgba(7, 10, 16, ${Math.min(1.0, effOverlay * 0.85)})`);
+        overlayGrad.addColorStop(0.5, `rgba(7, 10, 16, ${Math.min(1.0, effOverlay)})`);
+        overlayGrad.addColorStop(1, `rgba(7, 10, 16, ${Math.min(1.0, effOverlay * 1.15)})`);
         ctx.fillStyle = overlayGrad;
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       }
+      ctx.restore();
     } catch {
       // Fallback trasparente
     }
@@ -332,39 +378,66 @@ export const renderSlideToCanvas = async (
   }
 
   // ─── 5. TOP BAR: CATEGORY TAG / PILLOLA TAKEAWAY & CONTATORE SLIDE ───
-  const categoryTagText = slide.categoryTag || (templateId === 'hypertrophy_science' ? '■ FISIOLOGIA DELL\'ALLENAMENTO' : null);
-  
-  if (categoryTagText) {
-    // Top Left Category Tag stile Screenshot 3 & 4 (■ CATEGORIA)
-    ctx.font = `bold 20px ${bodyFont}, system-ui, sans-serif`;
-    ctx.fillStyle = accentColor;
-    ctx.textBaseline = 'middle';
-    ctx.fillText(categoryTagText, marginX, topSafeY + 16);
-  } else {
-    // Pillola Tag Standard
-    const tagText = slide.takeawayTag || (isFirstSlide ? (brandKit.brandName || 'GUIDA PRATICA') : isLastSlide ? 'SALVA IL POST' : `STEP ${slide.order}`);
-    ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
-    const tagMetrics = ctx.measureText(tagText);
-    const tagPadX = 18;
-    const tagWidth = tagMetrics.width + tagPadX * 2;
-    const tagHeight = 38;
-    const tagStartX = brandKit.logoUrl && brandKit.logoPosition === 'top_left' ? marginX + 54 : marginX;
+  const hasTopLeftLogo = Boolean(brandKit.logoUrl && brandKit.logoPosition === 'top_left');
+  const rawCategoryTag = slide.categoryTag;
+  const isTecnicaBiomeccanica = Boolean(rawCategoryTag && /tecnica\s*&\s*biomeccanica/i.test(rawCategoryTag));
+  const categoryTagText = !isTecnicaBiomeccanica && rawCategoryTag ? rawCategoryTag : null;
+  const isStepTag = Boolean(slide.takeawayTag && /^step\s*\d+/i.test(slide.takeawayTag.trim()));
 
-    ctx.fillStyle = `${accentColor}1F`;
-    drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
-    ctx.fill();
-    ctx.strokeStyle = `${accentColor}55`;
-    ctx.lineWidth = 1.5;
-    drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
-    ctx.stroke();
+  // Se c'è già il logo in alto a sinistra, lasciamo SOLO il logo senza scritte o pillole STEP
+  if (!hasTopLeftLogo) {
+    if (categoryTagText) {
+      ctx.font = `bold 20px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(categoryTagText, marginX, topSafeY + 16);
+    } else if (slide.takeawayTag && !isStepTag && !/tecnica\s*&\s*biomeccanica/i.test(slide.takeawayTag)) {
+      // Pillola Tag esplicita personalizzata solo se non è STEP X
+      const tagText = slide.takeawayTag;
+      ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
+      const tagMetrics = ctx.measureText(tagText);
+      const tagPadX = 18;
+      const tagWidth = tagMetrics.width + tagPadX * 2;
+      const tagHeight = 38;
+      const tagStartX = marginX;
 
-    ctx.fillStyle = accentColor;
-    ctx.textBaseline = 'middle';
-    ctx.fillText(tagText, tagStartX + tagPadX, topSafeY + tagHeight / 2);
+      ctx.fillStyle = `${accentColor}1F`;
+      drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
+      ctx.fill();
+      ctx.strokeStyle = `${accentColor}55`;
+      ctx.lineWidth = 1.5;
+      drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
+      ctx.stroke();
+
+      ctx.fillStyle = accentColor;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tagText, tagStartX + tagPadX, topSafeY + tagHeight / 2);
+    } else if (isFirstSlide && (brandKit.brandName || 'GUIDA PRATICA')) {
+      const tagText = brandKit.brandName || 'GUIDA PRATICA';
+      ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
+      const tagMetrics = ctx.measureText(tagText);
+      const tagPadX = 18;
+      const tagWidth = tagMetrics.width + tagPadX * 2;
+      const tagHeight = 38;
+      const tagStartX = marginX;
+
+      ctx.fillStyle = `${accentColor}1F`;
+      drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
+      ctx.fill();
+      ctx.strokeStyle = `${accentColor}55`;
+      ctx.lineWidth = 1.5;
+      drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
+      ctx.stroke();
+
+      ctx.fillStyle = accentColor;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tagText, tagStartX + tagPadX, topSafeY + tagHeight / 2);
+    }
   }
 
   // Contatore slide in alto a destra (con linea o frazione stile 2/8)
-  if (settings.showSlideCounter) {
+  const isSlideCounterVisible = settings.showSlideCounter !== false && slide.showSlideNumber !== false;
+  if (isSlideCounterVisible) {
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     if (templateId === 'bold_impact' || templateId === 'hypertrophy_science') {
@@ -387,7 +460,9 @@ export const renderSlideToCanvas = async (
   }
 
   // ─── 6. CONTENUTO SLIDE IN BASE AL LAYOUT SELEZIONATO ───
-  let startY = layout === 'photo_dominant' ? CANVAS_HEIGHT * 0.44 : topSafeY + 70;
+  const titleOffsetY = slide.titleOffsetY || 0;
+  const contentOffsetY = slide.contentOffsetY || 0;
+  let startY = (layout === 'photo_dominant' ? CANVAS_HEIGHT * 0.44 : topSafeY + 70) + titleOffsetY;
 
   // ─── LAYOUT 1: CONNECTED ICON LIST (STILE SCREENSHOT 2: NODI CONNESSI & PAROLE CHIAVE) ───
   if (layout === 'connected_icon_list') {
@@ -413,7 +488,7 @@ export const renderSlideToCanvas = async (
     }
 
     // Linea divisoria sottile
-    startY += 10;
+    startY += 10 + contentOffsetY;
     ctx.strokeStyle = `${accentColor}88`;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
@@ -644,7 +719,7 @@ export const renderSlideToCanvas = async (
       }
     }
 
-    startY += 12;
+    startY += 12 + contentOffsetY;
 
     // Sottotitolo / Hook
     if (slide.subheadline) {
@@ -698,25 +773,27 @@ export const renderSlideToCanvas = async (
       startY += 10;
     }
 
-    // Box Swipe in basso (sempre visibile e non collidente con il footer)
-    const swipeY = Math.min(
-      Math.max(startY + 30, CANVAS_HEIGHT - 220),
-      bottomSafeY - 95
-    );
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-    drawRoundedRect(ctx, marginX, swipeY, contentWidth, 70, 16);
-    ctx.fill();
-    ctx.strokeStyle = `${accentColor}55`;
-    ctx.lineWidth = 1.5;
-    drawRoundedRect(ctx, marginX, swipeY, contentWidth, 70, 16);
-    ctx.stroke();
+    // Box CTA / Punchline opzionale (mostrato solo se configurato esplicitamente)
+    if (slide.punchlineQuote) {
+      const swipeY = Math.min(
+        Math.max(startY + 30, CANVAS_HEIGHT - 220),
+        bottomSafeY - 95
+      );
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      drawRoundedRect(ctx, marginX, swipeY, contentWidth, 70, 16);
+      ctx.fill();
+      ctx.strokeStyle = `${accentColor}55`;
+      ctx.lineWidth = 1.5;
+      drawRoundedRect(ctx, marginX, swipeY, contentWidth, 70, 16);
+      ctx.stroke();
 
-    ctx.font = `bold 24px ${bodyFont}, system-ui, sans-serif`;
-    ctx.fillStyle = accentColor;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Scorri per scoprire i dati ➔', CANVAS_WIDTH / 2, swipeY + 35);
-    ctx.textAlign = 'left';
+      ctx.font = `bold 24px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(slide.punchlineQuote, CANVAS_WIDTH / 2, swipeY + 35);
+      ctx.textAlign = 'left';
+    }
 
   // ─── LAYOUT A: ERROR VS CORRECT (CONFRONTO SPLIT) ───
   } else if (layout === 'error_vs_correct') {
@@ -729,6 +806,17 @@ export const renderSlideToCanvas = async (
     for (const line of headlineLines) {
       ctx.fillText(line, marginX, startY);
       startY += titleLineStep;
+    }
+
+    if (slide.headlineHighlight) {
+      startY += 4;
+      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
+      for (const hl of hlLines) {
+        ctx.fillText(hl, marginX, startY);
+        startY += titleLineStep;
+      }
     }
 
     if (slide.subheadline) {
@@ -820,6 +908,17 @@ export const renderSlideToCanvas = async (
       startY += titleLineStep;
     }
 
+    if (slide.headlineHighlight) {
+      startY += 4;
+      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
+      for (const hl of hlLines) {
+        ctx.fillText(hl, marginX, startY);
+        startY += titleLineStep;
+      }
+    }
+
     if (slide.subheadline) {
       startY += 10;
       ctx.font = `600 26px ${bodyFont}, system-ui, sans-serif`;
@@ -899,6 +998,17 @@ export const renderSlideToCanvas = async (
     for (const line of headlineLines) {
       ctx.fillText(line, marginX, startY);
       startY += titleLineStep;
+    }
+
+    if (slide.headlineHighlight) {
+      startY += 4;
+      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
+      for (const hl of hlLines) {
+        ctx.fillText(hl, marginX, startY);
+        startY += titleLineStep;
+      }
     }
 
     if (slide.subheadline) {
@@ -998,7 +1108,7 @@ export const renderSlideToCanvas = async (
       }
     }
 
-    startY += 25;
+    startY += 25 + contentOffsetY;
 
     // Linea divisoria oro centrata
     ctx.fillStyle = accentColor;
@@ -1054,23 +1164,25 @@ export const renderSlideToCanvas = async (
       startY += 15;
     }
 
-    // Box swipe in copertina
-    const swipeY = Math.min(
-      Math.max(startY + 35, CANVAS_HEIGHT - 260),
-      bottomSafeY - 95
-    );
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-    drawRoundedRect(ctx, marginX, swipeY, contentWidth, 75, 16);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.lineWidth = 1;
-    drawRoundedRect(ctx, marginX, swipeY, contentWidth, 75, 16);
-    ctx.stroke();
+    // Box swipe / CTA in copertina (mostrato solo se esplicitamente configurato in punchlineQuote)
+    if (slide.punchlineQuote) {
+      const swipeY = Math.min(
+        Math.max(startY + 35, CANVAS_HEIGHT - 260),
+        bottomSafeY - 95
+      );
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      drawRoundedRect(ctx, marginX, swipeY, contentWidth, 75, 16);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 1;
+      drawRoundedRect(ctx, marginX, swipeY, contentWidth, 75, 16);
+      ctx.stroke();
 
-    ctx.font = `bold 24px ${bodyFont}, system-ui, sans-serif`;
-    ctx.fillStyle = accentColor;
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Scorri per la guida completa ➔', CANVAS_WIDTH / 2, swipeY + 37.5);
+      ctx.font = `bold 24px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(slide.punchlineQuote, CANVAS_WIDTH / 2, swipeY + 37.5);
+    }
     ctx.textAlign = 'left';
 
   // ─── LAYOUT E: FINAL CTA / CHIUSURA BRAND ───
@@ -1084,6 +1196,17 @@ export const renderSlideToCanvas = async (
     for (const line of headlineLines) {
       ctx.fillText(line, marginX, startY);
       startY += titleLineStep;
+    }
+
+    if (slide.headlineHighlight) {
+      startY += 4;
+      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
+      for (const hl of hlLines) {
+        ctx.fillText(hl, marginX, startY);
+        startY += titleLineStep;
+      }
     }
 
     if (slide.subheadline) {
@@ -1145,6 +1268,277 @@ export const renderSlideToCanvas = async (
       ctx.fillText(brandKit.authorSignature, marginX + 35, currentY);
     }
 
+  // ─── LAYOUT F: PRODUCT / EXERCISE BREAKDOWN (INFOGRAFICA 4 CALLOUT CON SOGGETTO CENTRALE & PUNTATORI) ───
+  } else if (layout === 'product_breakdown') {
+    // 1. Banner Superiore Orizzontale (Sito Web / Handle)
+    const bannerH = 56;
+    ctx.save();
+    ctx.fillStyle = brandKit.accentColor || '#38BDF8';
+    ctx.fillRect(0, 0, CANVAS_WIDTH, bannerH);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `italic 700 22px ${bodyFont}, monospace`;
+    ctx.fillStyle = '#070A10';
+    const bannerStr = slide.topBannerText || brandKit.authorHandle || `www.${brandKit.brandName.toLowerCase().replace(/\s+/g, '')}.coach`;
+    ctx.fillText(bannerStr, CANVAS_WIDTH / 2, bannerH / 2);
+    ctx.restore();
+
+    // 2. Titolo & Highlight Centrati in Alto
+    let pTitleY = bannerH + 40 + titleOffsetY;
+    const pTitleSize = slide.titleFontSizePx || (slide.titleSize === 'xl' ? 52 : slide.titleSize === 'lg' ? 44 : 38);
+    const pTitleLineStep = pTitleSize + 8;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = `900 ${pTitleSize}px ${titleFont}, system-ui, sans-serif`;
+    ctx.fillStyle = primaryTextColor;
+    const pHeadlineLines = wrapText(ctx, slide.headline, contentWidth - 40);
+    for (const line of pHeadlineLines) {
+      ctx.fillText(line, CANVAS_WIDTH / 2, pTitleY);
+      pTitleY += pTitleLineStep;
+    }
+
+    if (slide.headlineHighlight) {
+      pTitleY += 4;
+      ctx.font = `900 ${pTitleSize}px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      const pHlLines = wrapText(ctx, slide.headlineHighlight, contentWidth - 40);
+      for (const hl of pHlLines) {
+        ctx.fillText(hl, CANVAS_WIDTH / 2, pTitleY);
+        pTitleY += pTitleLineStep;
+      }
+    }
+    ctx.restore();
+
+    // 3. Soggetto Centrale & Alone Luminoso
+    const centerX = CANVAS_WIDTH / 2;
+    const centerY = CANVAS_HEIGHT * 0.52 + contentOffsetY;
+    const pBoxW = 380;
+    const pBoxH = 380;
+
+    // Alone luminoso di contrasto
+    const pGlow = ctx.createRadialGradient(centerX, centerY, 30, centerX, centerY, 230);
+    pGlow.addColorStop(0, 'rgba(245, 158, 11, 0.12)');
+    pGlow.addColorStop(0.6, 'rgba(30, 41, 59, 0.3)');
+    pGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = pGlow;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 230, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Disegno Immagine o Placeholder
+    if (slide.imageUrl) {
+      try {
+        const prodImg = await loadImage(slide.imageUrl);
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+        ctx.shadowBlur = 25;
+        ctx.shadowOffsetY = 12;
+        const aspect = prodImg.width / prodImg.height;
+        let dw = pBoxW;
+        let dh = pBoxH;
+        if (aspect > 1) {
+          dh = pBoxW / aspect;
+        } else {
+          dw = pBoxH * aspect;
+        }
+        ctx.drawImage(prodImg, centerX - dw / 2, centerY - dh / 2, dw, dh);
+        ctx.restore();
+      } catch {}
+    } else {
+      ctx.save();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 8]);
+      drawRoundedRect(ctx, centerX - pBoxW / 2, centerY - pBoxH / 2, pBoxW, pBoxH, 24);
+      ctx.stroke();
+      ctx.fill();
+      ctx.setLineDash([]);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `bold 26px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = '#94A3B8';
+      ctx.fillText('📦 SOGGETTO CENTRALE', centerX, centerY - 14);
+      ctx.font = `500 16px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = '#64748B';
+      ctx.fillText('(Carica foto prodotto o esercizio)', centerX, centerY + 18);
+      ctx.restore();
+    }
+
+    // 4. Linee Guida Tratteggiate e Pallini verso il Prodotto
+    const railYTop = centerY - 130;
+    const railYBottom = centerY + 130;
+    const railDotLeftX = marginX + 10;
+    const railDotRightX = CANVAS_WIDTH - marginX - 10;
+    const pMargin = 165;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+
+    // Top rails
+    ctx.beginPath();
+    ctx.moveTo(railDotLeftX, railYTop);
+    ctx.lineTo(centerX - pMargin, railYTop);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(centerX + pMargin, railYTop);
+    ctx.lineTo(railDotRightX, railYTop);
+    ctx.stroke();
+
+    // Bottom rails
+    ctx.beginPath();
+    ctx.moveTo(railDotLeftX, railYBottom);
+    ctx.lineTo(centerX - pMargin, railYBottom);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(centerX + pMargin, railYBottom);
+    ctx.lineTo(railDotRightX, railYBottom);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+
+    // Pallini ai 4 vertici
+    ctx.fillStyle = accentColor;
+    const renderDot = (x: number, y: number) => {
+      ctx.beginPath();
+      ctx.arc(x, y, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    renderDot(railDotLeftX, railYTop);
+    renderDot(railDotRightX, railYTop);
+    renderDot(railDotLeftX, railYBottom);
+    renderDot(railDotRightX, railYBottom);
+    ctx.restore();
+
+    // 5. I 4 Quadranti di Callout
+    const colW = (CANVAS_WIDTH / 2) - marginX - 25;
+    const leftColX = marginX;
+    const rightColX = centerX + 25;
+
+    const renderCalloutBlock = (
+      x: number,
+      y: number,
+      title: string,
+      text: string
+    ) => {
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+
+      ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      const tLines = wrapText(ctx, title, colW);
+      let curY = y;
+      for (const tl of tLines) {
+        ctx.fillText(tl, x, curY);
+        curY += 28;
+      }
+
+      ctx.font = `normal 19px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = '#E2E8F0';
+      const bLines = wrapText(ctx, text, colW);
+      for (const bl of bLines) {
+        ctx.fillText(bl, x, curY);
+        curY += 26;
+      }
+      ctx.restore();
+    };
+
+    const q1 = slide.calloutTopLeft || {
+      title: slide.bulletPoints?.[0] ? slide.bulletPoints[0].split(':')[0] : 'Assunzione a digiuno:',
+      text: slide.bulletPoints?.[0] ? (slide.bulletPoints[0].split(':')[1] || slide.bulletPoints[0]) : 'Senza substrato la sintesi proteica non si attiva.',
+    };
+    const q2 = slide.calloutTopRight || {
+      title: slide.bulletPoints?.[1] ? slide.bulletPoints[1].split(':')[0] : 'Sedute ravvicinate:',
+      text: slide.bulletPoints?.[1] ? (slide.bulletPoints[1].split(':')[1] || slide.bulletPoints[1]) : 'Ideale quando tra due sessioni manca il tempo per mangiare.',
+    };
+    const q3 = slide.calloutBottomLeft || {
+      title: slide.bulletPoints?.[2] ? slide.bulletPoints[2].split(':')[0] : 'Dieta povera di proteine:',
+      text: slide.bulletPoints?.[2] ? (slide.bulletPoints[2].split(':')[1] || slide.bulletPoints[2]) : 'Coprono il pool aminoacidico mancante nella giornata.',
+    };
+    const q4 = slide.calloutBottomRight || {
+      title: slide.bulletPoints?.[3] ? slide.bulletPoints[3].split(':')[0] : 'Quando non servono:',
+      text: slide.bulletPoints?.[3] ? (slide.bulletPoints[3].split(':')[1] || slide.bulletPoints[3]) : 'Se l\'apporto proteico totale è già a 1.6–2.2 g/kg.',
+    };
+
+    // ↖️ Quadrante Alto-Sinistra
+    renderCalloutBlock(leftColX, railYTop - 110, q1.title, q1.text);
+    // ↗️ Quadrante Alto-Destra
+    renderCalloutBlock(rightColX, railYTop - 110, q2.title, q2.text);
+    // ↙️ Quadrante Basso-Sinistra
+    renderCalloutBlock(leftColX, railYBottom + 20, q3.title, q3.text);
+    // ↘️ Quadrante Basso-Destra
+    renderCalloutBlock(rightColX, railYBottom + 20, q4.title, q4.text);
+
+    // 6. Footer con Badge Autore & Logo
+    const footerY = CANVAS_HEIGHT - 125;
+    const badgeW = 340;
+    const badgeH = 68;
+
+    // Card Autore (Sinistra)
+    ctx.save();
+    ctx.fillStyle = '#0F172A';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1.5;
+    drawRoundedRect(ctx, marginX, footerY, badgeW, badgeH, 20);
+    ctx.fill();
+    ctx.stroke();
+
+    // Avatar Autore
+    const avatarX = marginX + 16;
+    const avatarY = footerY + 14;
+    const avatarR = 20;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(avatarX + avatarR, avatarY + avatarR, avatarR, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(avatarX, avatarY, avatarR * 2, avatarR * 2);
+    ctx.font = `bold 20px ${bodyFont}, system-ui, sans-serif`;
+    ctx.fillStyle = '#070A10';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('AC', avatarX + avatarR, avatarY + avatarR);
+    ctx.restore();
+
+    // Testi Badge Autore
+    const coachName = slide.badgeCoachName || brandKit.authorSignature.split('•')[0].trim() || 'Antonio Crapanzano';
+    const coachRole = slide.badgeCoachTitle || (brandKit.authorSignature.includes('•') ? brandKit.authorSignature.split('•')[1].trim() : 'Performance & Biomechanics Coach');
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = `bold 18px ${bodyFont}, system-ui, sans-serif`;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(coachName, avatarX + avatarR * 2 + 12, footerY + 14);
+
+    ctx.font = `normal 14px ${bodyFont}, system-ui, sans-serif`;
+    ctx.fillStyle = '#94A3B8';
+    ctx.fillText(coachRole, avatarX + avatarR * 2 + 12, footerY + 38);
+    ctx.restore();
+
+    // Logo / Brand Name (Destra)
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    if (brandKit.logoUrl) {
+      try {
+        const logoImg = await loadImage(brandKit.logoUrl);
+        const lSize = 54;
+        ctx.drawImage(logoImg, CANVAS_WIDTH - marginX - lSize, footerY + (badgeH - lSize) / 2, lSize, lSize);
+      } catch {}
+    } else {
+      ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      ctx.fillText(brandKit.brandName || 'AC COACHING', CANVAS_WIDTH - marginX, footerY + badgeH / 2);
+    }
+    ctx.restore();
+
   // ─── LAYOUT DEFAULT: TEXT LEFT ───
   } else {
     const fontSize = titleFontSize;
@@ -1169,7 +1563,7 @@ export const renderSlideToCanvas = async (
     }
 
     if (slide.subheadline) {
-      startY += 12;
+      startY += 12 + contentOffsetY;
       ctx.font = `600 26px ${bodyFont}, system-ui, sans-serif`;
       ctx.fillStyle = accentColor;
       const subLines = wrapText(ctx, slide.subheadline, contentWidth);
@@ -1218,6 +1612,14 @@ export const renderSlideToCanvas = async (
   }
 
   // ─── 7. BOTTOM BAR: CITAZIONE STUDIO / AUTHOR HANDLE & SWIPE / ARROW ───
+  if (layout === 'product_breakdown') {
+    return;
+  }
+
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -1225,37 +1627,62 @@ export const renderSlideToCanvas = async (
   ctx.lineTo(CANVAS_WIDTH - marginX, bottomSafeY - 20);
   ctx.stroke();
 
+  // Offset per il testo se il logo è posizionato in basso a sinistra
+  const handleStartX = (brandKit.logoUrl && brandKit.logoPosition === 'bottom_left')
+    ? marginX + 44 + 14
+    : marginX;
+
   // Citazione Scientifica Studio / PMID (se presente) in basso a sinistra (Stile Screenshot 4)
   if (slide.citationSource) {
     ctx.font = `italic 18px ${bodyFont}, monospace`;
     ctx.fillStyle = '#64748B';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(slide.citationSource, marginX, bottomSafeY + 10);
+    ctx.fillText(slide.citationSource, handleStartX, bottomSafeY + 10);
   } else {
-    // Author handle a sinistra
+    // Author handle a sinistra, rigorosamente allineato a sinistra all'interno dei margini
+    const rawHandle = brandKit.authorHandle || '@antoniocrapanzano_coach';
+    const displayHandle = rawHandle.startsWith('@') ? rawHandle : `@${rawHandle}`;
+
     ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
     ctx.fillStyle = '#E2E8F0';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(brandKit.authorHandle, marginX, bottomSafeY + 10);
+    ctx.fillText(displayHandle, handleStartX, bottomSafeY + 10);
   }
 
-  // Indicatore Swipe / Freccia Oro a destra (Stile Screenshot 2)
-  ctx.textAlign = 'right';
-  ctx.font = `bold 24px ${bodyFont}, system-ui, sans-serif`;
-  ctx.fillStyle = accentColor;
-  if (isLastSlide) {
-    ctx.fillText('Salva per dopo 🔖', CANVAS_WIDTH - marginX, bottomSafeY + 10);
-  } else {
+  // Indicatore Swipe / Freccia Oro a destra (solo sulle slide intermedie, rimosso Salva per dopo)
+  if (!isLastSlide) {
+    ctx.textAlign = 'right';
+    ctx.font = `bold 24px ${bodyFont}, system-ui, sans-serif`;
+    ctx.fillStyle = accentColor;
     ctx.fillText('➔', CANVAS_WIDTH - marginX, bottomSafeY + 10);
   }
-  ctx.textAlign = 'left';
 
-  // ─── 8. LINEE GUIDA SAFE AREA OPZIONALI ───
+  ctx.restore();
+
+  // ─── 8. LINEE GUIDA SAFE AREA OPZIONALI & GRIGLIA FEED 1:1 ───
   if (options.showSafeAreaGuidelines) {
     ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
     ctx.lineWidth = 2;
     ctx.setLineDash([8, 8]);
     ctx.strokeRect(marginX, topSafeY, contentWidth, bottomSafeY - topSafeY);
     ctx.setLineDash([]);
+  }
+
+  if (options.showGridCropGuide) {
+    const cropTop = (CANVAS_HEIGHT - CANVAS_WIDTH) / 2; // 135px
+    const cropBottom = cropTop + CANVAS_WIDTH; // 1215px
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(0, cropTop);
+    ctx.lineTo(CANVAS_WIDTH, cropTop);
+    ctx.moveTo(0, cropBottom);
+    ctx.lineTo(CANVAS_WIDTH, cropBottom);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.95)';
+    ctx.font = 'bold 22px Inter, sans-serif';
+    ctx.fillText('TAGLIO FEED 1:1 (GRIGLIA PROFILO)', 28, cropTop - 12);
+    ctx.restore();
   }
 };

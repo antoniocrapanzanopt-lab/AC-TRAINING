@@ -62,6 +62,7 @@ const tabTitles: Record<NavigationTab, string> = {
   notifiche: 'Centro Notifiche',
   inbox_ai: 'Inbox AI & Brain Dump',
   contenuti: 'Pipeline Contenuti Instagram',
+  libreria_contenuti: 'Libreria Contenuti Instagram',
 };
 
 const renderPage = (tab: NavigationTab, onNavigateToTab: (t: NavigationTab) => void): React.ReactNode => {
@@ -72,6 +73,8 @@ const renderPage = (tab: NavigationTab, onNavigateToTab: (t: NavigationTab) => v
       return <InboxAIPage />;
     case 'contenuti':
       return <ContentsHubPage />;
+    case 'libreria_contenuti':
+      return <ContentsHubPage initialView="list" initialStatus="published" />;
     case 'atleti':
       return <AthletesPage />;
     case 'pacchetti':
@@ -122,7 +125,11 @@ const renderPage = (tab: NavigationTab, onNavigateToTab: (t: NavigationTab) => v
   }
 };
 
-export const MainLayout: React.FC = () => {
+interface MainLayoutProps {
+  onOpenContentStudio?: () => void;
+}
+
+export const MainLayout: React.FC<MainLayoutProps> = ({ onOpenContentStudio }) => {
   const { activeTab, setActiveTab } = useApp();
   const { setSelectedAthleteId } = useAthletes();
   const { activeToast, clearActiveToast } = useNotifications();
@@ -142,6 +149,7 @@ export const MainLayout: React.FC = () => {
           onTabChange={setActiveTab}
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
+          onOpenContentStudio={onOpenContentStudio}
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full min-w-0 overflow-x-hidden">
           {renderPage(activeTab, setActiveTab)}

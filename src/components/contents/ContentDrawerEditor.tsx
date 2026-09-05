@@ -19,7 +19,6 @@ import {
   Play,
   Pause,
   Clock,
-  SlidersHorizontal,
   Plus,
   RotateCcw,
   SplitSquareVertical,
@@ -33,9 +32,14 @@ import {
   ContentStatus,
 } from '../../types/inboxAndContent';
 import { InstagramCarousel } from '../../types/carousel';
+import { InstagramCoverData } from '../../types/cover';
+import { InstagramStorySequence } from '../../types/story';
 import { useContents } from '../../context/ContentsContext';
 import { useToast } from '../../context/ToastContext';
-import { generateCarouselFromContent } from '../../services/carouselGeneratorService';
+import { createEmptyCarousel } from '../../services/carouselGeneratorService';
+import { generateDefaultCoverFromContent } from '../../services/coverGeneratorService';
+import { CoverCardPreview } from './cover/CoverCardPreview';
+import { openContentStudio, normalizeContentFormat } from '../../utils/contentStudioRouter';
 
 const CarouselStudioModal = React.lazy(() =>
   import('./carousel/CarouselStudioModal').then((m) => ({ default: m.CarouselStudioModal }))
@@ -43,12 +47,22 @@ const CarouselStudioModal = React.lazy(() =>
 const CarouselStructuredEditor = React.lazy(() =>
   import('./carousel/CarouselStructuredEditor').then((m) => ({ default: m.CarouselStructuredEditor }))
 );
+const CoverStudioModal = React.lazy(() =>
+  import('./cover/CoverStudioModal').then((m) => ({ default: m.CoverStudioModal }))
+);
+const StoryStudioModal = React.lazy(() =>
+  import('./story/StoryStudioModal').then((m) => ({ default: m.StoryStudioModal }))
+);
+const StoryStructuredEditor = React.lazy(() =>
+  import('./story/StoryStructuredEditor').then((m) => ({ default: m.StoryStructuredEditor }))
+);
 
 interface ContentDrawerEditorProps {
   isOpen: boolean;
   onClose: () => void;
   contentToEdit?: InstagramContent | null;
   initialData?: Partial<InstagramContent>;
+  mode?: 'create' | 'edit';
 }
 
 const CONTENT_TYPES: { value: ContentType; label: string; icon: string; desc: string }[] = [
@@ -122,7 +136,24 @@ Corpo del post: Spiegazione dettagliata con punti elenco per facilitare la lettu
 Call to Action finale.`,
 };
 
-type RightTabMode = 'script' | 'caption' | 'split';
+const createDefaultStorySequence = (title?: string): InstagramStorySequence => ({
+  id: `seq_${Date.now()}`,
+  title: title || 'Stories Instagram',
+  status: 'draft',
+  stories: [],
+  settings: {
+    templateId: 'minimal_dark',
+    fontFamily: 'Inter',
+    brandName: 'AC COACHING',
+    brandHandle: '@antoniocrapanzano_coach',
+    showWatermark: true,
+    watermarkText: '• AC COACHING •',
+  },
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+});
+
+type RightTabMode = 'script' | 'caption' | 'split' | 'story_visual';
 type ScriptFontSize = 'sm' | 'base' | 'lg' | 'xl';
 type ScriptFontFamily = 'sans' | 'mono';
 
@@ -145,7 +176,9 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
   onClose,
   contentToEdit,
   initialData,
+  mode: propMode,
 }) => {
+  const mode: 'create' | 'edit' = propMode || (contentToEdit && contentToEdit.id ? 'edit' : 'create');
   const { createContent, updateContent } = useContents();
   const { showSuccess } = useToast();
 
@@ -166,6 +199,17 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
 
   // Modale Carousel Studio
   const [isCarouselStudioOpen, setIsCarouselStudioOpen] = useState(false);
+  const [carouselStudioInitialSlideIndex, setCarouselStudioInitialSlideIndex] = useState<number>(0);
+
+  // Modale Cover Studio (per Reel e Post)
+  const [coverData, setCoverData] = useState<InstagramCoverData | null>(null);
+  const [isCoverStudioOpen, setIsCoverStudioOpen] = useState(false);
+
+  // Modale Story Studio (per Stories 1080x1920)
+  const [storyData, setStoryData] = useState<InstagramStorySequence | null>(null);
+  const [isStoryStudioOpen, setIsStoryStudioOpen] = useState(false);
+  const [storyStudioInitialIndex, setStoryStudioInitialIndex] = useState<number>(0);
+
 
   // Tab di visualizzazione colonna destra: 'script' | 'caption' | 'split'
   const [activeTab, setActiveTab] = useState<RightTabMode>('script');
@@ -175,38 +219,75 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
   const [fontFamily, setFontFamily] = useState<ScriptFontFamily>('sans');
   const [isFocusMode, setIsFocusMode] = useState(false);
 
+  // Progressive disclosure per formato Carosello (mostra dettagli collassabili)
+  const [showCarouselDetails, setShowCarouselDetails] = useState(false);
+
   // Teleprompter per la modalità Focus
   const [isTeleprompterActive, setIsTeleprompterActive] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState<number>(2); // 1 = lento, 2 = medio, 3 = rapido
   const focusScrollContainerRef = useRef<HTMLDivElement>(null);
   const teleprompterAnimationRef = useRef<number | null>(null);
 
+  // Tracciamento stato inizializzazione per evitare reset distruttivi durante re-render
+  const hasInitializedRef = useRef(false);
+  const lastContentIdRef = useRef<string | undefined>(undefined);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const [carouselStudioTargetField, setCarouselStudioTargetField] = useState<string | undefined>(undefined);
+
+  const handleFocusTitle = useCallback(() => {
+    if (titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, []);
+
+  // Router esplicito verso gli Studio (evita fallback a Reel)
+  const handleOpenContentStudio = useCallback((targetFormat?: string, initialIndex: number = 0, targetField?: string) => {
+    const activeFormat = targetFormat || type;
+    setCarouselStudioTargetField(targetField);
+    openContentStudio(
+      activeFormat,
+      {
+        openStoryStudio: (idx = 0) => {
+          if (!storyData) {
+            setStoryData(createDefaultStorySequence(title));
+          }
+          setStoryStudioInitialIndex(idx);
+          setIsStoryStudioOpen(true);
+          setIsCarouselStudioOpen(false);
+          setIsFocusMode(false);
+        },
+        openCarouselStudio: (idx = 0) => {
+          if (!carouselData) {
+            const freshCarousel = createEmptyCarousel(contentToEdit?.id);
+            setCarouselData(freshCarousel);
+          }
+          setCarouselStudioInitialSlideIndex(idx);
+          setIsCarouselStudioOpen(true);
+          setIsStoryStudioOpen(false);
+          setIsFocusMode(false);
+        },
+        openReelStudio: () => {
+          setIsFocusMode(true);
+          setIsStoryStudioOpen(false);
+          setIsCarouselStudioOpen(false);
+        },
+        openPostEditor: () => {
+          setActiveTab('caption');
+          setIsStoryStudioOpen(false);
+          setIsCarouselStudioOpen(false);
+          setIsFocusMode(false);
+        },
+      },
+      initialIndex
+    );
+  }, [type, title, storyData, carouselData, contentToEdit?.id]);
+
   useEffect(() => {
-    if (contentToEdit) {
-      setTitle(contentToEdit.title || '');
-      setType(contentToEdit.type || 'reel');
-      setPillar(contentToEdit.pillar || 'technique_execution');
-      setStatus(contentToEdit.status || 'idea');
-      setHook(contentToEdit.hook || '');
-      setScriptBody(contentToEdit.script_body || '');
-      setCaption(contentToEdit.caption || '');
-      setCallToAction(contentToEdit.call_to_action || '');
-      setScheduledFor(contentToEdit.scheduled_for ? contentToEdit.scheduled_for.slice(0, 16) : '');
-      setInternalNotes(contentToEdit.internal_notes || '');
-      setCarouselData(contentToEdit.carousel_data || null);
-    } else if (initialData) {
-      setTitle(initialData.title || '');
-      setType(initialData.type || 'reel');
-      setPillar(initialData.pillar || 'technique_execution');
-      setStatus(initialData.status || 'idea');
-      setHook(initialData.hook || '');
-      setScriptBody(initialData.script_body || '');
-      setCaption(initialData.caption || '');
-      setCallToAction(initialData.call_to_action || '');
-      setScheduledFor(initialData.scheduled_for ? initialData.scheduled_for.slice(0, 16) : '');
-      setInternalNotes(initialData.internal_notes || '');
-      setCarouselData(initialData.carousel_data || null);
-    } else {
+    if (!isOpen) {
+      hasInitializedRef.current = false;
+      lastContentIdRef.current = undefined;
+      // RESET COMPLETO DELLO STATO QUANDO IL DRAWER SI CHIUDE
       setTitle('');
       setType('reel');
       setPillar('technique_execution');
@@ -218,8 +299,69 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
       setScheduledFor('');
       setInternalNotes('');
       setCarouselData(null);
+      setCoverData(null);
+      setStoryData(null);
+      return;
     }
-  }, [contentToEdit, initialData, isOpen]);
+
+    const currentContentId = contentToEdit?.id;
+    // Se il drawer è già aperto ed è già stato inizializzato per questo contenuto/sessione,
+    // NON resettare né sovrascrivere lo stato dell'utente a causa di re-render esterni
+    if (hasInitializedRef.current && lastContentIdRef.current === currentContentId) {
+      return;
+    }
+
+    hasInitializedRef.current = true;
+    lastContentIdRef.current = currentContentId;
+
+    if (mode === 'edit' && contentToEdit && contentToEdit.id) {
+      // MODALITÀ EDIT: CARICA ESCLUSIVAMENTE IL CONTENUTO CON L'ID RICHIESTO
+      const normalizedType = normalizeContentFormat(contentToEdit.type);
+      setTitle(contentToEdit.title || '');
+      setType(normalizedType);
+      setPillar(contentToEdit.pillar || 'technique_execution');
+      setStatus(contentToEdit.status || 'idea');
+      setHook(contentToEdit.hook || '');
+      setScriptBody(contentToEdit.script_body || '');
+      setCaption(contentToEdit.caption || '');
+      setCallToAction(contentToEdit.call_to_action || '');
+      setScheduledFor(contentToEdit.scheduled_for ? contentToEdit.scheduled_for.slice(0, 16) : '');
+      setInternalNotes(contentToEdit.internal_notes || '');
+      setCarouselData(contentToEdit.carousel_data || null);
+      setCoverData(contentToEdit.cover_data || null);
+      setStoryData(contentToEdit.story_data || null);
+      if (normalizedType === 'story') {
+        setActiveTab('story_visual');
+      } else if (normalizedType === 'post') {
+        setActiveTab('caption');
+      } else {
+        setActiveTab('script');
+      }
+    } else {
+      // MODALITÀ CREATE: NESSUN DATO PRECEDENTE O DEMO, TUTTI I CAMPI VUOTI
+      const initialType = normalizeContentFormat(initialData?.type);
+      setTitle(initialData?.title || '');
+      setType(initialType);
+      setPillar(initialData?.pillar || 'technique_execution');
+      setStatus(initialData?.status || 'idea');
+      setHook(initialData?.hook || '');
+      setScriptBody(initialData?.script_body || '');
+      setCaption(initialData?.caption || '');
+      setCallToAction(initialData?.call_to_action || '');
+      setScheduledFor(initialData?.scheduled_for ? initialData.scheduled_for.slice(0, 16) : '');
+      setInternalNotes(initialData?.internal_notes || '');
+      setCarouselData(null);
+      setCoverData(null);
+      setStoryData(null);
+      if (initialType === 'story') {
+        setActiveTab('story_visual');
+      } else if (initialType === 'post') {
+        setActiveTab('caption');
+      } else {
+        setActiveTab('script');
+      }
+    }
+  }, [isOpen, mode, contentToEdit, initialData]);
 
   // Gestione Teleprompter Auto-Scroll in Focus Mode
   useEffect(() => {
@@ -273,18 +415,27 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
         title: title.trim(),
         type,
         pillar,
-        status,
-        hook: hook.trim() || null,
+        hook: type === 'story' && storyData?.stories?.[0]
+          ? storyData.stories[0].headline
+          : type === 'carousel' && carouselData?.slides?.[0]
+          ? (carouselData.slides[0].headline || carouselData.slides[0].headlineHighlight || null)
+          : (hook.trim() || null),
         script_body: scriptBody.trim() || null,
         caption: caption.trim() || null,
-        call_to_action: callToAction.trim() || null,
+        call_to_action: type === 'story' && storyData?.stories && storyData.stories.length > 0
+          ? (storyData.stories[storyData.stories.length - 1].bodyText || callToAction.trim() || null)
+          : type === 'carousel' && carouselData?.slides && carouselData.slides.length > 0
+          ? (carouselData.slides[carouselData.slides.length - 1].bodyText || carouselData.slides[carouselData.slides.length - 1].headline || null)
+          : (callToAction.trim() || null),
         scheduled_for: scheduledFor ? new Date(scheduledFor).toISOString() : null,
         internal_notes: internalNotes.trim() || null,
         carousel_data: carouselData,
+        cover_data: coverData,
+        story_data: storyData,
         origin_inbox_id: contentToEdit?.origin_inbox_id || initialData?.origin_inbox_id || null,
       };
 
-      if (contentToEdit) {
+      if (mode === 'edit' && contentToEdit && contentToEdit.id) {
         await updateContent(contentToEdit.id, payload);
       } else {
         await createContent(payload);
@@ -295,7 +446,7 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [title, isSaving, type, pillar, status, hook, scriptBody, caption, callToAction, scheduledFor, internalNotes, carouselData, contentToEdit, initialData, updateContent, createContent, onClose]);
+  }, [title, isSaving, type, pillar, status, hook, scriptBody, caption, callToAction, scheduledFor, internalNotes, carouselData, coverData, storyData, contentToEdit, initialData, updateContent, createContent, onClose]);
 
   // Scorciatoia da tastiera: Cmd+S / Ctrl+S per salvare, Esc per chiudere focus
   useEffect(() => {
@@ -401,14 +552,14 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
       {/* ─── 1. TOP HEADER STUDIO (FIXED HEIGHT) ─── */}
       <header className="h-16 px-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0 z-20">
         <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-2xl bg-purple-500/15 text-purple-400 border border-purple-500/30 flex items-center justify-center shadow-md shadow-purple-500/10">
-            <Video className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-2xl bg-purple-500/15 text-purple-400 border border-purple-500/30 flex items-center justify-center shadow-md shadow-purple-500/10 text-base">
+            {type === 'story' ? '📱' : type === 'carousel' ? '📑' : type === 'post' ? '🖼️' : <Video className="w-5 h-5" />}
           </div>
           <div>
             <h2 className="text-base font-black text-white flex items-center gap-2">
-              {contentToEdit ? 'Modifica Contenuto' : 'Nuovo Contenuto Instagram'}
+              {mode === 'edit' ? 'Modifica Contenuto' : 'Nuovo Contenuto Instagram'}
               <span className="text-xs font-semibold text-slate-400 font-mono">
-                • Creator Studio
+                • {type === 'story' ? 'Story Studio' : type === 'carousel' ? 'Carousel Studio' : 'Creator Studio'}
               </span>
               {(contentToEdit?.origin_inbox_id || initialData?.origin_inbox_id) && (
                 <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
@@ -417,38 +568,71 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
               )}
             </h2>
             <p className="text-xs text-slate-400 hidden sm:block">
-              Ambiente a schermo intero con tab intelligenti per Script, Didascalia e Teleprompter
+              {type === 'story'
+                ? 'Sequenza Instagram Stories 1080×1920 (9:16) con scene, sticker e Story Studio'
+                : type === 'carousel'
+                ? 'Carosello Instagram 1080×1350 (4:5) con slide, cover e Carousel Studio'
+                : type === 'post'
+                ? 'Post singolo feed Instagram 1080×1350 (4:5) con copy e caption'
+                : 'Ambiente a schermo intero con tab intelligenti per Script, Didascalia e Teleprompter'}
             </p>
           </div>
         </div>
 
         {/* HEADER ACTIONS */}
         <div className="flex items-center gap-2.5">
-          {/* BOTTONE GENERA CAROSELLO INSTAGRAM (1080x1350) */}
-          <button
-            type="button"
-            onClick={() => setIsCarouselStudioOpen(true)}
-            title="Genera ed esporta Carosello Instagram 4:5 (1080x1350)"
-            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-purple-500/20 hover:from-amber-500/30 hover:to-purple-500/30 border border-amber-500/40 text-amber-300 text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-md"
-          >
-            <Layers className="w-3.5 h-3.5 text-amber-400" />
-            <span>Genera Carosello (1080×1350)</span>
-            {carouselData?.slides && (
-              <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-500/30 text-[10px] font-mono text-amber-200">
-                {carouselData.slides.length} slide
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsFocusMode(true)}
-            title="Apri Modalità Focus / Teleprompter a Schermo Intero"
-            className="px-3.5 py-2 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <Maximize2 className="w-3.5 h-3.5 text-purple-400" />
-            <span>Teleprompter</span>
-          </button>
+          {type === 'carousel' ? (
+            <button
+              type="button"
+              onClick={() => handleOpenContentStudio('carousel')}
+              title="Apri Carousel Studio a Schermo Intero"
+              className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-amber-500/10"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+              <span>Apri Studio Carosello</span>
+            </button>
+          ) : type === 'story' ? (
+            <button
+              type="button"
+              onClick={() => handleOpenContentStudio('story')}
+              title="Apri Story Studio a Schermo Intero"
+              className="px-3 py-2 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-purple-500/10"
+            >
+              <Maximize2 className="w-3.5 h-3.5 text-purple-400" />
+              <span>Apri Story Studio</span>
+            </button>
+          ) : type === 'reel' ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsCoverStudioOpen(true)}
+                title="Apri Cover Studio a Schermo Intero"
+                className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-amber-500/10"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Apri Cover Studio</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenContentStudio('reel')}
+                title="Apri Modalità Focus / Teleprompter a Schermo Intero"
+                className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-purple-400" />
+                <span>Teleprompter</span>
+              </button>
+            </div>
+          ) : type === 'post' ? (
+            <button
+              type="button"
+              onClick={() => setIsCoverStudioOpen(true)}
+              title="Apri Cover Studio a Schermo Intero"
+              className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-amber-500/10"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Apri Cover Studio</span>
+            </button>
+          ) : null}
 
           <button
             type="button"
@@ -474,119 +658,164 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
       {/* ─── 2. MAIN WORKSPACE (FLEX-1, ZERO OVERFLOW OUTSIDE) ─── */}
       <main className="flex-1 min-h-0 p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden">
         
-        {/* ─── COLONNA SINISTRA (5/12): SETUP, HOOK, CTA & PIANIFICAZIONE ─── */}
-        <div className="lg:col-span-5 flex flex-col h-full min-h-0 space-y-4 overflow-y-auto custom-scrollbar pr-2">
+        {/* ─── COLONNA SINISTRA: SETUP, COPY GENERALE & ORGANIZZAZIONE ─── */}
+        <div className={`flex flex-col h-full min-h-0 space-y-4 overflow-y-auto custom-scrollbar pr-2 ${
+          type === 'carousel' || type === 'story' ? 'lg:col-span-4' : 'lg:col-span-5'
+        }`}>
           
-          {/* TITOLO CONTENUTO */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-              <span>Titolo Contenuto / Idea *</span>
-              <span className="text-[10px] text-slate-500 font-mono">{title.length} car.</span>
-            </label>
-            <input
-              type="text"
-              required
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="es. Errore Stacco Rumeno: Cerniera vs Accosciata"
-              className="w-full px-4 py-2.5 bg-slate-900 border border-slate-700/80 rounded-2xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-bold tracking-tight shadow-inner"
-            />
-          </div>
+          {/* SEZIONE 1: CONTENUTO */}
+          <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/90 shadow-sm">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+              Contenuto
+            </span>
 
-          {/* SELETTORE FORMATO */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-300">Formato Contenuto</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {CONTENT_TYPES.map((t) => {
-                const isActive = type === t.value;
-                return (
-                  <button
-                    key={t.value}
-                    type="button"
-                    onClick={() => setType(t.value)}
-                    className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      isActive
-                        ? 'bg-purple-500/20 border-purple-500 text-white shadow-md shadow-purple-500/10'
-                        : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-base">{t.icon}</span>
-                      {isActive && <div className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
-                    </div>
-                    <div className="mt-1">
-                      <span className="text-xs font-bold block">{t.label}</span>
-                      <span className="text-[10px] text-slate-500 block truncate">{t.desc}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* HOOK IN EVIDENZA (GIALLO ORO) */}
-          <div className="space-y-2 p-3.5 rounded-2xl bg-amber-500/5 border border-amber-500/30 shadow-lg shadow-amber-500/5 relative">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-black text-amber-400 flex items-center gap-1.5">
-                <Flame className="w-4 h-4 text-amber-400" />
-                Hook Iniziale (I primi 3 secondi)
+            {/* TITOLO CONTENUTO */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
+                <span>Titolo / Idea *</span>
+                <span className="text-[10px] text-slate-500 font-mono">{title.length} car.</span>
               </label>
-              <span className="text-[10px] text-amber-400/80 font-mono uppercase tracking-wider">Blocca-scroll</span>
+              <input
+                ref={titleInputRef}
+                id="content-title-input"
+                type="text"
+                required
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="es. Errore Stacco Rumeno: Cerniera vs Accosciata"
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-bold tracking-tight shadow-inner"
+              />
             </div>
-            
-            <textarea
-              rows={2}
-              value={hook}
-              onChange={(e) => setHook(e.target.value)}
-              placeholder="es. Se senti lo stacco rumeno sui quadricipiti invece che sui glutei, fermati subito e guarda questo..."
-              className="w-full px-3.5 py-2 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-amber-100 placeholder-amber-500/40 focus:outline-none focus:border-amber-400 resize-none font-medium leading-relaxed shadow-inner"
-            />
 
-            {/* QUICK HOOK TEMPLATES */}
-            {!hook && (
-              <div className="pt-1">
-                <span className="text-[10px] font-bold text-slate-500 block mb-1">
-                  💡 Suggerimenti per l'Hook:
-                </span>
-                <div className="space-y-1">
-                  {QUICK_HOOK_TEMPLATES.map((tmpl, idx) => (
+            {/* SELETTORE FORMATO */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-400">Formato Contenuto</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {CONTENT_TYPES.map((t) => {
+                  const isActive = type === t.value;
+                  return (
                     <button
-                      key={idx}
+                      key={t.value}
                       type="button"
-                      onClick={() => setHook(tmpl)}
-                      className="w-full text-left p-1.5 rounded-lg bg-slate-950/60 hover:bg-slate-900 border border-slate-800 text-[11px] text-slate-400 hover:text-amber-300 truncate transition cursor-pointer"
+                      onClick={() => {
+                        const newType = t.value;
+                        setType(newType);
+                        if (newType === 'story') {
+                          setActiveTab('story_visual');
+                        } else if (newType === 'post') {
+                          setActiveTab('caption');
+                        } else {
+                          setActiveTab('script');
+                        }
+                      }}
+                      className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isActive
+                          ? 'bg-purple-500/20 border-purple-500 text-white shadow-md shadow-purple-500/10'
+                          : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
                     >
-                      • {tmpl}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">{t.icon}</span>
+                        {isActive && <div className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
+                      </div>
+                      <div className="mt-1">
+                        <span className="text-[11px] font-bold block">{t.label}</span>
+                        <span className="text-[9px] text-slate-500 block truncate">{t.desc}</span>
+                      </div>
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            )}
-          </div>
-
-          {/* CALL TO ACTION (CTA) */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-              <Share2 className="w-3.5 h-3.5 text-emerald-400" />
-              Call to Action (CTA)
-            </label>
-            <input
-              type="text"
-              value={callToAction}
-              onChange={(e) => setCallToAction(e.target.value)}
-              placeholder="es. Salva il Reel e commenta 'STACCO' per ricevere la scheda completa in DM"
-              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-medium"
-            />
-          </div>
-
-          {/* CARD PIANIFICAZIONE & METADATI */}
-          <div className="p-3.5 rounded-2xl bg-slate-900/50 border border-slate-800/90 space-y-3">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
-              <span>Pianificazione & Dettagli Board</span>
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* SEZIONE 2: COPY GENERALE (CAPTION & FEED) - SOLO PER REEL E POST */}
+          {type !== 'carousel' && type !== 'story' && (
+            <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/90 shadow-sm animate-fadeIn">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                  Copy Generale
+                </span>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Questi campi definiscono l'introduzione (hook) e la CTA della didascalia.
+                </p>
+              </div>
+
+              {/* HOOK CAPTION & FEED */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-amber-500/5 border border-amber-500/25">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                    <Flame className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Hook Caption & Feed</span>
+                  </label>
+                  <span className="text-[10px] text-amber-400/80 font-mono">Didascalia</span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Introduzione del contenuto usata nella caption/feed. È separata dalla copertina grafica del carosello.
+                </p>
+                
+                <textarea
+                  rows={2}
+                  value={hook}
+                  onChange={(e) => setHook(e.target.value)}
+                  placeholder="es. Se senti lo stacco rumeno sui quadricipiti invece che sui glutei, fermati subito..."
+                  className="w-full px-3 py-2 bg-slate-950 border border-amber-500/30 rounded-xl text-xs text-amber-100 placeholder-amber-500/30 focus:outline-none focus:border-amber-400 resize-none font-medium leading-relaxed shadow-inner"
+                />
+
+                {/* QUICK HOOK TEMPLATES */}
+                {!hook && (
+                  <div className="pt-1">
+                    <span className="text-[10px] font-bold text-slate-500 block mb-1">
+                      💡 Suggerimenti per l'Hook:
+                    </span>
+                    <div className="space-y-1">
+                      {QUICK_HOOK_TEMPLATES.map((tmpl, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setHook(tmpl)}
+                          className="w-full text-left p-1.5 rounded-lg bg-slate-950/60 hover:bg-slate-900 border border-slate-800 text-[11px] text-slate-400 hover:text-amber-300 truncate transition cursor-pointer"
+                        >
+                          • {tmpl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* CTA CAPTION */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/25">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                    <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>CTA Caption</span>
+                  </label>
+                  <span className="text-[10px] text-emerald-400/80 font-mono">Didascalia</span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Invito all’azione della didascalia.
+                </p>
+
+                <input
+                  type="text"
+                  value={callToAction}
+                  onChange={(e) => setCallToAction(e.target.value)}
+                  placeholder="es. Salva il Reel e commenta 'STACCO' per ricevere la scheda completa in DM"
+                  className="w-full px-3 py-2 bg-slate-950 border border-emerald-500/30 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-medium"
+                />
+              </div>
+            </div>
+          )}
+
+
+          {/* SEZIONE 3: ORGANIZZAZIONE */}
+          <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/90 space-y-3 shadow-sm">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+              Organizzazione
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* PILASTRO */}
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-slate-400">Pilastro Editoriale</label>
@@ -594,13 +823,13 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
                   <select
                     value={pillar}
                     onChange={(e) => setPillar(e.target.value as ContentPillar)}
-                    className="w-full pl-3 pr-8 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-medium appearance-none cursor-pointer"
+                    className="w-full pl-2.5 pr-7 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-medium appearance-none cursor-pointer"
                   >
                     {CONTENT_PILLARS.map((p) => (
                       <option key={p.value} value={p.value}>{p.label}</option>
                     ))}
                   </select>
-                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
 
@@ -611,268 +840,299 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as ContentStatus)}
-                    className="w-full pl-3 pr-8 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-medium appearance-none cursor-pointer"
+                    className="w-full pl-2.5 pr-7 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-medium appearance-none cursor-pointer"
                   >
                     {CONTENT_STATUSES.map((s) => (
                       <option key={s.value} value={s.value}>{s.label}</option>
                     ))}
                   </select>
-                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
 
               {/* DATA PROGRAMMATA */}
-              <div className="space-y-1">
+              <div className="space-y-1 sm:col-span-2">
                 <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
                   <Calendar className="w-3 h-3 text-amber-400" />
-                  Data / Ora Pubblicazione
+                  <span>Data / Ora Pubblicazione</span>
                 </label>
                 <input
                   type="datetime-local"
                   value={scheduledFor}
                   onChange={(e) => setScheduledFor(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
                 />
               </div>
 
               {/* NOTE INTERNE */}
-              <div className="space-y-1">
+              <div className="space-y-1 sm:col-span-2">
                 <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
                   <Layers className="w-3 h-3 text-slate-400" />
-                  Note Interne
+                  <span>Note Interne</span>
                 </label>
                 <input
                   type="text"
                   value={internalNotes}
                   onChange={(e) => setInternalNotes(e.target.value)}
-                  placeholder="es. Maglietta nera, luce ad anello"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-500"
+                  placeholder="es. Focus biomeccanica, menzionare braccio di leva"
+                  className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-500"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* ─── COLONNA DESTRA (7/12): STUDIO SCRITTURA CON TAB INTELLIGENTI A PIENA ALTEZZA ─── */}
-        <div className="lg:col-span-7 flex flex-col h-full min-h-0 space-y-3">
-          
-          {/* TAB BAR SUPERIORE */}
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl shrink-0">
-            {/* TABS SELECTOR */}
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setActiveTab('script')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                  activeTab === 'script'
-                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-md shadow-purple-500/10'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
-                }`}
-              >
-                <FileText className="w-4 h-4 text-purple-400" />
-                <span>Script & Scaletta Scene</span>
-                {wordCount > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-md bg-slate-950 text-[10px] font-mono text-purple-300 border border-purple-500/20">
-                    {wordCount} p.
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('caption')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                  activeTab === 'caption'
-                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-md shadow-blue-500/10'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
-                }`}
-              >
-                <MessageSquare className="w-4 h-4 text-blue-400" />
-                <span>Caption & Didascalia Post</span>
-                {captionWords > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-md bg-slate-950 text-[10px] font-mono text-blue-300 border border-blue-500/20">
-                    {captionWords} p.
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('split')}
-                title="Visualizza Script e Caption contemporaneamente"
-                className={`p-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  activeTab === 'split'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
-                }`}
-              >
-                <SplitSquareVertical className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* CONTROLLI DI FORMATTAZIONE CONDIVISI */}
-            <div className="flex items-center gap-1.5">
-              {/* Selettore Dimensione Testo */}
-              <button
-                type="button"
-                onClick={cycleFontSize}
-                title={`Dimensione testo: ${FONT_SIZE_CLASSES[fontSize].label} (${FONT_SIZE_CLASSES[fontSize].px}). Clicca per cambiare.`}
-                className="px-2 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-slate-300 flex items-center gap-1 transition cursor-pointer"
-              >
-                <Type className="w-3.5 h-3.5 text-purple-400" />
-                <span>{FONT_SIZE_CLASSES[fontSize].px}</span>
-              </button>
-
-              {/* Toggle Sans / Mono */}
-              <button
-                type="button"
-                onClick={() => setFontFamily((prev) => (prev === 'sans' ? 'mono' : 'sans'))}
-                title={fontFamily === 'sans' ? 'Passa a font monospaziato' : 'Passa a font proporzionale (ad alta leggibilità)'}
-                className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
-                  fontFamily === 'mono'
-                    ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
-                    : 'bg-slate-950 hover:bg-slate-800 border-slate-800 text-slate-400'
-                }`}
-              >
-                {fontFamily === 'mono' ? 'Mono' : 'Sans'}
-              </button>
-
-              {/* Copia Rapida in base al tab attivo */}
-              {activeTab === 'caption' ? (
-                caption && (
-                  <button
-                    type="button"
-                    onClick={handleCopyCaption}
-                    className="px-3 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-xs font-bold text-blue-300 flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    {copiedCaption ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedCaption ? 'Copiata!' : 'Copia'}</span>
-                  </button>
-                )
-              ) : (
-                scriptBody && (
-                  <button
-                    type="button"
-                    onClick={handleCopyScript}
-                    className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold text-purple-300 flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedScript ? 'Copiato!' : 'Copia'}</span>
-                  </button>
-                )
-              )}
-            </div>
-          </div>
-
-          {/* ─── TAB 1: SCRIPT STUDIO & SCALETTA SCENE (SEMPRE EDITABILE E SCORRIBILE) ─── */}
-          {activeTab === 'script' && (
+        {/* ─── COLONNA DESTRA: STUDIO SCRITTURA CON TAB INTELLIGENTI A PIENA ALTEZZA ─── */}
+        <div className={`flex flex-col h-full min-h-0 space-y-3 ${
+          type === 'carousel' || type === 'story' ? 'lg:col-span-8' : 'lg:col-span-7'
+        }`}>
+          {type === 'story' ? (
+            /* ─── VISTA DEDICATA STORIES: SEQUENZA STORIES + CARD STORY STUDIO ─── */
             <div className="flex-1 min-h-0 flex flex-col space-y-3">
-              {/* BANNER CAROSELLO IN CIMA SE IL FORMATO È CAROSELLO */}
-              {type === 'carousel' && (
-                <React.Suspense
-                  fallback={
-                    <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-amber-400 text-xs">
-                      <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mr-2" />
-                      <span>Caricamento carosello...</span>
-                    </div>
+              <React.Suspense
+                fallback={
+                  <div className="p-8 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-purple-400 text-xs">
+                    <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mr-2" />
+                    <span>Caricamento Stories Instagram...</span>
+                  </div>
+                }
+              >
+                <StoryStructuredEditor
+                  storySequence={storyData}
+                  onChange={(updated) => {
+                    setStoryData(updated);
+                  }}
+                  onOpenFullscreenStudio={(storyIdx = 0) => {
+                    handleOpenContentStudio('story', storyIdx);
+                  }}
+                  contentTitle={title}
+                  scriptBody={scriptBody}
+                  hook={hook}
+                  cta={callToAction}
+                  carouselData={carouselData}
+                />
+              </React.Suspense>
+            </div>
+          ) : type === 'carousel' ? (
+            /* ─── WORKSPACE CAROSELLO INSTAGRAM 4:5 (CONTROL PANEL SEMPLIFICATO + STUDIO) ─── */
+            <div className="flex-1 min-h-0 flex flex-col overflow-y-auto custom-scrollbar pr-1">
+              <React.Suspense
+                fallback={
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-amber-400 text-xs">
+                    <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mr-2" />
+                    <span>Caricamento carosello...</span>
+                  </div>
+                }
+              >
+                <CarouselStructuredEditor
+                  carousel={
+                    carouselData || createEmptyCarousel(contentToEdit?.id)
                   }
-                >
-                  <CarouselStructuredEditor
-                    carousel={
-                      carouselData ||
-                      generateCarouselFromContent({
-                        id: contentToEdit?.id,
-                        title,
-                        type,
-                        pillar,
-                        status,
-                        hook,
-                        script_body: scriptBody,
-                        caption,
-                        call_to_action: callToAction,
-                        internal_notes: internalNotes,
-                      })
-                    }
-                    onChange={(updated) => {
-                      setCarouselData(updated);
-                    }}
-                    onOpenFullscreenStudio={() => setIsCarouselStudioOpen(true)}
-                    contentTitle={title}
-                  />
-                </React.Suspense>
-              )}
+                  onChange={(updated) => {
+                    setCarouselData(updated);
+                  }}
+                  onOpenFullscreenStudio={(slideIdx = 0, targetField?: string) => {
+                    handleOpenContentStudio('carousel', slideIdx, targetField);
+                  }}
+                  contentTitle={title}
+                  onFocusTitle={handleFocusTitle}
+                  showDetails={showCarouselDetails}
+                  onToggleDetails={() => setShowCarouselDetails((prev) => !prev)}
+                />
+              </React.Suspense>
+            </div>
+          ) : (
+            /* ─── VISTA REEL / POST CON TAB BAR DINAMICA ─── */
+            <>
+              {/* TAB BAR SUPERIORE */}
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl shrink-0">
+                {/* TABS SELECTOR IN BASE AL FORMATO */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* PER REEL: TAB SCRIPT & SCALETTA SCENE */}
+                  {type === 'reel' && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('script')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                        activeTab === 'script'
+                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-md shadow-purple-500/10'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
+                      }`}
+                    >
+                      <FileText className="w-4 h-4 text-purple-400" />
+                      <span>Script & Scaletta Scene</span>
+                      {wordCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-md bg-slate-950 text-[10px] font-mono text-purple-300 border border-purple-500/20">
+                          {wordCount} p.
+                        </span>
+                      )}
+                    </button>
+                  )}
 
-              {/* EDITOR DI TESTO SCALETTA & SCENE (SEMPRE VISIBILE E SCRIVIBILE) */}
-              <div className="flex-1 min-h-0 flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl p-4 shadow-inner space-y-3 relative">
-                
-                {/* SUB-HEADER SCRIPT CON METRICHE & SNIPPET */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-300">
-                      {type === 'carousel' ? 'Testo & Note Slide:' : 'Scaletta & Cues:'}
-                    </span>
-                    {wordCount > 0 && (
-                      <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400">
-                        <span className="bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 text-amber-300 flex items-center gap-1">
-                          <Clock className="w-2.5 h-2.5 text-amber-400" />
-                          {readingTimeFormatted} di parlato
-                        </span>
-                        <span className="bg-purple-500/10 px-2 py-0.5 rounded-md border border-purple-500/20 text-purple-300">
-                          🎬 {sceneCount} scene
-                        </span>
-                      </div>
+                  {/* PER REEL E POST: CAPTION & DIDASCALIA */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('caption')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+                      activeTab === 'caption'
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-md shadow-blue-500/10'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
+                    }`}
+                  >
+                    <MessageSquare className="w-4 h-4 text-blue-400" />
+                    <span>Caption & Didascalia</span>
+                    {captionWords > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-md bg-slate-950 text-[10px] font-mono text-blue-300 border border-blue-500/20">
+                        {captionWords} p.
+                      </span>
                     )}
-                  </div>
+                  </button>
 
-                  {/* HELPER RAPIDI INSERIMENTO SCENE & SCHEMI */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* PER REEL: VISTA SPLIT */}
+                  {type === 'reel' && (
                     <button
                       type="button"
-                      onClick={() => handleInsertSnippet('scene')}
-                      className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
+                      onClick={() => setActiveTab('split')}
+                      title="Visualizza Script e Caption contemporaneamente"
+                      className={`p-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        activeTab === 'split'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
+                      }`}
                     >
-                      <Plus className="w-3 h-3 text-purple-400" />
-                      Nuova Scena
+                      <SplitSquareVertical className="w-4 h-4" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleInsertSnippet('cue')}
-                      className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3 text-amber-400" />
-                      Cue Visivo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleInsertSnippet('cta')}
-                      className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3 text-emerald-400" />
-                      CTA Vocale
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleApplyScriptTemplate}
-                      className="text-[11px] font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1 cursor-pointer transition hover:underline ml-1"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      Schema {type.toUpperCase()}
-                    </button>
-                  </div>
+                  )}
                 </div>
 
-                {/* TEXTAREA DELLO SCRIPT A TUTTA ALTEZZA (PIENA VISIBILITÀ CONTINUA) */}
-                <div className="relative flex-1 min-h-0 h-full">
-                  <textarea
-                    value={scriptBody}
-                    onChange={(e) => setScriptBody(e.target.value)}
-                    placeholder="1. Copertina / Gancio: Titolo forte e impatto visivo...&#10;2. Errore comune: Perché le ginocchia cedono all'interno...&#10;3. Correzione tecnica: Allineamento tibia e caviglia...&#10;4. Guida pratica: 3 step esecutivi...&#10;5. CTA: Salva il post per non dimenticarlo."
-                    className={`w-full h-full min-h-0 px-4 py-3.5 bg-slate-950/95 border border-slate-700/90 focus:border-purple-500 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none resize-none editor-scrollbar shadow-inner ${
-                      fontFamily === 'mono' ? 'font-mono' : 'font-sans'
-                    } ${FONT_SIZE_CLASSES[fontSize].editor}`}
-                  />
+                {/* CONTROLLI DI FORMATTAZIONE CONDIVISI PER REEL/POST */}
+                <div className="flex items-center gap-1.5">
+                  {/* Selettore Dimensione Testo */}
+                  <button
+                    type="button"
+                    onClick={cycleFontSize}
+                    title={`Dimensione testo: ${FONT_SIZE_CLASSES[fontSize].label} (${FONT_SIZE_CLASSES[fontSize].px}). Clicca per cambiare.`}
+                    className="px-2 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-slate-300 flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Type className="w-3.5 h-3.5 text-purple-400" />
+                    <span>{FONT_SIZE_CLASSES[fontSize].px}</span>
+                  </button>
+
+                  {/* Toggle Sans / Mono */}
+                  <button
+                    type="button"
+                    onClick={() => setFontFamily((prev) => (prev === 'sans' ? 'mono' : 'sans'))}
+                    title={fontFamily === 'sans' ? 'Passa a font monospaziato' : 'Passa a font proporzionale (ad alta leggibilità)'}
+                    className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                      fontFamily === 'mono'
+                        ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
+                        : 'bg-slate-950 hover:bg-slate-800 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {fontFamily === 'mono' ? 'Mono' : 'Sans'}
+                  </button>
+
+                  {/* Copia Rapida in base al tab attivo */}
+                  {activeTab === 'caption' ? (
+                    caption && (
+                      <button
+                        type="button"
+                        onClick={handleCopyCaption}
+                        className="px-3 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-xs font-bold text-blue-300 flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        {copiedCaption ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedCaption ? 'Copiata!' : 'Copia'}</span>
+                      </button>
+                    )
+                  ) : (
+                    scriptBody && (
+                      <button
+                        type="button"
+                        onClick={handleCopyScript}
+                        className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-xs font-bold text-purple-300 flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedScript ? 'Copiato!' : 'Copia'}</span>
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
+
+          {/* ─── TAB 1: SCRIPT STUDIO (REEL/POST) ─── */}
+          {activeTab === 'script' && (
+            <div className="flex-1 min-h-0 flex flex-col space-y-3">
+              {/* EDITOR DI TESTO SCALETTA & SCENE PER REEL / POST */}
+                <div className="flex-1 min-h-0 flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl p-4 shadow-inner space-y-3 relative">
+                  
+                  {/* SUB-HEADER SCRIPT CON METRICHE & SNIPPET */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-300">
+                        Scaletta & Cues:
+                      </span>
+                      {wordCount > 0 && (
+                        <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400">
+                          <span className="bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 text-amber-300 flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5 text-amber-400" />
+                            {readingTimeFormatted} di parlato
+                          </span>
+                          <span className="bg-purple-500/10 px-2 py-0.5 rounded-md border border-purple-500/20 text-purple-300">
+                            🎬 {sceneCount} scene
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* HELPER RAPIDI INSERIMENTO SCENE & SCHEMI */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleInsertSnippet('scene')}
+                        className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3 text-purple-400" />
+                        Nuova Scena
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleInsertSnippet('cue')}
+                        className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3 text-amber-400" />
+                        Cue Visivo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleInsertSnippet('cta')}
+                        className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3 text-emerald-400" />
+                        CTA Vocale
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleApplyScriptTemplate}
+                        className="text-[11px] font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1 cursor-pointer transition hover:underline ml-1"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        Schema {type.toUpperCase()}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* TEXTAREA DELLO SCRIPT A TUTTA ALTEZZA */}
+                  <div className="relative flex-1 min-h-0 h-full">
+                    <textarea
+                      value={scriptBody}
+                      onChange={(e) => setScriptBody(e.target.value)}
+                      placeholder="1. Gancio iniziale: Attira l'attenzione nei primi 3 secondi...&#10;2. Spiegazione tecnica del problema...&#10;3. Correzione biomeccanica pratica...&#10;4. Invito all'azione finale..."
+                      className={`w-full h-full min-h-0 px-4 py-3.5 bg-slate-950/95 border border-slate-700/90 focus:border-purple-500 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none resize-none editor-scrollbar shadow-inner ${
+                        fontFamily === 'mono' ? 'font-mono' : 'font-sans'
+                      } ${FONT_SIZE_CLASSES[fontSize].editor}`}
+                    />
+                  </div>
+                </div>
             </div>
           )}
 
@@ -984,8 +1244,34 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
               </div>
             </div>
           )}
-        </div>
-      </main>
+
+          {/* ─── COPERTINA INSTAGRAM SOTTO LA SCALETTA (REEL & POST) ─── */}
+          {(type === 'reel' || type === 'post') && (
+            <div className="shrink-0 pt-0.5">
+              <CoverCardPreview
+                type={type}
+                coverData={
+                  coverData ||
+                  generateDefaultCoverFromContent({
+                    title,
+                    hook,
+                    type,
+                    pillar,
+                  })
+                }
+                carouselData={carouselData}
+                onOpenCoverStudio={() => setIsCoverStudioOpen(true)}
+                onOpenCarouselStudioAtSlide={(slideIdx) => {
+                  setCarouselStudioInitialSlideIndex(slideIdx);
+                  setIsCarouselStudioOpen(true);
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  </main>
 
       {/* ─── 3. BOTTOM FOOTER BAR (FIXED HEIGHT) ─── */}
       <footer className="h-14 px-6 bg-slate-900/95 border-t border-slate-800 flex items-center justify-between shrink-0 z-20 backdrop-blur-md">
@@ -998,15 +1284,6 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
         </button>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setIsCarouselStudioOpen(true)}
-            className="px-3.5 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 font-bold rounded-xl text-xs border border-amber-500/30 flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <Layers className="w-3.5 h-3.5" />
-            Apri Studio Carosello
-          </button>
-
           <button
             type="button"
             onClick={() => handleSave()}
@@ -1221,9 +1498,70 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
               internal_notes: internalNotes,
               carousel_data: carouselData,
             }}
+            initialSlideIndex={carouselStudioInitialSlideIndex}
+            initialTargetField={carouselStudioTargetField}
             onSaveCarousel={(updatedCarousel) => {
               setCarouselData(updatedCarousel);
             }}
+          />
+        </React.Suspense>
+      )}
+
+      {/* ─── 6. STUDIO COPERTINE INSTAGRAM MODALE FULLSCREEN (LAZY LOADED) ─── */}
+      {isCoverStudioOpen && (
+        <React.Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="flex flex-col items-center gap-3 text-amber-400">
+                <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-bold font-mono">Caricamento Cover Studio...</span>
+              </div>
+            </div>
+          }
+        >
+          <CoverStudioModal
+            isOpen={isCoverStudioOpen}
+            onClose={() => setIsCoverStudioOpen(false)}
+            content={{
+              id: contentToEdit?.id,
+              title,
+              type,
+              pillar,
+              status,
+              hook,
+              cover_data: coverData,
+            }}
+            onSaveCover={(updatedCover) => {
+              setCoverData(updatedCover);
+            }}
+          />
+        </React.Suspense>
+      )}
+
+      {/* ─── 7. STUDIO STORIES INSTAGRAM MODALE FULLSCREEN (LAZY LOADED) ─── */}
+      {isStoryStudioOpen && (
+        <React.Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="flex flex-col items-center gap-3 text-purple-400">
+                <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-bold font-mono">Caricamento Story Studio...</span>
+              </div>
+            </div>
+          }
+        >
+          <StoryStudioModal
+            isOpen={isStoryStudioOpen}
+            onClose={() => setIsStoryStudioOpen(false)}
+            storySequence={storyData || createDefaultStorySequence(title)}
+            onSaveSequence={(updatedSeq) => {
+              setStoryData(updatedSeq);
+            }}
+            initialStoryIndex={storyStudioInitialIndex}
+            contentTitle={title}
+            scriptBody={scriptBody}
+            hook={hook}
+            cta={callToAction}
           />
         </React.Suspense>
       )}

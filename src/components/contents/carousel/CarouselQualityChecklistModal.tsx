@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { InstagramCarousel } from '../../../types/carousel';
+import { validateEntireCarousel } from '../../../services/carouselQualityService';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -23,6 +24,7 @@ export interface QualityCriterion {
   description: string;
   status: 'pass' | 'warning' | 'fail';
   detail: string;
+  category: 'structure' | 'readability' | 'cover' | 'completeness' | 'coherence';
   targetSlideIndex?: number;
   actionLabel?: string;
 }
@@ -34,11 +36,14 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
   onSelectSlide,
   onOptimizeSlide,
 }) => {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
   if (!isOpen) return null;
 
+  const validationReport = validateEntireCarousel(carousel);
   const slides = carousel.slides || [];
 
-  // Calcolo dei 7 criteri concreti
+  // Calcolo dei criteri concreti
   const criteria: QualityCriterion[] = [];
 
   // 1. Lunghezza Testo (<50 parole)
@@ -55,6 +60,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Lunghezza Testo & Densità Mobile',
       description: 'Tutte le slide contengono meno di 50 parole, garantendo leggibilità istantanea da smartphone.',
       status: 'pass',
+      category: 'readability',
       detail: 'Tutte le slide sono snelle ed ergonomiche per il feed.',
     });
   } else {
@@ -63,6 +69,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Lunghezza Testo & Densità Mobile',
       description: `${verboseSlides.length} slide superano le 50 parole (Slide ${verboseSlides.map((s) => s.index + 1).join(', ')}).`,
       status: 'warning',
+      category: 'readability',
       detail: `Slide ${verboseSlides[0].index + 1} ha ${verboseSlides[0].words} parole. Consigliamo di sintetizzare per evitare testi densi su mobile.`,
       targetSlideIndex: verboseSlides[0].index,
       actionLabel: 'Sintetizza con AI',
@@ -75,6 +82,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
     title: 'Contrasto Cromatico & Tipografia',
     description: 'Palette nero antracite, accenti oro ambra e testo primario bianco conformi allo standard WCAG AAA.',
     status: 'pass',
+    category: 'readability',
     detail: 'Rapporto di contrasto testo/sfondo > 7:1.',
   });
 
@@ -90,6 +98,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Protezione Safe Area & Margini',
       description: 'Nessun testo sconfina nelle aree critiche (superiore <150px, inferiore <180px).',
       status: 'pass',
+      category: 'readability',
       detail: 'Margini e footer autore preservati su ogni slide.',
     });
   } else {
@@ -99,6 +108,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Protezione Safe Area & Margini',
       description: `Rischio collisione con la safe area su ${overflowSlides.length} slide.`,
       status: 'warning',
+      category: 'readability',
       detail: `La slide ${idx + 1} ha un volume di caratteri elevato e potrebbe toccare il footer.`,
       targetSlideIndex: idx >= 0 ? idx : undefined,
       actionLabel: 'Ispeziona Slide',
@@ -113,6 +123,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Chiarezza & Hook dei Titoli',
       description: 'Ogni slide possiede un titolo chiaro, incisivo e ben differenziato.',
       status: 'pass',
+      category: 'cover',
       detail: 'Hook iniziale presente e titoli a 2 toni attivi.',
     });
   } else {
@@ -122,6 +133,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Chiarezza & Hook dei Titoli',
       description: 'Sono presenti slide con titoli incompleti o troppo generici.',
       status: 'fail',
+      category: 'cover',
       detail: `La slide ${idx + 1} necessita di un titolo più descrittivo.`,
       targetSlideIndex: idx >= 0 ? idx : undefined,
       actionLabel: 'Genera Titolo AI',
@@ -137,6 +149,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Call to Action & Chiusura Post',
       description: 'L\'ultima slide contiene una chiara chiamata all\'azione per spingere a salvare o commentare.',
       status: 'pass',
+      category: 'coherence',
       detail: `Slide finale impostata per massimizzare la retention (${lastSlide?.layout || 'final_cta'}).`,
     });
   } else {
@@ -145,6 +158,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Call to Action & Chiusura Post',
       description: 'L\'ultima slide non contiene una CTA esplicita per stimolare salvataggi o commenti.',
       status: 'warning',
+      category: 'coherence',
       detail: 'Aggiungi una CTA chiara sull\'ultima slide per aumentare i salvataggi.',
       targetSlideIndex: slides.length - 1,
       actionLabel: 'Imposta CTA',
@@ -159,6 +173,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Asset Visivi & Indicazioni di Regia',
       description: `${visualSlides.length} slide contengono foto o indicazioni di regia kinesiologica.`,
       status: 'pass',
+      category: 'completeness',
       detail: 'Equilibrio visivo ottimale tra testo e grafica.',
     });
   } else {
@@ -167,6 +182,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Asset Visivi & Indicazioni di Regia',
       description: 'Molte slide sono puramente testuali senza indicazioni visive o foto.',
       status: 'warning',
+      category: 'completeness',
       detail: 'Consigliamo di caricare foto o specificare il cue visivo per dare ritmo.',
       targetSlideIndex: 0,
       actionLabel: 'Aggiungi Visual',
@@ -181,6 +197,7 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Progressione Narrativa Globale',
       description: `Il carosello è composto da ${slides.length} slide, la lunghezza ideale per l'algoritmo di Instagram (3-10 slide).`,
       status: 'pass',
+      category: 'structure',
       detail: 'Gancio ➔ Approfondimento pratico ➔ Chiusura brand.',
     });
   } else {
@@ -189,12 +206,14 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
       title: 'Progressione Narrativa Globale',
       description: slides.length < 3 ? 'Carosello troppo breve (< 3 slide).' : 'Superato il limite di 10 slide Instagram.',
       status: 'warning',
+      category: 'structure',
       detail: 'Mantieni tra 3 e 10 slide per garantire engagement e leggibilità.',
     });
   }
 
-  const passCount = criteria.filter((c) => c.status === 'pass').length;
-  const score = Math.round((passCount / criteria.length) * 100);
+  const displayedCriteria = selectedCategory
+    ? criteria.filter((c) => c.category === selectedCategory)
+    : criteria;
 
   return (
     <div
@@ -212,16 +231,20 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-white flex items-center gap-2">
+              <h3 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
                 <span>Checklist Qualità Carosello</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-mono font-bold ${
-                  score >= 85 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                <span className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-bold border ${
+                  validationReport.blockedCount > 0
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                    : validationReport.warningCount > 0
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                 }`}>
-                  {score}/100
+                  {validationReport.score}/100 · {validationReport.warningCount} warning · {validationReport.blockedCount} blocchi
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">
-                {passCount} su 7 criteri verificati con successo. Nessun blocco di salvataggio.
+              <p className="text-xs text-slate-400 mt-0.5">
+                {validationReport.qualityReason}
               </p>
             </div>
           </div>
@@ -235,9 +258,79 @@ export const CarouselQualityChecklistModal: React.FC<CarouselQualityChecklistMod
           </button>
         </div>
 
-        {/* LISTA DEI 7 CRITERI */}
+        {/* BREAKDOWN A 5 CATEGORIE (STRUTTURA, LEGGIBILITÀ, COPERTINA, COMPLETEZZA, COERENZA) */}
+        <div className="px-6 pt-3.5 pb-2.5 border-b border-slate-800 bg-slate-950/60 shrink-0 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400">
+              Breakdown Qualitativo (clicca per filtrare)
+            </span>
+            <span className="text-xs font-mono font-black text-amber-300">
+              Totale: {validationReport.score}/100
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pb-1">
+            {[
+              { key: 'structure', icon: '🏗️', item: validationReport.breakdown.structure },
+              { key: 'readability', icon: '📱', item: validationReport.breakdown.readability },
+              { key: 'cover', icon: '🖼️', item: validationReport.breakdown.cover },
+              { key: 'completeness', icon: '📋', item: validationReport.breakdown.completeness },
+              { key: 'coherence', icon: '🎯', item: validationReport.breakdown.coherence },
+            ].map(({ key, icon, item }) => {
+              const isPass = item.status === 'pass';
+              const isWarn = item.status === 'warning';
+              const isSelected = selectedCategory === key;
+
+              return (
+                <div
+                  key={key}
+                  onClick={() => setSelectedCategory((prev: string | null) => (prev === key ? null : key))}
+                  className={`p-2.5 rounded-2xl border flex flex-col justify-between space-y-1 transition cursor-pointer hover:border-amber-500/60 ${
+                    isSelected
+                      ? 'ring-2 ring-amber-400 bg-amber-500/20 border-amber-400 shadow-lg scale-[1.02]'
+                      : isPass
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                      : isWarn
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  }`}
+                  title={`Clicca per filtrare i criteri su ${item.name}`}
+                >
+                  <div className="flex items-center justify-between text-[11px] font-bold">
+                    <span className="flex items-center gap-1 min-w-0">
+                      <span>{icon}</span>
+                      <span className="text-white truncate">{item.name}</span>
+                    </span>
+                    <span className="font-mono font-black shrink-0">{item.score}/20</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 line-clamp-2 leading-tight">
+                    {item.description}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Banner Filtro Attivo */}
+          {selectedCategory && (
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs animate-in fade-in">
+              <span>
+                Filtro attivo: <strong>{validationReport.breakdown[selectedCategory as keyof typeof validationReport.breakdown]?.name}</strong> ({displayedCriteria.length} criteri)
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedCategory(null)}
+                className="text-xs text-slate-400 hover:text-white font-bold cursor-pointer underline"
+              >
+                Mostra tutti ({criteria.length})
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* LISTA DEI CRITERI DETTAGLIATI (FILTRABILE) */}
         <div className="p-6 space-y-3 overflow-y-auto custom-scrollbar flex-1">
-          {criteria.map((c) => {
+          {displayedCriteria.map((c) => {
             const isPass = c.status === 'pass';
             const isWarning = c.status === 'warning';
 

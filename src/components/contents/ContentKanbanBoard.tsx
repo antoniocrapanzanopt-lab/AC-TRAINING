@@ -1,75 +1,97 @@
 import React, { useState } from 'react';
 import {
   Plus,
+  Inbox,
   Sparkles,
+  FileText,
   Video,
+  Scissors,
   Send,
-  SlidersHorizontal,
+  CheckCircle2,
 } from 'lucide-react';
 import { InstagramContent, ContentStatus } from '../../types/inboxAndContent';
 import { useContents } from '../../context/ContentsContext';
+import { useInbox } from '../../context/InboxContext';
 import { ContentPipelineCard } from './ContentPipelineCard';
 
 interface ContentKanbanBoardProps {
   contents: InstagramContent[];
   onEditContent: (content: InstagramContent) => void;
   onNewContent: (defaultStatus?: ContentStatus) => void;
+  onNavigateToInbox?: () => void;
 }
 
-interface StageGroup {
-  id: 'ideation' | 'production' | 'publishing';
-  title: string;
-  subtitle: string;
+interface ColumnDef {
+  status: ContentStatus;
+  label: string;
+  shortLabel: string;
   icon: React.ReactNode;
   borderAccent: string;
-  badgeBg: string;
-  badgeText: string;
-  defaultStatus: ContentStatus;
-  statuses: { status: ContentStatus; label: string; advanceLabel: string }[];
+  badgeColor: string;
+  headerColor: string;
+  filterFn: (content: InstagramContent) => boolean;
 }
 
-const STAGES: StageGroup[] = [
+const COLUMNS: ColumnDef[] = [
   {
-    id: 'ideation',
-    title: '1. Ideazione & Scrittura',
-    subtitle: 'Spunti grezzi, scalette e script completi',
+    status: 'idea',
+    label: 'Idee',
+    shortLabel: '💡 Idee',
     icon: <Sparkles className="w-4 h-4 text-blue-400" />,
     borderAccent: 'border-blue-500/30',
-    badgeBg: 'bg-blue-500/20',
-    badgeText: 'text-blue-300',
-    defaultStatus: 'idea',
-    statuses: [
-      { status: 'idea', label: '💡 Idee & Spunti', advanceLabel: 'Scrivi Script ➔' },
-      { status: 'script_draft', label: '📝 Script in Bozza', advanceLabel: 'Pronto per Video ➔' },
-    ],
+    badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    headerColor: 'text-blue-300',
+    filterFn: (c) => c.status === 'idea',
   },
   {
-    id: 'production',
-    title: '2. Produzione & Video',
-    subtitle: 'Da registrare in studio e da montare',
-    icon: <Video className="w-4 h-4 text-amber-400" />,
-    borderAccent: 'border-amber-500/40',
-    badgeBg: 'bg-amber-500/20',
-    badgeText: 'text-amber-300',
-    defaultStatus: 'ready_to_record',
-    statuses: [
-      { status: 'ready_to_record', label: '🎬 Da Registrare', advanceLabel: 'Registrato ➔ Monta' },
-      { status: 'editing', label: '✂️ In Montaggio', advanceLabel: 'Pronto per Pubblicare ➔' },
-    ],
+    status: 'script_draft',
+    label: 'Script',
+    shortLabel: '📝 Script',
+    icon: <FileText className="w-4 h-4 text-amber-400" />,
+    borderAccent: 'border-amber-500/30',
+    badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+    headerColor: 'text-amber-300',
+    filterFn: (c) => c.status === 'script_draft',
   },
   {
-    id: 'publishing',
-    title: '3. Uscite & Pubblicati',
-    subtitle: 'Pronti per Instagram, programmati e archivio',
+    status: 'ready_to_record',
+    label: 'Da Registrare',
+    shortLabel: '🎬 Video',
+    icon: <Video className="w-4 h-4 text-rose-400" />,
+    borderAccent: 'border-rose-500/30',
+    badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+    headerColor: 'text-rose-300',
+    filterFn: (c) => c.status === 'ready_to_record',
+  },
+  {
+    status: 'editing',
+    label: 'Montaggio',
+    shortLabel: '✂️ Montaggio',
+    icon: <Scissors className="w-4 h-4 text-purple-400" />,
+    borderAccent: 'border-purple-500/30',
+    badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    headerColor: 'text-purple-300',
+    filterFn: (c) => c.status === 'editing' || c.status === 'recorded',
+  },
+  {
+    status: 'ready_to_publish',
+    label: 'Pronti',
+    shortLabel: '🚀 Pronti',
     icon: <Send className="w-4 h-4 text-emerald-400" />,
     borderAccent: 'border-emerald-500/30',
-    badgeBg: 'bg-emerald-500/20',
-    badgeText: 'text-emerald-300',
-    defaultStatus: 'ready_to_publish',
-    statuses: [
-      { status: 'ready_to_publish', label: '🚀 Pronti da Pubblicare', advanceLabel: 'Segna Pubblicato ✅' },
-      { status: 'published', label: '✅ Pubblicati', advanceLabel: 'Completato' },
-    ],
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    headerColor: 'text-emerald-300',
+    filterFn: (c) => c.status === 'ready_to_publish',
+  },
+  {
+    status: 'published',
+    label: 'Pubblicati',
+    shortLabel: '✅ Pubblicati',
+    icon: <CheckCircle2 className="w-4 h-4 text-slate-300" />,
+    borderAccent: 'border-slate-800',
+    badgeColor: 'bg-slate-800 text-slate-400 border-slate-700',
+    headerColor: 'text-slate-300',
+    filterFn: (c) => c.status === 'published',
   },
 ];
 
@@ -86,14 +108,13 @@ export const ContentKanbanBoard: React.FC<ContentKanbanBoardProps> = ({
   contents,
   onEditContent,
   onNewContent,
+  onNavigateToInbox,
 }) => {
   const { moveStatus } = useContents();
-  const [layoutMode, setLayoutMode] = useState<'3_stages' | '6_columns'>('3_stages');
-  const [activeSubFilter, setActiveSubFilter] = useState<{ [key: string]: string }>({
-    ideation: 'all',
-    production: 'all',
-    publishing: 'all',
-  });
+  const { unprocessedCount } = useInbox();
+
+  // Tab per selezione colonna su mobile
+  const [mobileActiveStatus, setMobileActiveStatus] = useState<ContentStatus>('idea');
 
   const getStatusOrder = (status: ContentStatus): number => {
     return ORDERED_STATUSES.indexOf(status);
@@ -110,186 +131,129 @@ export const ContentKanbanBoard: React.FC<ContentKanbanBoardProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* BARRA SUPERIORE LAYOUT ZERO-SCROLL */}
-      <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2 text-slate-400">
-          <span className="text-white font-bold">Studio Hub Instagram:</span>
-          <span className="hidden sm:inline text-slate-500">3 Fasi Chiave del Workflow</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setLayoutMode((prev) => (prev === '3_stages' ? '6_columns' : '3_stages'))}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition cursor-pointer flex items-center gap-1.5 font-bold"
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5" />
-            {layoutMode === '3_stages' ? 'Vista 3 Macro-Fasi (Zero Scroll)' : 'Vista 6 Colonne'}
-          </button>
-        </div>
+      
+      {/* ─── MOBILE: SELETTORE COLONNA ORIZZONTALE CON BADGE ─── */}
+      <div className="md:hidden flex items-center gap-1.5 overflow-x-auto pb-2 custom-scrollbar">
+        {COLUMNS.map((col) => {
+          const count = contents.filter(col.filterFn).length;
+          const isActive = mobileActiveStatus === col.status;
+          return (
+            <button
+              key={col.status}
+              type="button"
+              onClick={() => setMobileActiveStatus(col.status)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 transition cursor-pointer border ${
+                isActive
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
+                  : 'bg-slate-900/80 text-slate-400 hover:text-white border-slate-800'
+              }`}
+            >
+              <span>{col.shortLabel}</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                isActive ? 'bg-slate-950/30 text-slate-950 font-black' : 'bg-slate-800 text-slate-300'
+              }`}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* DISPOSIZIONE 1: STUDIO A 3 FASI ZERO-SCROLL (DEFAULT) */}
-      {layoutMode === '3_stages' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-          {STAGES.map((stage) => {
-            const stageStatusValues = stage.statuses.map((s) => s.status);
-            const rawStageContents = contents.filter((c) => stageStatusValues.includes(c.status));
-            
-            const subFilter = activeSubFilter[stage.id] || 'all';
-            const stageContents = rawStageContents.filter((c) => {
-              if (subFilter === 'all') return true;
-              return c.status === subFilter;
-            });
+      {/* ─── CONTENITORE COLONNE KANBAN: 6 COLONNE CHIARE ─── */}
+      <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-4 min-w-full items-start">
+        {COLUMNS.map((col, colIdx) => {
+          const colContents = contents.filter(col.filterFn);
+          const isHiddenOnMobile = mobileActiveStatus !== col.status;
 
-            return (
-              <div
-                key={stage.id}
-                className={`bg-slate-900/50 border ${stage.borderAccent} rounded-3xl p-4 flex flex-col min-h-[560px] shadow-2xl backdrop-blur-sm space-y-4 relative`}
-              >
-                {/* INTESTAZIONE MACRO-COLONNA */}
-                <div className="border-b border-slate-800/80 pb-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-xl bg-slate-950 border border-slate-800 shadow-inner">
-                        {stage.icon}
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-black text-white">{stage.title}</h3>
-                        <p className="text-[10px] text-slate-400">{stage.subtitle}</p>
-                      </div>
+          return (
+            <div
+              key={col.status}
+              className={`w-full md:w-[290px] xl:w-[310px] shrink-0 bg-slate-900/50 border ${col.borderAccent} rounded-3xl p-3.5 flex flex-col min-h-[580px] shadow-xl backdrop-blur-sm space-y-3 ${
+                isHiddenOnMobile ? 'hidden md:flex' : 'flex'
+              }`}
+            >
+              {/* INTESTAZIONE COLONNA */}
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-lg bg-slate-950 border border-slate-800">
+                    {col.icon}
+                  </div>
+                  <h3 className={`text-xs font-black uppercase tracking-wider ${col.headerColor}`}>
+                    {col.label}
+                  </h3>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold border ${col.badgeColor}`}>
+                    {colContents.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onNewContent(col.status)}
+                    className="p-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                    title={`Aggiungi contenuto in ${col.label}`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* CARD COMPATTA "INBOX IDEE" (SOLO IN CIMA ALLA COLONNA IDEE) */}
+              {col.status === 'idea' && (
+                <div className="p-2.5 rounded-xl bg-purple-950/20 border border-dashed border-purple-500/30 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-lg bg-purple-500/15 text-purple-300 flex items-center justify-center shrink-0">
+                      <Inbox className="w-3 h-3" />
                     </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-black ${stage.badgeBg} ${stage.badgeText}`}>
-                        {rawStageContents.length}
+                    <div className="min-w-0">
+                      <span className="text-[11px] font-bold text-white block truncate">Inbox Idee</span>
+                      <span className="text-[9px] text-purple-300/70 font-mono block">
+                        {unprocessedCount} spunti
                       </span>
-                      <button
-                        onClick={() => onNewContent(stage.defaultStatus)}
-                        className="p-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
-                        title={`Aggiungi in ${stage.title}`}
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={onNavigateToInbox}
+                    className="px-2 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 border border-purple-500/30 text-[9px] font-black shrink-0 transition cursor-pointer"
+                  >
+                    Converti ➔
+                  </button>
+                </div>
+              )}
 
-                  {/* SOTTO-FILTRI MICRO-STATI (CHIP VELOCI) */}
-                  <div className="flex items-center gap-1.5 pt-1">
+              {/* LISTA CARD CONTENUTI */}
+              <div className="flex-1 space-y-2.5 overflow-y-auto custom-scrollbar max-h-[720px] pr-0.5">
+                {colContents.length === 0 ? (
+                  <div className="py-10 text-center text-slate-500 text-xs flex flex-col items-center justify-center space-y-2 border border-dashed border-slate-800/80 rounded-2xl">
+                    <span className="text-xl opacity-40">📭</span>
+                    <span>Nessun contenuto in {col.label.toLowerCase()}</span>
                     <button
                       type="button"
-                      onClick={() => setActiveSubFilter((prev) => ({ ...prev, [stage.id]: 'all' }))}
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                        subFilter === 'all'
-                          ? 'bg-slate-800 text-white font-black'
-                          : 'text-slate-500 hover:text-slate-300'
-                      }`}
+                      onClick={() => onNewContent(col.status)}
+                      className="text-[11px] text-amber-400 font-bold hover:underline cursor-pointer"
                     >
-                      Tutti ({rawStageContents.length})
+                      + Aggiungi qui
                     </button>
-                    {stage.statuses.map((st) => {
-                      const count = rawStageContents.filter((c) => c.status === st.status).length;
-                      return (
-                        <button
-                          key={st.status}
-                          type="button"
-                          onClick={() => setActiveSubFilter((prev) => ({ ...prev, [stage.id]: st.status }))}
-                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                            subFilter === st.status
-                              ? 'bg-slate-800 text-amber-300 font-black border border-amber-500/30'
-                              : 'text-slate-500 hover:text-slate-300'
-                          }`}
-                        >
-                          {st.label} ({count})
-                        </button>
-                      );
-                    })}
                   </div>
-                </div>
-
-                {/* LISTA CARD NELLA FASE */}
-                <div className="space-y-3 overflow-y-auto flex-1 max-h-[65vh] pr-1 custom-scrollbar">
-                  {stageContents.length === 0 ? (
-                    <div className="py-12 px-4 text-center border-2 border-dashed border-slate-800/80 rounded-2xl bg-slate-950/30 space-y-2">
-                      <p className="text-xs text-slate-500 font-medium">Nessun contenuto in questa fase</p>
-                      <button
-                        type="button"
-                        onClick={() => onNewContent(stage.defaultStatus)}
-                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-400 hover:text-amber-300 text-xs font-bold rounded-xl transition cursor-pointer inline-flex items-center gap-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Crea Contenuto
-                      </button>
-                    </div>
-                  ) : (
-                    stageContents.map((content) => {
-                      const currentIdx = getStatusOrder(content.status);
-                      const currentStageStatus = stage.statuses.find((s) => s.status === content.status);
-                      const advanceLabel = currentStageStatus?.advanceLabel;
-
-                      return (
-                        <ContentPipelineCard
-                          key={content.id}
-                          content={content}
-                          onEdit={onEditContent}
-                          advanceActionLabel={advanceLabel}
-                          canMovePrev={currentIdx > 0}
-                          canMoveNext={currentIdx < ORDERED_STATUSES.length - 1}
-                          onMovePrev={() => handleMove(content, 'prev')}
-                          onMoveNext={() => handleMove(content, 'next')}
-                        />
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* FOOTER COLONNA CON QUICK ADD */}
-                <button
-                  type="button"
-                  onClick={() => onNewContent(stage.defaultStatus)}
-                  className="w-full py-2.5 rounded-2xl bg-slate-950/70 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <Plus className="w-4 h-4 text-amber-400" />
-                  <span>Aggiungi a {stage.title.split('.')[1]}</span>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* DISPOSIZIONE 2: SCROLLER A 6 COLONNE */
-        <div className="flex gap-4 overflow-x-auto pb-6 min-h-[500px] custom-scrollbar">
-          {ORDERED_STATUSES.map((status, colIdx) => {
-            const columnContents = contents.filter((c) => c.status === status);
-            return (
-              <div
-                key={status}
-                className="flex-shrink-0 w-80 bg-slate-900/60 border border-slate-800/80 rounded-3xl flex flex-col max-h-[78vh] shadow-xl backdrop-blur-sm"
-              >
-                <div className="p-3.5 px-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-950/40 rounded-t-3xl">
-                  <h3 className="text-xs font-black text-white">{status.toUpperCase()}</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300">
-                    {columnContents.length}
-                  </span>
-                </div>
-                <div className="p-3 overflow-y-auto flex-1 space-y-3 custom-scrollbar">
-                  {columnContents.map((content) => (
+                ) : (
+                  colContents.map((content) => (
                     <ContentPipelineCard
                       key={content.id}
                       content={content}
                       onEdit={onEditContent}
-                      advanceActionLabel="Avanza ➔"
                       canMovePrev={colIdx > 0}
-                      canMoveNext={colIdx < ORDERED_STATUSES.length - 1}
+                      canMoveNext={colIdx < COLUMNS.length - 1}
                       onMovePrev={() => handleMove(content, 'prev')}
                       onMoveNext={() => handleMove(content, 'next')}
                     />
-                  ))}
-                </div>
+                  ))
+                )}
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

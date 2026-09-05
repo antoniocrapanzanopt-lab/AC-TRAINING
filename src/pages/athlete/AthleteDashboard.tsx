@@ -412,15 +412,15 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     if (!athleteId) return;
     let isMounted = true;
 
-    // 1. Revalidazione silenziosa Indice Aderenza in background
-    const loadAdherence = (isBackground = true) => {
+    // 1. Revalidazione silenziosa Indice Aderenza in background (rispetta la cache in memoria/locale)
+    const loadAdherence = (isBackground = true, force = false) => {
       if (isBackground) {
         setIsUpdatingAdherence(true);
       } else if (!adherenceData) {
         setIsLoadingAdherence(true);
       }
 
-      fetchAthleteAdherenceData(athleteId)
+      fetchAthleteAdherenceData(athleteId, force)
         .then((data) => {
           if (isMounted) {
             setAdherenceData(data);
@@ -438,7 +438,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         });
     };
 
-    loadAdherence(Boolean(adherenceData));
+    loadAdherence(Boolean(adherenceData), false);
 
     // 2. Caricamento differito del questionario onboarding (dopo 300ms)
     const onboardingTimer = setTimeout(() => {
@@ -453,17 +453,15 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         });
     }, 300);
 
-    const handleAdherenceRefresh = () => loadAdherence(true);
+    const handleAdherenceRefresh = () => loadAdherence(true, true);
     window.addEventListener('athlete_draft_updated', handleAdherenceRefresh);
     window.addEventListener('pending_sync_queue_updated', handleAdherenceRefresh);
-    window.addEventListener('focus', handleAdherenceRefresh);
 
     return () => {
       isMounted = false;
       clearTimeout(onboardingTimer);
       window.removeEventListener('athlete_draft_updated', handleAdherenceRefresh);
       window.removeEventListener('pending_sync_queue_updated', handleAdherenceRefresh);
-      window.removeEventListener('focus', handleAdherenceRefresh);
     };
   }, [athleteId]);
 
@@ -670,21 +668,34 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       });
   }, [firstAssigned?.workout_id, firstAssigned?.workout?.id, firstAssigned?.workout?.parent_template_id]);
 
+  const firstAssignedRef = React.useRef(firstAssigned);
+  firstAssignedRef.current = firstAssigned;
+  const workoutDaysRef = React.useRef(workoutDays);
+  workoutDaysRef.current = workoutDays;
   const isSyncingRef = React.useRef(false);
+  const lastSyncTimestampRef = React.useRef(0);
 
   // Sync progresso da Supabase — vive nel parent, sopravvive allo smontaggio del player
-  const syncProgressFromDb = useCallback(async () => {
-    if (!firstAssigned || isSyncingRef.current) return;
+  const syncProgressFromDb = useCallback(async (force = false) => {
+    const currentFirstAssigned = firstAssignedRef.current;
+    if (!currentFirstAssigned || isSyncingRef.current) return;
+
+    // Cooldown per evitare query ripetute a cascata sui render iniziali
+    const now = Date.now();
+    if (!force && now - lastSyncTimestampRef.current < 6000) return;
+
     const athIds = Array.from(
-      new Set([firstAssigned.athlete_id, user?.athleteId, user?.id].filter(Boolean) as string[])
+      new Set([currentFirstAssigned.athlete_id, user?.athleteId, user?.id].filter(Boolean) as string[])
     );
     if (athIds.length === 0) return;
 
     isSyncingRef.current = true;
+    lastSyncTimestampRef.current = now;
     const startTime = performance.now();
 
-    const daysList = workoutDays.length > 0 ? workoutDays : ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
-    const totalWeeksCount = firstAssigned.workout?.total_weeks || 5;
+    const currentDays = workoutDaysRef.current;
+    const daysList = currentDays.length > 0 ? currentDays : ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
+    const totalWeeksCount = currentFirstAssigned.workout?.total_weeks || 5;
     const norm = (str: string) => (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
     interface DashboardSessionRow {
@@ -756,12 +767,12 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
       // Aggiorna anche localStorage come cache
       athIds.forEach((aid) => {
-        try { localStorage.setItem(`builder_progress_${aid}_${firstAssigned.workout_id}`, JSON.stringify(currentMap)); } catch (_) {}
+        try { localStorage.setItem(`builder_progress_${aid}_${currentFirstAssigned.workout_id}`, JSON.stringify(currentMap)); } catch (_) {}
       });
     } finally {
       isSyncingRef.current = false;
     }
-  }, [firstAssigned, user, workoutDays, athleteId]);
+  }, [user?.athleteId, user?.id]);
 
   // Esegui sync all'avvio e ad ogni evento di completamento con debounce
   useEffect(() => {
@@ -769,7 +780,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     let timer: NodeJS.Timeout | null = null;
     const handleWorkoutDone = () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => syncProgressFromDb(), 300);
+      timer = setTimeout(() => syncProgressFromDb(true), 300);
     };
     window.addEventListener('athlete_workout_completed', handleWorkoutDone);
     window.addEventListener('athlete_workout_skipped', handleWorkoutDone);

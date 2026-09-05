@@ -29,6 +29,7 @@ import { AuthPage } from './pages/auth/AuthPage';
 import { InvitePage } from './pages/auth/InvitePage';
 import { MainLayout } from './MainLayout';
 import { AthleteLayout } from './pages/athlete/AthleteLayout';
+import { ContentStudioLayout } from './components/studio/ContentStudioLayout';
 import { WelcomeDisclaimerModal } from './components/common/WelcomeDisclaimerModal';
 import { RequireAAL2 } from './components/auth/RequireAAL2';
 import { Loader2 } from 'lucide-react';
@@ -36,6 +37,44 @@ import { Loader2 } from 'lucide-react';
 const AppContent: React.FC = () => {
   const { isLoading } = useApp();
   const { isAuthenticated, user, markDisclaimerAsSeen, isPasswordRecovery } = useAuth();
+
+  const [activeApp, setActiveApp] = React.useState<'coaching' | 'content_studio'>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('app') === 'content-studio') {
+      return 'content_studio';
+    }
+    const saved = localStorage.getItem('ac_active_app');
+    return saved === 'content_studio' ? 'content_studio' : 'coaching';
+  });
+
+  React.useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('app') === 'content-studio') {
+        setActiveApp('content_studio');
+      } else {
+        setActiveApp('coaching');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const handleOpenContentStudio = () => {
+    setActiveApp('content_studio');
+    localStorage.setItem('ac_active_app', 'content_studio');
+    const url = new URL(window.location.href);
+    url.searchParams.set('app', 'content-studio');
+    window.history.pushState(null, '', url.toString());
+  };
+
+  const handleSwitchToCoaching = () => {
+    setActiveApp('coaching');
+    localStorage.setItem('ac_active_app', 'coaching');
+    const url = new URL(window.location.href);
+    url.searchParams.delete('app');
+    window.history.pushState(null, '', url.toString());
+  };
 
   // 1. Schermata di caricamento iniziale senza lampi
   if (isLoading) {
@@ -68,7 +107,13 @@ const AppContent: React.FC = () => {
   // 4. Se la sessione è attiva, mostra il layout principale ed eventualmente la modale di benvenuto
   return (
     <RequireAAL2>
-      {user?.role === 'athlete' ? <AthleteLayout /> : <MainLayout />}
+      {user?.role === 'athlete' ? (
+        <AthleteLayout />
+      ) : activeApp === 'content_studio' ? (
+        <ContentStudioLayout onSwitchToCoaching={handleSwitchToCoaching} />
+      ) : (
+        <MainLayout onOpenContentStudio={handleOpenContentStudio} />
+      )}
       <WelcomeDisclaimerModal
         isOpen={showDisclaimer}
         onConfirm={markDisclaimerAsSeen}

@@ -14,6 +14,7 @@ import {
   Eye,
   Sliders,
   Bookmark,
+  Hash,
 } from 'lucide-react';
 
 interface BrandKitModalProps {
@@ -422,6 +423,43 @@ export const BrandKitModal: React.FC<BrandKitModalProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* 6. NUMERAZIONE & CONTATORE SLIDE */}
+            <div className="space-y-3 pt-2 border-t border-slate-800">
+              <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                <Hash className="w-4 h-4 text-amber-400" />
+                <span>Numerazione Slide & Contatore</span>
+              </div>
+
+              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-white block">
+                    Mostra Numeri Slide in alto a destra
+                  </span>
+                  <span className="text-[11px] text-slate-400 block">
+                    Visualizza il contatore (es. 01 / 10 o 2/2) sulle slide del carosello
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      showSlideCounter: formData.showSlideCounter === false ? true : false,
+                    })
+                  }
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                    formData.showSlideCounter !== false
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                      : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                  }`}
+                >
+                  <Hash className={`w-3.5 h-3.5 ${formData.showSlideCounter !== false ? 'text-amber-400' : 'text-slate-500'}`} />
+                  <span>{formData.showSlideCounter !== false ? 'Numeri Attivi' : 'Numeri Nascosti'}</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* ─── COLONNA DESTRA (5/12): ANTEPRIMA LIVE IN TEMPO REALE ─── */}
@@ -488,9 +526,20 @@ export const BrandKitModal: React.FC<BrandKitModalProps> = ({
                   </span>
                 </div>
 
-                {formData.logoUrl && formData.logoPosition === 'top_right' && (
+                {formData.logoUrl && formData.logoPosition === 'top_right' ? (
                   <img src={formData.logoUrl} alt="Logo" className="w-6 h-6 object-contain rounded" />
-                )}
+                ) : formData.showSlideCounter !== false ? (
+                  <span
+                    className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border"
+                    style={{
+                      color: formData.accentColor,
+                      borderColor: `${formData.accentColor}40`,
+                      backgroundColor: `${formData.accentColor}10`,
+                    }}
+                  >
+                    {previewTab === 'cover' ? '1/7' : '7/7'}
+                  </span>
+                ) : null}
               </div>
 
               {/* 2. CORPO ANTEPRIMA (COPERTINA O SLIDE CTA) */}

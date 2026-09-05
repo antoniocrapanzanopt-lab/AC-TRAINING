@@ -8,6 +8,7 @@ import {
   deleteInstagramContent,
 } from '../services/contentsService';
 import { useToast } from './ToastContext';
+import { useAuth } from './AuthContext';
 
 interface ContentsContextType {
   contents: InstagramContent[];
@@ -26,11 +27,19 @@ interface ContentsContextType {
 const ContentsContext = createContext<ContentsContextType | undefined>(undefined);
 
 export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [contents, setContents] = useState<InstagramContent[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const { showSuccess, showError } = useToast();
 
   const fetchContents = useCallback(async () => {
+    // Gli atleti non gestiscono i contenuti social del coach: bypass istantaneo a costo 0
+    if (user?.role === 'athlete') {
+      setContents([]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       setIsLoading(true);
       const data = await getInstagramContents();
@@ -40,7 +49,7 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     fetchContents();

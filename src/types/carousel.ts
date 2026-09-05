@@ -19,7 +19,8 @@ export type SlideLayoutId =
   | 'numbered_list' 
   | 'step_by_step' 
   | 'final_cta' 
-  | 'error_vs_correct';
+  | 'error_vs_correct'
+  | 'product_breakdown';
 
 export type LogoPosition = 'top_left' | 'top_right' | 'bottom_left' | 'none';
 export type TitleFontSize = 'sm' | 'md' | 'lg' | 'xl';
@@ -57,6 +58,7 @@ export interface BrandKit {
   logoPosition: LogoPosition;
   watermarkText: string;        // "• AC COACHING •"
   imageStyle: ImageStyle;
+  showSlideCounter?: boolean;   // Mostra numeratore slide (es. 2/2)
 }
 
 export interface CarouselSlide {
@@ -81,6 +83,15 @@ export interface CarouselSlide {
   imageUrl?: string | null;
   imageOpacity?: number;        // 0.0 - 1.0 (default: 0.6)
   imagePosition?: SlideImagePosition; // Posizione: 'bottom_cutout' | 'right_side' | 'top_half' | 'background_full'
+  imageFit?: 'cover' | 'contain'; // Adattamento immagine (default: 'cover')
+  imagePositionX?: number;      // 0 - 100 (default: 50)
+  imagePositionY?: number;      // 0 - 100 (default: 50)
+  imageZoom?: number;           // 1.0 - 3.0 (default: 1.0)
+  imageOverlay?: number;        // 0 - 100 (opacità overlay scuro)
+  imageFocalPoint?: {           // Punto focale soggetto (0-100)
+    x: number;
+    y: number;
+  } | null;
   bgColor?: string;             // Override colore sfondo per singola slide
   accentColor?: string;         // Override colore accento per singola slide
   textAlign?: TextAlignment;
@@ -97,6 +108,20 @@ export interface CarouselSlide {
   wrongText?: string;           // Per layout error_vs_correct (❌ Errore)
   correctText?: string;         // Per layout error_vs_correct (✅ Correzione)
   isAiSuggested?: boolean;
+
+  // Spostamento & Posizionamento Flessibile dei Testi (in pixel)
+  titleOffsetY?: number;        // Offset verticale per titolo/headline (-150 a +150 px)
+  contentOffsetY?: number;      // Offset verticale per corpo/callout (-150 a +150 px)
+
+  // Campi specifici per layout product_breakdown (Infografica 4 Callout)
+  topBannerText?: string;       // es. "www.ironmanager.coach" o "www.antoniocrapanzano.it"
+  calloutTopLeft?: { title: string; text: string };     // Callout quadrante Alto-Sinistra
+  calloutTopRight?: { title: string; text: string };    // Callout quadrante Alto-Destra
+  calloutBottomLeft?: { title: string; text: string };  // Callout quadrante Basso-Sinistra
+  calloutBottomRight?: { title: string; text: string }; // Callout quadrante Basso-Destra
+  showAuthorBadge?: boolean;    // Mostra card badge autore nel footer
+  badgeCoachName?: string;      // Override nome autore nel badge
+  badgeCoachTitle?: string;     // Override qualifica nel badge
 }
 
 export interface CarouselSettings {
@@ -135,3 +160,67 @@ export interface InstagramCarousel {
   created_at: string;
   updated_at: string;
 }
+
+export type SlideQualityStatus = 'ready' | 'warning' | 'blocked' | 'draft';
+
+export interface SlideQualityIssue {
+  id: string;
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  message: string;
+  actionType?: 'ai_reduce' | 'ai_generate_cta' | 'ai_improve_hook' | 'set_cover' | 'set_cta' | 'fix_placeholder' | 'manual_edit';
+  actionLabel?: string;
+}
+
+export interface CoverHookAlternative {
+  id: string;
+  headline: string;
+  headlineHighlight?: string;
+  subheadline?: string;
+  angle: 'provocative' | 'scientific' | 'practical';
+  angleLabel: string;
+  description: string;
+}
+
+export interface QualityCategoryScore {
+  name: string;
+  score: number; // 0 - 20
+  maxScore: 20;
+  status: 'pass' | 'warning' | 'fail';
+  description: string;
+}
+
+export interface QualityBreakdown {
+  structure: QualityCategoryScore;     // Struttura (progressione, 3-10 slide, cover #1, CTA finale)
+  readability: QualityCategoryScore;   // Leggibilità (densità parole, contrasto, gerarchia)
+  cover: QualityCategoryScore;         // Copertina (chiarezza, hook attraente, impatto)
+  completeness: QualityCategoryScore;  // Completezza (corpo testo, visual cue, bullet, no placeholder)
+  coherence: QualityCategoryScore;     // Coerenza (CTA esplicita, keyword contatto, allineamento caption)
+}
+
+export interface SlideQualityReport {
+  slideId: string;
+  slideIndex: number;
+  slideOrder: number;
+  status: SlideQualityStatus;
+  editorialStatus?: 'hook_improvable' | 'optimal';
+  wordCount: number;
+  hasCriticalIssue: boolean;
+  issues: SlideQualityIssue[];
+}
+
+export interface CarouselValidationReport {
+  score: number;
+  breakdown: QualityBreakdown;
+  totalSlides: number;
+  readyCount: number;
+  warningCount: number;
+  blockedCount: number;
+  draftCount: number;
+  canExport: boolean;
+  qualityReason: string;
+  slideReports: SlideQualityReport[];
+  globalIssues: SlideQualityIssue[];
+}
+
+

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { CarouselSlide, CarouselSettings } from '../../../types/carousel';
 import { renderSlideToCanvas } from '../../../services/carouselCanvasRenderer';
 import { exportSingleSlideAsPng } from '../../../services/carouselExportService';
@@ -19,6 +19,10 @@ import {
   MoreHorizontal,
   Expand,
   Minimize2,
+  ArrowLeftRight,
+  Grid,
+  RotateCcw,
+  Hash,
 } from 'lucide-react';
 
 interface CarouselCanvasPreviewProps {
@@ -32,11 +36,14 @@ interface CarouselCanvasPreviewProps {
     settings: CarouselSettings;
     caption_export?: string;
   };
+  previousSlide?: CarouselSlide | null;
   isFocusMode?: boolean;
   onToggleFocusMode?: () => void;
+  onUpdateSlide?: (updated: CarouselSlide) => void;
+  onToggleSlideCounter?: () => void;
 }
 
-type ZoomMode = 'fit' | '50%' | '75%' | '100%';
+type ZoomMode = 'fit' | '75%' | '100%';
 
 export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
   slide,
@@ -45,25 +52,46 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
   currentIndex,
   onSelectSlide,
   fullCarousel,
+  previousSlide,
   isFocusMode = false,
   onToggleFocusMode,
+  onUpdateSlide,
+  onToggleSlideCounter,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fullscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [showSafeArea, setShowSafeArea] = useState(false);
+  const [showGridCropGuide, setShowGridCropGuide] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<ZoomMode>('fit');
   const [isInstagramMockup, setIsInstagramMockup] = useState(false);
+  const [isShowingComparison, setIsShowingComparison] = useState(false);
 
-  // Renderizza canvas principale
+  // Stato e riferimenti per drag & touch interattivo su immagine
+  const isImageInteractive = Boolean(slide.imageUrl && onUpdateSlide);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{
+    startX: number;
+    startY: number;
+    initialPosX: number;
+    initialPosY: number;
+    hasMoved: boolean;
+  }>({ startX: 0, startY: 0, initialPosX: 50, initialPosY: 50, hasMoved: false });
+
+  const touchDistanceRef = useRef<number | null>(null);
+  const initialZoomRef = useRef<number>(1.0);
+
+  // Renderizza canvas principale con supporto a confronto Prima/Dopo e Guide Safe/Grid
   const renderMainCanvas = useCallback(() => {
-    if (canvasRef.current && slide) {
-      renderSlideToCanvas(canvasRef.current, slide, settings, totalSlides, {
+    const s = isShowingComparison && previousSlide ? previousSlide : slide;
+    if (canvasRef.current && s) {
+      renderSlideToCanvas(canvasRef.current, s, settings, totalSlides, {
         showSafeAreaGuidelines: showSafeArea,
+        showGridCropGuide,
       });
     }
-  }, [slide, settings, totalSlides, showSafeArea]);
+  }, [slide, previousSlide, isShowingComparison, settings, totalSlides, showSafeArea, showGridCropGuide]);
 
   useEffect(() => {
     renderMainCanvas();
@@ -71,12 +99,14 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
 
   // Renderizza canvas fullscreen se aperto
   const renderFullscreenCanvas = useCallback(() => {
-    if (fullscreenCanvasRef.current && slide) {
-      renderSlideToCanvas(fullscreenCanvasRef.current, slide, settings, totalSlides, {
+    const s = isShowingComparison && previousSlide ? previousSlide : slide;
+    if (fullscreenCanvasRef.current && s) {
+      renderSlideToCanvas(fullscreenCanvasRef.current, s, settings, totalSlides, {
         showSafeAreaGuidelines: showSafeArea,
+        showGridCropGuide,
       });
     }
-  }, [slide, settings, totalSlides, showSafeArea]);
+  }, [slide, previousSlide, isShowingComparison, settings, totalSlides, showSafeArea, showGridCropGuide]);
 
   useEffect(() => {
     if (isFullscreenOpen) {
@@ -122,11 +152,58 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
     }
   };
 
-  // Calcolo larghezza massima in base allo zoom selezionato
+  // Calcolo densità e indice di leggibilità mobile in tempo reale
+  const activeSlideText = [
+    slide.headline,
+    slide.headlineHighlight || '',
+    slide.subheadline || '',
+    slide.bodyText,
+    slide.wrongText || '',
+    slide.correctText || '',
+    slide.punchlineQuote || '',
+    ...(slide.bulletPoints || []),
+  ].join(' ').trim();
+  const slideWordCount = activeSlideText ? activeSlideText.split(/\s+/).filter(Boolean).length : 0;
+
+  const mobileReadability = useMemo(() => {
+    if (slideWordCount <= 45) {
+      return {
+        level: 'optimal',
+        label: 'Leggibilità Mobile: Ottimale (AAA)',
+        badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+        dot: '🟢',
+      };
+    }
+    if (slideWordCount <= 55) {
+      return {
+        level: 'good',
+        label: 'Leggibilità Mobile: Buona',
+        badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+        dot: '🟡',
+      };
+    }
+    return {
+      level: 'dense',
+      label: 'Leggibilità Mobile: Densità elevata',
+      badgeClass: 'bg-rose-500/15 text-rose-300 border-rose-500/30 font-bold',
+      dot: '🔴',
+    };
+  }, [slideWordCount]);
+
+  // Calcolo larghezza massima in base allo zoom selezionato e alla modalità Focus
   const getMaxWidthClass = () => {
+    if (isFocusMode) {
+      switch (zoomLevel) {
+        case '75%':
+          return 'max-w-[440px]';
+        case '100%':
+          return 'max-w-[620px]';
+        case 'fit':
+        default:
+          return 'max-w-[560px] xl:max-w-[620px] 2xl:max-w-[680px]';
+      }
+    }
     switch (zoomLevel) {
-      case '50%':
-        return 'max-w-[280px]';
       case '75%':
         return 'max-w-[390px]';
       case '100%':
@@ -142,14 +219,17 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
       {/* ─── 1. TOOLBAR ANTEPRIMA PRO CON ZOOM, MOCKUP IG & SAFE AREA ─── */}
       <div className="w-full flex items-center justify-between px-1 text-xs flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-300 flex items-center gap-1">
+          <span className="font-bold text-slate-300 flex items-center gap-1.5 font-mono">
             <Eye className="w-3.5 h-3.5 text-amber-400" />
-            <span>Slide {currentIndex + 1} di {totalSlides}</span>
+            <span className="hidden sm:inline">Slide {currentIndex + 1} di {totalSlides}</span>
+            <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-lg text-xs font-bold text-amber-300">
+              {currentIndex + 1}/{totalSlides}
+            </span>
           </span>
 
-          {/* Selettore Zoom */}
+          {/* Selettore Zoom & Focus (Adatta / 75% / 100% / Focus) */}
           <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px] font-mono">
-            {(['fit', '50%', '75%', '100%'] as ZoomMode[]).map((z) => (
+            {(['fit', '75%', '100%'] as ZoomMode[]).map((z) => (
               <button
                 key={z}
                 type="button"
@@ -159,15 +239,48 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
                     ? 'bg-amber-500/20 text-amber-300'
                     : 'text-slate-500 hover:text-slate-300'
                 }`}
-                title={`Imposta zoom a ${z}`}
+                title={`Imposta zoom a ${z === 'fit' ? 'Adatta' : z}`}
               >
                 {z === 'fit' ? 'Adatta' : z}
               </button>
             ))}
+
+            {onToggleFocusMode && (
+              <button
+                type="button"
+                onClick={onToggleFocusMode}
+                className={`px-1.5 py-0.5 rounded transition cursor-pointer font-bold ml-0.5 flex items-center gap-1 border-l border-slate-800 pl-1.5 ${
+                  isFocusMode
+                    ? 'bg-amber-500/20 text-amber-300'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title={isFocusMode ? 'Esci dalla Modalità Focus' : 'Attiva Modalità Focus'}
+              >
+                {isFocusMode ? <Minimize2 className="w-2.5 h-2.5" /> : <Expand className="w-2.5 h-2.5" />}
+                <span>Focus</span>
+              </button>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Confronto Prima / Dopo (se disponibile versione precedente) */}
+          {previousSlide && (
+            <button
+              type="button"
+              onClick={() => setIsShowingComparison((prev) => !prev)}
+              title="Confronta versione attuale con versione precedente"
+              className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1 ${
+                isShowingComparison
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <ArrowLeftRight className="w-3 h-3 text-amber-400" />
+              <span>{isShowingComparison ? 'Versione Prec.' : 'Prima / Dopo'}</span>
+            </button>
+          )}
+
           {/* Modalità Instagram Mockup Frame */}
           <button
             type="button"
@@ -198,19 +311,39 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
             <span>{showSafeArea ? 'Safe Area On' : 'Safe Area'}</span>
           </button>
 
-          {/* Modalità Focus */}
-          {onToggleFocusMode && (
+          {/* Guida Taglio Feed 1:1 */}
+          <button
+            type="button"
+            onClick={() => setShowGridCropGuide((prev) => !prev)}
+            title="Mostra / Nascondi guida ritaglio 1:1 profilo Instagram"
+            className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1 ${
+              showGridCropGuide
+                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+            }`}
+          >
+            <Grid className="w-3 h-3 text-sky-400" />
+            <span>{showGridCropGuide ? 'Feed 1:1 On' : 'Feed 1:1'}</span>
+          </button>
+
+          {/* Toggle Numeri Slide (Mostra / Rimuovi numerini) */}
+          {onToggleSlideCounter && (
             <button
               type="button"
-              onClick={onToggleFocusMode}
-              className={`p-1.5 rounded-lg border transition cursor-pointer ${
-                isFocusMode
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+              onClick={onToggleSlideCounter}
+              title={
+                settings.showSlideCounter !== false
+                  ? 'Rimuovi i numerini delle slide dal carosello (es. 2/2)'
+                  : 'Mostra i numerini delle slide nel carosello (es. 2/2)'
+              }
+              className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1 ${
+                settings.showSlideCounter !== false
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                  : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300'
               }`}
-              title={isFocusMode ? 'Esci dalla Modalità Focus' : 'Attiva Modalità Focus (Nascondi lista laterale)'}
             >
-              {isFocusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Expand className="w-3.5 h-3.5" />}
+              <Hash className={`w-3 h-3 ${settings.showSlideCounter !== false ? 'text-amber-400' : 'text-slate-500'}`} />
+              <span>{settings.showSlideCounter !== false ? 'Numeri On' : 'Numeri Off'}</span>
             </button>
           )}
 
@@ -331,11 +464,122 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
             </div>
           </div>
         ) : (
-          /* ANTEPRIMA STANDARD PULITA 4:5 */
+          /* ANTEPRIMA STANDARD PULITA 4:5 CON DRAG / TOUCH INTERATTIVO */
           <div
-            onClick={() => setIsFullscreenOpen(true)}
-            className="relative group rounded-3xl overflow-hidden shadow-2xl border border-slate-800/90 bg-slate-950 w-full aspect-[4/5] flex items-center justify-center cursor-pointer transition-transform hover:scale-[1.008]"
-            title="Clicca per visualizzare a schermo intero"
+            onPointerDown={(e) => {
+              if (!isImageInteractive) return;
+              if ((e.target as HTMLElement).closest('button')) return;
+              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+              setIsDragging(true);
+              dragStartRef.current = {
+                startX: e.clientX,
+                startY: e.clientY,
+                initialPosX: slide.imagePositionX ?? 50,
+                initialPosY: slide.imagePositionY ?? 50,
+                hasMoved: false,
+              };
+            }}
+            onPointerMove={(e) => {
+              if (!isDragging || !isImageInteractive) return;
+              const rect = canvasRef.current?.getBoundingClientRect();
+              if (!rect) return;
+
+              const deltaX = e.clientX - dragStartRef.current.startX;
+              const deltaY = e.clientY - dragStartRef.current.startY;
+
+              if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+                dragStartRef.current.hasMoved = true;
+              }
+
+              const zoom = slide.imageZoom || 1.0;
+              const sensX = 100 / (rect.width * Math.max(0.4, zoom - 0.4));
+              const sensY = 100 / (rect.height * Math.max(0.4, zoom - 0.4));
+
+              const newPosX = Math.max(0, Math.min(100, Math.round(dragStartRef.current.initialPosX - deltaX * sensX)));
+              const newPosY = Math.max(0, Math.min(100, Math.round(dragStartRef.current.initialPosY - deltaY * sensY)));
+
+              onUpdateSlide?.({
+                ...slide,
+                imagePositionX: newPosX,
+                imagePositionY: newPosY,
+              });
+            }}
+            onPointerUp={(e) => {
+              if (!isDragging) return;
+              try {
+                (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+              } catch {
+                // Ignore capture release error
+              }
+              setIsDragging(false);
+            }}
+            onPointerCancel={() => setIsDragging(false)}
+            onTouchStart={(e) => {
+              if (e.touches.length === 2 && isImageInteractive) {
+                const dist = Math.hypot(
+                  e.touches[0].clientX - e.touches[1].clientX,
+                  e.touches[0].clientY - e.touches[1].clientY
+                );
+                touchDistanceRef.current = dist;
+                initialZoomRef.current = slide.imageZoom ?? 1.0;
+              }
+            }}
+            onTouchMove={(e) => {
+              if (e.touches.length === 2 && isImageInteractive && touchDistanceRef.current !== null) {
+                const dist = Math.hypot(
+                  e.touches[0].clientX - e.touches[1].clientX,
+                  e.touches[0].clientY - e.touches[1].clientY
+                );
+                const scale = dist / touchDistanceRef.current;
+                const newZoom = Math.max(1.0, Math.min(3.0, Math.round(initialZoomRef.current * scale * 100) / 100));
+                onUpdateSlide?.({
+                  ...slide,
+                  imageZoom: newZoom,
+                });
+              }
+            }}
+            onTouchEnd={() => {
+              touchDistanceRef.current = null;
+            }}
+            onDoubleClick={(e) => {
+              if (!isImageInteractive) return;
+              if ((e.target as HTMLElement).closest('button')) return;
+              onUpdateSlide?.({
+                ...slide,
+                imagePositionX: 50,
+                imagePositionY: 50,
+              });
+            }}
+            onWheel={(e) => {
+              if (!isImageInteractive) return;
+              if (e.ctrlKey || e.metaKey || isDragging) {
+                e.preventDefault();
+                const currentZoom = slide.imageZoom ?? 1.0;
+                const zoomDelta = e.deltaY < 0 ? 0.05 : -0.05;
+                const newZoom = Math.max(1.0, Math.min(3.0, Math.round((currentZoom + zoomDelta) * 100) / 100));
+                onUpdateSlide?.({
+                  ...slide,
+                  imageZoom: newZoom,
+                });
+              }
+            }}
+            onClick={() => {
+              if (!isImageInteractive && !dragStartRef.current.hasMoved) {
+                setIsFullscreenOpen(true);
+              }
+            }}
+            className={`relative group rounded-3xl overflow-hidden shadow-2xl border border-slate-800/90 bg-slate-950 w-full aspect-[4/5] flex items-center justify-center select-none transition-transform ${
+              isImageInteractive
+                ? isDragging
+                  ? 'cursor-grabbing'
+                  : 'cursor-grab hover:border-amber-500/50'
+                : 'cursor-pointer hover:scale-[1.008]'
+            }`}
+            title={
+              isImageInteractive
+                ? 'Trascina per posizionare · Rotellina per zoom · Doppio clic per centrare'
+                : 'Clicca per visualizzare a schermo intero'
+            }
           >
             <canvas
               ref={canvasRef}
@@ -344,15 +588,67 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
               className="w-full h-full object-contain block select-none pointer-events-none"
             />
 
-            {/* OVERLAY HOVER "SCHERMO INTERO" */}
-            <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 text-white pointer-events-none">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 font-black flex items-center justify-center shadow-xl shadow-amber-500/30 scale-90 group-hover:scale-100 transition-transform">
-                <Maximize2 className="w-5 h-5" />
+            {/* LIVE HUD OVERLAY QUANDO LA FOTO È PRESENTE */}
+            {slide.imageUrl && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-700/80 shadow-xl text-[11px] font-mono text-slate-200">
+                <span className="text-amber-400 font-bold">
+                  Zoom {Math.round((slide.imageZoom ?? 1.0) * 100)}%
+                </span>
+                <span className="text-slate-600">|</span>
+                <span>
+                  X: <strong className="text-white">{slide.imagePositionX ?? 50}%</strong> Y: <strong className="text-white">{slide.imagePositionY ?? 50}%</strong>
+                </span>
+                {((slide.imagePositionX ?? 50) !== 50 || (slide.imagePositionY ?? 50) !== 50 || (slide.imageZoom ?? 1.0) !== 1.0) && (
+                  <>
+                    <span className="text-slate-600">|</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUpdateSlide?.({
+                          ...slide,
+                          imagePositionX: 50,
+                          imagePositionY: 50,
+                          imageZoom: 1.0,
+                        });
+                      }}
+                      className="text-amber-300 hover:text-white flex items-center gap-1 font-bold cursor-pointer transition"
+                      title="Ricentra immagine a 50%, 50% e zoom 100%"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Centra
+                    </button>
+                  </>
+                )}
               </div>
-              <span className="text-xs font-bold text-amber-300 bg-slate-950/90 px-3 py-1 rounded-full border border-amber-500/30 shadow-md">
-                Schermo Intero
-              </span>
-            </div>
+            )}
+
+            {/* Pulsante rapido Schermo Intero in alto a destra */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFullscreenOpen(true);
+              }}
+              className="absolute top-3 right-3 z-20 p-2 rounded-xl bg-slate-950/80 hover:bg-slate-900 text-slate-300 hover:text-amber-300 border border-slate-700/80 shadow-md transition cursor-pointer"
+              title="Apri a schermo intero (1080x1350)"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Badge overlay Versione Precedente */}
+            {isShowingComparison && previousSlide && (
+              <div className="absolute top-3 left-3 bg-amber-500 text-slate-950 font-black text-[10px] px-2.5 py-1 rounded-full shadow-xl pointer-events-none z-20 flex items-center gap-1 animate-in fade-in">
+                <ArrowLeftRight className="w-3 h-3" />
+                <span>VERSIONE PRECEDENTE</span>
+              </div>
+            )}
+
+            {/* Hint visivo in basso al passaggio del mouse */}
+            {slide.imageUrl && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-slate-300 bg-slate-900/90 backdrop-blur px-3 py-1 rounded-full border border-slate-700 shadow-md">
+                Trascina per spostare · Doppio clic per centrare
+              </div>
+            )}
 
             {/* Frecce navigazione */}
             {currentIndex > 0 && (
@@ -384,21 +680,37 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
         )}
       </div>
 
-      {/* ─── 3. INDICATORE PALLINI SLIDE SOTTO L'ANTEPRIMA ─── */}
-      <div className="flex items-center gap-1.5 flex-wrap justify-center py-1">
-        {Array.from({ length: totalSlides }).map((_, idx) => (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => onSelectSlide(idx)}
-            className={`w-2.5 h-2.5 rounded-full transition cursor-pointer ${
-              idx === currentIndex
-                ? 'bg-amber-400 scale-125 shadow-md shadow-amber-400/40'
-                : 'bg-slate-800 hover:bg-slate-700'
-            }`}
-            title={`Vai a slide ${idx + 1}`}
-          />
-        ))}
+      {/* ─── 3. INDICATORE LEGGIBILITÀ MOBILE & NAVIGAZIONE SLIDE 1/7 ─── */}
+      <div className="w-full flex items-center justify-between px-2 pt-1 border-t border-slate-800/80 text-[11px] gap-2 flex-wrap">
+        <div
+          className={`px-2.5 py-0.5 rounded-full border text-[10px] font-mono flex items-center gap-1.5 shadow-sm ${mobileReadability.badgeClass}`}
+          title={`${slideWordCount} parole presenti in questa slide`}
+        >
+          <span>{mobileReadability.dot}</span>
+          <span>{mobileReadability.label}</span>
+          <span className="opacity-70">({slideWordCount} parole)</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono text-slate-400 font-bold">
+            {currentIndex + 1} / {totalSlides}
+          </span>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalSlides }).map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onSelectSlide(idx)}
+                className={`w-2 h-2 rounded-full transition cursor-pointer ${
+                  idx === currentIndex
+                    ? 'bg-amber-400 scale-125 shadow-sm shadow-amber-400/40'
+                    : 'bg-slate-800 hover:bg-slate-700'
+                }`}
+                title={`Vai a slide ${idx + 1}`}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* ─── 4. MODALE FULLSCREEN LIGHTBOX 1080x1350 ─── */}

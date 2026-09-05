@@ -45,7 +45,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
   initialSessions,
 }) => {
   const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState<boolean>(true);
+  const [loadingSessions, setLoadingSessions] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState<number>(3);
@@ -163,15 +163,17 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
     }
   }, [targetAthleteIds, mapSessions]);
 
-  // Se forniti initialSessions dal parent, usali direttamente senza query extra
+  // Lazy load dello storico: usa le sessioni già caricate dal parent oppure scaricale solo se la tendina viene aperta
   useEffect(() => {
     if (initialSessions && initialSessions.length > 0) {
       setPastSessions(mapSessions(initialSessions));
       setLoadingSessions(false);
-    } else {
+    } else if (isHistoryOpen) {
       fetchPastSessions();
+    } else {
+      setLoadingSessions(false);
     }
-  }, [initialSessions, fetchPastSessions, mapSessions]);
+  }, [initialSessions, isHistoryOpen, fetchPastSessions, mapSessions]);
 
   // Lazy load per exercise_logs solo quando una sessione viene espansa
   const loadLogsForSession = async (sessionId: string) => {

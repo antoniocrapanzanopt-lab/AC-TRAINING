@@ -24,7 +24,8 @@ export type NavigationTab =
   | 'analisi_report'
   | 'notifiche'
   | 'inbox_ai'
-  | 'contenuti';
+  | 'contenuti'
+  | 'libreria_contenuti';
 
 export * from './types/progression';
 export * from './types/notification';

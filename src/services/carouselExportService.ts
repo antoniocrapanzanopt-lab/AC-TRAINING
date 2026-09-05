@@ -29,7 +29,7 @@ export const exportSingleSlideAsPng = async (
     canvas.toBlob((blob) => {
       if (blob) {
         const slideNum = String(slide.order).padStart(2, '0');
-        const filename = `slide_${slideNum}_${slide.type}.png`;
+        const filename = `slide_${slideNum}.png`;
         triggerFileDownload(blob, filename);
       }
       resolve();
@@ -185,9 +185,9 @@ export const exportFullCarouselZip = async (
 
     if (blob) {
       const buffer = await blob.arrayBuffer();
-      const slideNum = String(slide.order).padStart(2, '0');
+      const slideNum = String(i + 1).padStart(2, '0');
       files.push({
-        name: `slide_${slideNum}_${slide.type}.png`,
+        name: `slide_${slideNum}.png`,
         data: new Uint8Array(buffer),
       });
     }

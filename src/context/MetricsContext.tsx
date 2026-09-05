@@ -11,6 +11,7 @@ import {
   AthleteProgressPhoto,
 } from '../types/metrics';
 import { STORAGE_KEYS } from '../config/storageKeys';
+import { useAuth } from './AuthContext';
 
 interface MetricsContextType {
   metrics: AthleteMetric[];
@@ -44,6 +45,7 @@ interface MetricsContextType {
 const MetricsContext = createContext<MetricsContextType | undefined>(undefined);
 
 export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
   const [metrics, setMetrics] = useState<AthleteMetric[]>(() =>
     getStorageItem<AthleteMetric[]>('builder_athlete_metrics', [])
   );
@@ -97,9 +99,24 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     window.dispatchEvent(new Event('metrics_updated'));
   };
 
-  // Carica TUTTE le metriche dal DB e le fonde con localStorage
+  // Carica le metriche dal DB e le fonde con localStorage
   const fetchAllMetrics = useCallback(async (): Promise<void> => {
     try {
+      // Se l'utente è un atleta, scarica SOLO le sue metriche (0 overhead)
+      if (user?.role === 'athlete') {
+        const targetId = user.athleteId || user.id;
+        const { data, error } = await supabase
+          .from('athlete_metrics')
+          .select('*')
+          .eq('athlete_id', targetId)
+          .order('date', { ascending: false });
+
+        if (!error && data) {
+          setMetrics(data as AthleteMetric[]);
+        }
+        return;
+      }
+
       const { data, error } = await supabase
         .from('athlete_metrics')
         .select('*')
@@ -119,11 +136,26 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (err) {
       console.warn('Eccezione in fetchAllMetrics:', err);
     }
-  }, []);
+  }, [user]);
 
-  // Carica TUTTI i massimali dal DB e li fonde con localStorage
+  // Carica i massimali dal DB e li fonde con localStorage
   const fetchAllMaxLifts = useCallback(async (): Promise<void> => {
     try {
+      // Se l'utente è un atleta, scarica SOLO i suoi massimali
+      if (user?.role === 'athlete') {
+        const targetId = user.athleteId || user.id;
+        const { data, error } = await supabase
+          .from('athlete_max_lifts')
+          .select('*')
+          .eq('athlete_id', targetId)
+          .order('date', { ascending: false });
+
+        if (!error && data) {
+          setMaxLifts(data as AthleteMaxLift[]);
+        }
+        return;
+      }
+
       const { data, error } = await supabase
         .from('athlete_max_lifts')
         .select('*')
@@ -143,7 +175,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (err) {
       console.warn('Eccezione in fetchAllMaxLifts:', err);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     fetchAllMetrics();

@@ -20,17 +20,6 @@ export const DEFAULT_CAROUSEL_SETTINGS: CarouselSettings = {
   darkBgColor: DEFAULT_BRAND_KIT.primaryColor,
 };
 
-const PILLAR_LABELS: Record<string, string> = {
-  technique_execution: '■ TECNICA & BIOMECCANICA',
-  common_mistakes: '■ ERRORE COMUNE DA EVITARE',
-  mindset_discipline: '■ MINDSET & DISCIPLINA',
-  nutrition_science: '■ SCIENZA DELLA NUTRIZIONE',
-  client_transformation: '■ CASE STUDY & RISULTATI',
-  coaching_faq: '■ DOMANDE FREQUENTI',
-  authority_lifestyle: '■ PRINCIPIO GUIDA',
-  promotion_launch: '■ PROGRAMMA & COACHING',
-};
-
 /**
  * Genera un ID univoco per la slide
  */
@@ -139,7 +128,6 @@ export const generateCarouselFromContent = (
   const title = content.title || 'Nuovo Contenuto';
   const hook = content.hook || content.title || 'Sei sicuro di eseguire questo movimento nel modo corretto?';
   const cta = content.call_to_action || 'Salva questo post e commenta per ricevere la guida completa in DM';
-  const pillarTag = PILLAR_LABELS[content.pillar || 'technique_execution'] || '■ AC COACHING';
   const brandKit = loadBrandKit();
 
   // Verifica se lo script ha già slide strutturate
@@ -157,10 +145,10 @@ export const generateCarouselFromContent = (
       headline: s.headline || `Punto ${idx + 1}`,
       subheadline: idx === 0 ? 'Scorri per la guida completa ➔' : undefined,
       bodyText: s.bodyText || '',
-      categoryTag: idx === 0 ? pillarTag : undefined,
+      categoryTag: undefined,
       bulletPoints: s.bulletPoints,
       visualCue: idx === 0 ? 'Primo piano atleta / Copertina' : undefined,
-      takeawayTag: idx === 0 ? pillarTag : idx === parsedSlides.length - 1 ? 'SALVA IL POST' : `STEP ${idx}`,
+      takeawayTag: idx === parsedSlides.length - 1 ? 'SALVA IL POST' : undefined,
       imageUrl: userImages[idx] || null,
       imageOpacity: 0.5,
       textAlign: idx === 0 ? 'center' : 'left',
@@ -179,9 +167,9 @@ export const generateCarouselFromContent = (
         headlineHighlight: 'VEDIAMO COSA MOSTRANO I DATI!',
         subheadline: title ? `Analisi biomeccanica & studio: ${title}` : 'La guida pratica per chi ha leve lunghe e cerca massima ipertrofia.',
         bodyText: '',
-        categoryTag: pillarTag,
+        categoryTag: undefined,
         visualCue: 'Primo piano atleta / Foto d\'impatto dell\'esercizio con testo in sovrimpressione',
-        takeawayTag: pillarTag,
+        takeawayTag: undefined,
         imageUrl: userImages[0] || null,
         imageOpacity: 0.55,
         textAlign: 'left',
@@ -341,3 +329,276 @@ export const generateCarouselFromContent = (
     updated_at: new Date().toISOString(),
   };
 };
+
+/**
+ * Crea una struttura carosello vuota per la modalità 'create'
+ * Nessun testo demo, nessuna immagine demo, slides: []
+ */
+export const createEmptyCarousel = (contentId?: string): InstagramCarousel => {
+  const brandKit = loadBrandKit();
+  return {
+    id: `carousel_${Date.now()}`,
+    content_id: contentId || `temp_${Date.now()}`,
+    status: 'draft',
+    slides: [],
+    settings: {
+      templateId: 'editorial_dark',
+      aspectRatio: '4:5',
+      showSlideCounter: true,
+      showSwipeIndicator: true,
+      brandKit,
+      authorHandle: brandKit.authorHandle,
+      brandWatermark: brandKit.brandName,
+      accentColor: brandKit.accentColor,
+      darkBgColor: brandKit.primaryColor,
+    },
+    caption_export: '',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+};
+
+/**
+ * Crea una prima Slide 01 vuota quando l'utente sceglie "Inizia da zero"
+ * Tipo predefinito Cover, nessun testo demo, stato Bozza.
+ */
+export const createEmptyCoverSlide = (headlineText: string = ''): CarouselSlide => {
+  return {
+    id: generateSlideId(),
+    order: 1,
+    type: 'cover',
+    layout: 'dual_tone_cover',
+    headline: headlineText.trim().toUpperCase(),
+    headlineHighlight: '',
+    subheadline: '',
+    bodyText: '',
+    bulletPoints: [],
+    visualCue: '',
+    imageUrl: null,
+    imageOpacity: 0.55,
+    textAlign: 'left',
+    titleSize: 'xl',
+  };
+};
+
+/**
+ * Genera una proposta di struttura carosello con AI (3, 5, 7 o 10 slide)
+ * basandosi esclusivamente sul titolo o idea inserita dall'utente.
+ */
+export const generateCarouselProposalFromIdea = (
+  titleOrIdea: string,
+  slideCount: 3 | 5 | 7 | 10 = 7
+): CarouselSlide[] => {
+  const cleanTitle = titleOrIdea.trim() || 'Titolo Carosello';
+  const slides: CarouselSlide[] = [];
+
+  // Slide 1: Cover
+  slides.push({
+    id: generateSlideId(),
+    order: 1,
+    type: 'cover',
+    layout: 'dual_tone_cover',
+    headline: cleanTitle.toUpperCase(),
+    headlineHighlight: 'GUIDA PRATICA',
+    subheadline: 'Scorri per l\'analisi completa ➔',
+    bodyText: '',
+    bulletPoints: [],
+    visualCue: 'Copertina grafica',
+    imageUrl: null,
+    imageOpacity: 0.55,
+    textAlign: 'left',
+    titleSize: 'xl',
+    isAiSuggested: true,
+  });
+
+  if (slideCount === 3) {
+    // 3 Slide: Cover, Concetto Chiave, CTA Finale
+    slides.push({
+      id: generateSlideId(),
+      order: 2,
+      type: 'practical_guide',
+      layout: 'connected_icon_list',
+      headline: 'Il Principio Chiave',
+      subheadline: 'Cosa devi sapere prima di iniziare',
+      bodyText: `Analisi sul tema: ${cleanTitle}`,
+      bulletPoints: ['Fattore critico 1', 'Fattore critico 2', 'Applicazione pratica'],
+      visualCue: 'Schema concettuale a punti',
+      imageUrl: null,
+      imageOpacity: 0.5,
+      textAlign: 'left',
+      isAiSuggested: true,
+    });
+  } else if (slideCount === 5) {
+    // 5 Slide: Cover, Problema, Principio, Guida Pratica, CTA
+    slides.push(
+      {
+        id: generateSlideId(),
+        order: 2,
+        type: 'problem',
+        layout: 'connected_icon_list',
+        headline: 'L\'Errore Più Frequente',
+        subheadline: 'Perché l\'approccio standard fallisce',
+        bodyText: `Cosa accade tipicamente su: ${cleanTitle}`,
+        bulletPoints: ['Errore di impostazione iniziale', 'Compensazione tecnica o esecutiva', 'Perdita di efficacia'],
+        visualCue: 'Elenco criticità',
+        imageUrl: null,
+        imageOpacity: 0.5,
+        textAlign: 'left',
+        isAiSuggested: true,
+      },
+      {
+        id: generateSlideId(),
+        order: 3,
+        type: 'principle',
+        layout: 'text_center',
+        headline: 'La Regola d\'Oro',
+        subheadline: 'Il principio biomeccanico fondamentale',
+        bodyText: `La corretta impostazione per padroneggiare ${cleanTitle}.`,
+        bulletPoints: [],
+        visualCue: 'Dichiarazione centrale',
+        imageUrl: null,
+        imageOpacity: 0.5,
+        textAlign: 'center',
+        titleSize: 'xl',
+        isAiSuggested: true,
+      },
+      {
+        id: generateSlideId(),
+        order: 4,
+        type: 'practical_guide',
+        layout: 'numbered_list',
+        headline: 'I 3 Passaggi Chiave',
+        subheadline: 'Guida applicativa per il tuo workout',
+        bodyText: 'Come impostare il lavoro passo-passo:',
+        bulletPoints: ['Fase 1: Setup e posizionamento', 'Fase 2: Controllo del movimento', 'Fase 3: Progressione del carico'],
+        visualCue: 'Elenco numerato 1-2-3',
+        imageUrl: null,
+        imageOpacity: 0.5,
+        textAlign: 'left',
+        isAiSuggested: true,
+      }
+    );
+  } else if (slideCount === 7) {
+    // 7 Slide (Struttura Standard)
+    slides.push(
+      {
+        id: generateSlideId(),
+        order: 2,
+        type: 'problem',
+        layout: 'connected_icon_list',
+        headline: 'Perché il Metodo Classico Fallisce',
+        subheadline: 'L\'errore invisibile che limita i tuoi progressi',
+        bodyText: `Quando affronti ${cleanTitle}, applicare schemi generici porta a stalli.`,
+        bulletPoints: ['Mancata personalizzazione delle leve', 'Traiettoria forzata non fisiologica', 'Sovraccarico articolare errato'],
+        visualCue: 'Elenco problemi',
+        imageUrl: null,
+        imageOpacity: 0.5,
+        textAlign: 'left',
+        isAiSuggested: true,
+      },
+      {
+        id: generateSlideId(),
+        order: 3,
+        type: 'principle',
+        layout: 'text_center',
+        headline: 'Il Principio Biomeccanico',
+        subheadline: 'Cosa dice la scienza applicata',
+        bodyText: `Adatta l'esercizio alla tua struttura: non forzare la tua struttura all'esercizio.`,
+        bulletPoints: [],
+        visualCue: 'Statement autorevole',
+        imageUrl: null,
+        imageOpacity: 0.5,
+        textAlign: 'center',
+        titleSize: 'xl',
+        isAiSuggested: true,
+      },
+      {
+        id: generateSlideId(),
+        order: 4,
+        type: 'practical_guide',
+        layout: 'numbered_list',
+        headline: 'La Sequenza Tecnica Corretta',
+        subheadline: '3 step da applicare al prossimo allenamento',
+        bodyText: 'Esecuzione passo-passo:',
+        bulletPoints: ['Step 1: Punti di contatto stabili', 'Step 2: Cerniera controllata nel range utile', 'Step 3: Inversione dinamica senza strappi'],
+        visualCue: 'Fasi numerate',
+        imageUrl: null,
+        imageOpacity: 0.5,
+        textAlign: 'left',
+        isAiSuggested: true,
+      },
+      {
+        id: generateSlideId(),
+        order: 5,
+        type: 'proof_example',
+        layout: 'error_vs_correct',
+        headline: 'Confronto: Errore vs Soluzione',
+        subheadline: 'Differenza immediata di efficacia',
+        wrongText: 'Movimento rapido senza controllo dei gradi di libertà',
+        correctText: 'Tensione costante sul muscolo target nel profilo corretto',
+        bodyText: 'La differenza tra uno stimolo efficace e uno spreco di energia.',
+        visualCue: 'Box comparativo ❌ vs ✅',
+        imageUrl: null,
+        imageOpacity: 0.5,
+        textAlign: 'left',
+        isAiSuggested: true,
+      },
+      {
+        id: generateSlideId(),
+        order: 6,
+        type: 'recap',
+        layout: 'connected_icon_list',
+        headline: 'Recap in 3 Punti Chiave',
+        subheadline: 'Memorizza prima di entrare in sala pesi',
+        bodyText: 'I punti da tenere a mente:',
+        bulletPoints: ['Priorità al controllo della traiettoria', 'Progressione del carico solo a parità di tecnica', 'Registra sempre le serie target'],
+        visualCue: 'Badge recap',
+        imageUrl: null,
+        imageOpacity: 0.5,
+        textAlign: 'left',
+        isAiSuggested: true,
+      }
+    );
+  } else {
+    // 10 Slide (Approfondimento completo)
+    for (let i = 2; i <= 9; i++) {
+      slides.push({
+        id: generateSlideId(),
+        order: i,
+        type: i % 2 === 0 ? 'practical_guide' : 'principle',
+        layout: i === 2 ? 'connected_icon_list' : i === 5 ? 'error_vs_correct' : i === 9 ? 'connected_icon_list' : 'numbered_list',
+        headline: i === 9 ? 'Riepilogo Generale' : `Punto ${i}: Approfondimento Tecnico`,
+        subheadline: `Dettaglio per: ${cleanTitle}`,
+        bodyText: `Analisi del punto ${i} focalizzata sull'applicazione pratica e biomeccanica.`,
+        bulletPoints: [`Aspetto fondamentale ${i}.1`, `Aspetto fondamentale ${i}.2`],
+        visualCue: 'Layout tecnico',
+        imageUrl: null,
+        imageOpacity: 0.5,
+        textAlign: 'left',
+        isAiSuggested: true,
+      });
+    }
+  }
+
+  // Slide Finale: CTA (sempre ultima)
+  slides.push({
+    id: generateSlideId(),
+    order: slideCount,
+    type: 'cta',
+    layout: 'final_cta',
+    headline: 'Vuoi Applicare Questo Metodo?',
+    subheadline: 'Salva il carosello per averlo a portata di mano.',
+    bodyText: `Commenta con "${cleanTitle.split(' ')[0].toUpperCase() || 'GUIDA'}" per ricevere la risorsa completa in DM.`,
+    bulletPoints: [],
+    visualCue: 'Box CTA finale',
+    takeawayTag: 'SALVA & APPLICA',
+    imageUrl: null,
+    imageOpacity: 0.55,
+    textAlign: 'center',
+    titleSize: 'xl',
+    isAiSuggested: true,
+  });
+
+  return slides;
+};
+

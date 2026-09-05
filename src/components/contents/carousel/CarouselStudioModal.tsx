@@ -10,8 +10,12 @@ import {
   generateCarouselFromContent,
   generateSlideId,
   regenerateSingleSlide,
+  createEmptyCoverSlide,
+  createEmptyCarousel,
 } from '../../../services/carouselGeneratorService';
-import { auditCarouselQuality } from '../../../services/carouselQualityService';
+import {
+  validateEntireCarousel,
+} from '../../../services/carouselQualityService';
 import {
   exportFullCarouselZip,
   exportCarouselAsPdfPreview,
@@ -27,6 +31,7 @@ import { CarouselCanvasPreview } from './CarouselCanvasPreview';
 import { BrandKitModal } from './BrandKitModal';
 import { CarouselAIDiffModal } from './CarouselAIDiffModal';
 import { CarouselQualityChecklistModal } from './CarouselQualityChecklistModal';
+import { CarouselExportProtectionModal } from './CarouselExportProtectionModal';
 import { useToast } from '../../../context/ToastContext';
 import {
   ArrowLeft,
@@ -45,6 +50,7 @@ import {
   ShieldCheck,
   Expand,
   Minimize2,
+  Hash,
 } from 'lucide-react';
 
 interface CarouselStudioModalProps {
@@ -52,6 +58,8 @@ interface CarouselStudioModalProps {
   onClose: () => void;
   content: Partial<InstagramContent>;
   onSaveCarousel: (carousel: InstagramCarousel) => void;
+  initialSlideIndex?: number;
+  initialTargetField?: string;
 }
 
 type SaveStatus = 'saved' | 'saving' | 'error';
@@ -81,27 +89,55 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
   onClose,
   content,
   onSaveCarousel,
+  initialSlideIndex = 0,
+  initialTargetField,
 }) => {
   const { showSuccess, showError } = useToast();
 
-  // Inizializza il carosello dal contenuto se non già presente
+  // Inizializza il carosello dal contenuto se non già presente, ripulendo tag indesiderati
   const [carousel, setCarousel] = useState<InstagramCarousel>(() => {
-    if (content.carousel_data && content.carousel_data.slides.length > 0) {
-      return content.carousel_data;
+    let raw: InstagramCarousel;
+    if (content.carousel_data && content.carousel_data.slides && content.carousel_data.slides.length > 0) {
+      raw = content.carousel_data;
+    } else if (content.carousel_data) {
+      raw = content.carousel_data;
+    } else {
+      raw = createEmptyCarousel(content.id || '');
     }
-    return generateCarouselFromContent(content);
+
+    return {
+      ...raw,
+      slides: (raw.slides || []).map((s) => ({
+        ...s,
+        categoryTag: s.categoryTag && /tecnica\s*&\s*biomeccanica/i.test(s.categoryTag) ? undefined : s.categoryTag,
+        takeawayTag: s.takeawayTag && (/tecnica\s*&\s*biomeccanica/i.test(s.takeawayTag) || /^step\s*\d+/i.test(s.takeawayTag.trim())) ? undefined : s.takeawayTag,
+      })),
+    };
   });
 
-  const [selectedSlideIndex, setSelectedSlideIndex] = useState<number>(0);
+  const [selectedSlideIndex, setSelectedSlideIndex] = useState<number>(initialSlideIndex || 0);
+
+  // Sincronizza selectedSlideIndex quando il modale si apre su una slide specifica
+  useEffect(() => {
+    if (isOpen && typeof initialSlideIndex === 'number') {
+      setSelectedSlideIndex(Math.max(0, initialSlideIndex));
+    }
+  }, [isOpen, initialSlideIndex]);
+
   const [isExportingZip, setIsExportingZip] = useState<boolean>(false);
   const [isGeminiOptimizing, setIsGeminiOptimizing] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<string>('');
   const [isBrandKitOpen, setIsBrandKitOpen] = useState<boolean>(false);
   const [isQualityModalOpen, setIsQualityModalOpen] = useState<boolean>(false);
+  const [isExportProtectionModalOpen, setIsExportProtectionModalOpen] = useState<boolean>(false);
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState<boolean>(false);
   const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [lastSavedText, setLastSavedText] = useState<string>('ora');
+
+  // Mappa delle versioni precedenti delle slide per il confronto Prima / Dopo
+  const [previousSlideMap, setPreviousSlideMap] = useState<Record<string, CarouselSlide>>({});
 
   // Stato modale confronto Diff AI
   const [aiDiffState, setAiDiffState] = useState<{
@@ -116,33 +152,44 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     actionName: '',
   });
 
-  // Stato dialog conferma export per overflow critico
-  const [overflowConfirmDialog, setOverflowConfirmDialog] = useState<{
-    isOpen: boolean;
-    message: string;
-    onConfirm: () => void;
-  }>({
-    isOpen: false,
-    message: '',
-    onConfirm: () => {},
-  });
+  // Tracciamento delta del punteggio per visualizzare i miglioramenti (es. 82 → 88)
+  const [scoreDelta, setScoreDelta] = useState<{ from: number; to: number } | null>(null);
+  const prevScoreRef = useRef<number | null>(null);
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const latestCarouselRef = useRef<InstagramCarousel>(carousel);
   latestCarouselRef.current = carousel;
 
-  // Calcolo audit qualità AI in tempo reale
-  const qualityAudit = useMemo(() => {
-    return auditCarouselQuality(carousel);
+  // Calcolo validazione qualitativa ed editoriale a 360°
+  const validationReport = useMemo(() => {
+    return validateEntireCarousel(carousel);
   }, [carousel]);
+
+  // Tracciamento delta punteggio dopo ogni modifica
+  useEffect(() => {
+    if (prevScoreRef.current !== null && prevScoreRef.current !== validationReport.score) {
+      const from = prevScoreRef.current;
+      const to = validationReport.score;
+      setScoreDelta({ from, to });
+      const timer = setTimeout(() => {
+        setScoreDelta(null);
+      }, 6000);
+      prevScoreRef.current = to;
+      return () => clearTimeout(timer);
+    }
+    prevScoreRef.current = validationReport.score;
+  }, [validationReport.score]);
 
   const slides = carousel.slides || [];
   const safeIndex = Math.min(Math.max(0, selectedSlideIndex), Math.max(0, slides.length - 1));
-  const activeSlide = slides[safeIndex] || slides[0];
+  const activeSlide = slides.length > 0 ? (slides[safeIndex] || slides[0]) : null;
+  const activePreviousSlide = activeSlide ? previousSlideMap[activeSlide.id] : null;
 
   // Esecuzione autosave con debounce rigoroso a 800 ms
   const triggerDebouncedAutosave = useCallback(
     (updatedCarousel: InstagramCarousel) => {
+      // Non salvare automaticamente se il carosello è vuoto / non iniziato
+      if (!updatedCarousel.slides || updatedCarousel.slides.length === 0) return;
       setSaveStatus('saving');
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -163,6 +210,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
 
   // Flush immediato dell'autosave
   const flushAutosave = useCallback(() => {
+    if (!latestCarouselRef.current.slides || latestCarouselRef.current.slides.length === 0) return;
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
@@ -184,8 +232,13 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [saveStatus]);
 
-  // Aggiornamento singola slide
+  // Aggiornamento singola slide con conservazione dello storico per il Prima/Dopo
   const handleUpdateSlide = (updatedSlide: CarouselSlide) => {
+    const oldSlide = slides.find((s) => s.id === updatedSlide.id);
+    if (oldSlide) {
+      setPreviousSlideMap((prev) => ({ ...prev, [updatedSlide.id]: oldSlide }));
+    }
+
     const updatedSlides = slides.map((s) => (s.id === updatedSlide.id ? updatedSlide : s));
     const updatedCarousel: InstagramCarousel = {
       ...carousel,
@@ -196,7 +249,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     triggerDebouncedAutosave(updatedCarousel);
   };
 
-  // Cambio template
+  // Cambio template senza cancellare dati
   const handleSelectTemplate = (templateId: CarouselTemplateId) => {
     const updatedCarousel: InstagramCarousel = {
       ...carousel,
@@ -205,6 +258,26 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     };
     setCarousel(updatedCarousel);
     triggerDebouncedAutosave(updatedCarousel);
+  };
+
+  // Attiva / Disattiva i numerini carosello globali (settings.showSlideCounter)
+  const handleToggleSlideCounter = () => {
+    const nextVal = carousel.settings.showSlideCounter === false ? true : false;
+    const updatedCarousel: InstagramCarousel = {
+      ...carousel,
+      settings: {
+        ...carousel.settings,
+        showSlideCounter: nextVal,
+      },
+      updated_at: new Date().toISOString(),
+    };
+    setCarousel(updatedCarousel);
+    triggerDebouncedAutosave(updatedCarousel);
+    if (nextVal) {
+      showSuccess('Numeri slide riattivati sul carosello.');
+    } else {
+      showSuccess('Numeri slide rimossi dal carosello.');
+    }
   };
 
   // Spostamento slide con rinumerazione atomica
@@ -221,6 +294,22 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     setCarousel(updatedCarousel);
     triggerDebouncedAutosave(updatedCarousel);
     setSelectedSlideIndex(targetIndex);
+  };
+
+  // Spostamento di una slide alla fine del carosello
+  const handleMoveSlideToEnd = (index: number) => {
+    if (index >= slides.length - 1) return;
+
+    const newSlides = [...slides];
+    const [moved] = newSlides.splice(index, 1);
+    newSlides.push(moved);
+
+    const reordered = newSlides.map((s, idx) => ({ ...s, order: idx + 1 }));
+    const updatedCarousel = { ...carousel, slides: reordered };
+    setCarousel(updatedCarousel);
+    triggerDebouncedAutosave(updatedCarousel);
+    setSelectedSlideIndex(reordered.length - 1);
+    showSuccess('CTA spostata in ultima posizione!');
   };
 
   // Duplicazione slide con rinumerazione automatica
@@ -266,6 +355,18 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
   const handleAddNewSlide = () => {
     if (slides.length >= 10) {
       showError('Limite massimo raggiunto: Instagram supporta fino a 10 slide.');
+      return;
+    }
+
+    if (slides.length === 0) {
+      const firstSlide = createEmptyCoverSlide(content.title || '');
+      const updatedCarousel = {
+        ...carousel,
+        slides: [firstSlide],
+      };
+      setCarousel(updatedCarousel);
+      triggerDebouncedAutosave(updatedCarousel);
+      setSelectedSlideIndex(0);
       return;
     }
 
@@ -333,7 +434,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
   const handleApplyAIDiff = (appliedSlide: CarouselSlide) => {
     handleUpdateSlide(appliedSlide);
     setAiDiffState({ isOpen: false, originalSlide: null, proposedSlide: null, actionName: '' });
-    showSuccess('✨ Modifiche AI applicate!', `Slide ${safeIndex + 1} aggiornata con successo.`);
+    showSuccess('✨ Modifiche AI applicate!', `Slide ${safeIndex + 1} aggiornata.`);
   };
 
   // Ottimizzazione intero carosello con Gemini 3.8 Flash
@@ -343,7 +444,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
       const optimized = await optimizeEntireCarouselWithGemini(carousel, content);
       setCarousel(optimized);
       triggerDebouncedAutosave(optimized);
-      showSuccess('🚀 Carosello Perfezionato con Gemini 3.8 Flash!', 'Tutte le slide, layout e impaginazione sono stati ottimizzati.');
+      showSuccess('🚀 Carosello Perfezionato con Gemini 3.8 Flash!', 'Tutte le slide sono state ottimizzate.');
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Errore durante l\'ottimizzazione';
       showError('Errore Gemini 3.8 Flash', errMsg);
@@ -352,32 +453,20 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     }
   };
 
-  // Esportazione ZIP con controllo overflow critico non bloccante
-  const handleExportZip = async (force: boolean = false) => {
-    if (!force) {
-      const criticalSlides = slides
-        .map((s, idx) => {
-          const words = (s.headline + ' ' + (s.subheadline || '') + ' ' + (s.bodyText || '')).trim().split(/\s+/).filter(Boolean).length;
-          return { index: idx + 1, words };
-        })
-        .filter((s) => s.words > 60);
-
-      if (criticalSlides.length > 0) {
-        setOverflowConfirmDialog({
-          isOpen: true,
-          message: `Attenzione: la Slide ${criticalSlides[0].index} contiene ${criticalSlides[0].words} parole. L'immagine potrebbe risultare molto densa da smartphone. Vuoi esportare comunque lo ZIP o preferisci sintetizzarla prima?`,
-          onConfirm: () => {
-            setOverflowConfirmDialog({ isOpen: false, message: '', onConfirm: () => {} });
-            handleExportZip(true);
-          },
-        });
-        return;
-      }
+  // Apertura modale di protezione ed esportazione ZIP
+  const handleOpenExportModal = () => {
+    if (slides.length === 0) {
+      showError('Impossibile esportare', 'Nessuna slide ancora creata nel carosello.');
+      return;
     }
+    setIsExportProtectionModalOpen(true);
+  };
 
+  // Esecuzione definitiva esportazione ZIP (chiamata dalla modale di protezione)
+  const handleExecuteExportZip = async () => {
     flushAutosave();
     setIsExportingZip(true);
-    setExportProgress('Inizializzazione rendering slide 1080x1350...');
+    setExportProgress('Rendering ad alta risoluzione 1080×1350...');
     try {
       await exportFullCarouselZip(carousel, (current, total) => {
         setExportProgress(`Generazione immagine ${current} di ${total}...`);
@@ -385,6 +474,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
       const updated = { ...carousel, status: 'exported' as const };
       setCarousel(updated);
       onSaveCarousel(updated);
+      setIsExportProtectionModalOpen(false);
       showSuccess('Carosello esportato con successo in ZIP!');
     } catch {
       showError('Errore durante l\'esportazione del carosello');
@@ -469,12 +559,12 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                 ) : saveStatus === 'saved' ? (
                   <span className="text-emerald-400 font-medium flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" />
-                    <span>Salvato {lastSavedText}</span>
+                    <span>Salvato ora ({lastSavedText})</span>
                   </span>
                 ) : (
                   <span className="text-rose-400 font-medium flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" />
-                    <span>Errore di salvataggio</span>
+                    <span>Errore di salvataggio — Riprova</span>
                   </span>
                 )}
               </div>
@@ -482,115 +572,180 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
           </div>
         </div>
 
-        {/* CENTRO: SELETTORE TEMPLATE */}
-        <div className="hidden lg:flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-          {TEMPLATE_OPTIONS.map((tmpl) => (
-            <button
-              key={tmpl.id}
-              type="button"
-              onClick={() => handleSelectTemplate(tmpl.id)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                carousel.settings.templateId === tmpl.id
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
+        {/* CENTRO: SELETTORE TEMPLATE COMPATTO & QUALITY SCORE PILL */}
+        <div className="hidden md:flex items-center gap-3">
+          {/* Dropdown Template Compatto */}
+          <div className="relative">
+            <select
+              value={carousel.settings.templateId}
+              onChange={(e) => handleSelectTemplate(e.target.value as CarouselTemplateId)}
+              className="px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-amber-300 focus:outline-none focus:border-amber-500 cursor-pointer appearance-none pr-7 shadow-sm"
+              title="Seleziona stile grafico carosello"
             >
-              <span>{tmpl.icon}</span>
-              <span>{tmpl.label}</span>
+              {TEMPLATE_OPTIONS.map((tmpl) => (
+                <option key={tmpl.id} value={tmpl.id} className="bg-slate-900 text-white font-medium">
+                  {tmpl.icon} {tmpl.label}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-bold">▼</span>
+          </div>
+
+          {/* Pill Quality Score Formato: 91/100 · 1 warning · 0 blocchi */}
+          {slides.length === 0 ? (
+            <div
+              className="px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-400 text-xs font-mono font-bold flex items-center gap-2 shadow-sm"
+              title="Carosello non ancora inizializzato"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-slate-500" />
+              <span>Non iniziato</span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsQualityModalOpen(true)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold flex items-center gap-2 transition cursor-pointer shadow-sm ${
+                validationReport.blockedCount > 0
+                  ? 'bg-rose-500/15 border-rose-500/40 text-rose-300 hover:bg-rose-500/25'
+                  : validationReport.warningCount > 0
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
+              }`}
+              title={`Checklist Qualità: ${validationReport.score}/100\n${validationReport.warningCount} warning · ${validationReport.blockedCount} blocchi\n\nMotivazione:\n${validationReport.qualityReason}`}
+            >
+              <ShieldCheck className={`w-3.5 h-3.5 ${
+                validationReport.blockedCount > 0 ? 'text-rose-400' : validationReport.warningCount > 0 ? 'text-amber-400' : 'text-emerald-400'
+              }`} />
+              {scoreDelta && scoreDelta.from !== scoreDelta.to ? (
+                <span className="flex items-center gap-1 font-mono">
+                  <span className="text-slate-500 line-through text-[10px]">{scoreDelta.from}</span>
+                  <span className="text-emerald-300 font-black animate-pulse">
+                    {scoreDelta.from} → {scoreDelta.to} {scoreDelta.to > scoreDelta.from ? `(+${scoreDelta.to - scoreDelta.from})` : `(${scoreDelta.to - scoreDelta.from})`}
+                  </span>
+                </span>
+              ) : (
+                <span className="font-black text-white">{validationReport.score}/100</span>
+              )}
+              <span className="text-slate-500">·</span>
+              <span className="text-amber-300">{validationReport.warningCount} warning</span>
+              <span className="text-slate-500">·</span>
+              <span className={validationReport.blockedCount > 0 ? 'text-rose-400 font-black' : 'text-slate-400'}>
+                {validationReport.blockedCount} blocchi
+              </span>
             </button>
-          ))}
+          )}
         </div>
 
-        {/* DESTRA: BRAND KIT, FOCUS MODE, EXPORT ZIP & SALVA */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* DESTRA: RAGGRUPPAMENTO TOOL (FOCUS, BRAND KIT, AI) + EXPORT & SALVA */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
           {/* Switcher Tab Mobile */}
           <div className="flex xl:hidden bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
             <button
               type="button"
               onClick={() => setMobileTab('editor')}
-              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 ${
+              className={`px-2 py-1 rounded-lg font-bold flex items-center gap-1 ${
                 mobileTab === 'editor' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400'
               }`}
             >
-              <Edit3 className="w-3.5 h-3.5" />
+              <Edit3 className="w-3 h-3" />
               <span>Editor</span>
             </button>
             <button
               type="button"
               onClick={() => setMobileTab('preview')}
-              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 ${
+              className={`px-2 py-1 rounded-lg font-bold flex items-center gap-1 ${
                 mobileTab === 'preview' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-400'
               }`}
             >
-              <Eye className="w-3.5 h-3.5" />
+              <Eye className="w-3 h-3" />
               <span>Anteprima</span>
             </button>
           </div>
 
-          {/* Modalità Focus Toggle */}
+          {/* GRUPPO STRUMENTI: FOCUS, BRAND KIT & AI */}
+          <div className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800 text-xs gap-1">
+            {/* Modalità Focus Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsFocusMode((prev) => !prev)}
+              className={`px-2.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                isFocusMode
+                  ? 'bg-amber-500/20 text-amber-300'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+              title={isFocusMode ? 'Mostra colonna miniature' : 'Nascondi colonna miniature per editing focalizzato'}
+            >
+              {isFocusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Expand className="w-3.5 h-3.5" />}
+              <span className="hidden lg:inline">{isFocusMode ? 'Esci Focus' : 'Focus'}</span>
+            </button>
+
+            {/* Brand Kit */}
+            <button
+              type="button"
+              onClick={() => setIsBrandKitOpen(true)}
+              className="px-2.5 py-1.5 rounded-xl text-purple-300 hover:text-white hover:bg-slate-900 font-bold flex items-center gap-1.5 transition cursor-pointer"
+              title="Personalizza Brand Kit (Colori, Tipografia, Watermark)"
+            >
+              <Palette className="w-3.5 h-3.5 text-purple-400" />
+              <span className="hidden lg:inline">Brand Kit</span>
+            </button>
+
+            {/* Toggle Numeri Slide Rapido */}
+            <button
+              type="button"
+              onClick={handleToggleSlideCounter}
+              className={`px-2.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                carousel.settings.showSlideCounter !== false
+                  ? 'bg-amber-500/20 text-amber-300'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900'
+              }`}
+              title={
+                carousel.settings.showSlideCounter !== false
+                  ? 'Rimuovi numerini dalle slide (es. 2/2)'
+                  : 'Mostra numerini sulle slide (es. 2/2)'
+              }
+            >
+              <Hash className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden lg:inline">{carousel.settings.showSlideCounter !== false ? 'Numeri On' : 'Numeri Off'}</span>
+            </button>
+
+            {/* Ottimizza Tutto con Gemini 3.8 Flash */}
+            <button
+              type="button"
+              onClick={handleGeminiOptimizeAll}
+              disabled={isGeminiOptimizing || slides.length === 0}
+              className="px-2.5 py-1.5 rounded-xl text-amber-300 hover:text-white hover:bg-slate-900 font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              title="Ottimizza intero carosello con Gemini 3.8 Flash"
+            >
+              <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isGeminiOptimizing ? 'animate-spin' : ''}`} />
+              <span className="hidden lg:inline">{isGeminiOptimizing ? 'Ottimizzazione...' : 'Gemini AI'}</span>
+            </button>
+          </div>
+
+          {/* Scarica ZIP protetto da verifica preventiva */}
           <button
             type="button"
-            onClick={() => setIsFocusMode((prev) => !prev)}
-            className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
-              isFocusMode
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow'
-                : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+            onClick={handleOpenExportModal}
+            disabled={isExportingZip || slides.length === 0}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition cursor-pointer disabled:opacity-50 ${
+              slides.length === 0
+                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                : validationReport.blockedCount > 0
+                ? 'bg-gradient-to-r from-rose-600 to-rose-700 text-white hover:from-rose-500 hover:to-rose-600 ring-1 ring-rose-400/30'
+                : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950'
             }`}
-            title={isFocusMode ? 'Mostra colonna miniature' : 'Nascondi colonna miniature per editing focalizzato'}
-          >
-            {isFocusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Expand className="w-3.5 h-3.5" />}
-            <span className="hidden md:inline">{isFocusMode ? 'Esci Focus' : 'Focus'}</span>
-          </button>
-
-          {/* Checklist Qualità Button */}
-          <button
-            type="button"
-            onClick={() => setIsQualityModalOpen(true)}
-            className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-amber-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-            title="Apri la checklist qualità a 7 criteri"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline font-mono">{qualityAudit.score}/100</span>
-          </button>
-
-          {/* Brand Kit */}
-          <button
-            type="button"
-            onClick={() => setIsBrandKitOpen(true)}
-            className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-purple-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-          >
-            <Palette className="w-3.5 h-3.5 text-purple-400" />
-            <span className="hidden sm:inline">Brand Kit</span>
-          </button>
-
-          {/* Ottimizza Tutto con Gemini 3.8 Flash */}
-          <button
-            type="button"
-            onClick={handleGeminiOptimizeAll}
-            disabled={isGeminiOptimizing}
-            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600/30 via-amber-500/20 to-purple-600/30 hover:from-purple-600/50 hover:to-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
-            title="Ottimizza intero carosello con Gemini 3.8 Flash"
-          >
-            <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isGeminiOptimizing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{isGeminiOptimizing ? 'Ottimizzazione...' : '⚡ Gemini 3.8'}</span>
-          </button>
-
-          {/* Scarica ZIP */}
-          <button
-            type="button"
-            onClick={() => handleExportZip(false)}
-            disabled={isExportingZip}
-            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-md transition cursor-pointer disabled:opacity-50"
+            title={slides.length === 0 ? 'Nessuna slide da esportare' : validationReport.blockedCount > 0 ? 'Esportazione bloccata: sono presenti errori critici' : 'Scarica pacchetto ZIP carosello'}
           >
             <Download className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{isExportingZip ? 'Esporto...' : 'Scarica ZIP'}</span>
           </button>
 
-          {/* Salva */}
+          {/* Salva Sempre Raggiungibile */}
           <button
             type="button"
             onClick={handleSaveAndClose}
-            className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border border-slate-700"
+            className="px-4 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border border-emerald-500/40 shadow-sm"
+            title="Salva e torna al contenuto"
           >
             <Save className="w-3.5 h-3.5 text-emerald-400" />
             <span>Salva</span>
@@ -616,8 +771,8 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
             
             {/* Header Miniature con + Nuova Slide e Rigenera */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 shrink-0">
-              <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
-                <span>Slide ({slides.length}/10)</span>
+              <span className="text-xs font-bold text-slate-200 font-mono">
+                {slides.length} / 10 slide
               </span>
 
               <div className="flex items-center gap-1">
@@ -639,49 +794,131 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
               </div>
             </div>
 
-            {/* Lista Verticale delle Slide */}
+            {/* LISTA VERTICALE DELLE SCHEDE SLIDE: TIPO, STATO E WARNING SEPARATI */}
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2 pr-1">
-              {slides.map((s, idx) => {
-                const isSelected = idx === safeIndex;
-                const wordCount = (s.headline + ' ' + (s.subheadline || '') + ' ' + s.bodyText).trim().split(/\s+/).filter(Boolean).length;
-                const hasOverflow = wordCount > 50;
+              {slides.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 text-xs">
+                  <span>Nessuna slide</span>
+                </div>
+              ) : (
+                slides.map((s, idx) => {
+                  const isSelected = idx === safeIndex;
+                  const sr = validationReport.slideReports[idx] || {
+                    status: 'ready',
+                    wordCount: 0,
+                    issues: [],
+                  };
+                  const isFirst = idx === 0;
+                  const isLast = idx === slides.length - 1;
 
-                return (
-                  <div
-                    key={s.id}
-                    onClick={() => setSelectedSlideIndex(idx)}
-                    className={`p-2 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                      isSelected
-                        ? 'bg-amber-500/15 border-amber-500/70 text-amber-200 shadow-md ring-1 ring-amber-500/30'
-                        : 'bg-slate-950/70 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="w-5 h-5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
-                        {String(idx + 1).padStart(2, '0')}
-                      </span>
-                      <span className="text-sm shrink-0">{TYPE_ICONS[s.type] || '📄'}</span>
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold truncate text-white">
-                          {s.headline || `Slide ${idx + 1}`}
-                        </p>
-                        <span className="text-[9px] text-slate-500 block truncate">
-                          {s.layout?.replace('_', ' ') || s.type}
+                  // Separazione semantica rigorosa:
+                  // PRONTA = esportabile
+                  // DA RIVEDERE = warning/miglioramenti consigliati
+                  // BLOCCATA = errore critico che impedisce l'export
+                  const isBlocked = sr.status === 'blocked';
+                  const isWarning = sr.status === 'warning';
+                  const isDraft = sr.status === 'draft';
+                  const isHookImprovable = sr.editorialStatus === 'hook_improvable';
+
+                  const statusBadgeStyle = isBlocked
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    : isWarning
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : isDraft
+                    ? 'bg-slate-800 text-slate-400 border-slate-700'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+
+                  const statusLabel = isBlocked
+                    ? 'BLOCCATA'
+                    : isWarning
+                    ? 'DA RIVEDERE'
+                    : isDraft
+                    ? 'BOZZA'
+                    : 'PRONTA';
+
+                  const typeLabel = isFirst
+                    ? 'Copertina'
+                    : isLast
+                    ? 'CTA Finale'
+                    : s.type === 'problem'
+                    ? 'Problema'
+                    : s.type === 'practical_guide'
+                    ? 'Guida Pratica'
+                    : s.type === 'principle'
+                    ? 'Principio'
+                    : s.type === 'recap'
+                    ? 'Recap'
+                    : s.type === 'proof_example'
+                    ? 'Esempio'
+                    : 'Slide';
+
+                  const mainWarning =
+                    sr.issues.find((i) => i.severity === 'critical') ||
+                    sr.issues.find((i) => i.severity === 'warning');
+
+                  return (
+                    <div
+                      key={s.id}
+                      onClick={() => setSelectedSlideIndex(idx)}
+                      className={`p-2.5 rounded-2xl border transition-all cursor-pointer space-y-1.5 relative ${
+                        isSelected
+                          ? 'bg-amber-500/15 border-amber-500/80 text-amber-200 shadow-lg ring-1 ring-amber-500/40'
+                          : isFirst
+                          ? 'bg-slate-950/90 border-amber-500/30 hover:border-amber-500/60'
+                          : isLast
+                          ? 'bg-slate-950/90 border-purple-500/30 hover:border-purple-500/60'
+                          : 'bg-slate-950/80 border-slate-800/90 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      }`}
+                    >
+                      {/* RIGA 1: NUMERO, TITOLO COMPLETO (SENZA TRONCAMENTI FORZATI) E TIPO */}
+                      <div className="flex items-start justify-between gap-1.5">
+                        <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                          <span className="w-5 h-5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">
+                            {String(idx + 1).padStart(2, '0')}
+                          </span>
+                          <p className="text-xs font-bold text-white leading-snug break-words line-clamp-2">
+                            {s.headline || `Slide ${idx + 1}`}
+                          </p>
+                        </div>
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 shrink-0 flex items-center gap-1">
+                          <span>{TYPE_ICONS[s.type] || '📄'}</span>
+                          <span>{typeLabel}</span>
                         </span>
                       </div>
-                    </div>
 
-                    {hasOverflow && (
-                      <span
-                        className="text-[9px] font-mono font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0"
-                        title="Testo denso per mobile (>50 parole)"
-                      >
-                        ⚠️ {wordCount}p
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+                      {/* RIGA 2: STATO SEPARATO, EVENTUALE HOOK MIGLIORABILE E PAROLE */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full border ${statusBadgeStyle}`}>
+                          {statusLabel}
+                        </span>
+
+                        {isHookImprovable && (
+                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            Hook migliorabile
+                          </span>
+                        )}
+
+                        <span className="text-[9px] font-mono text-slate-500 ml-auto">
+                          {sr.wordCount} parole
+                        </span>
+                      </div>
+
+                      {/* RIGA 3: WARNING SEPARATO E VISIBILE (SE PRESENTE) */}
+                      {mainWarning && (
+                        <div
+                          className={`text-[10px] px-2 py-1 rounded-lg border leading-tight ${
+                            mainWarning.severity === 'critical'
+                              ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                              : 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+                          }`}
+                        >
+                          <span className="line-clamp-2">⚠️ {mainWarning.title}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
 
             <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-500 text-center font-mono">
@@ -692,7 +929,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
 
         {/* ─── COLONNA 2 (CENTRO): EDITOR SINGOLA SLIDE ─── */}
         <div className={`${
-          isFocusMode ? 'lg:col-span-6 xl:col-span-6' : 'lg:col-span-5 xl:col-span-5'
+          isFocusMode ? 'lg:col-span-6 xl:col-span-5' : 'lg:col-span-5 xl:col-span-5'
         } flex flex-col h-full min-h-0 overflow-y-auto custom-scrollbar pr-1 ${
           mobileTab === 'preview' ? 'hidden xl:flex' : 'flex'
         }`}>
@@ -703,6 +940,9 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
               totalSlides={slides.length}
               isSelected={true}
               autoFocusTitle={true}
+              targetField={initialTargetField}
+              allSlides={slides}
+              captionText={carousel.caption_export}
               onSelect={() => {}}
               onChange={handleUpdateSlide}
               onMoveUp={() => handleMoveSlide(safeIndex, 'up')}
@@ -714,25 +954,63 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
               onTriggerAIOperation={handleTriggerAIOperation}
               onNavigatePrev={() => setSelectedSlideIndex((prev) => Math.max(0, prev - 1))}
               onNavigateNext={() => setSelectedSlideIndex((prev) => Math.min(slides.length - 1, prev + 1))}
+              onMoveToEnd={() => handleMoveSlideToEnd(safeIndex)}
+              isAdvancedOpen={isAdvancedOpen}
+              onToggleAdvanced={() => setIsAdvancedOpen((prev) => !prev)}
               isOptimizingWithGemini={isGeminiOptimizing}
+              contentTitle={content.title}
             />
           ) : (
-            <div className="p-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">
-              Nessuna slide selezionata.
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center border border-dashed border-slate-800 rounded-3xl bg-slate-900/30">
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-300 text-2xl mb-4">
+                📱
+              </div>
+              <h3 className="text-base font-bold text-white mb-1">Nuovo Carosello</h3>
+              <p className="text-xs text-slate-400 mb-2">Nessuna slide ancora creata.</p>
+              <p className="text-[11px] font-mono text-slate-500 mb-6">Instagram 1080x1350 · 4:5</p>
+
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleRegenerateAll}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-950/40 transition cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-purple-200" />
+                  <span>Genera struttura con AI</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstSlide = createEmptyCoverSlide(content.title || '');
+                    const updated = {
+                      ...carousel,
+                      slides: [firstSlide],
+                    };
+                    setCarousel(updated);
+                    triggerDebouncedAutosave(updated);
+                    setSelectedSlideIndex(0);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center gap-2 transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 text-amber-400" />
+                  <span>Inizia da zero</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
 
-        {/* ─── COLONNA 3 (DESTRA): ANTEPRIMA LIVE 1080x1350 ─── */}
+        {/* ─── COLONNA 3 (DESTRA): ANTEPRIMA LIVE 1080x1350 CON PRIMA/DOPO ─── */}
         <div className={`${
-          isFocusMode ? 'lg:col-span-6 xl:col-span-6' : 'lg:col-span-5 xl:col-span-5'
+          isFocusMode ? 'lg:col-span-6 xl:col-span-7' : 'lg:col-span-5 xl:col-span-5'
         } flex flex-col h-full min-h-0 bg-slate-900/40 border border-slate-800 rounded-3xl p-4 overflow-y-auto custom-scrollbar items-center justify-between ${
           mobileTab === 'editor' ? 'hidden xl:flex' : 'flex'
         }`}>
           
-          {/* Anteprima Canvas 4:5 con Zoom e Mockup IG */}
-          <div className="w-full flex flex-col items-center">
-            {activeSlide && (
+          {/* Anteprima Canvas 4:5 con Zoom, Mockup IG e Confronto Prima/Dopo */}
+          <div className="w-full flex-1 flex flex-col items-center justify-center">
+            {activeSlide ? (
               <CarouselCanvasPreview
                 slide={activeSlide}
                 settings={carousel.settings}
@@ -740,36 +1018,52 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                 currentIndex={safeIndex}
                 onSelectSlide={setSelectedSlideIndex}
                 fullCarousel={carousel}
+                previousSlide={activePreviousSlide}
                 isFocusMode={isFocusMode}
                 onToggleFocusMode={() => setIsFocusMode((prev) => !prev)}
+                onUpdateSlide={handleUpdateSlide}
+                onToggleSlideCounter={handleToggleSlideCounter}
               />
+            ) : (
+              <div className="w-48 h-60 rounded-2xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center p-4 text-center">
+                <span className="text-2xl mb-2">🖼️</span>
+                <span className="text-xs font-mono text-slate-400">Anteprima 4:5</span>
+                <span className="text-[10px] text-slate-600 mt-1">Nessuna slide da visualizzare</span>
+              </div>
             )}
           </div>
 
           {/* Pulsanti Rapidi in Fondo all'Anteprima */}
           <div className="w-full pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <button
-              type="button"
-              onClick={() => setIsQualityModalOpen(true)}
-              className="flex items-center gap-1.5 text-xs text-amber-300 font-mono font-bold bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/30 hover:bg-amber-500/20 transition cursor-pointer"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Checklist Qualità: {qualityAudit.score}/100</span>
-            </button>
+            {slides.length > 0 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsQualityModalOpen(true)}
+                  className="flex items-center gap-1.5 text-xs text-amber-300 font-mono font-bold bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/30 hover:bg-amber-500/20 transition cursor-pointer"
+                  title={validationReport.qualityReason}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Qualità: {validationReport.score}/100 · {validationReport.warningCount} warning · {validationReport.blockedCount} blocchi</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => exportCarouselAsPdfPreview(carousel)}
-              className="text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Anteprima PDF</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => exportCarouselAsPdfPreview(carousel)}
+                  className="text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Anteprima PDF</span>
+                </button>
+              </>
+            ) : (
+              <span className="text-slate-600 text-[11px] font-mono mx-auto">Nessuna slide presente</span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ─── 3. MODALI INTEGRATE (DIFF AI, CHECKLIST QUALITÀ, BRAND KIT, OVERFLOW CONFIRM) ─── */}
+      {/* ─── 3. MODALI INTEGRATE (DIFF AI, CHECKLIST QUALITÀ, BRAND KIT, PROTEZIONE EXPORT) ─── */}
 
       {/* MODALE CONFRONTO DIFF AI GEMINI 3.8 FLASH */}
       {aiDiffState.isOpen && aiDiffState.originalSlide && aiDiffState.proposedSlide && (
@@ -796,43 +1090,18 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
         />
       )}
 
-      {/* DIALOG CONFERMA EXPORT CRITICO (NON BLOCCANTE) */}
-      {overflowConfirmDialog.isOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
-          onClick={() => setOverflowConfirmDialog({ isOpen: false, message: '', onConfirm: () => {} })}
-        >
-          <div
-            className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-5 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-2.5 text-amber-400">
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h3 className="text-sm font-bold text-white">Avviso Esportazione ZIP</h3>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              {overflowConfirmDialog.message}
-            </p>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setOverflowConfirmDialog({ isOpen: false, message: '', onConfirm: () => {} })}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
-              >
-                Correggi Prima
-              </button>
-              <button
-                type="button"
-                onClick={overflowConfirmDialog.onConfirm}
-                className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition cursor-pointer shadow-md"
-              >
-                Esporta Comunque
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* MODALE PROTEZIONE ED ESPORTAZIONE ZIP */}
+      {isExportProtectionModalOpen && (
+        <CarouselExportProtectionModal
+          isOpen={isExportProtectionModalOpen}
+          onClose={() => setIsExportProtectionModalOpen(false)}
+          report={validationReport}
+          slides={slides}
+          onGoToSlide={(idx) => setSelectedSlideIndex(idx)}
+          onConfirmExport={handleExecuteExportZip}
+          isExporting={isExportingZip}
+          exportProgress={exportProgress}
+        />
       )}
 
       {/* MODALE BRAND KIT */}
@@ -847,6 +1116,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
               settings: {
                 ...carousel.settings,
                 brandKit: updatedKit,
+                showSlideCounter: updatedKit.showSlideCounter !== undefined ? updatedKit.showSlideCounter : carousel.settings.showSlideCounter,
                 authorHandle: updatedKit.authorHandle,
                 brandWatermark: updatedKit.brandName,
                 accentColor: updatedKit.accentColor,

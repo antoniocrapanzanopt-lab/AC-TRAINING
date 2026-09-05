@@ -80,6 +80,13 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [loading, setLoading] = useState(false);
 
   const loadExercises = useCallback(async () => {
+    // Se l'utente è un atleta, usa direttamente la tassonomia di sistema senza interrogare il DB (0ms overhead)
+    if (user?.role === 'athlete') {
+      setExercises(DEFAULT_EXERCISES_DATABASE.map(d => normalizeExercise(d)));
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -112,7 +119,7 @@ export const ExercisesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     loadExercises();

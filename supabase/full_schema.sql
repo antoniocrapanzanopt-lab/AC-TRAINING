@@ -2031,6 +2031,8 @@ CREATE TABLE IF NOT EXISTS public.instagram_contents (
     published_at TIMESTAMPTZ,
     internal_notes TEXT,
     carousel_data JSONB DEFAULT NULL,
+    cover_data JSONB DEFAULT NULL,
+    story_data JSONB DEFAULT NULL,
     performance_metrics JSONB DEFAULT '{"views": 0, "likes": 0, "saves": 0, "shares": 0, "leads": 0}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -2098,5 +2100,29 @@ DO $$ BEGIN
         USING (coach_id = auth.uid()) WITH CHECK (coach_id = auth.uid());
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+-- ====================================================================
+-- Garanzia colonne grafiche JSONB su tabelle pre-esistenti
+-- ====================================================================
+ALTER TABLE public.instagram_contents ADD COLUMN IF NOT EXISTS carousel_data JSONB DEFAULT NULL;
+ALTER TABLE public.instagram_contents ADD COLUMN IF NOT EXISTS cover_data JSONB DEFAULT NULL;
+ALTER TABLE public.instagram_contents ADD COLUMN IF NOT EXISTS story_data JSONB DEFAULT NULL;
+
+COMMENT ON COLUMN public.instagram_contents.carousel_data IS 'Struttura completa delle slide e impostazioni del carosello Instagram 4:5';
+COMMENT ON COLUMN public.instagram_contents.cover_data IS 'Struttura e impostazioni grafiche della copertina Reel 9:16 o Post 4:5';
+COMMENT ON COLUMN public.instagram_contents.story_data IS 'Sequenza e impostazioni grafiche delle stories Instagram 9:16';
+
+-- ====================================================================
+-- Indici di performance per query dashboard atleta e calcolo aderenza
+-- ====================================================================
+CREATE INDEX IF NOT EXISTS idx_athletes_email_lower ON public.athletes(LOWER(TRIM(email)));
+CREATE INDEX IF NOT EXISTS idx_athletes_auth_user_id ON public.athletes(auth_user_id);
+CREATE INDEX IF NOT EXISTS idx_workout_sessions_athlete_start ON public.workout_sessions(athlete_id, start_time DESC);
+CREATE INDEX IF NOT EXISTS idx_workout_sessions_athlete_end ON public.workout_sessions(athlete_id, end_time DESC);
+CREATE INDEX IF NOT EXISTS idx_exercise_logs_session_id ON public.exercise_logs(session_id);
+CREATE INDEX IF NOT EXISTS idx_assigned_workouts_athlete_active ON public.athlete_assigned_workouts(athlete_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_assigned_workouts_workout_id ON public.athlete_assigned_workouts(workout_id);
+CREATE INDEX IF NOT EXISTS idx_workout_exercises_workout_id ON public.workout_exercises(workout_id);
+
 -- Notifica ricaricamento dello schema REST
 NOTIFY pgrst, 'reload schema';
+

@@ -280,7 +280,7 @@ export async function fetchAthleteAdherenceData(athleteId: string, forceRefresh 
         supabase
           .from('workout_sessions')
           .select('id, athlete_id, status, skip_reason, start_time, rpe, notes')
-          .or(`athlete_id.eq.${athleteId}`)
+          .eq('athlete_id', athleteId)
           .gte('start_time', dateLimit),
         supabase
           .from('athlete_assigned_workouts')

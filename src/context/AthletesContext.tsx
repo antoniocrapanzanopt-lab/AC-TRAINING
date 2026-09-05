@@ -137,6 +137,24 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     setIsLoading(true);
     
+    // Se l'utente è un atleta, scarica SOLO il suo record specifico (0 note o timeline globali non necessarie)
+    if (user.role === 'athlete') {
+      const athleteIdentifier = user.athleteId || user.id;
+      const { data: myAthleteData } = await supabase
+        .from('athletes')
+        .select('*')
+        .or(`id.eq.${athleteIdentifier},auth_user_id.eq.${user.id}`)
+        .limit(1);
+
+      if (myAthleteData && myAthleteData.length > 0) {
+        setAthletes(myAthleteData.map(mapAthleteFromDB));
+      }
+      setNotes({});
+      setTimeline({});
+      setIsLoading(false);
+      return;
+    }
+
     const [athRes, notesRes, timeRes] = await Promise.all([
       supabase.from('athletes').select('*').order('created_at', { ascending: false }),
       supabase.from('athlete_notes').select('*').order('created_at', { ascending: false }),

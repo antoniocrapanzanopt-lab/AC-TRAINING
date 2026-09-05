@@ -16,6 +16,7 @@ export const DEFAULT_BRAND_KIT: BrandKit = {
   logoPosition: 'top_left',
   watermarkText: '• AC COACHING •',
   imageStyle: 'dark_gradient',
+  showSlideCounter: true,
 };
 
 /**
