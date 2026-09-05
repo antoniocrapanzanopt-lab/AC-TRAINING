@@ -118,10 +118,10 @@ export const drawTitleLine = (
   } = options;
 
   const lineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
-  const baseline = ctx.textBaseline || 'top';
   ctx.font = `${isBold ? '900' : '500'} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
   ctx.fillStyle = color;
   ctx.textAlign = align;
+  ctx.textBaseline = 'top';
 
   const paragraphs = clean.split('\n');
   let currentY = startY;
@@ -146,12 +146,7 @@ export const drawTitleLine = (
         } else if (align === 'right') {
           lineX = startX - textW;
         }
-        let underlineY = currentY + Math.round(fontSize * 0.95);
-        if (baseline === 'middle') {
-          underlineY = currentY + Math.round(fontSize * 0.55);
-        } else if (baseline === 'alphabetic' || baseline === 'bottom') {
-          underlineY = currentY + 4;
-        }
+        const underlineY = currentY + Math.round(fontSize * 1.04);
         ctx.fillRect(lineX, underlineY, textW, Math.max(3, Math.round(fontSize * 0.08)));
       }
 
@@ -189,7 +184,6 @@ export const drawRichTextLines = (
   } = options;
 
   const lineStep = options.lineStep || Math.round(fontSize * 1.36);
-  const baseline = ctx.textBaseline || 'top';
   let currentY = startY;
 
   // Split per paragrafi (rispetta gli "a capo" dell'utente)
@@ -206,6 +200,7 @@ export const drawRichTextLines = (
     ctx.font = `${weight} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
     ctx.fillStyle = color;
     ctx.textAlign = align;
+    ctx.textBaseline = 'top';
 
     const lines = wrapText(ctx, para, maxWidth);
 
@@ -222,12 +217,7 @@ export const drawRichTextLines = (
           lineX = startX - textW;
         }
         const thickness = Math.max(2, Math.round(fontSize * 0.08));
-        let underlineY = currentY + Math.round(fontSize * 0.95);
-        if (baseline === 'middle') {
-          underlineY = currentY + Math.round(fontSize * 0.55);
-        } else if (baseline === 'alphabetic' || baseline === 'bottom') {
-          underlineY = currentY + 4;
-        }
+        const underlineY = currentY + Math.round(fontSize * 1.04);
         ctx.fillRect(lineX, underlineY, textW, thickness);
       }
 
@@ -567,99 +557,142 @@ export const renderSlideToCanvas = async (
   const topSafeY = 85;
   const bottomSafeY = CANVAS_HEIGHT - 85;
 
-  // ─── 4. LOGO CARICATO IN ALTO (SE PRESENTE) ───
+  // ─── 4. LOGO CARICATO IN ALTO O IN BASSO (SE PRESENTE) ───
+  const hasTopLeftLogo = Boolean(brandKit.logoUrl && brandKit.logoPosition === 'top_left');
+  const hasTopRightLogo = Boolean(brandKit.logoUrl && brandKit.logoPosition === 'top_right');
+  const logoSize = 44;
+
   if (brandKit.logoUrl && brandKit.logoPosition !== 'none' && layout !== 'product_breakdown') {
     try {
       const logoImg = await loadImage(brandKit.logoUrl);
-      const logoSize = 44;
+      ctx.save();
       if (brandKit.logoPosition === 'top_left') {
+        // Taglio arrotondato elegante (r=10)
+        ctx.beginPath();
+        drawRoundedRect(ctx, marginX, topSafeY - 4, logoSize, logoSize, 10);
+        ctx.clip();
         ctx.drawImage(logoImg, marginX, topSafeY - 4, logoSize, logoSize);
       } else if (brandKit.logoPosition === 'top_right') {
+        ctx.beginPath();
+        drawRoundedRect(ctx, CANVAS_WIDTH - marginX - logoSize, topSafeY - 4, logoSize, logoSize, 10);
+        ctx.clip();
         ctx.drawImage(logoImg, CANVAS_WIDTH - marginX - logoSize, topSafeY - 4, logoSize, logoSize);
       } else if (brandKit.logoPosition === 'bottom_left') {
+        ctx.beginPath();
+        drawRoundedRect(ctx, marginX, bottomSafeY - 8, logoSize, logoSize, 8);
+        ctx.clip();
         ctx.drawImage(logoImg, marginX, bottomSafeY - 8, logoSize, logoSize);
       }
+      ctx.restore();
     } catch {}
   }
 
   // ─── 5. TOP BAR: CATEGORY TAG / PILLOLA TAKEAWAY & CONTATORE SLIDE ───
-  const hasTopLeftLogo = Boolean(brandKit.logoUrl && brandKit.logoPosition === 'top_left');
   const rawCategoryTag = slide.categoryTag;
   const isTecnicaBiomeccanica = Boolean(rawCategoryTag && /tecnica\s*&\s*biomeccanica/i.test(rawCategoryTag));
   const categoryTagText = !isTecnicaBiomeccanica && rawCategoryTag ? rawCategoryTag : null;
   const isStepTag = Boolean(slide.takeawayTag && /^step\s*\d+/i.test(slide.takeawayTag.trim()));
 
-  // Se c'è già il logo in alto a sinistra, lasciamo SOLO il logo senza scritte o pillole STEP
-  if (!hasTopLeftLogo && layout !== 'product_breakdown') {
-    if (categoryTagText) {
-      ctx.font = `bold 20px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(categoryTagText, marginX, topSafeY + 16);
-    } else if (slide.takeawayTag && !isStepTag && !/tecnica\s*&\s*biomeccanica/i.test(slide.takeawayTag)) {
-      // Pillola Tag esplicita personalizzata solo se non è STEP X
-      const tagText = slide.takeawayTag;
-      ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
-      const tagMetrics = ctx.measureText(tagText);
-      const tagPadX = 18;
-      const tagWidth = tagMetrics.width + tagPadX * 2;
-      const tagHeight = 38;
-      const tagStartX = marginX;
+  if (layout !== 'product_breakdown') {
+    if (hasTopLeftLogo) {
+      // Se c'è il logo in alto a sinistra, affianchiamo la pillola del Brand o della Categoria
+      const brandBadgeText = categoryTagText || (slide.takeawayTag && !isStepTag ? slide.takeawayTag : null) || brandKit.brandName;
+      if (brandBadgeText) {
+        ctx.save();
+        const bPadX = 14;
+        const bHeight = 34;
+        const bStartX = marginX + logoSize + 12;
+        const bStartY = topSafeY + (logoSize - bHeight) / 2 - 4;
+        ctx.font = `bold 18px ${bodyFont}, system-ui, sans-serif`;
+        const bWidth = ctx.measureText(brandBadgeText).width + bPadX * 2;
 
-      ctx.fillStyle = `${accentColor}1F`;
-      drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
-      ctx.fill();
-      ctx.strokeStyle = `${accentColor}55`;
-      ctx.lineWidth = 1.5;
-      drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
-      ctx.stroke();
+        ctx.fillStyle = `${accentColor}1A`;
+        drawRoundedRect(ctx, bStartX, bStartY, bWidth, bHeight, 9);
+        ctx.fill();
 
-      ctx.fillStyle = accentColor;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(tagText, tagStartX + tagPadX, topSafeY + tagHeight / 2);
-    } else if (isFirstSlide && (brandKit.brandName || 'GUIDA PRATICA')) {
-      const tagText = brandKit.brandName || 'GUIDA PRATICA';
-      ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
-      const tagMetrics = ctx.measureText(tagText);
-      const tagPadX = 18;
-      const tagWidth = tagMetrics.width + tagPadX * 2;
-      const tagHeight = 38;
-      const tagStartX = marginX;
+        ctx.strokeStyle = `${accentColor}4D`;
+        ctx.lineWidth = 1.2;
+        drawRoundedRect(ctx, bStartX, bStartY, bWidth, bHeight, 9);
+        ctx.stroke();
 
-      ctx.fillStyle = `${accentColor}1F`;
-      drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
-      ctx.fill();
-      ctx.strokeStyle = `${accentColor}55`;
-      ctx.lineWidth = 1.5;
-      drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
-      ctx.stroke();
+        ctx.fillStyle = accentColor;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(brandBadgeText, bStartX + bPadX, bStartY + bHeight / 2);
+        ctx.restore();
+      }
+    } else {
+      if (categoryTagText) {
+        ctx.font = `bold 20px ${bodyFont}, system-ui, sans-serif`;
+        ctx.fillStyle = accentColor;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(categoryTagText, marginX, topSafeY + 16);
+      } else if (slide.takeawayTag && !isStepTag && !/tecnica\s*&\s*biomeccanica/i.test(slide.takeawayTag)) {
+        // Pillola Tag esplicita personalizzata solo se non è STEP X
+        const tagText = slide.takeawayTag;
+        ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
+        const tagMetrics = ctx.measureText(tagText);
+        const tagPadX = 18;
+        const tagWidth = tagMetrics.width + tagPadX * 2;
+        const tagHeight = 38;
+        const tagStartX = marginX;
 
-      ctx.fillStyle = accentColor;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(tagText, tagStartX + tagPadX, topSafeY + tagHeight / 2);
+        ctx.fillStyle = `${accentColor}1F`;
+        drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
+        ctx.fill();
+        ctx.strokeStyle = `${accentColor}55`;
+        ctx.lineWidth = 1.5;
+        drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
+        ctx.stroke();
+
+        ctx.fillStyle = accentColor;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tagText, tagStartX + tagPadX, topSafeY + tagHeight / 2);
+      } else if (isFirstSlide && (brandKit.brandName || 'GUIDA PRATICA')) {
+        const tagText = brandKit.brandName || 'GUIDA PRATICA';
+        ctx.font = `bold 22px ${bodyFont}, system-ui, sans-serif`;
+        const tagMetrics = ctx.measureText(tagText);
+        const tagPadX = 18;
+        const tagWidth = tagMetrics.width + tagPadX * 2;
+        const tagHeight = 38;
+        const tagStartX = marginX;
+
+        ctx.fillStyle = `${accentColor}1F`;
+        drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
+        ctx.fill();
+        ctx.strokeStyle = `${accentColor}55`;
+        ctx.lineWidth = 1.5;
+        drawRoundedRect(ctx, tagStartX, topSafeY, tagWidth, tagHeight, 10);
+        ctx.stroke();
+
+        ctx.fillStyle = accentColor;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tagText, tagStartX + tagPadX, topSafeY + tagHeight / 2);
+      }
     }
   }
 
   // Contatore slide in alto a destra (con linea o frazione stile 2/8)
   const isSlideCounterVisible = settings.showSlideCounter !== false && slide.showSlideNumber !== false;
   if (isSlideCounterVisible) {
+    const counterEndX = hasTopRightLogo ? CANVAS_WIDTH - marginX - logoSize - 16 : CANVAS_WIDTH - marginX;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     if (templateId === 'bold_impact' || templateId === 'hypertrophy_science') {
       ctx.font = `bold 24px ${bodyFont}, monospace`;
       ctx.fillStyle = primaryTextColor;
-      ctx.fillText(`${slide.order}/${totalSlides}`, CANVAS_WIDTH - marginX, topSafeY + 12);
+      ctx.fillText(`${slide.order}/${totalSlides}`, counterEndX, topSafeY + 12);
       ctx.strokeStyle = accentColor;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(CANVAS_WIDTH - marginX - 50, topSafeY + 28);
-      ctx.lineTo(CANVAS_WIDTH - marginX, topSafeY + 28);
+      ctx.moveTo(counterEndX - 50, topSafeY + 28);
+      ctx.lineTo(counterEndX, topSafeY + 28);
       ctx.stroke();
     } else {
       const counterText = `${String(slide.order).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`;
       ctx.font = `bold 22px ${bodyFont}, monospace`;
       ctx.fillStyle = secondaryTextColor;
-      ctx.fillText(counterText, CANVAS_WIDTH - marginX, topSafeY + 18);
+      ctx.fillText(counterText, counterEndX, topSafeY + 18);
     }
     ctx.textAlign = 'left';
   }
@@ -667,7 +700,13 @@ export const renderSlideToCanvas = async (
   // ─── 6. CONTENUTO SLIDE IN BASE AL LAYOUT SELEZIONATO ───
   const titleOffsetY = slide.titleOffsetY || 0;
   const contentOffsetY = slide.contentOffsetY || 0;
-  let startY = (layout === 'photo_dominant' ? CANVAS_HEIGHT * 0.44 : topSafeY + 70) + titleOffsetY;
+  const hasTopHeader = hasTopLeftLogo || Boolean(categoryTagText) || Boolean(slide.takeawayTag) || (isFirstSlide && Boolean(brandKit.brandName));
+  const baseHeaderOffset = hasTopHeader ? 95 : 65;
+  const minTitleStartY = hasTopLeftLogo ? topSafeY + logoSize + 25 : topSafeY + 45;
+  let startY = Math.max(
+    minTitleStartY,
+    (layout === 'photo_dominant' ? CANVAS_HEIGHT * 0.44 : topSafeY + baseHeaderOffset) + titleOffsetY
+  );
 
   // ─── LAYOUT 1: CONNECTED ICON LIST (STILE SCREENSHOT 2: NODI CONNESSI & PAROLE CHIAVE) ───
   if (layout === 'connected_icon_list') {
