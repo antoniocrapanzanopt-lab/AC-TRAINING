@@ -19,6 +19,7 @@ import {
   ReadyCTAPlan,
 } from '../../../services/geminiCarouselOptimizer';
 import { validateSlideQuality } from '../../../services/carouselQualityService';
+import { sanitizeCarouselText } from '../../../services/carouselCanvasRenderer';
 import {
   ChevronLeft,
   ChevronRight,
@@ -96,6 +97,220 @@ const SLIDE_LAYOUTS: { value: SlideLayoutId; label: string; icon: string }[] = [
   { value: 'final_cta', label: 'Box CTA Finale', icon: '🚀' },
 ];
 
+const DEFAULT_TEXT_COLOR_SWATCHES = [
+  { label: 'Bianco Puro', value: '#FFFFFF', bg: '#FFFFFF' },
+  { label: 'Giallo Oro', value: '#F5C518', bg: '#F5C518' },
+  { label: 'Ambra', value: '#F59E0B', bg: '#F59E0B' },
+  { label: 'Cyan', value: '#38BDF8', bg: '#38BDF8' },
+  { label: 'Smeraldo', value: '#10B981', bg: '#10B981' },
+  { label: 'Rosa / Rosso', value: '#F43F5E', bg: '#F43F5E' },
+  { label: 'Slate Chiaro', value: '#CBD5E1', bg: '#CBD5E1' },
+];
+
+const TITLE_FONT_OPTIONS: { label: string; value: TitleFontFamily }[] = [
+  { label: 'Inter', value: 'Inter' },
+  { label: 'Outfit', value: 'Outfit' },
+  { label: 'Montserrat', value: 'Montserrat' },
+  { label: 'Bebas Neue', value: 'Bebas Neue' },
+];
+
+const SUBTITLE_FONT_OPTIONS: { label: string; value: SubtitleFontFamily }[] = [
+  { label: 'Outfit', value: 'Outfit' },
+  { label: 'Montserrat', value: 'Montserrat' },
+  { label: 'Bebas Neue', value: 'Bebas Neue' },
+  { label: 'Inter', value: 'Inter' },
+  { label: 'Roboto', value: 'Roboto' },
+];
+
+const BODY_FONT_OPTIONS: { label: string; value: BodyFontFamily }[] = [
+  { label: 'Inter', value: 'Inter' },
+  { label: 'Roboto', value: 'Roboto' },
+  { label: 'Montserrat', value: 'Montserrat' },
+  { label: 'Outfit', value: 'Outfit' },
+];
+
+interface TextCustomizerBarProps {
+  fontFamily: string;
+  onFontChange: (font: string) => void;
+  fontOptions: { label: string; value: string }[];
+  fontSizePx: number;
+  onFontSizeChange: (px: number) => void;
+  quickPxOptions: number[];
+  isBold: boolean;
+  onToggleBold: () => void;
+  isUnderline: boolean;
+  onToggleUnderline: () => void;
+  currentColor?: string;
+  defaultColor: string;
+  onColorChange: (color?: string) => void;
+  colorSwatches?: { label: string; value: string; bg: string }[];
+  accentTheme?: 'amber' | 'purple' | 'cyan';
+  labelFont?: string;
+}
+
+const TextCustomizerBar: React.FC<TextCustomizerBarProps> = ({
+  fontFamily,
+  onFontChange,
+  fontOptions,
+  fontSizePx,
+  onFontSizeChange,
+  quickPxOptions,
+  isBold,
+  onToggleBold,
+  isUnderline,
+  onToggleUnderline,
+  currentColor,
+  defaultColor,
+  onColorChange,
+  colorSwatches = DEFAULT_TEXT_COLOR_SWATCHES,
+  accentTheme = 'amber',
+  labelFont = 'Font',
+}) => {
+  const activeColor = currentColor || defaultColor;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-1.5 p-1.5 bg-slate-950/80 rounded-xl border border-slate-800/80 shadow-sm">
+      {/* Sinistra: Selezione Font e Dimensioni px */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {/* Selettore Font */}
+        <select
+          value={fontFamily}
+          onChange={(e) => onFontChange(e.target.value)}
+          className="bg-slate-900 border border-slate-700/80 rounded-lg px-2 py-1 text-[11px] font-bold text-amber-200/90 focus:outline-none focus:border-amber-500 cursor-pointer"
+          title={labelFont}
+        >
+          {fontOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Input px */}
+        <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700/80 font-mono">
+          <input
+            type="number"
+            min="12"
+            max="80"
+            value={fontSizePx}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!isNaN(val)) {
+                onFontSizeChange(Math.max(12, Math.min(80, val)));
+              }
+            }}
+            className="w-8 bg-transparent text-center text-[11px] font-bold text-white focus:outline-none"
+            title="Dimensione esatta in pixel"
+          />
+          <span className="text-[10px] text-slate-400">px</span>
+        </div>
+
+        {/* Chip rapidi px */}
+        <div className="flex items-center gap-0.5">
+          {quickPxOptions.map((px) => {
+            const isChipActive = fontSizePx === px;
+            return (
+              <button
+                key={px}
+                type="button"
+                onClick={() => onFontSizeChange(px)}
+                className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition cursor-pointer border ${
+                  isChipActive
+                    ? accentTheme === 'purple'
+                      ? 'bg-purple-500/25 text-purple-300 border-purple-500/60 font-bold'
+                      : 'bg-amber-500/20 text-amber-300 border-amber-500/60 font-bold'
+                    : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border-slate-800'
+                }`}
+                title={`Imposta a ${px}px`}
+              >
+                {px}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Destra: Grassetto (B), Sottolineato (U), Palette Colori & Custom Picker */}
+      <div className="flex items-center gap-1 flex-wrap">
+        {/* B (Grassetto) */}
+        <button
+          type="button"
+          onClick={onToggleBold}
+          className={`px-2 py-1 rounded-lg text-xs font-black transition cursor-pointer border flex items-center justify-center ${
+            isBold
+              ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+              : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
+          }`}
+          title="Grassetto (B)"
+        >
+          <Bold className="w-3 h-3" />
+        </button>
+
+        {/* U (Sottolineato) */}
+        <button
+          type="button"
+          onClick={onToggleUnderline}
+          className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer border flex items-center justify-center ${
+            isUnderline
+              ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+              : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
+          }`}
+          title="Sottolineato (U)"
+        >
+          <Underline className="w-3 h-3" />
+        </button>
+
+        {/* Palette Colori */}
+        <div className="flex items-center gap-1 pl-1 border-l border-slate-800">
+          {colorSwatches.map((col) => {
+            const isCurrent = activeColor.toUpperCase() === col.value.toUpperCase();
+            return (
+              <button
+                key={col.value}
+                type="button"
+                onClick={() => onColorChange(col.value)}
+                className={`w-4 h-4 rounded-full transition cursor-pointer border ${
+                  isCurrent
+                    ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-950 scale-110 border-white'
+                    : 'border-slate-700 hover:scale-110 opacity-85 hover:opacity-100'
+                }`}
+                style={{ backgroundColor: col.bg }}
+                title={`Colore ${col.label} (${col.value})`}
+              />
+            );
+          })}
+
+          {/* Selettore colore HTML nativo */}
+          <label
+            className="relative w-5 h-5 rounded-md bg-slate-900 border border-slate-700 flex items-center justify-center cursor-pointer hover:border-amber-500 overflow-hidden"
+            title="Colore personalizzato"
+          >
+            <Palette className="w-3 h-3 text-slate-300" />
+            <input
+              type="color"
+              value={activeColor}
+              onChange={(e) => onColorChange(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+            />
+          </label>
+
+          {/* Reset Colore */}
+          {currentColor && (
+            <button
+              type="button"
+              onClick={() => onColorChange(undefined)}
+              className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+              title="Ripristina colore predefinito"
+            >
+              <RotateCcw className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = ({
   slide,
   index,
@@ -127,35 +342,28 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const aiMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const handleFormatTextSelection = (
-    textareaRef: React.RefObject<HTMLTextAreaElement | null>,
-    currentText: string,
-    openTag: string,
-    closeTag: string,
-    onTextChange: (newText: string) => void,
-    onFallbackToggle?: () => void
-  ) => {
-    const el = textareaRef.current;
-    if (!el) {
-      onFallbackToggle?.();
-      return;
+  // Auto-riparazione: sanitizza testi da eventuali tag residui (<color:...>, </color>, <u>, </u>, **)
+  useEffect(() => {
+    const cleanHeadline = sanitizeCarouselText(slide.headline);
+    const cleanHl = sanitizeCarouselText(slide.headlineHighlight);
+    const cleanSub = sanitizeCarouselText(slide.subheadline);
+    const cleanBody = sanitizeCarouselText(slide.bodyText);
+
+    if (
+      cleanHeadline !== slide.headline ||
+      (slide.headlineHighlight && cleanHl !== slide.headlineHighlight) ||
+      (slide.subheadline && cleanSub !== slide.subheadline) ||
+      cleanBody !== slide.bodyText
+    ) {
+      onChange({
+        ...slide,
+        headline: cleanHeadline,
+        headlineHighlight: slide.headlineHighlight ? cleanHl : undefined,
+        subheadline: slide.subheadline ? cleanSub : undefined,
+        bodyText: cleanBody,
+      });
     }
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    if (start === undefined || end === undefined || start === end) {
-      onFallbackToggle?.();
-      return;
-    }
-    const selected = currentText.substring(start, end);
-    const before = currentText.substring(0, start);
-    const after = currentText.substring(end);
-    const updated = `${before}${openTag}${selected}${closeTag}${after}`;
-    onTextChange(updated);
-    setTimeout(() => {
-      el.focus();
-      el.setSelectionRange(start + openTag.length, end + openTag.length);
-    }, 10);
-  };
+  }, [slide.id]);
 
   // Modalità Semplice di default con stato in-memory
   const [internalStyleExpanded, setInternalStyleExpanded] = useState<boolean>(false);
@@ -938,29 +1146,91 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
         {/* TITOLO A 2 TONI (BIANCO + ACCENTO) CON INVIO PER A CAPO */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-300">Titolo Slide (Riga 1 - Bianco) *</label>
+            <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <span>Titolo Slide (Riga 1 - Bianco) *</span>
+              {slide.titleColor && (
+                <span
+                  className="w-2.5 h-2.5 rounded-full border border-slate-700 shadow"
+                  style={{ backgroundColor: slide.titleColor }}
+                  title={`Colore attivo: ${slide.titleColor}`}
+                />
+              )}
+            </label>
             <span className="text-[10px] text-amber-400/80 font-mono">↵ Premi Invio per andare a capo</span>
           </div>
+
+          <TextCustomizerBar
+            fontFamily={slide.titleFont || 'Inter'}
+            onFontChange={(font) => onChange({ ...slide, titleFont: font as TitleFontFamily })}
+            fontOptions={TITLE_FONT_OPTIONS}
+            fontSizePx={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
+            onFontSizeChange={(px) => onChange({ ...slide, titleFontSizePx: px })}
+            quickPxOptions={[36, 44, 52, 64]}
+            isBold={slide.titleBold !== false}
+            onToggleBold={() => onChange({ ...slide, titleBold: slide.titleBold === false ? true : false })}
+            isUnderline={!!slide.titleUnderline}
+            onToggleUnderline={() => onChange({ ...slide, titleUnderline: !slide.titleUnderline })}
+            currentColor={slide.titleColor}
+            defaultColor="#FFFFFF"
+            onColorChange={(color) => {
+              const updated = { ...slide };
+              if (color) updated.titleColor = color;
+              else delete updated.titleColor;
+              onChange(updated);
+            }}
+            labelFont="Font Titolo"
+          />
+
           <textarea
             ref={headlineInputRef}
             rows={2}
-            value={slide.headline}
-            onChange={(e) => onChange({ ...slide, headline: e.target.value })}
+            value={sanitizeCarouselText(slide.headline)}
+            onChange={(e) => onChange({ ...slide, headline: sanitizeCarouselText(e.target.value) })}
             placeholder="es. CEDIMENTO TECNICO (premi Invio per spezzare le righe a piacere)"
             className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-bold resize-y min-h-[56px] leading-relaxed"
           />
 
-          <div className="space-y-1">
+          <div className="space-y-1.5 pt-1">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+              <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
                 <span>✨ Testo Evidenziato / Riga 2 (Colore Accento)</span>
+                {slide.highlightColor && (
+                  <span
+                    className="w-2.5 h-2.5 rounded-full border border-slate-700 shadow"
+                    style={{ backgroundColor: slide.highlightColor }}
+                    title={`Colore attivo: ${slide.highlightColor}`}
+                  />
+                )}
               </label>
               <span className="text-[10px] text-amber-400/70 font-mono">↵ Invio per a capo</span>
             </div>
+
+            <TextCustomizerBar
+              fontFamily={slide.highlightFont || slide.titleFont || 'Inter'}
+              onFontChange={(font) => onChange({ ...slide, highlightFont: font as TitleFontFamily })}
+              fontOptions={TITLE_FONT_OPTIONS}
+              fontSizePx={slide.highlightFontSizePx || slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
+              onFontSizeChange={(px) => onChange({ ...slide, highlightFontSizePx: px })}
+              quickPxOptions={[36, 44, 52, 64]}
+              isBold={slide.highlightBold !== false}
+              onToggleBold={() => onChange({ ...slide, highlightBold: slide.highlightBold === false ? true : false })}
+              isUnderline={!!slide.highlightUnderline}
+              onToggleUnderline={() => onChange({ ...slide, highlightUnderline: !slide.highlightUnderline })}
+              currentColor={slide.highlightColor}
+              defaultColor="#F5C518"
+              onColorChange={(color) => {
+                const updated = { ...slide };
+                if (color) updated.highlightColor = color;
+                else delete updated.highlightColor;
+                onChange(updated);
+              }}
+              labelFont="Font Evidenziato"
+            />
+
             <textarea
               rows={1}
-              value={slide.headlineHighlight || ''}
-              onChange={(e) => onChange({ ...slide, headlineHighlight: e.target.value })}
+              value={sanitizeCarouselText(slide.headlineHighlight || '')}
+              onChange={(e) => onChange({ ...slide, headlineHighlight: sanitizeCarouselText(e.target.value) })}
               placeholder="es. O MUSCOLARE? (premi Invio per andare a capo)"
               className="w-full px-3.5 py-1.5 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-amber-300 placeholder-amber-500/40 focus:outline-none focus:border-amber-400 font-bold resize-y min-h-[42px] leading-relaxed"
             />
@@ -983,194 +1253,33 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             <span className="text-[10px] text-slate-500 font-mono">↵ Invio per a capo</span>
           </div>
 
-          {/* BARRA FORMATTAZIONE TIPOGRAFICA SOTTOTITOLO */}
-          <div className="flex flex-wrap items-center justify-between gap-1.5 p-1.5 bg-slate-950/80 rounded-xl border border-slate-800/80 shadow-sm">
-            {/* Sinistra: Selezione Font e Dimensioni px */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Selettore Font */}
-              <select
-                value={slide.subtitleFont || 'Outfit'}
-                onChange={(e) => onChange({ ...slide, subtitleFont: e.target.value as SubtitleFontFamily })}
-                className="bg-slate-900 border border-slate-700/80 rounded-lg px-2 py-1 text-[11px] font-bold text-amber-200/90 focus:outline-none focus:border-amber-500 cursor-pointer"
-                title="Font Sottotitolo"
-              >
-                <option value="Outfit">Outfit</option>
-                <option value="Montserrat">Montserrat</option>
-                <option value="Bebas Neue">Bebas Neue</option>
-                <option value="Inter">Inter</option>
-                <option value="Roboto">Roboto</option>
-              </select>
-
-              {/* Input px */}
-              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700/80 font-mono">
-                <input
-                  type="number"
-                  min="14"
-                  max="72"
-                  value={slide.subtitleFontSizePx || 28}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val)) {
-                      onChange({ ...slide, subtitleFontSizePx: Math.max(14, Math.min(80, val)) });
-                    }
-                  }}
-                  className="w-8 bg-transparent text-center text-[11px] font-bold text-white focus:outline-none"
-                  title="Dimensione esatta in pixel"
-                />
-                <span className="text-[10px] text-slate-400">px</span>
-              </div>
-
-              {/* Chip rapidi px */}
-              <div className="flex items-center gap-0.5">
-                {[22, 28, 36, 48].map((px) => (
-                  <button
-                    key={px}
-                    type="button"
-                    onClick={() => onChange({ ...slide, subtitleFontSizePx: px })}
-                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition cursor-pointer border ${
-                      (slide.subtitleFontSizePx || 28) === px
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 font-bold'
-                        : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border-slate-800'
-                    }`}
-                    title={`Imposta a ${px}px`}
-                  >
-                    {px}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Destra: Grassetto (B), Sottolineato (U), Palette Colori & Custom Picker */}
-            <div className="flex items-center gap-1 flex-wrap">
-              {/* B (Grassetto) */}
-              <button
-                type="button"
-                onClick={() =>
-                  handleFormatTextSelection(
-                    subtitleInputRef,
-                    slide.subheadline || '',
-                    '**',
-                    '**',
-                    (text) => onChange({ ...slide, subheadline: text }),
-                    () =>
-                      onChange({
-                        ...slide,
-                        subtitleBold: slide.subtitleBold === false ? true : false,
-                      })
-                  )
-                }
-                className={`px-2 py-1 rounded-lg text-xs font-black transition cursor-pointer border flex items-center justify-center ${
-                  slide.subtitleBold !== false
-                    ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
-                }`}
-                title="Grassetto (B) - Clicca per l'intero campo o seleziona una porzione di testo"
-              >
-                <Bold className="w-3 h-3" />
-              </button>
-
-              {/* U (Sottolineato) */}
-              <button
-                type="button"
-                onClick={() =>
-                  handleFormatTextSelection(
-                    subtitleInputRef,
-                    slide.subheadline || '',
-                    '<u>',
-                    '</u>',
-                    (text) => onChange({ ...slide, subheadline: text }),
-                    () =>
-                      onChange({
-                        ...slide,
-                        subtitleUnderline: !slide.subtitleUnderline,
-                      })
-                  )
-                }
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer border flex items-center justify-center ${
-                  slide.subtitleUnderline
-                    ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
-                }`}
-                title="Sottolineato (U) - Clicca per l'intero campo o seleziona una porzione di testo"
-              >
-                <Underline className="w-3 h-3" />
-              </button>
-
-              {/* Palette Colori */}
-              <div className="flex items-center gap-1 pl-1 border-l border-slate-800">
-                {[
-                  { label: 'Bianco', value: '#FFFFFF', bg: '#FFFFFF' },
-                  { label: 'Giallo Oro', value: '#F5C518', bg: '#F5C518' },
-                  { label: 'Ambra', value: '#F59E0B', bg: '#F59E0B' },
-                  { label: 'Cyan', value: '#38BDF8', bg: '#38BDF8' },
-                  { label: 'Smeraldo', value: '#10B981', bg: '#10B981' },
-                  { label: 'Rosa / Rosso', value: '#F43F5E', bg: '#F43F5E' },
-                  { label: 'Grigio Chiaro', value: '#94A3B8', bg: '#94A3B8' },
-                ].map((col) => {
-                  const isCurrent = slide.subtitleColor?.toUpperCase() === col.value.toUpperCase();
-                  return (
-                    <button
-                      key={col.value}
-                      type="button"
-                      onClick={() =>
-                        handleFormatTextSelection(
-                          subtitleInputRef,
-                          slide.subheadline || '',
-                          `<color:${col.value}>`,
-                          '</color>',
-                          (text) => onChange({ ...slide, subheadline: text }),
-                          () => onChange({ ...slide, subtitleColor: col.value })
-                        )
-                      }
-                      className={`w-4 h-4 rounded-full transition cursor-pointer border ${
-                        isCurrent
-                          ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-950 scale-110 border-white'
-                          : 'border-slate-700 hover:scale-110 opacity-85 hover:opacity-100'
-                      }`}
-                      style={{ backgroundColor: col.bg }}
-                      title={`Colore ${col.label} (${col.value})`}
-                    />
-                  );
-                })}
-
-                {/* Selettore colore HTML nativo */}
-                <label
-                  className="relative w-5 h-5 rounded-md bg-slate-900 border border-slate-700 flex items-center justify-center cursor-pointer hover:border-amber-500 overflow-hidden"
-                  title="Colore personalizzato"
-                >
-                  <Palette className="w-3 h-3 text-slate-300" />
-                  <input
-                    type="color"
-                    value={slide.subtitleColor || '#E2E8F0'}
-                    onChange={(e) => onChange({ ...slide, subtitleColor: e.target.value })}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  />
-                </label>
-
-                {/* Reset Colore */}
-                {slide.subtitleColor && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const updated = { ...slide };
-                      delete updated.subtitleColor;
-                      onChange(updated);
-                    }}
-                    className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition"
-                    title="Ripristina colore predefinito"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+          <TextCustomizerBar
+            fontFamily={slide.subtitleFont || 'Outfit'}
+            onFontChange={(font) => onChange({ ...slide, subtitleFont: font as SubtitleFontFamily })}
+            fontOptions={SUBTITLE_FONT_OPTIONS}
+            fontSizePx={slide.subtitleFontSizePx || 28}
+            onFontSizeChange={(px) => onChange({ ...slide, subtitleFontSizePx: px })}
+            quickPxOptions={[22, 28, 36, 48]}
+            isBold={slide.subtitleBold !== false}
+            onToggleBold={() => onChange({ ...slide, subtitleBold: slide.subtitleBold === false ? true : false })}
+            isUnderline={!!slide.subtitleUnderline}
+            onToggleUnderline={() => onChange({ ...slide, subtitleUnderline: !slide.subtitleUnderline })}
+            currentColor={slide.subtitleColor}
+            defaultColor="#E2E8F0"
+            onColorChange={(color) => {
+              const updated = { ...slide };
+              if (color) updated.subtitleColor = color;
+              else delete updated.subtitleColor;
+              onChange(updated);
+            }}
+            labelFont="Font Sottotitolo"
+          />
 
           <textarea
             ref={subtitleInputRef}
             rows={2}
-            value={slide.subheadline || ''}
-            onChange={(e) => onChange({ ...slide, subheadline: e.target.value })}
+            value={sanitizeCarouselText(slide.subheadline || '')}
+            onChange={(e) => onChange({ ...slide, subheadline: sanitizeCarouselText(e.target.value) })}
             placeholder="es. VEDIAMO COSA MOSTRANO DAVVERO I DATI! (premi Invio per andare a capo)"
             className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-y min-h-[50px] leading-relaxed"
           />
@@ -1192,187 +1301,34 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             <span className="text-[10px] text-slate-500">Formattazione libera per mobile</span>
           </div>
 
-          {/* BARRA FORMATTAZIONE TIPOGRAFICA CORPO DEL TESTO */}
-          <div className="flex flex-wrap items-center justify-between gap-1.5 p-1.5 bg-slate-950/80 rounded-xl border border-slate-800/80 shadow-sm">
-            {/* Sinistra: Selezione Font e Dimensioni px */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Selettore Font */}
-              <select
-                value={slide.bodyFont || 'Inter'}
-                onChange={(e) => onChange({ ...slide, bodyFont: e.target.value as BodyFontFamily })}
-                className="bg-slate-900 border border-slate-700/80 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 focus:outline-none focus:border-amber-500 cursor-pointer"
-                title="Font Corpo del Testo"
-              >
-                <option value="Inter">Inter</option>
-                <option value="Roboto">Roboto</option>
-                <option value="Montserrat">Montserrat</option>
-                <option value="Outfit">Outfit</option>
-              </select>
-
-              {/* Input px */}
-              <div className="flex items-center gap-1 bg-slate-900 px-1.5 py-0.5 rounded-lg border border-slate-700/80 font-mono">
-                <input
-                  type="number"
-                  min="14"
-                  max="54"
-                  value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val)) {
-                      onChange({ ...slide, bodyFontSizePx: Math.max(12, Math.min(60, val)) });
-                    }
-                  }}
-                  className="w-8 bg-transparent text-center text-[11px] font-bold text-white focus:outline-none"
-                  title="Dimensione esatta in pixel"
-                />
-                <span className="text-[10px] text-slate-400">px</span>
-              </div>
-
-              {/* Chip rapidi px */}
-              <div className="flex items-center gap-0.5">
-                {[18, 22, 26, 32].map((px) => {
-                  const currentPx = slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26);
-                  return (
-                    <button
-                      key={px}
-                      type="button"
-                      onClick={() => onChange({ ...slide, bodyFontSizePx: px })}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono transition cursor-pointer border ${
-                        currentPx === px
-                          ? 'bg-purple-500/25 text-purple-300 border-purple-500/60 font-bold'
-                          : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border-slate-800'
-                      }`}
-                      title={`Imposta corpo a ${px}px`}
-                    >
-                      {px}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Destra: Grassetto (B), Sottolineato (U), Palette Colori & Custom Picker */}
-            <div className="flex items-center gap-1 flex-wrap">
-              {/* B (Grassetto) */}
-              <button
-                type="button"
-                onClick={() =>
-                  handleFormatTextSelection(
-                    bodyInputRef,
-                    slide.bodyText || '',
-                    '**',
-                    '**',
-                    (text) => onChange({ ...slide, bodyText: text }),
-                    () => onChange({ ...slide, bodyBold: !slide.bodyBold })
-                  )
-                }
-                className={`px-2 py-1 rounded-lg text-xs font-black transition cursor-pointer border flex items-center justify-center ${
-                  slide.bodyBold
-                    ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
-                }`}
-                title="Grassetto (B) - Clicca per l'intero campo o seleziona una porzione di testo"
-              >
-                <Bold className="w-3 h-3" />
-              </button>
-
-              {/* U (Sottolineato) */}
-              <button
-                type="button"
-                onClick={() =>
-                  handleFormatTextSelection(
-                    bodyInputRef,
-                    slide.bodyText || '',
-                    '<u>',
-                    '</u>',
-                    (text) => onChange({ ...slide, bodyText: text }),
-                    () => onChange({ ...slide, bodyUnderline: !slide.bodyUnderline })
-                  )
-                }
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer border flex items-center justify-center ${
-                  slide.bodyUnderline
-                    ? 'bg-amber-500/25 border-amber-500/70 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
-                    : 'bg-slate-900 border-slate-700/80 text-slate-400 hover:text-white'
-                }`}
-                title="Sottolineato (U) - Clicca per l'intero campo o seleziona una porzione di testo"
-              >
-                <Underline className="w-3 h-3" />
-              </button>
-
-              {/* Palette Colori */}
-              <div className="flex items-center gap-1 pl-1 border-l border-slate-800">
-                {[
-                  { label: 'Slate Chiaro', value: '#CBD5E1', bg: '#CBD5E1' },
-                  { label: 'Bianco Puro', value: '#FFFFFF', bg: '#FFFFFF' },
-                  { label: 'Giallo Oro', value: '#F5C518', bg: '#F5C518' },
-                  { label: 'Cyan', value: '#38BDF8', bg: '#38BDF8' },
-                  { label: 'Smeraldo', value: '#10B981', bg: '#10B981' },
-                  { label: 'Rosa / Rosso', value: '#F43F5E', bg: '#F43F5E' },
-                ].map((col) => {
-                  const isCurrent = slide.bodyColor?.toUpperCase() === col.value.toUpperCase();
-                  return (
-                    <button
-                      key={col.value}
-                      type="button"
-                      onClick={() =>
-                        handleFormatTextSelection(
-                          bodyInputRef,
-                          slide.bodyText || '',
-                          `<color:${col.value}>`,
-                          '</color>',
-                          (text) => onChange({ ...slide, bodyText: text }),
-                          () => onChange({ ...slide, bodyColor: col.value })
-                        )
-                      }
-                      className={`w-4 h-4 rounded-full transition cursor-pointer border ${
-                        isCurrent
-                          ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-950 scale-110 border-white'
-                          : 'border-slate-700 hover:scale-110 opacity-85 hover:opacity-100'
-                      }`}
-                      style={{ backgroundColor: col.bg }}
-                      title={`Colore ${col.label} (${col.value})`}
-                    />
-                  );
-                })}
-
-                {/* Selettore colore HTML nativo */}
-                <label
-                  className="relative w-5 h-5 rounded-md bg-slate-900 border border-slate-700 flex items-center justify-center cursor-pointer hover:border-amber-500 overflow-hidden"
-                  title="Colore personalizzato corpo"
-                >
-                  <Palette className="w-3 h-3 text-slate-300" />
-                  <input
-                    type="color"
-                    value={slide.bodyColor || '#CBD5E1'}
-                    onChange={(e) => onChange({ ...slide, bodyColor: e.target.value })}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  />
-                </label>
-
-                {/* Reset Colore */}
-                {slide.bodyColor && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const updated = { ...slide };
-                      delete updated.bodyColor;
-                      onChange(updated);
-                    }}
-                    className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition"
-                    title="Ripristina colore predefinito"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+          <TextCustomizerBar
+            fontFamily={slide.bodyFont || 'Inter'}
+            onFontChange={(font) => onChange({ ...slide, bodyFont: font as BodyFontFamily })}
+            fontOptions={BODY_FONT_OPTIONS}
+            fontSizePx={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
+            onFontSizeChange={(px) => onChange({ ...slide, bodyFontSizePx: px })}
+            quickPxOptions={[18, 22, 26, 32]}
+            isBold={!!slide.bodyBold}
+            onToggleBold={() => onChange({ ...slide, bodyBold: !slide.bodyBold })}
+            isUnderline={!!slide.bodyUnderline}
+            onToggleUnderline={() => onChange({ ...slide, bodyUnderline: !slide.bodyUnderline })}
+            currentColor={slide.bodyColor}
+            defaultColor="#CBD5E1"
+            onColorChange={(color) => {
+              const updated = { ...slide };
+              if (color) updated.bodyColor = color;
+              else delete updated.bodyColor;
+              onChange(updated);
+            }}
+            accentTheme="purple"
+            labelFont="Font Corpo"
+          />
 
           <textarea
             ref={bodyInputRef}
             rows={3}
-            value={slide.bodyText || ''}
-            onChange={(e) => onChange({ ...slide, bodyText: e.target.value })}
+            value={sanitizeCarouselText(slide.bodyText || '')}
+            onChange={(e) => onChange({ ...slide, bodyText: sanitizeCarouselText(e.target.value) })}
             placeholder="Scrivi qui la spiegazione, le regole da seguire o l'approfondimento..."
             className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-y min-h-[75px] leading-relaxed"
           />

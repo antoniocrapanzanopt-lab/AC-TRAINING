@@ -73,75 +73,98 @@ interface DrawRichTextOptions {
   maxBottomY?: number;
 }
 
-interface TextToken {
-  text: string;
-  bold: boolean;
-  underline: boolean;
-  color: string;
-}
-
-interface WordItem {
-  word: string;
-  bold: boolean;
-  underline: boolean;
-  color: string;
-}
-
 /**
- * Parsing di tag inline: **grassetto**, <u>sottolineato</u>, <color:#HEX>colore</color>
+ * Rimuove in modo pulito e sicuro qualsiasi residuo di tag o markup dai testi
  */
-const parseRichTokens = (
-  raw: string,
-  defaultColor: string,
-  defaultBold: boolean,
-  defaultUnderline: boolean
-): TextToken[] => {
-  if (!raw) return [];
-  const tokens: TextToken[] = [];
-  const tagRegex = /(?:\*\*(.*?)\*\*|<u>(.*?)<\/u>|<color:([^>]+)>(.*?)<\/color>)/i;
-
-  let remaining = raw;
-  while (remaining.length > 0) {
-    const match = remaining.match(tagRegex);
-    if (!match || match.index === undefined) {
-      tokens.push({
-        text: remaining,
-        bold: defaultBold,
-        underline: defaultUnderline,
-        color: defaultColor,
-      });
-      break;
-    }
-
-    if (match.index > 0) {
-      tokens.push({
-        text: remaining.slice(0, match.index),
-        bold: defaultBold,
-        underline: defaultUnderline,
-        color: defaultColor,
-      });
-    }
-
-    if (match[1] !== undefined) {
-      // **bold** (supporta tag annidati)
-      tokens.push(...parseRichTokens(match[1], defaultColor, true, defaultUnderline));
-    } else if (match[2] !== undefined) {
-      // <u>underline</u> (supporta tag annidati)
-      tokens.push(...parseRichTokens(match[2], defaultColor, defaultBold, true));
-    } else if (match[3] !== undefined && match[4] !== undefined) {
-      // <color:HEX> (supporta tag annidati)
-      tokens.push(...parseRichTokens(match[4], match[3], defaultBold, defaultUnderline));
-    }
-
-    remaining = remaining.slice(match.index + match[0].length);
-  }
-
-  return tokens;
+export const sanitizeCarouselText = (text?: string | null): string => {
+  if (!text) return '';
+  return text
+    .replace(/<\/?color[^>]*>/gi, '')
+    .replace(/<\/?u>/gi, '')
+    .replace(/\*\*/g, '');
 };
 
 /**
- * Disegna blocchi di testo formattati con supporto per font custom, px, colore, grassetto,
- * sottolineatura e tag inline (**bold**, <u>underline</u>, <color:#HEX>text</color>)
+ * Disegna righe di Titolo o Testo Evidenziato su Canvas con font, px, colore, grassetto e sottolineato
+ */
+export const drawTitleLine = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  startX: number,
+  startY: number,
+  contentWidth: number,
+  options: {
+    fontFamily: string;
+    fontSize: number;
+    color: string;
+    isBold: boolean;
+    isUnderline: boolean;
+    align?: CanvasTextAlign;
+    maxBottomY?: number;
+  }
+): number => {
+  if (!text) return startY;
+  const clean = sanitizeCarouselText(text);
+  if (!clean) return startY;
+
+  const {
+    fontFamily,
+    fontSize,
+    color,
+    isBold,
+    isUnderline,
+    align = 'left',
+    maxBottomY = CANVAS_HEIGHT - 60,
+  } = options;
+
+  const lineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
+  const baseline = ctx.textBaseline || 'top';
+  ctx.font = `${isBold ? '900' : '500'} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
+  ctx.fillStyle = color;
+  ctx.textAlign = align;
+
+  const paragraphs = clean.split('\n');
+  let currentY = startY;
+
+  for (const para of paragraphs) {
+    if (currentY > maxBottomY) break;
+    if (!para.trim()) {
+      currentY += Math.round(lineStep * 0.6);
+      continue;
+    }
+
+    const lines = wrapText(ctx, para, contentWidth);
+    for (const l of lines) {
+      if (currentY > maxBottomY) break;
+      ctx.fillText(l, startX, currentY);
+
+      if (isUnderline && l.trim()) {
+        const textW = ctx.measureText(l).width;
+        let lineX = startX;
+        if (align === 'center') {
+          lineX = startX - textW / 2;
+        } else if (align === 'right') {
+          lineX = startX - textW;
+        }
+        let underlineY = currentY + Math.round(fontSize * 0.95);
+        if (baseline === 'middle') {
+          underlineY = currentY + Math.round(fontSize * 0.55);
+        } else if (baseline === 'alphabetic' || baseline === 'bottom') {
+          underlineY = currentY + 4;
+        }
+        ctx.fillRect(lineX, underlineY, textW, Math.max(3, Math.round(fontSize * 0.08)));
+      }
+
+      currentY += lineStep;
+    }
+  }
+
+  ctx.textAlign = 'left';
+  return currentY;
+};
+
+/**
+ * Disegna blocchi di testo formattati con supporto per font custom, px, colore, grassetto e sottolineatura
  */
 export const drawRichTextLines = (
   ctx: CanvasRenderingContext2D,
@@ -151,6 +174,9 @@ export const drawRichTextLines = (
   options: DrawRichTextOptions
 ): number => {
   if (!text) return startY;
+  const clean = sanitizeCarouselText(text);
+  if (!clean) return startY;
+
   const {
     fontFamily,
     fontSize,
@@ -167,7 +193,7 @@ export const drawRichTextLines = (
   let currentY = startY;
 
   // Split per paragrafi (rispetta gli "a capo" dell'utente)
-  const paragraphs = text.split('\n');
+  const paragraphs = clean.split('\n');
 
   for (const para of paragraphs) {
     if (currentY > maxBottomY) break;
@@ -176,109 +202,33 @@ export const drawRichTextLines = (
       continue;
     }
 
-    // Parsing token per formattazione inline o globale
-    const tokens = parseRichTokens(para, color, isBold, isUnderline);
+    const weight = isBold ? '700' : '400';
+    ctx.font = `${weight} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
 
-    // Esplodi token in singole parole preservando gli stili
-    const words: WordItem[] = [];
-    for (const token of tokens) {
-      const parts = token.text.split(' ');
-      parts.forEach((p) => {
-        if (p.length > 0) {
-          words.push({
-            word: p,
-            bold: token.bold,
-            underline: token.underline,
-            color: token.color,
-          });
-        }
-      });
-    }
+    const lines = wrapText(ctx, para, maxWidth);
 
-    if (words.length === 0) continue;
-
-    // Raggruppa in righe rispettando maxWidth
-    const lines: WordItem[][] = [];
-    let currentLine: WordItem[] = [];
-    let currentLineWidth = 0;
-
-    for (const item of words) {
-      const weight = item.bold ? '700' : '400';
-      ctx.font = `${weight} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
-      const wordW = ctx.measureText(item.word).width;
-      const spaceW = ctx.measureText(' ').width;
-
-      const addedW = currentLine.length > 0 ? spaceW + wordW : wordW;
-
-      if (currentLineWidth + addedW > maxWidth && currentLine.length > 0) {
-        lines.push(currentLine);
-        currentLine = [item];
-        currentLineWidth = wordW;
-      } else {
-        currentLine.push(item);
-        currentLineWidth += addedW;
-      }
-    }
-    if (currentLine.length > 0) {
-      lines.push(currentLine);
-    }
-
-    // Disegna ciascuna riga
     for (const line of lines) {
       if (currentY > maxBottomY) break;
+      ctx.fillText(line, startX, currentY);
 
-      // Calcola larghezza totale della riga per allineamento
-      let totalLineWidth = 0;
-      const wordWidths: number[] = [];
-      let spaceWidth = 0;
-
-      for (let i = 0; i < line.length; i++) {
-        const item = line[i];
-        const weight = item.bold ? '700' : '400';
-        ctx.font = `${weight} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
-        const w = ctx.measureText(item.word).width;
-        wordWidths.push(w);
-        totalLineWidth += w;
-        if (i === 0) {
-          spaceWidth = ctx.measureText(' ').width;
+      if (isUnderline && line.trim()) {
+        const textW = ctx.measureText(line).width;
+        let lineX = startX;
+        if (align === 'center') {
+          lineX = startX - textW / 2;
+        } else if (align === 'right') {
+          lineX = startX - textW;
         }
-      }
-      totalLineWidth += spaceWidth * Math.max(0, line.length - 1);
-
-      let lineX = startX;
-      if (align === 'center') {
-        lineX = startX - totalLineWidth / 2;
-      } else if (align === 'right') {
-        lineX = startX - totalLineWidth;
-      }
-
-      // Renderizza parola per parola
-      ctx.textAlign = 'left';
-      let wordX = lineX;
-
-      for (let i = 0; i < line.length; i++) {
-        const item = line[i];
-        const weight = item.bold ? '700' : '400';
-        ctx.font = `${weight} ${fontSize}px "${fontFamily}", system-ui, sans-serif`;
-        ctx.fillStyle = item.color;
-
-        ctx.fillText(item.word, wordX, currentY);
-
-        const w = wordWidths[i];
-
-        // Sottolineatura
-        if (item.underline) {
-          const thickness = Math.max(2, Math.round(fontSize * 0.08));
-          let underlineY = currentY + Math.round(fontSize * 0.95);
-          if (baseline === 'middle') {
-            underlineY = currentY + Math.round(fontSize * 0.55);
-          } else if (baseline === 'alphabetic' || baseline === 'bottom') {
-            underlineY = currentY + 4;
-          }
-          ctx.fillRect(wordX, underlineY, w, thickness);
+        const thickness = Math.max(2, Math.round(fontSize * 0.08));
+        let underlineY = currentY + Math.round(fontSize * 0.95);
+        if (baseline === 'middle') {
+          underlineY = currentY + Math.round(fontSize * 0.55);
+        } else if (baseline === 'alphabetic' || baseline === 'bottom') {
+          underlineY = currentY + 4;
         }
-
-        wordX += w + spaceWidth;
+        ctx.fillRect(lineX, underlineY, textW, thickness);
       }
 
       currentY += lineStep;
@@ -412,6 +362,18 @@ export const renderSlideToCanvas = async (
 
   const primaryTextColor = '#FFFFFF';
   const secondaryTextColor = templateId === 'personal_story' ? '#E2E8F0' : '#94A3B8';
+
+  // Titolo Slide (Riga 1): Font, Dimensioni px, Colore, Grassetto, Sottolineato
+  const titleColor = slide.titleColor || primaryTextColor;
+  const isTitleBold = slide.titleBold !== undefined ? slide.titleBold : true;
+  const isTitleUnderline = !!slide.titleUnderline;
+
+  // Testo Evidenziato / Riga 2: Font, Dimensioni px, Colore, Grassetto, Sottolineato
+  const highlightFont = slide.highlightFont || titleFont;
+  const highlightFontSize = slide.highlightFontSizePx || titleFontSize;
+  const highlightColor = slide.highlightColor || accentColor;
+  const isHighlightBold = slide.highlightBold !== undefined ? slide.highlightBold : true;
+  const isHighlightUnderline = !!slide.highlightUnderline;
 
   // Sottotitolo / Gancio Dati: Font, Dimensioni px, Colore, Grassetto, Sottolineato
   const subtitleFont = slide.subtitleFont || bodyFont;
@@ -710,24 +672,24 @@ export const renderSlideToCanvas = async (
   // ─── LAYOUT 1: CONNECTED ICON LIST (STILE SCREENSHOT 2: NODI CONNESSI & PAROLE CHIAVE) ───
   if (layout === 'connected_icon_list') {
     // Titolo Gigante Impatto
-    const fontSize = titleFontSize;
-    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    ctx.textBaseline = 'top';
-    const headlineLines = wrapText(ctx, slide.headline, contentWidth);
-    for (const line of headlineLines) {
-      ctx.fillText(line, marginX, startY);
-      startY += fontSize + 10;
-    }
+    startY = drawTitleLine(ctx, slide.headline, marginX, startY, contentWidth, {
+      fontFamily: titleFont,
+      fontSize: titleFontSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      maxBottomY: bottomSafeY - 100,
+    });
 
     if (slide.headlineHighlight) {
-      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const hLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
-      for (const hl of hLines) {
-        ctx.fillText(hl, marginX, startY);
-        startY += fontSize + 10;
-      }
+      startY = drawTitleLine(ctx, slide.headlineHighlight, marginX, startY, contentWidth, {
+        fontFamily: highlightFont,
+        fontSize: highlightFontSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     // Linea divisoria sottile
@@ -829,24 +791,24 @@ export const renderSlideToCanvas = async (
   // ─── LAYOUT 2: DIAGRAM FLOW (STILE SCREENSHOT 4: PREMESSA -> FRECCIA -> TASK FAILURE -> PUNCHLINE) ───
   } else if (layout === 'diagram_flow') {
     // Titolo a due toni gigante
-    const fontSize = titleFontSize;
-    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    ctx.textBaseline = 'top';
-    const headlineLines = wrapText(ctx, slide.headline, contentWidth);
-    for (const line of headlineLines) {
-      ctx.fillText(line, marginX, startY);
-      startY += fontSize + 8;
-    }
+    startY = drawTitleLine(ctx, slide.headline, marginX, startY, contentWidth, {
+      fontFamily: titleFont,
+      fontSize: titleFontSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      maxBottomY: bottomSafeY - 100,
+    });
 
     if (slide.headlineHighlight) {
-      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const hLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
-      for (const hl of hLines) {
-        ctx.fillText(hl, marginX, startY);
-        startY += fontSize + 8;
-      }
+      startY = drawTitleLine(ctx, slide.headlineHighlight, marginX, startY, contentWidth, {
+        fontFamily: highlightFont,
+        fontSize: highlightFontSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     startY += 15;
@@ -944,30 +906,26 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT 3: DUAL TONE COVER (STILE SCREENSHOT 3: TITOLO ALTERNATO BIANCO/VIOLA GIGANTE) ───
   } else if (layout === 'dual_tone_cover') {
-    const fontSize = titleFontSize;
-    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
-    
-    // Riga 1: Titolo Bianco
-    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    ctx.textBaseline = 'top';
-    const lines1 = wrapText(ctx, slide.headline, contentWidth);
-    for (const l of lines1) {
-      if (startY > bottomSafeY - 100) break;
-      ctx.fillText(l, marginX, startY);
-      startY += titleLineStep;
-    }
+    // Riga 1: Titolo
+    startY = drawTitleLine(ctx, slide.headline, marginX, startY, contentWidth, {
+      fontFamily: titleFont,
+      fontSize: titleFontSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      maxBottomY: bottomSafeY - 100,
+    });
 
     // Riga 2: Titolo Evidenziato Accento
     if (slide.headlineHighlight) {
-      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const lines2 = wrapText(ctx, slide.headlineHighlight, contentWidth);
-      for (const l of lines2) {
-        if (startY > bottomSafeY - 100) break;
-        ctx.fillText(l, marginX, startY);
-        startY += titleLineStep;
-      }
+      startY = drawTitleLine(ctx, slide.headlineHighlight, marginX, startY, contentWidth, {
+        fontFamily: highlightFont,
+        fontSize: highlightFontSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     startY += 12 + contentOffsetY;
@@ -1053,26 +1011,25 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT A: ERROR VS CORRECT (CONFRONTO SPLIT) ───
   } else if (layout === 'error_vs_correct') {
-    const fontSize = titleFontSize;
-    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
-    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    ctx.textBaseline = 'top';
-    const headlineLines = wrapText(ctx, slide.headline, contentWidth);
-    for (const line of headlineLines) {
-      ctx.fillText(line, marginX, startY);
-      startY += titleLineStep;
-    }
+    startY = drawTitleLine(ctx, slide.headline, marginX, startY, contentWidth, {
+      fontFamily: titleFont,
+      fontSize: titleFontSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      maxBottomY: bottomSafeY - 100,
+    });
 
     if (slide.headlineHighlight) {
       startY += 4;
-      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
-      for (const hl of hlLines) {
-        ctx.fillText(hl, marginX, startY);
-        startY += titleLineStep;
-      }
+      startY = drawTitleLine(ctx, slide.headlineHighlight, marginX, startY, contentWidth, {
+        fontFamily: highlightFont,
+        fontSize: highlightFontSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     if (slide.subheadline) {
@@ -1159,26 +1116,25 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT B: NUMBERED LIST / ELENCO PUNTATO CON CARD ───
   } else if (layout === 'numbered_list') {
-    const fontSize = titleFontSize;
-    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
-    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    ctx.textBaseline = 'top';
-    const headlineLines = wrapText(ctx, slide.headline, contentWidth);
-    for (const line of headlineLines) {
-      ctx.fillText(line, marginX, startY);
-      startY += titleLineStep;
-    }
+    startY = drawTitleLine(ctx, slide.headline, marginX, startY, contentWidth, {
+      fontFamily: titleFont,
+      fontSize: titleFontSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      maxBottomY: bottomSafeY - 100,
+    });
 
     if (slide.headlineHighlight) {
       startY += 4;
-      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
-      for (const hl of hlLines) {
-        ctx.fillText(hl, marginX, startY);
-        startY += titleLineStep;
-      }
+      startY = drawTitleLine(ctx, slide.headlineHighlight, marginX, startY, contentWidth, {
+        fontFamily: highlightFont,
+        fontSize: highlightFontSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     if (slide.subheadline) {
@@ -1257,26 +1213,25 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT C: STEP BY STEP / PROGRESSIONE TIMELINE ───
   } else if (layout === 'step_by_step') {
-    const fontSize = titleFontSize;
-    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
-    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    ctx.textBaseline = 'top';
-    const headlineLines = wrapText(ctx, slide.headline, contentWidth);
-    for (const line of headlineLines) {
-      ctx.fillText(line, marginX, startY);
-      startY += titleLineStep;
-    }
+    startY = drawTitleLine(ctx, slide.headline, marginX, startY, contentWidth, {
+      fontFamily: titleFont,
+      fontSize: titleFontSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      maxBottomY: bottomSafeY - 100,
+    });
 
     if (slide.headlineHighlight) {
       startY += 4;
-      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
-      for (const hl of hlLines) {
-        ctx.fillText(hl, marginX, startY);
-        startY += titleLineStep;
-      }
+      startY = drawTitleLine(ctx, slide.headlineHighlight, marginX, startY, contentWidth, {
+        fontFamily: highlightFont,
+        fontSize: highlightFontSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     if (slide.subheadline) {
@@ -1358,28 +1313,27 @@ export const renderSlideToCanvas = async (
     startY += 55;
 
     // Titolo Gigante Centrato
-    const fontSize = titleFontSize;
-    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
-    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    ctx.textBaseline = 'top';
-    const headlineLines = wrapText(ctx, slide.headline, contentWidth);
-    for (const line of headlineLines) {
-      if (startY > bottomSafeY - 100) break;
-      ctx.fillText(line, CANVAS_WIDTH / 2, startY);
-      startY += titleLineStep;
-    }
+    startY = drawTitleLine(ctx, slide.headline, CANVAS_WIDTH / 2, startY, contentWidth, {
+      fontFamily: titleFont,
+      fontSize: titleFontSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      align: 'center',
+      maxBottomY: bottomSafeY - 100,
+    });
 
     // Headline Highlight (seconda riga) se presente
     if (slide.headlineHighlight) {
-      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
-      for (const hl of hlLines) {
-        if (startY > bottomSafeY - 100) break;
-        ctx.fillText(hl, CANVAS_WIDTH / 2, startY);
-        startY += titleLineStep;
-      }
+      startY = drawTitleLine(ctx, slide.headlineHighlight, CANVAS_WIDTH / 2, startY, contentWidth, {
+        fontFamily: highlightFont,
+        fontSize: highlightFontSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        align: 'center',
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     startY += 25 + contentOffsetY;
@@ -1468,26 +1422,25 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT E: FINAL CTA / CHIUSURA BRAND ───
   } else if (layout === 'final_cta') {
-    const fontSize = titleFontSize;
-    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
-    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    ctx.textBaseline = 'top';
-    const headlineLines = wrapText(ctx, slide.headline, contentWidth);
-    for (const line of headlineLines) {
-      ctx.fillText(line, marginX, startY);
-      startY += titleLineStep;
-    }
+    startY = drawTitleLine(ctx, slide.headline, marginX, startY, contentWidth, {
+      fontFamily: titleFont,
+      fontSize: titleFontSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      maxBottomY: bottomSafeY - 100,
+    });
 
     if (slide.headlineHighlight) {
       startY += 4;
-      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
-      for (const hl of hlLines) {
-        ctx.fillText(hl, marginX, startY);
-        startY += titleLineStep;
-      }
+      startY = drawTitleLine(ctx, slide.headlineHighlight, marginX, startY, contentWidth, {
+        fontFamily: highlightFont,
+        fontSize: highlightFontSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     if (slide.subheadline) {
@@ -1574,30 +1527,29 @@ export const renderSlideToCanvas = async (
     // 2. Titolo & Highlight Centrati in Alto
     let pTitleY = bannerH + 40 + titleOffsetY;
     const pTitleSize = slide.titleFontSizePx || (slide.titleSize === 'xl' ? 52 : slide.titleSize === 'lg' ? 44 : 38);
-    const pTitleLineStep = pTitleSize + 8;
 
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.font = `900 ${pTitleSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    const pHeadlineLines = wrapText(ctx, slide.headline, contentWidth - 40);
-    for (const line of pHeadlineLines) {
-      ctx.fillText(line, CANVAS_WIDTH / 2, pTitleY);
-      pTitleY += pTitleLineStep;
-    }
+    pTitleY = drawTitleLine(ctx, slide.headline, CANVAS_WIDTH / 2, pTitleY, contentWidth - 40, {
+      fontFamily: titleFont,
+      fontSize: pTitleSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      align: 'center',
+      maxBottomY: bottomSafeY - 100,
+    });
 
     if (slide.headlineHighlight) {
       pTitleY += 4;
-      ctx.font = `900 ${pTitleSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const pHlLines = wrapText(ctx, slide.headlineHighlight, contentWidth - 40);
-      for (const hl of pHlLines) {
-        ctx.fillText(hl, CANVAS_WIDTH / 2, pTitleY);
-        pTitleY += pTitleLineStep;
-      }
+      pTitleY = drawTitleLine(ctx, slide.headlineHighlight, CANVAS_WIDTH / 2, pTitleY, contentWidth - 40, {
+        fontFamily: highlightFont,
+        fontSize: slide.highlightFontSizePx || pTitleSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        align: 'center',
+        maxBottomY: bottomSafeY - 100,
+      });
     }
-    ctx.restore();
 
     // 3. Soggetto Centrale & Alone Luminoso
     const centerX = CANVAS_WIDTH / 2;

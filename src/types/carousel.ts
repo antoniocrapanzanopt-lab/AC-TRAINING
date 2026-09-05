@@ -101,6 +101,14 @@ export interface CarouselSlide {
   titleSize?: TitleFontSize;
   bodyFontSize?: BodyFontSize;
   titleFontSizePx?: number;     // Dimensione Titolo esatta in px (es. 28 - 80 px)
+  titleColor?: string;          // Override colore Titolo Riga 1 (default: #FFFFFF)
+  titleBold?: boolean;          // Grassetto Titolo (default: true)
+  titleUnderline?: boolean;     // Sottolineato Titolo
+  highlightFont?: TitleFontFamily; // Font Riga 2 Evidenziata (default: titleFont)
+  highlightFontSizePx?: number; // Dimensione Riga 2 Evidenziata (default: titleFontSizePx)
+  highlightColor?: string;      // Override colore Riga 2 Evidenziata (default: accentColor)
+  highlightBold?: boolean;      // Grassetto Riga 2 Evidenziata (default: true)
+  highlightUnderline?: boolean; // Sottolineato Riga 2 Evidenziata
   bodyFontSizePx?: number;      // Dimensione Corpo esatta in px (es. 18 - 40 px)
   subtitleFont?: SubtitleFontFamily; // Override font sottotitolo per singola slide
   subtitleFontSizePx?: number;  // Dimensione Sottotitolo esatta in px (es. 16 - 72 px)
