@@ -717,61 +717,61 @@ export const renderSlideToCanvas = async (
       startY += 15;
     }
 
-    // Nodi Connessi Verticali
-    const bullets = slide.bulletPoints && slide.bulletPoints.length > 0
-      ? slide.bulletPoints
-      : ['sanno dove vogliono andare.', 'capiscono cosa le sta bloccando.', 'imparano a vivere in modo diverso.'];
-
-    const iconPool = ['🎯', '🔒', '📈', '💡', '⚡', '🏋️', '🧠'];
+    // Nodi Connessi Verticali (solo se inseriti esplicitamente dall'utente)
+    const bullets = slide.bulletPoints && slide.bulletPoints.length > 0 ? slide.bulletPoints : [];
     let nodeY = startY;
 
-    bullets.forEach((bullet, idx) => {
-      const icon = iconPool[idx % iconPool.length];
-      const circleRadius = 26;
-      const circleCenterX = marginX + circleRadius;
-      const circleCenterY = nodeY + circleRadius;
+    if (bullets.length > 0) {
+      const iconPool = ['🎯', '🔒', '📈', '💡', '⚡', '🏋️', '🧠'];
 
-      // Cerchio nodo icona
-      ctx.fillStyle = `${accentColor}1A`;
-      ctx.beginPath();
-      ctx.arc(circleCenterX, circleCenterY, circleRadius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = accentColor;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(circleCenterX, circleCenterY, circleRadius, 0, Math.PI * 2);
-      ctx.stroke();
+      bullets.forEach((bullet, idx) => {
+        const icon = iconPool[idx % iconPool.length];
+        const circleRadius = 26;
+        const circleCenterX = marginX + circleRadius;
+        const circleCenterY = nodeY + circleRadius;
 
-      // Emoji/Icona al centro
-      ctx.font = '22px system-ui';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(icon, circleCenterX, circleCenterY);
-      ctx.textAlign = 'left';
-
-      // Linea connettore tra i nodi
-      if (idx < bullets.length - 1) {
-        ctx.strokeStyle = `${accentColor}66`;
+        // Cerchio nodo icona
+        ctx.fillStyle = `${accentColor}1A`;
+        ctx.beginPath();
+        ctx.arc(circleCenterX, circleCenterY, circleRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = accentColor;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(circleCenterX, circleCenterY + circleRadius);
-        ctx.lineTo(circleCenterX, circleCenterY + circleRadius + 45);
+        ctx.arc(circleCenterX, circleCenterY, circleRadius, 0, Math.PI * 2);
         ctx.stroke();
-      }
 
-      // Testo del nodo con evidenziazione parole
-      ctx.font = `500 26px ${bodyFont}, system-ui, sans-serif`;
-      ctx.fillStyle = '#F8FAFC';
-      ctx.textBaseline = 'middle';
-      const textLines = wrapText(ctx, bullet, contentWidth - 80);
-      let tY = circleCenterY;
-      textLines.forEach((tl) => {
-        ctx.fillText(tl, marginX + 75, tY);
-        tY += 34;
+        // Emoji/Icona al centro
+        ctx.font = '22px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(icon, circleCenterX, circleCenterY);
+        ctx.textAlign = 'left';
+
+        // Linea connettore tra i nodi
+        if (idx < bullets.length - 1) {
+          ctx.strokeStyle = `${accentColor}66`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(circleCenterX, circleCenterY + circleRadius);
+          ctx.lineTo(circleCenterX, circleCenterY + circleRadius + 45);
+          ctx.stroke();
+        }
+
+        // Testo del nodo con evidenziazione parole
+        ctx.font = `500 26px ${bodyFont}, system-ui, sans-serif`;
+        ctx.fillStyle = '#F8FAFC';
+        ctx.textBaseline = 'middle';
+        const textLines = wrapText(ctx, bullet, contentWidth - 80);
+        let tY = circleCenterY;
+        textLines.forEach((tl) => {
+          ctx.fillText(tl, marginX + 75, tY);
+          tY += 34;
+        });
+
+        nodeY += Math.max(circleRadius * 2 + 45, textLines.length * 34 + 30);
       });
-
-      nodeY += Math.max(circleRadius * 2 + 45, textLines.length * 34 + 30);
-    });
+    }
 
     // Frase di chiusura / Body Text
     if (slide.bodyText) {
@@ -838,39 +838,46 @@ export const renderSlideToCanvas = async (
       startY += boxH + 25;
     }
 
-    // Step 1 Diagramma
-    const step1 = slide.diagramStep1 || slide.bodyText || 'Non riuscire più a completare il compito stabilito!';
-    ctx.font = `700 26px ${bodyFont}, system-ui, sans-serif`;
-    ctx.fillStyle = '#FFFFFF';
-    const s1Lines = wrapText(ctx, step1, contentWidth);
-    for (const l of s1Lines) {
-      ctx.fillText(l, marginX, startY);
-      startY += 36;
+    // Step 1 Diagramma (solo se inserito)
+    const step1 = slide.diagramStep1 || slide.bodyText;
+    if (step1) {
+      ctx.font = `700 26px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = '#FFFFFF';
+      const s1Lines = wrapText(ctx, step1, contentWidth);
+      for (const l of s1Lines) {
+        ctx.fillText(l, marginX, startY);
+        startY += 36;
+      }
     }
 
-    // Freccia discendente `↓`
-    startY += 10;
-    ctx.font = `900 36px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = accentColor;
-    ctx.fillText('↓', marginX + 20, startY);
-    startY += 45;
+    // Step 2 & Risultato Evidenziato (solo se inseriti dall'utente)
+    const step2 = slide.diagramStep2;
+    const resultHighlight = slide.diagramHighlightResult;
 
-    // Step 2 & Risultato Evidenziato (es. TASK FAILURE!)
-    const step2 = slide.diagramStep2 || 'Quello che viene definito più correttamente:';
-    const resultHighlight = slide.diagramHighlightResult || 'TASK FAILURE!';
+    if (step2 || resultHighlight) {
+      startY += 10;
+      ctx.font = `900 36px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = accentColor;
+      ctx.fillText('↓', marginX + 20, startY);
+      startY += 45;
 
-    ctx.font = `500 26px ${bodyFont}, system-ui, sans-serif`;
-    ctx.fillStyle = '#CBD5E1';
-    ctx.fillText(step2, marginX, startY);
-    startY += 38;
+      if (step2) {
+        ctx.font = `500 26px ${bodyFont}, system-ui, sans-serif`;
+        ctx.fillStyle = '#CBD5E1';
+        ctx.fillText(step2, marginX, startY);
+        startY += 38;
+      }
 
-    ctx.font = `900 38px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = accentColor;
-    ctx.fillText(resultHighlight, marginX, startY);
-    startY += 55;
+      if (resultHighlight) {
+        ctx.font = `900 38px ${titleFont}, system-ui, sans-serif`;
+        ctx.fillStyle = accentColor;
+        ctx.fillText(resultHighlight, marginX, startY);
+        startY += 55;
+      }
+    }
 
-    // Pillola Punchline Coach (es. "ED È PROPRIO QUI CHE NASCE IL PRIMO EQUIVOCO...")
-    const punchline = slide.punchlineQuote || 'ED È PROPRIO QUI CHE NASCE IL PRIMO EQUIVOCO...';
+    // Pillola Punchline Coach (solo se inserita esplicitamente)
+    const punchline = slide.punchlineQuote;
     if (punchline) {
       const punchY = Math.max(startY + 20, CANVAS_HEIGHT - 240);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
@@ -1060,58 +1067,69 @@ export const renderSlideToCanvas = async (
       });
     }
 
-    startY += 20;
+    const wrongText = slide.wrongText?.trim();
+    const correctText = slide.correctText?.trim();
 
-    const wrongBoxY = startY;
+    // BOX ❌ ERRORE (Rosso) - solo se compilato dall'utente
+    if (wrongText) {
+      startY += 15;
+      const wrongBoxY = startY;
+      ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
+      const wrongLines = wrapText(ctx, wrongText, contentWidth - 50);
+      const wrongBoxHeight = Math.max(120, 75 + wrongLines.length * 36 + 15);
 
-    // BOX ❌ ERRORE (Rosso) - Altezza Dinamica
-    ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
-    const wrongLines = wrapText(ctx, slide.wrongText || slide.bodyText || 'Movimento scorretto', contentWidth - 50);
-    const wrongBoxHeight = Math.max(160, 75 + wrongLines.length * 36 + 15);
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.08)';
+      drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, wrongBoxHeight, 18);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.35)';
+      ctx.lineWidth = 1.5;
+      drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, wrongBoxHeight, 18);
+      ctx.stroke();
 
-    ctx.fillStyle = 'rgba(244, 63, 94, 0.08)';
-    drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, wrongBoxHeight, 18);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(244, 63, 94, 0.35)';
-    ctx.lineWidth = 1.5;
-    drawRoundedRect(ctx, marginX, wrongBoxY, contentWidth, wrongBoxHeight, 18);
-    ctx.stroke();
+      ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = '#F43F5E';
+      ctx.fillText('❌ ERRORE COMUNE DA EVITARE:', marginX + 25, wrongBoxY + 30);
 
-    ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = '#F43F5E';
-    ctx.fillText('❌ ERRORE COMUNE DA EVITARE:', marginX + 25, wrongBoxY + 30);
+      ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = '#FFE4E6';
+      let wY = wrongBoxY + 70;
+      for (const line of wrongLines) {
+        ctx.fillText(line, marginX + 25, wY);
+        wY += 36;
+      }
 
-    ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
-    ctx.fillStyle = '#FFE4E6';
-    let wY = wrongBoxY + 70;
-    for (const line of wrongLines) {
-      ctx.fillText(line, marginX + 25, wY);
-      wY += 36;
+      startY = wrongBoxY + wrongBoxHeight;
     }
 
-    // BOX ✅ CORREZIONE (Verde) - Altezza Dinamica
-    const correctLines = wrapText(ctx, slide.correctText || slide.subheadline || 'Adattamento corretto delle leve', contentWidth - 50);
-    const correctBoxHeight = Math.max(160, 75 + correctLines.length * 36 + 15);
-    const correctBoxY = wrongBoxY + wrongBoxHeight + 20;
+    // BOX ✅ CORREZIONE (Verde) - solo se compilato dall'utente
+    if (correctText) {
+      startY += 15;
+      const correctBoxY = startY;
+      ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
+      const correctLines = wrapText(ctx, correctText, contentWidth - 50);
+      const correctBoxHeight = Math.max(120, 75 + correctLines.length * 36 + 15);
 
-    ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
-    drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, correctBoxHeight, 18);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
-    ctx.lineWidth = 1.5;
-    drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, correctBoxHeight, 18);
-    ctx.stroke();
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
+      drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, correctBoxHeight, 18);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
+      ctx.lineWidth = 1.5;
+      drawRoundedRect(ctx, marginX, correctBoxY, contentWidth, correctBoxHeight, 18);
+      ctx.stroke();
 
-    ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = '#10B981';
-    ctx.fillText('✅ CORREZIONE BIOMECCANICA OTTIMALE:', marginX + 25, correctBoxY + 30);
+      ctx.font = `900 24px ${titleFont}, system-ui, sans-serif`;
+      ctx.fillStyle = '#10B981';
+      ctx.fillText('✅ CORREZIONE BIOMECCANICA OTTIMALE:', marginX + 25, correctBoxY + 30);
 
-    ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
-    ctx.fillStyle = '#D1FAE5';
-    let cY = correctBoxY + 70;
-    for (const line of correctLines) {
-      ctx.fillText(line, marginX + 25, cY);
-      cY += 36;
+      ctx.font = `500 25px ${bodyFont}, system-ui, sans-serif`;
+      ctx.fillStyle = '#D1FAE5';
+      let cY = correctBoxY + 70;
+      for (const line of correctLines) {
+        ctx.fillText(line, marginX + 25, cY);
+        cY += 36;
+      }
+
+      startY = correctBoxY + correctBoxHeight;
     }
 
   // ─── LAYOUT B: NUMBERED LIST / ELENCO PUNTATO CON CARD ───
@@ -1461,12 +1479,12 @@ export const renderSlideToCanvas = async (
 
     // Calcolo dinamico dell'altezza e posizionamento del box CTA per evitare sovrapposizioni tra testo e firma
     ctx.font = `500 ${bodyFontSize}px ${bodyFont}, system-ui, sans-serif`;
-    const ctaBodyLines = wrapText(ctx, slide.bodyText || 'Commenta per ricevere l\'analisi video in DM.', contentWidth - 70);
-    const bodyTextHeight = ctaBodyLines.length * (bodyFontSize + 12);
+    const ctaBodyLines = slide.bodyText ? wrapText(ctx, slide.bodyText, contentWidth - 70) : [];
+    const bodyTextHeight = ctaBodyLines.length > 0 ? ctaBodyLines.length * (bodyFontSize + 12) : 0;
     const signatureHeight = brandKit.authorSignature ? 40 : 10;
-    const boxPaddingTop = 80;
+    const boxPaddingTop = ctaBodyLines.length > 0 ? 80 : 50;
     const boxBottomPadding = 25;
-    const totalBoxHeight = Math.max(180, boxPaddingTop + bodyTextHeight + signatureHeight + boxBottomPadding);
+    const totalBoxHeight = Math.max(140, boxPaddingTop + bodyTextHeight + signatureHeight + boxBottomPadding);
 
     // Posizionamento del box rispettando sia lo startY sia la safe area inferiore del footer
     const ctaBoxY = Math.min(
@@ -1488,17 +1506,21 @@ export const renderSlideToCanvas = async (
     ctx.fillStyle = accentColor;
     ctx.fillText('💾 SALVA IL POST & COMMENTA', marginX + 35, ctaBoxY + 35);
 
-    // Testo del corpo dinamico
-    ctx.font = `${isBodyBold ? 'bold' : '500'} ${bodyFontSize}px "${bodyFont}", system-ui, sans-serif`;
-    ctx.fillStyle = slide.bodyColor || '#FEF3C7';
+    // Testo del corpo dinamico (solo se presente testo effettivo)
     let currentY = ctaBoxY + 80;
-    for (const bl of ctaBodyLines) {
-      ctx.fillText(bl, marginX + 35, currentY);
-      if (isBodyUnderline && bl.trim()) {
-        const textW = ctx.measureText(bl).width;
-        ctx.fillRect(marginX + 35, currentY + Math.round(bodyFontSize * 0.95), textW, Math.max(2, Math.round(bodyFontSize * 0.08)));
+    if (ctaBodyLines.length > 0) {
+      ctx.font = `${isBodyBold ? 'bold' : '500'} ${bodyFontSize}px "${bodyFont}", system-ui, sans-serif`;
+      ctx.fillStyle = slide.bodyColor || '#FEF3C7';
+      for (const bl of ctaBodyLines) {
+        ctx.fillText(bl, marginX + 35, currentY);
+        if (isBodyUnderline && bl.trim()) {
+          const textW = ctx.measureText(bl).width;
+          ctx.fillRect(marginX + 35, currentY + Math.round(bodyFontSize * 0.95), textW, Math.max(2, Math.round(bodyFontSize * 0.08)));
+        }
+        currentY += bodyFontSize + 12;
       }
-      currentY += bodyFontSize + 12;
+    } else {
+      currentY = ctaBoxY + 50;
     }
 
     // Firma Brand posizionata SEMPRE sotto al testo, mai sovrapposta
@@ -1690,31 +1712,39 @@ export const renderSlideToCanvas = async (
       ctx.restore();
     };
 
-    const q1 = slide.calloutTopLeft || {
-      title: slide.bulletPoints?.[0] ? slide.bulletPoints[0].split(':')[0] : 'Assunzione a digiuno:',
-      text: slide.bulletPoints?.[0] ? (slide.bulletPoints[0].split(':')[1] || slide.bulletPoints[0]) : 'Senza substrato la sintesi proteica non si attiva.',
-    };
-    const q2 = slide.calloutTopRight || {
-      title: slide.bulletPoints?.[1] ? slide.bulletPoints[1].split(':')[0] : 'Sedute ravvicinate:',
-      text: slide.bulletPoints?.[1] ? (slide.bulletPoints[1].split(':')[1] || slide.bulletPoints[1]) : 'Ideale quando tra due sessioni manca il tempo per mangiare.',
-    };
-    const q3 = slide.calloutBottomLeft || {
-      title: slide.bulletPoints?.[2] ? slide.bulletPoints[2].split(':')[0] : 'Dieta povera di proteine:',
-      text: slide.bulletPoints?.[2] ? (slide.bulletPoints[2].split(':')[1] || slide.bulletPoints[2]) : 'Coprono il pool aminoacidico mancante nella giornata.',
-    };
-    const q4 = slide.calloutBottomRight || {
-      title: slide.bulletPoints?.[3] ? slide.bulletPoints[3].split(':')[0] : 'Quando non servono:',
-      text: slide.bulletPoints?.[3] ? (slide.bulletPoints[3].split(':')[1] || slide.bulletPoints[3]) : 'Se l\'apporto proteico totale è già a 1.6–2.2 g/kg.',
-    };
+    const q1 = slide.calloutTopLeft || (slide.bulletPoints?.[0] ? {
+      title: slide.bulletPoints[0].split(':')[0],
+      text: slide.bulletPoints[0].split(':')[1] || slide.bulletPoints[0],
+    } : null);
+    const q2 = slide.calloutTopRight || (slide.bulletPoints?.[1] ? {
+      title: slide.bulletPoints[1].split(':')[0],
+      text: slide.bulletPoints[1].split(':')[1] || slide.bulletPoints[1],
+    } : null);
+    const q3 = slide.calloutBottomLeft || (slide.bulletPoints?.[2] ? {
+      title: slide.bulletPoints[2].split(':')[0],
+      text: slide.bulletPoints[2].split(':')[1] || slide.bulletPoints[2],
+    } : null);
+    const q4 = slide.calloutBottomRight || (slide.bulletPoints?.[3] ? {
+      title: slide.bulletPoints[3].split(':')[0],
+      text: slide.bulletPoints[3].split(':')[1] || slide.bulletPoints[3],
+    } : null);
 
     // ↖️ Quadrante Alto-Sinistra
-    renderCalloutBlock(leftColX, railYTop - 110, q1.title, q1.text);
+    if (q1 && (q1.title || q1.text)) {
+      renderCalloutBlock(leftColX, railYTop - 110, q1.title || '', q1.text || '');
+    }
     // ↗️ Quadrante Alto-Destra
-    renderCalloutBlock(rightColX, railYTop - 110, q2.title, q2.text);
+    if (q2 && (q2.title || q2.text)) {
+      renderCalloutBlock(rightColX, railYTop - 110, q2.title || '', q2.text || '');
+    }
     // ↙️ Quadrante Basso-Sinistra
-    renderCalloutBlock(leftColX, railYBottom + 20, q3.title, q3.text);
+    if (q3 && (q3.title || q3.text)) {
+      renderCalloutBlock(leftColX, railYBottom + 20, q3.title || '', q3.text || '');
+    }
     // ↘️ Quadrante Basso-Destra
-    renderCalloutBlock(rightColX, railYBottom + 20, q4.title, q4.text);
+    if (q4 && (q4.title || q4.text)) {
+      renderCalloutBlock(rightColX, railYBottom + 20, q4.title || '', q4.text || '');
+    }
 
     // 6. Footer con Badge Autore & Logo
     const footerY = CANVAS_HEIGHT - 125;

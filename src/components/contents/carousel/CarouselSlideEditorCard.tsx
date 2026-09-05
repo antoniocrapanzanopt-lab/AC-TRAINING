@@ -500,6 +500,70 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
 
   const currentLayout: SlideLayoutId = slide.layout || (index === 0 ? 'dual_tone_cover' : index === totalSlides - 1 ? 'final_cta' : 'numbered_list');
 
+  const hasLayoutSpecificData = Boolean(
+    slide.wrongText ||
+    slide.correctText ||
+    slide.diagramStep1 ||
+    slide.diagramStep2 ||
+    slide.diagramHighlightResult ||
+    slide.topBannerText ||
+    slide.calloutTopLeft?.title ||
+    slide.calloutTopLeft?.text ||
+    slide.calloutTopRight?.title ||
+    slide.calloutTopRight?.text ||
+    slide.calloutBottomLeft?.title ||
+    slide.calloutBottomLeft?.text ||
+    slide.calloutBottomRight?.title ||
+    slide.calloutBottomRight?.text ||
+    slide.badgeCoachName ||
+    slide.badgeCoachTitle ||
+    slide.punchlineQuote
+  );
+
+  const handleLayoutChange = (newLayout: SlideLayoutId) => {
+    const updated: CarouselSlide = { ...slide, layout: newLayout };
+    // Quando si cambia layout, puliamo i dati specifici del vecchio layout per evitare preset o residui
+    if (currentLayout !== newLayout) {
+      if (newLayout !== 'diagram_flow') {
+        delete updated.diagramStep1;
+        delete updated.diagramStep2;
+        delete updated.diagramHighlightResult;
+      }
+      if (newLayout !== 'error_vs_correct') {
+        delete updated.wrongText;
+        delete updated.correctText;
+      }
+      if (newLayout !== 'product_breakdown') {
+        delete updated.topBannerText;
+        delete updated.calloutTopLeft;
+        delete updated.calloutTopRight;
+        delete updated.calloutBottomLeft;
+        delete updated.calloutBottomRight;
+        delete updated.badgeCoachName;
+        delete updated.badgeCoachTitle;
+      }
+    }
+    onChange(updated);
+  };
+
+  const handleResetCurrentLayoutFields = () => {
+    const updated: CarouselSlide = { ...slide };
+    delete updated.wrongText;
+    delete updated.correctText;
+    delete updated.diagramStep1;
+    delete updated.diagramStep2;
+    delete updated.diagramHighlightResult;
+    delete updated.topBannerText;
+    delete updated.calloutTopLeft;
+    delete updated.calloutTopRight;
+    delete updated.calloutBottomLeft;
+    delete updated.calloutBottomRight;
+    delete updated.badgeCoachName;
+    delete updated.badgeCoachTitle;
+    delete updated.punchlineQuote;
+    onChange(updated);
+  };
+
   const handleAddBullet = () => {
     const bullets = slide.bulletPoints || [];
     onChange({
@@ -1126,12 +1190,24 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-              <Layout className="w-3 h-3 text-amber-400" /> Layout Visivo
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                <Layout className="w-3 h-3 text-amber-400" /> Layout Visivo
+              </label>
+              {hasLayoutSpecificData && (
+                <button
+                  type="button"
+                  onClick={handleResetCurrentLayoutFields}
+                  className="text-[10px] text-rose-400 hover:text-rose-300 font-medium underline cursor-pointer"
+                  title="Resetta i campi specifici del layout per questa slide"
+                >
+                  Resetta campi layout
+                </button>
+              )}
+            </div>
             <select
               value={currentLayout}
-              onChange={(e) => onChange({ ...slide, layout: e.target.value as SlideLayoutId })}
+              onChange={(e) => handleLayoutChange(e.target.value as SlideLayoutId)}
               className="w-full px-3 py-1.5 bg-slate-950 border border-amber-500/40 rounded-xl text-xs font-bold text-amber-300 focus:outline-none focus:border-amber-400 cursor-pointer"
             >
               {SLIDE_LAYOUTS.map((l) => (
@@ -1337,9 +1413,27 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
         {/* ─── CAMPI SPECIFICI IN BASE AL LAYOUT ATTIVO ─── */}
         {currentLayout === 'diagram_flow' && (
           <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950 border border-purple-500/30">
-            <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-              <GitBranch className="w-3.5 h-3.5" /> Flusso Diagramma (Premessa ➔ Risultato)
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                <GitBranch className="w-3.5 h-3.5" /> Flusso Diagramma (Premessa ➔ Risultato)
+              </span>
+              {(slide.diagramStep1 || slide.diagramStep2 || slide.diagramHighlightResult || slide.punchlineQuote) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = { ...slide };
+                    delete updated.diagramStep1;
+                    delete updated.diagramStep2;
+                    delete updated.diagramHighlightResult;
+                    delete updated.punchlineQuote;
+                    onChange(updated);
+                  }}
+                  className="text-[10px] text-rose-400 hover:text-rose-300 font-medium underline cursor-pointer"
+                >
+                  Svuota campi
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <input
                 type="text"
@@ -1356,14 +1450,46 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                 className="w-full px-2.5 py-1.5 bg-slate-900 border border-amber-500/50 rounded-xl text-xs text-amber-300 font-bold"
               />
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <input
+                type="text"
+                value={slide.diagramStep2 || ''}
+                onChange={(e) => onChange({ ...slide, diagramStep2: e.target.value })}
+                placeholder="Step 2: Dettaglio / Chiarimento (opzionale)"
+                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-300"
+              />
+              <input
+                type="text"
+                value={slide.punchlineQuote || ''}
+                onChange={(e) => onChange({ ...slide, punchlineQuote: e.target.value })}
+                placeholder="Punchline Coach (opzionale)"
+                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-amber-300"
+              />
+            </div>
           </div>
         )}
 
         {currentLayout === 'error_vs_correct' && (
           <div className="space-y-2.5 p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
-            <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-              <span>⚖️ Confronto Split: Errore vs Correzione Ottimale</span>
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <span>⚖️ Confronto Split: Errore vs Correzione Ottimale</span>
+              </span>
+              {(slide.wrongText || slide.correctText) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = { ...slide };
+                    delete updated.wrongText;
+                    delete updated.correctText;
+                    onChange(updated);
+                  }}
+                  className="text-[10px] text-rose-400 hover:text-rose-300 font-medium underline cursor-pointer"
+                >
+                  Svuota campi
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <textarea
                 rows={2}
@@ -1389,7 +1515,28 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
               <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                 <Package className="w-4 h-4 text-amber-400" /> Infografica Prodotto & 4 Callout Quadranti
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">Layout Stile @ironmanager</span>
+              <div className="flex items-center gap-2">
+                {(slide.topBannerText || slide.calloutTopLeft || slide.calloutTopRight || slide.calloutBottomLeft || slide.calloutBottomRight || slide.badgeCoachName || slide.badgeCoachTitle) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...slide };
+                      delete updated.topBannerText;
+                      delete updated.calloutTopLeft;
+                      delete updated.calloutTopRight;
+                      delete updated.calloutBottomLeft;
+                      delete updated.calloutBottomRight;
+                      delete updated.badgeCoachName;
+                      delete updated.badgeCoachTitle;
+                      onChange(updated);
+                    }}
+                    className="text-[10px] text-rose-400 hover:text-rose-300 font-medium underline cursor-pointer"
+                  >
+                    Svuota campi
+                  </button>
+                )}
+                <span className="text-[10px] text-slate-400 font-mono">Layout Stile @ironmanager</span>
+              </div>
             </div>
 
             {/* Banner Superiore (URL o Nome) */}
@@ -1588,13 +1735,28 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
               <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
                 <span>Punti Elenco (Bullet List)</span>
               </span>
-              <button
-                type="button"
-                onClick={handleAddBullet}
-                className="text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3 h-3" /> Aggiungi punto
-              </button>
+              <div className="flex items-center gap-2">
+                {slide.bulletPoints && slide.bulletPoints.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...slide };
+                      delete updated.bulletPoints;
+                      onChange(updated);
+                    }}
+                    className="text-[10px] text-rose-400 hover:text-rose-300 font-medium underline cursor-pointer"
+                  >
+                    Svuota lista
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleAddBullet}
+                  className="text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" /> Aggiungi punto
+                </button>
+              </div>
             </div>
 
             {(!slide.bulletPoints || slide.bulletPoints.length === 0) ? (
