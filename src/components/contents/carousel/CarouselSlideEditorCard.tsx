@@ -44,6 +44,8 @@ import {
   Underline,
   Palette,
   RotateCcw,
+  Camera,
+  Upload,
 } from 'lucide-react';
 
 interface CarouselSlideEditorCardProps {
@@ -341,6 +343,30 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   const subtitleInputRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const aiMenuRef = useRef<HTMLDivElement | null>(null);
+  const productPhotoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleProductPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Seleziona un file immagine valido (JPEG, PNG, WebP, SVG).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (typeof event.target?.result === 'string') {
+        onChange({
+          ...slide,
+          imageUrl: event.target.result,
+          imageFit: slide.imageFit || 'contain',
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // Auto-riparazione: sanitizza testi da eventuali tag residui (<color:...>, </color>, <u>, </u>, **)
   useEffect(() => {
@@ -1558,7 +1584,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                 <Package className="w-4 h-4 text-amber-400" /> Infografica Prodotto & 4 Callout Quadranti
               </span>
               <div className="flex items-center gap-2">
-                {(slide.topBannerText || slide.calloutTopLeft || slide.calloutTopRight || slide.calloutBottomLeft || slide.calloutBottomRight || slide.badgeCoachName || slide.badgeCoachTitle) && (
+                {(slide.topBannerText || slide.calloutTopLeft || slide.calloutTopRight || slide.calloutBottomLeft || slide.calloutBottomRight || slide.badgeCoachName || slide.badgeCoachTitle || slide.imageUrl) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1570,6 +1596,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                       delete updated.calloutBottomRight;
                       delete updated.badgeCoachName;
                       delete updated.badgeCoachTitle;
+                      delete updated.imageUrl;
                       onChange(updated);
                     }}
                     className="text-[10px] text-rose-400 hover:text-rose-300 font-medium underline cursor-pointer"
@@ -1578,6 +1605,120 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                   </button>
                 )}
                 <span className="text-[10px] text-slate-400 font-mono">Layout Stile @ironmanager</span>
+              </div>
+            </div>
+
+            {/* Foto Soggetto Centrale (Prodotto / Esercizio) */}
+            <div className="p-3 rounded-xl bg-slate-900/90 border border-amber-500/30 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Camera className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-bold text-amber-300">Foto Soggetto Centrale</span>
+                  <span className="text-[10px] text-slate-400">(Prodotto, Integratore, Esercizio o Atleta)</span>
+                </div>
+                {slide.imageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...slide };
+                      delete updated.imageUrl;
+                      onChange(updated);
+                    }}
+                    className="text-[10px] text-rose-400 hover:text-rose-300 font-medium flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" /> Rimuovi foto
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                {/* Miniatura o Placeholder di Caricamento */}
+                {slide.imageUrl ? (
+                  <div className="relative group shrink-0">
+                    <img
+                      src={slide.imageUrl}
+                      alt="Soggetto Centrale"
+                      className="w-16 h-16 rounded-xl object-contain bg-slate-950 border border-amber-500/50 shadow-md p-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = { ...slide };
+                        delete updated.imageUrl;
+                        onChange(updated);
+                      }}
+                      title="Rimuovi"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => productPhotoInputRef.current?.click()}
+                    className="w-16 h-16 rounded-xl border-2 border-dashed border-amber-500/40 hover:border-amber-400 bg-amber-500/5 hover:bg-amber-500/10 flex flex-col items-center justify-center text-amber-300 gap-1 transition cursor-pointer shrink-0"
+                  >
+                    <Upload className="w-5 h-5 text-amber-400" />
+                    <span className="text-[9px] font-bold">Carica</span>
+                  </button>
+                )}
+
+                {/* Controlli e Selezione Modalità Fit */}
+                <div className="flex-1 space-y-1.5 min-w-0">
+                  <input
+                    ref={productPhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProductPhotoUpload}
+                    className="hidden"
+                  />
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => productPhotoInputRef.current?.click()}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-amber-400" />
+                      {slide.imageUrl ? 'Sostituisci Foto' : 'Carica Foto'}
+                    </button>
+
+                    <div className="flex items-center rounded-lg bg-slate-950 border border-slate-800 p-0.5 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => onChange({ ...slide, imageFit: 'contain' })}
+                        className={`px-2 py-0.5 rounded-md font-semibold transition cursor-pointer ${
+                          (slide.imageFit || 'contain') === 'contain'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Intera (contain)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onChange({ ...slide, imageFit: 'cover' })}
+                        className={`px-2 py-0.5 rounded-md font-semibold transition cursor-pointer ${
+                          slide.imageFit === 'cover'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Riempi (cover)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Campo URL diretto opzionale */}
+                  <input
+                    type="text"
+                    value={slide.imageUrl || ''}
+                    onChange={(e) => onChange({ ...slide, imageUrl: e.target.value.trim() ? e.target.value : undefined })}
+                    placeholder="Oppure incolla URL immagine (https://...)"
+                    className="w-full px-2 py-1 bg-slate-950 border border-slate-800 rounded-lg text-[11px] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-amber-500/50"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1866,34 +2007,36 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
         )}
 
         {/* GESTIONE FOTO COMPLETA (UPLOAD, PRESET, ZOOM, FIT, OVERLAY, SMART LAYOUT) */}
-        <div onClick={(e) => e.stopPropagation()}>
-          <SlideImageControlPanel
-            imageUrl={slide.imageUrl}
-            imageFit={slide.imageFit || 'cover'}
-            imagePositionX={slide.imagePositionX ?? 50}
-            imagePositionY={slide.imagePositionY ?? 50}
-            imageZoom={slide.imageZoom ?? 1.0}
-            imageOverlay={slide.imageOverlay ?? (slide.imageOpacity !== undefined ? Math.round((1 - slide.imageOpacity) * 100) : 0)}
-            imageFocalPoint={slide.imageFocalPoint}
-            visualCue={slide.visualCue}
-            textAlign={slide.textAlign || 'left'}
-            headline={slide.headline}
-            onUpdateImageParams={(params) => {
-              onChange({
-                ...slide,
-                ...params,
-              });
-            }}
-            presetSampleImage={
-              index === 0
-                ? {
-                    label: 'Foto Squat Leve',
-                    url: '/assets/squat_tall_athlete_cover.jpg',
-                  }
-                : undefined
-            }
-          />
-        </div>
+        {currentLayout !== 'product_breakdown' && (
+          <div onClick={(e) => e.stopPropagation()}>
+            <SlideImageControlPanel
+              imageUrl={slide.imageUrl}
+              imageFit={slide.imageFit || 'cover'}
+              imagePositionX={slide.imagePositionX ?? 50}
+              imagePositionY={slide.imagePositionY ?? 50}
+              imageZoom={slide.imageZoom ?? 1.0}
+              imageOverlay={slide.imageOverlay ?? (slide.imageOpacity !== undefined ? Math.round((1 - slide.imageOpacity) * 100) : 0)}
+              imageFocalPoint={slide.imageFocalPoint}
+              visualCue={slide.visualCue}
+              textAlign={slide.textAlign || 'left'}
+              headline={slide.headline}
+              onUpdateImageParams={(params) => {
+                onChange({
+                  ...slide,
+                  ...params,
+                });
+              }}
+              presetSampleImage={
+                index === 0
+                  ? {
+                      label: 'Foto Squat Leve',
+                      url: '/assets/squat_tall_athlete_cover.jpg',
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        )}
       </div>
 
       {/* ─── 3. PANNELLO A SOFFIETTO: PERSONALIZZA STILE & DETTAGLI AVANZATI ─── */}
