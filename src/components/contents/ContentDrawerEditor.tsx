@@ -41,6 +41,7 @@ import { createEmptyCarousel } from '../../services/carouselGeneratorService';
 import { generateDefaultCoverFromContent } from '../../services/coverGeneratorService';
 import { CoverCardPreview } from './cover/CoverCardPreview';
 import { openContentStudio, normalizeContentFormat } from '../../utils/contentStudioRouter';
+import { SectionErrorBoundary } from '../common/SectionErrorBoundary';
 
 const CarouselStudioModal = React.lazy(() =>
   import('./carousel/CarouselStudioModal').then((m) => ({ default: m.CarouselStudioModal }))
@@ -1510,98 +1511,104 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
 
       {/* ─── 5. STUDIO CAROSELLI INSTAGRAM MODALE FULLSCREEN (LAZY LOADED) ─── */}
       {isCarouselStudioOpen && (
-        <React.Suspense
-          fallback={
-            <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="flex flex-col items-center gap-3 text-amber-400">
-                <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs font-bold font-mono">Caricamento Studio Caroselli...</span>
+        <SectionErrorBoundary sectionName="Carousel Studio">
+          <React.Suspense
+            fallback={
+              <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="flex flex-col items-center gap-3 text-amber-400">
+                  <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs font-bold font-mono">Caricamento Studio Caroselli...</span>
+                </div>
               </div>
-            </div>
-          }
-        >
-          <CarouselStudioModal
-            isOpen={isCarouselStudioOpen}
-            onClose={() => setIsCarouselStudioOpen(false)}
-            content={{
-              id: contentToEdit?.id,
-              title,
-              type,
-              pillar,
-              status,
-              hook,
-              script_body: scriptBody,
-              caption,
-              call_to_action: callToAction,
-              internal_notes: internalNotes,
-              carousel_data: carouselData,
-            }}
-            initialSlideIndex={carouselStudioInitialSlideIndex}
-            initialTargetField={carouselStudioTargetField}
-            onSaveCarousel={(updatedCarousel) => {
-              setCarouselData(updatedCarousel);
-            }}
-          />
-        </React.Suspense>
+            }
+          >
+            <CarouselStudioModal
+              isOpen={isCarouselStudioOpen}
+              onClose={() => setIsCarouselStudioOpen(false)}
+              content={{
+                id: contentToEdit?.id,
+                title,
+                type,
+                pillar,
+                status,
+                hook,
+                script_body: scriptBody,
+                caption,
+                call_to_action: callToAction,
+                internal_notes: internalNotes,
+                carousel_data: carouselData,
+              }}
+              initialSlideIndex={carouselStudioInitialSlideIndex}
+              initialTargetField={carouselStudioTargetField}
+              onSaveCarousel={(updatedCarousel) => {
+                setCarouselData(updatedCarousel);
+              }}
+            />
+          </React.Suspense>
+        </SectionErrorBoundary>
       )}
 
       {/* ─── 6. STUDIO COPERTINE INSTAGRAM MODALE FULLSCREEN (LAZY LOADED) ─── */}
       {isCoverStudioOpen && (
-        <React.Suspense
-          fallback={
-            <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="flex flex-col items-center gap-3 text-amber-400">
-                <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs font-bold font-mono">Caricamento Cover Studio...</span>
+        <SectionErrorBoundary sectionName="Cover Studio">
+          <React.Suspense
+            fallback={
+              <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="flex flex-col items-center gap-3 text-amber-400">
+                  <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs font-bold font-mono">Caricamento Cover Studio...</span>
+                </div>
               </div>
-            </div>
-          }
-        >
-          <CoverStudioModal
-            isOpen={isCoverStudioOpen}
-            onClose={() => setIsCoverStudioOpen(false)}
-            content={{
-              id: contentToEdit?.id,
-              title,
-              type,
-              pillar,
-              status,
-              hook,
-              cover_data: coverData,
-            }}
-            onSaveCover={(updatedCover) => {
-              setCoverData(updatedCover);
-            }}
-          />
-        </React.Suspense>
+            }
+          >
+            <CoverStudioModal
+              isOpen={isCoverStudioOpen}
+              onClose={() => setIsCoverStudioOpen(false)}
+              content={{
+                id: contentToEdit?.id,
+                title,
+                type,
+                pillar,
+                status,
+                hook,
+                cover_data: coverData,
+              }}
+              onSaveCover={(updatedCover) => {
+                setCoverData(updatedCover);
+              }}
+            />
+          </React.Suspense>
+        </SectionErrorBoundary>
       )}
 
       {/* ─── 7. STUDIO STORIES INSTAGRAM MODALE FULLSCREEN (LAZY LOADED) ─── */}
       {isStoryStudioOpen && (
-        <React.Suspense
-          fallback={
-            <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="flex flex-col items-center gap-3 text-purple-400">
-                <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs font-bold font-mono">Caricamento Story Studio...</span>
+        <SectionErrorBoundary sectionName="Story Studio">
+          <React.Suspense
+            fallback={
+              <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="flex flex-col items-center gap-3 text-purple-400">
+                  <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs font-bold font-mono">Caricamento Story Studio...</span>
+                </div>
               </div>
-            </div>
-          }
-        >
-          <StoryStudioModal
-            isOpen={isStoryStudioOpen}
-            onClose={() => setIsStoryStudioOpen(false)}
-            storySequence={storyData || createDefaultStorySequence(title)}
-            onSaveSequence={(updatedSeq) => {
-              setStoryData(updatedSeq);
-            }}
-            initialStoryIndex={storyStudioInitialIndex}
-            contentTitle={title}
-            scriptBody={scriptBody}
-            hook={hook}
-            cta={callToAction}
-          />
-        </React.Suspense>
+            }
+          >
+            <StoryStudioModal
+              isOpen={isStoryStudioOpen}
+              onClose={() => setIsStoryStudioOpen(false)}
+              storySequence={storyData || createDefaultStorySequence(title)}
+              onSaveSequence={(updatedSeq) => {
+                setStoryData(updatedSeq);
+              }}
+              initialStoryIndex={storyStudioInitialIndex}
+              contentTitle={title}
+              scriptBody={scriptBody}
+              hook={hook}
+              cta={callToAction}
+            />
+          </React.Suspense>
+        </SectionErrorBoundary>
       )}
     </div>
   );

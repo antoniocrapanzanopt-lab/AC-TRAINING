@@ -31,11 +31,27 @@ interface PastSession {
   coachFeedback?: string;
 }
 
+export interface SessionRow {
+  id: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  week_number?: number | null;
+  day_name?: string | null;
+  rpe?: number | null;
+  notes?: string | null;
+  status?: string | null;
+  skip_reason?: string | null;
+  skip_notes?: string | null;
+  coach_justified?: boolean | null;
+  coach_feedback?: string | null;
+  workouts?: { title?: string; total_weeks?: number } | null;
+}
+
 interface AthleteWorkoutHistoryProps {
   athleteId: string;
   athleteIds?: string[];
   activeWorkoutTitle?: string;
-  initialSessions?: any[];
+  initialSessions?: SessionRow[];
 }
 
 export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
@@ -57,7 +73,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
     return Array.from(new Set([athleteId, ...(athleteIds || [])].filter(Boolean)));
   }, [athleteId, idsKey]);
 
-  const mapSessions = React.useCallback((sessionList: Record<string, any>[]): PastSession[] => {
+  const mapSessions = React.useCallback((sessionList: SessionRow[]): PastSession[] => {
     return sessionList.map((session) => {
       const start = new Date(String(session.start_time || ''));
       const end = new Date(String(session.end_time || ''));
@@ -75,19 +91,21 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
 
       const dateStr = session.end_time ? String(session.end_time).slice(0, 10) : new Date().toISOString().slice(0, 10);
       const rawW = Number(session.week_number) || 1;
-      const totalW = (session.workouts as any)?.total_weeks;
+      const totalW = session.workouts?.total_weeks;
       const safeW = totalW && totalW > 0 && rawW > totalW ? totalW : rawW;
+
+      const statusVal = session.status === 'skipped' ? 'skipped' : 'completed';
 
       return {
         id: String(session.id),
         workoutTitle: finalTitle,
         weekNumber: safeW,
-        dayName: String(session.day_name || 'Giorno A'),
+        dayName: String(session.day_name || 'Giorno 1'),
         date: dateStr,
         durationMinutes: session.status === 'skipped' ? 0 : durationMinutes,
         rpe: Number(session.rpe) || 0,
         notes: session.notes ? String(session.notes) : undefined,
-        status: session.status as any,
+        status: statusVal,
         skipReason: session.skip_reason ? String(session.skip_reason) : undefined,
         skipNotes: session.skip_notes ? String(session.skip_notes) : undefined,
         coachJustified: session.coach_justified,
@@ -154,7 +172,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
       }
 
       if (sessionList) {
-        setPastSessions(mapSessions(sessionList as Record<string, any>[]));
+        setPastSessions(mapSessions(sessionList as unknown as SessionRow[]));
       }
     } catch (err) {
       console.warn('Errore lettura storico workout atleta:', err);
@@ -193,8 +211,16 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
         .order('set_number', { ascending: true });
 
       if (!error && data) {
-        const exMap = new Map<string, { sets: any[]; notesSet: Set<string> }>();
-        data.forEach((log: any) => {
+        interface ExerciseLogQueryRow {
+          set_number: number;
+          reps_completed: number | null;
+          weight_kg: number | null;
+          notes: string | null;
+          workout_exercises: { name?: string; week_number?: number; day_name?: string } | null;
+        }
+
+        const exMap = new Map<string, { sets: { setNumber: number; reps: number; weightKg: number }[]; notesSet: Set<string> }>();
+        (data as unknown as ExerciseLogQueryRow[]).forEach((log) => {
           const exName = log.workout_exercises?.name || 'Esercizio';
           if (!exMap.has(exName)) {
             exMap.set(exName, { sets: [], notesSet: new Set<string>() });

@@ -10,6 +10,7 @@ import { useToast } from '../../context/ToastContext';
 import { InstagramContent } from '../../types/inboxAndContent';
 import { InstagramCarousel } from '../../types/carousel';
 import { createEmptyCarousel, createEmptyCoverSlide } from '../../services/carouselGeneratorService';
+import { SectionErrorBoundary } from '../../components/common/SectionErrorBoundary';
 
 // Precaricamento anticipato del chunk per eliminare la latenza di caricamento dinamico
 const preloadCarouselModal = () => {
@@ -289,14 +290,16 @@ export const StudioCarouselPage: React.FC<StudioCarouselPageProps> = ({
 
       {/* MODALE FULLSCREEN CAROUSEL STUDIO */}
       {isEditorOpen && activeContent && (
-        <React.Suspense fallback={null}>
-          <CarouselStudioModal
-            isOpen={isEditorOpen}
-            onClose={() => setIsEditorOpen(false)}
-            content={activeContent}
-            onSaveCarousel={handleSaveCarousel}
-          />
-        </React.Suspense>
+        <SectionErrorBoundary sectionName="Carousel Studio">
+          <React.Suspense fallback={null}>
+            <CarouselStudioModal
+              isOpen={isEditorOpen}
+              onClose={() => setIsEditorOpen(false)}
+              content={activeContent}
+              onSaveCarousel={handleSaveCarousel}
+            />
+          </React.Suspense>
+        </SectionErrorBoundary>
       )}
 
     </div>

@@ -12,7 +12,7 @@ import {
   XCircle,
   Clock,
 } from 'lucide-react';
-import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
+import { WorkoutTemplate, WorkoutExercise, AthleteAssignedWorkout } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
@@ -26,7 +26,7 @@ import {
   ActiveWorkoutDraft,
 } from '../../lib/offline/offlineWorkoutStorage';
 import { PwaInstallBanner } from '../../components/pwa/PwaInstallBanner';
-import { AthleteWorkoutHistory } from '../../components/athlete/AthleteWorkoutHistory';
+import { AthleteWorkoutHistory, SessionRow } from '../../components/athlete/AthleteWorkoutHistory';
 import { AthleteQuestionnaireWizard } from '../../components/questionnaires/AthleteQuestionnaireWizard';
 import { AthleteAdherenceCard } from '../../components/athlete/AthleteAdherenceCard';
 import { getAthleteOnboardingResponse } from '../../services/questionnaireService';
@@ -35,17 +35,18 @@ import { AthleteOnboardingRecord } from '../../types/questionnaire';
 import { Sparkles } from 'lucide-react';
 
 interface AthleteDashboardProps {
-  onStartWorkout: (workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string, targetWeekNumber?: number) => void;
+  onStartWorkout: (workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string, targetWeekNumber?: number, targetDayName?: string) => void;
 }
 
 // ─── COMPONENTE GIORNI DI ALLENAMENTO PULITO & LINEARE ─────────────────────────
 interface WorkoutDayListProps {
-  assigned: any;
-  onStart: (assigned: any, week: number, day: string) => void;
+  assigned: AthleteAssignedWorkout;
+  onStart: (assigned: AthleteAssignedWorkout, week: number, day: string) => void;
   activeDraft: ActiveWorkoutDraft | null;
   completedMap: Record<string, boolean>;
   sessionDetailsMap: Record<string, { status?: string; skip_reason?: string; coach_justified?: boolean | null; skip_notes?: string }>;
   days: string[];
+  isLoadingDays?: boolean;
 }
 
 const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
@@ -55,8 +56,9 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   completedMap,
   sessionDetailsMap,
   days,
+  isLoadingDays = false,
 }) => {
-  const totalWeeks = assigned.workout?.total_weeks || 5;
+  const totalWeeks = assigned.workout?.total_weeks && assigned.workout.total_weeks > 0 ? assigned.workout.total_weeks : 1;
   const normDay = (str: string) => (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
   // Calcola la settimana attiva corrente
@@ -78,6 +80,21 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   const nextPendingDay = useMemo(() => {
     return days.find((d) => !completedMap[`${selectedWeek}-${d}`] && !completedMap[`${selectedWeek}-${normDay(d)}`]) || null;
   }, [days, completedMap, selectedWeek]);
+
+  if (isLoadingDays && days.length === 0) {
+    return <WorkoutDaysSkeleton />;
+  }
+
+  if (!isLoadingDays && days.length === 0) {
+    return (
+      <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-2xl p-6 text-center space-y-1 shadow-sm">
+        <h4 className="text-sm font-bold text-[var(--color-text)]">{assigned.workout?.title || 'Scheda di Allenamento'}</h4>
+        <p className="text-xs text-[var(--color-text-muted)]">
+          Nessun giorno o esercizio attualmente configurato per questa scheda dal coach.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 pt-2">
@@ -536,7 +553,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     return () => window.removeEventListener('online', handleSync);
   }, [showSuccess, checkDraftAndQueue]);
 
-  const handleStartWorkout = async (assigned: any, selectedWeek?: number, selectedDay?: string) => {
+  const handleStartWorkout = async (assigned: AthleteAssignedWorkout, selectedWeek?: number, selectedDay?: string) => {
     try {
       console.log('[AthleteDashboard] Avvio workout richiesto:', { assigned, selectedWeek, selectedDay });
       const targetWIds = Array.from(
@@ -558,6 +575,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       const isDayMatch = (d1: string, d2: string) => {
         const n1 = norm(d1);
         const n2 = norm(d2);
+        if (!n1 || !n2) return false;
         if (n1 === n2) return true;
         if (n1.startsWith(n2) || n2.startsWith(n1)) return true;
         const l1 = n1.replace(/[^a-z0-9]/g, '');
@@ -565,46 +583,51 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         return l1 === l2 || (l1.length > 0 && l2.length > 0 && (l1.includes(l2) || l2.includes(l1)));
       };
 
-      const maxTotalWeeks = assigned.workout?.total_weeks || 1;
-      const targetWeek = Math.min(maxTotalWeeks > 0 ? maxTotalWeeks : 1, Math.max(1, selectedWeek || 1));
-      const targetDay = (selectedDay && selectedDay.trim()) || 'Giorno A';
+      const maxTotalWeeks = assigned.workout?.total_weeks && assigned.workout.total_weeks > 0 ? assigned.workout.total_weeks : 1;
+      const targetWeek = Math.min(maxTotalWeeks, Math.max(1, selectedWeek || 1));
+      const targetDay = (selectedDay && selectedDay.trim()) || '';
 
       // 1. Filtra per settimana e giorno
       let filtered = allExercises.filter((ex) => {
         const exWeek = ex.week_number || 1;
-        const exDay = ex.day_name || 'Giorno A';
+        const exDay = ex.day_name || '';
         return exWeek === targetWeek && isDayMatch(exDay, targetDay);
       });
 
       // 2. Se non trova per settimana specifica, cerca per giorno in qualsiasi settimana
-      if (filtered.length === 0) {
-        filtered = allExercises.filter((ex) => isDayMatch(ex.day_name || 'Giorno A', targetDay));
+      if (filtered.length === 0 && targetDay) {
+        filtered = allExercises.filter((ex) => isDayMatch(ex.day_name || '', targetDay));
       }
 
-      // 3. Se ancora vuoto ma ci sono esercizi, usa tutti o i primi per evitare player vuoto
+      // 3. Se ancora vuoto ma ci sono esercizi, usa tutti o il primo giorno disponibile per evitare player vuoto
       if (filtered.length === 0 && allExercises.length > 0) {
         console.warn(`[AthleteDashboard] Nessun esercizio trovato per ${targetDay} (Settimana ${targetWeek}), uso fallback primi esercizi.`);
-        const firstDay = allExercises[0].day_name || 'Giorno A';
-        filtered = allExercises.filter((ex) => isDayMatch(ex.day_name || 'Giorno A', firstDay));
+        const firstDay = allExercises[0].day_name || targetDay || 'Giorno 1';
+        filtered = allExercises.filter((ex) => isDayMatch(ex.day_name || '', firstDay));
       }
 
-      // Sanitizza e forza SEMPRE settimana e giorno corretti su tutti gli esercizi inviati al player
+      const resolvedDayName = targetDay || filtered[0]?.day_name || allExercises[0]?.day_name || 'Giorno 1';
+      // Sanitizza e assicura settimana e giorno coerenti per il player
       const sanitizedFiltered: WorkoutExercise[] = (filtered.length > 0 ? filtered : allExercises).map((ex) => ({
         ...ex,
         week_number: targetWeek,
-        day_name: targetDay,
+        day_name: ex.day_name || resolvedDayName,
       }));
 
       console.log(`[AthleteDashboard] Esercizi filtrati e sanitizzati per il player: ${sanitizedFiltered.length}`, sanitizedFiltered.map(e => `${e.name} (${e.day_name}, Sett.${e.week_number})`));
 
-      const workoutObj = assigned.workout || {
+      const workoutObj: WorkoutTemplate = assigned.workout || {
         id: assigned.workout_id,
-        title: assigned.workout?.title || 'Programma di Allenamento',
-        description: assigned.workout?.description,
-        total_weeks: assigned.workout?.total_weeks || 1,
+        title: 'Programma di Allenamento',
+        description: '',
+        total_weeks: maxTotalWeeks,
+        coach_id: '',
+        is_template: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
 
-      onStartWorkout(workoutObj, sanitizedFiltered, assigned.athlete_id, targetWeek);
+      onStartWorkout(workoutObj, sanitizedFiltered, assigned.athlete_id, targetWeek, resolvedDayName);
     } catch (err) {
       console.error('[AthleteDashboard] Errore avvio workout:', err);
       showError('Impossibile caricare gli esercizi della scheda');
@@ -619,7 +642,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   }, [firstAssigned?.athlete_id, user?.athleteId, user?.id]);
 
   // ─── STATO PROGRESSO CENTRALIZZATO NEL PARENT (NON SI SMONTA MAI) ───────────
-  const [cachedSessionsForHistory, setCachedSessionsForHistory] = useState<any[]>([]);
+  const [cachedSessionsForHistory, setCachedSessionsForHistory] = useState<SessionRow[]>([]);
   const [globalProgressMap, setGlobalProgressMap] = useState<Record<string, boolean>>(() => {
     if (!firstAssigned) return {};
     try {
@@ -632,46 +655,72 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   const [globalSessionDetailsMap, setGlobalSessionDetailsMap] = useState<
     Record<string, { status?: string; skip_reason?: string; coach_justified?: boolean | null; skip_notes?: string }>
   >({});
-  const [workoutDays, setWorkoutDays] = useState<string[]>(() => {
-    if (!firstAssigned) return ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
-    try {
-      const cached = localStorage.getItem(`builder_days_${firstAssigned.workout_id}`);
-      return cached ? JSON.parse(cached) : ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
-    } catch {
-      return ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
-    }
-  });
 
-  // Carica i giorni reali dalla scheda (nel parent, una volta sola)
-  useEffect(() => {
-    if (!firstAssigned) return;
-    const targetWIds = Array.from(
-      new Set([firstAssigned.workout_id, firstAssigned.workout?.id, firstAssigned.workout?.parent_template_id].filter(Boolean) as string[])
-    );
-    if (targetWIds.length === 0) return;
-    supabase
-      .from('workout_exercises')
-      .select('day_name')
-      .in('workout_id', targetWIds)
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          const unique = Array.from(new Set(data.map((e: any) => e.day_name || 'Giorno A')))
-            .filter(Boolean)
-            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-          if (unique.length > 0) {
-            setWorkoutDays(unique);
-            try {
-              localStorage.setItem(`builder_days_${firstAssigned.workout_id}`, JSON.stringify(unique));
-            } catch (_) {}
+  // Mappa giorni reali per ogni scheda assegnata
+  const [workoutDaysMap, setWorkoutDaysMap] = useState<Record<string, string[]>>(() => {
+    const initialMap: Record<string, string[]> = {};
+    myAssignedWorkouts.forEach((assigned) => {
+      try {
+        const cached = localStorage.getItem(`builder_days_v2_${assigned.workout_id}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            initialMap[assigned.workout_id] = parsed;
           }
         }
-      });
-  }, [firstAssigned?.workout_id, firstAssigned?.workout?.id, firstAssigned?.workout?.parent_template_id]);
+      } catch (_) {}
+    });
+    return initialMap;
+  });
+  const [loadingDaysMap, setLoadingDaysMap] = useState<Record<string, boolean>>({});
+
+  // Carica i giorni reali per ciascuna scheda assegnata senza fallback fittizi
+  useEffect(() => {
+    if (myAssignedWorkouts.length === 0) return;
+
+    myAssignedWorkouts.forEach((assigned) => {
+      const wId = assigned.workout_id;
+      const targetWIds = Array.from(
+        new Set([wId, assigned.workout?.id, assigned.workout?.parent_template_id].filter(Boolean) as string[])
+      );
+      if (targetWIds.length === 0) return;
+
+      setLoadingDaysMap((prev) => ({ ...prev, [wId]: true }));
+
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('workout_exercises')
+            .select('day_name')
+            .in('workout_id', targetWIds)
+            .order('order_index', { ascending: true });
+
+          if (error) {
+            console.warn('[AthleteDashboard] Errore caricamento giorni:', error.message);
+          } else if (data && data.length > 0) {
+            const rawDays = data.map((e) => (e.day_name || '').trim()).filter(Boolean);
+            const unique = Array.from(new Set(rawDays)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            const daysToSet = unique.length > 0 ? unique : ['Giorno 1'];
+            setWorkoutDaysMap((prev) => ({ ...prev, [wId]: daysToSet }));
+            try {
+              localStorage.setItem(`builder_days_v2_${wId}`, JSON.stringify(daysToSet));
+            } catch (_) {}
+          } else {
+            setWorkoutDaysMap((prev) => ({ ...prev, [wId]: [] }));
+          }
+        } catch (fetchErr) {
+          console.warn('[AthleteDashboard] Eccezione fetch giorni:', fetchErr);
+        } finally {
+          setLoadingDaysMap((prev) => ({ ...prev, [wId]: false }));
+        }
+      })();
+    });
+  }, [myAssignedWorkouts]);
 
   const firstAssignedRef = React.useRef(firstAssigned);
   firstAssignedRef.current = firstAssigned;
-  const workoutDaysRef = React.useRef(workoutDays);
-  workoutDaysRef.current = workoutDays;
+  const workoutDaysMapRef = React.useRef(workoutDaysMap);
+  workoutDaysMapRef.current = workoutDaysMap;
   const isSyncingRef = React.useRef(false);
   const lastSyncTimestampRef = React.useRef(0);
 
@@ -693,9 +742,11 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     lastSyncTimestampRef.current = now;
     const startTime = performance.now();
 
-    const currentDays = workoutDaysRef.current;
-    const daysList = currentDays.length > 0 ? currentDays : ['Giorno A', 'Giorno B', 'Giorno C', 'Giorno D', 'Giorno E'];
-    const totalWeeksCount = currentFirstAssigned.workout?.total_weeks || 5;
+    const currentDays = (currentFirstAssigned.workout_id && workoutDaysMapRef.current[currentFirstAssigned.workout_id]) || [];
+    const daysList = currentDays.length > 0 ? currentDays : ['Giorno 1'];
+    const totalWeeksCount = currentFirstAssigned.workout?.total_weeks && currentFirstAssigned.workout.total_weeks > 0
+      ? currentFirstAssigned.workout.total_weeks
+      : 1;
     const norm = (str: string) => (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
     interface DashboardSessionRow {
@@ -908,7 +959,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         </div>
       ) : (
         <div className="space-y-4">
-          {myAssignedWorkouts.map((assigned: any) => (
+          {myAssignedWorkouts.map((assigned: AthleteAssignedWorkout) => (
             <WorkoutDayList
               key={assigned.id}
               assigned={assigned}
@@ -916,7 +967,8 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
               activeDraft={activeDraft}
               completedMap={globalProgressMap}
               sessionDetailsMap={globalSessionDetailsMap}
-              days={workoutDays}
+              days={workoutDaysMap[assigned.workout_id] || []}
+              isLoadingDays={Boolean(loadingDaysMap[assigned.workout_id])}
             />
           ))}
         </div>

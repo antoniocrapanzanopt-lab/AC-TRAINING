@@ -1437,6 +1437,18 @@ ${result.regole_adattamento || '-'}
   }, [rules, totalWeeks]);
 
   const removeExercise = (globalIndex: number) => {
+    const exToRemove = exercises[globalIndex];
+    if (exToRemove) {
+      const exercisesInSameDay = exercises.filter(
+        (e) => (e.day_name || 'Giorno A') === (exToRemove.day_name || 'Giorno A')
+      );
+      if (exercisesInSameDay.length === 1) {
+        const confirmDelete = window.confirm(
+          `Attenzione: stai rimuovendo l'ultimo esercizio di "${exToRemove.day_name || 'questo giorno'}". La giornata rimarrà senza esercizi. Vuoi continuare?`
+        );
+        if (!confirmDelete) return;
+      }
+    }
     const newEx = exercises.filter((_, i) => i !== globalIndex);
     setExercises(newEx);
   };
@@ -2064,9 +2076,16 @@ ${result.regole_adattamento || '-'}
         const safeB = dayIndexB >= 0 ? dayIndexB : 999;
         return safeA - safeB;
       });
+    let isExplicitEmptyConfirmed = false;
     if (validExercises.length === 0) {
-      showError('Inserisci almeno un esercizio valido');
-      return;
+      const confirmEmpty = window.confirm(
+        'Attenzione: la scheda non contiene alcun esercizio configurato. Vuoi salvarla intenzionalmente vuota rimuovendo gli esercizi precedenti?'
+      );
+      if (!confirmEmpty) {
+        showError('Inserisci almeno un esercizio valido o annulla le modifiche');
+        return;
+      }
+      isExplicitEmptyConfirmed = true;
     }
 
     // Registra in background nella libreria globale eventuali nuovi esercizi personalizzati
@@ -2123,7 +2142,8 @@ ${result.regole_adattamento || '-'}
               is_template: !assignedAthleteId,
               estimated_duration_minutes: estimatedTime.display 
             },
-            exercisesToSave
+            exercisesToSave,
+            { confirmedDestructive: isExplicitEmptyConfirmed }
           );
           if (!success) throw new Error(error);
 

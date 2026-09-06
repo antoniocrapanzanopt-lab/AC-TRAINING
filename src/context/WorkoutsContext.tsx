@@ -15,7 +15,9 @@ interface WorkoutsContextType {
   deleteFolder: (folderId: string) => Promise<{ success: boolean; error?: string }>;
   moveWorkoutToFolder: (workoutId: string, folderId: string | null) => Promise<{ success: boolean; error?: string }>;
   createWorkoutTemplate: (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string; workoutId?: string }>;
-  updateWorkoutTemplate: (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
+  updateWorkoutTemplate: (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[], options?: { confirmedDestructive?: boolean }) => Promise<{ success: boolean; error?: string }>;
+  getWorkoutSnapshots: (workoutId: string) => Array<{ key: string; timestamp: number; workout: WorkoutTemplate; exercises: WorkoutExercise[] }>;
+  restoreWorkoutSnapshot: (snapshotKey: string) => Promise<{ success: boolean; error?: string }>;
   duplicateWorkoutTemplate: (workoutId: string, customTitle?: string) => Promise<{ success: boolean; newWorkoutId?: string; error?: string }>;
   deleteWorkoutTemplate: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
   assignWorkoutToAthlete: (athleteId: string, workoutId: string, startDate?: string) => Promise<{ success: boolean; error?: string }>;
@@ -37,6 +39,8 @@ interface WorkoutsContextType {
   loading: boolean;
 }
 
+import { technicalLogger } from '../utils/technicalLogger';
+
 const WorkoutsContext = createContext<WorkoutsContextType | undefined>(undefined);
 
 const isCoachRole = (role?: string) => role === 'owner' || role === 'admin' || role === 'coach' || role === 'collaborator';
@@ -48,8 +52,23 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [allAssignedWorkouts, setAllAssignedWorkouts] = useState<AthleteAssignedWorkout[]>([]);
   const [myAssignedWorkouts, setMyAssignedWorkouts] = useState<AthleteAssignedWorkout[]>(() => {
     try {
-      const cached = localStorage.getItem('builder_cached_my_workouts');
-      return cached ? JSON.parse(cached) : [];
+      // 1. Prova prima con la chiave versionata se athleteId è noto
+      if (typeof window !== 'undefined') {
+        const directKeys = Object.keys(localStorage).filter(k => k.startsWith('ac_cached_my_workouts_v2_'));
+        if (directKeys.length > 0) {
+          const directData = localStorage.getItem(directKeys[0]);
+          if (directData) {
+            const parsed = JSON.parse(directData);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          }
+        }
+        const cached = localStorage.getItem('builder_cached_my_workouts');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+      return [];
     } catch {
       return [];
     }
@@ -70,15 +89,16 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .order('assigned_date', { ascending: false });
 
     if (!error && data) {
-      // Filtra via record con workout orfano/cancellato
+      // Filtra via record con workout orfano/cancellato senza cancellare nulla dal DB
       const valid = (data as AthleteAssignedWorkout[]).filter(a => a.workout != null);
       setAllAssignedWorkouts(valid);
-
-      // Pulizia asincrona delle righe orfane nel DB se presenti
-      const orphanIds = (data as AthleteAssignedWorkout[]).filter(a => a.workout == null).map(a => a.id);
-      if (orphanIds.length > 0) {
-        supabase.from('athlete_assigned_workouts').delete().in('id', orphanIds).then();
+      
+      const unlinkedCount = (data as AthleteAssignedWorkout[]).filter(a => a.workout == null).length;
+      if (unlinkedCount > 0) {
+        technicalLogger.warn('workouts', 'UNLINKED_ASSIGNMENTS_DETECTED', `${unlinkedCount} assegnazioni hanno workout non risolto (record preservati nel DB per sicurezza)`);
       }
+    } else if (error) {
+      technicalLogger.error('workouts', 'LOAD_ASSIGNED_WORKOUTS_ERROR', error.message);
     }
   }, [user]);
 
@@ -204,14 +224,6 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [user]);
 
-  useEffect(() => {
-    if (user && isCoachRole(user.role)) {
-      loadFolders();
-      loadCoachTemplates();
-      loadAssignedWorkouts();
-    }
-  }, [user, loadFolders, loadCoachTemplates, loadAssignedWorkouts]);
-
   const createWorkoutTemplate = async (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     
@@ -269,10 +281,32 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const updateWorkoutTemplate = async (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => {
+  const updateWorkoutTemplate = async (
+    workoutId: string,
+    workout: Partial<WorkoutTemplate>,
+    exercises: Partial<WorkoutExercise>[],
+    options?: { confirmedDestructive?: boolean }
+  ) => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
+    if (!workoutId || typeof workoutId !== 'string' || workoutId.trim() === '') {
+      technicalLogger.error('workouts', 'UPDATE_BLOCKED_INVALID_ID', 'ID workout mancante o non valido per update.');
+      return { success: false, error: 'ID scheda non valido' };
+    }
 
     try {
+      // 1. Snapshot automatico di sicurezza prima di modifiche strutturali
+      try {
+        const { data: existingWorkout } = await supabase.from('workouts').select('*').eq('id', workoutId).maybeSingle();
+        const { data: existingExercises } = await supabase.from('workout_exercises').select('*').eq('workout_id', workoutId);
+        if (existingWorkout && typeof window !== 'undefined') {
+          const snapshotKey = `ac_workout_snapshot_${workoutId}_${Date.now()}`;
+          localStorage.setItem(snapshotKey, JSON.stringify({ workout: existingWorkout, exercises: existingExercises || [] }));
+          technicalLogger.info('workouts', 'SNAPSHOT_CREATED', `Snapshot salvato con chiave ${snapshotKey}`);
+        }
+      } catch (snapErr) {
+        technicalLogger.warn('workouts', 'SNAPSHOT_CREATION_FAILED', 'Impossibile creare snapshot locale prima di update', { error: String(snapErr) });
+      }
+
       const updateData: Record<string, unknown> = {
         title: workout.title,
         description: workout.description,
@@ -292,14 +326,27 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       if (workoutError) throw workoutError;
 
-      const { error: deleteError } = await supabase
-        .from('workout_exercises')
-        .delete()
-        .eq('workout_id', workoutId);
+      // 2. Controllo anti-wipe: se exercises è vuoto
+      if (exercises.length === 0) {
+        if (!options?.confirmedDestructive) {
+          technicalLogger.warn('workouts', 'EMPTY_EXERCISES_PAYLOAD_SAFEGUARD', 'Ricevuto payload esercizi vuoto senza conferma distruttiva: metadati aggiornati, esercizi preservati.');
+        } else {
+          technicalLogger.warn('workouts', 'EMPTY_EXERCISES_CONFIRMED_DESTRUCTIVE', `Svuotamento esercizi confermato esplicitamente per workout ${workoutId}`);
+          const { error: deleteError } = await supabase
+            .from('workout_exercises')
+            .delete()
+            .eq('workout_id', workoutId);
 
-      if (deleteError) throw deleteError;
+          if (deleteError) throw deleteError;
+        }
+      } else {
+        const { error: deleteError } = await supabase
+          .from('workout_exercises')
+          .delete()
+          .eq('workout_id', workoutId);
 
-      if (exercises.length > 0) {
+        if (deleteError) throw deleteError;
+
         const exercisesToInsert = exercises.map((ex, index) => ({
           workout_id: workoutId,
           name: ex.name,
@@ -308,7 +355,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           rest_seconds: ex.rest_seconds || 60,
           order_index: index,
           notes: ex.notes || null,
-          day_name: ex.day_name || 'Giorno A',
+          day_name: ex.day_name || 'Giorno 1',
           week_number: ex.week_number || 1,
           target_weight: ex.target_weight || null,
           rir_target: ex.rir_target || null,
@@ -336,6 +383,102 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: false, error: msg };
     }
   };
+
+  const getWorkoutSnapshots = useCallback((workoutId: string) => {
+    if (typeof window === 'undefined' || !workoutId) return [];
+    try {
+      const results: Array<{ key: string; timestamp: number; workout: WorkoutTemplate; exercises: WorkoutExercise[] }> = [];
+      const prefix = `ac_workout_snapshot_${workoutId}_`;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const tsStr = key.replace(prefix, '');
+            const timestamp = parseInt(tsStr, 10) || 0;
+            if (parsed.workout) {
+              results.push({
+                key,
+                timestamp,
+                workout: parsed.workout,
+                exercises: parsed.exercises || [],
+              });
+            }
+          }
+        }
+      }
+      return results.sort((a, b) => b.timestamp - a.timestamp);
+    } catch (e) {
+      console.error('[getWorkoutSnapshots] Errore lettura snapshot:', e);
+      return [];
+    }
+  }, []);
+
+  const restoreWorkoutSnapshot = useCallback(async (snapshotKey: string) => {
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
+    if (typeof window === 'undefined') return { success: false, error: 'Window not available' };
+    try {
+      const raw = localStorage.getItem(snapshotKey);
+      if (!raw) return { success: false, error: 'Snapshot non trovato' };
+      const parsed = JSON.parse(raw);
+      const { workout, exercises } = parsed;
+      if (!workout?.id) return { success: false, error: 'Dati snapshot non validi' };
+
+      technicalLogger.info('workouts', 'RESTORE_SNAPSHOT_INITIATED', `Ripristino snapshot ${snapshotKey} per workout ${workout.id}`);
+
+      // 1. Ripristina metadati scheda
+      const { error: workoutErr } = await supabase
+        .from('workouts')
+        .update({
+          title: workout.title,
+          description: workout.description,
+          folder_id: workout.folder_id || null,
+          total_weeks: workout.total_weeks || 1,
+          estimated_duration_minutes: workout.estimated_duration_minutes ? String(workout.estimated_duration_minutes) : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', workout.id);
+
+      if (workoutErr) throw workoutErr;
+
+      // 2. Ripristina esercizi
+      await supabase.from('workout_exercises').delete().eq('workout_id', workout.id);
+
+      if (Array.isArray(exercises) && exercises.length > 0) {
+        const toInsert = exercises.map((ex: Partial<WorkoutExercise>, idx: number) => ({
+          workout_id: workout.id,
+          name: ex.name || 'Esercizio',
+          sets: ex.sets || 1,
+          reps_target: ex.reps_target || '10',
+          rest_seconds: ex.rest_seconds || 60,
+          order_index: typeof ex.order_index === 'number' ? ex.order_index : idx,
+          notes: ex.notes || null,
+          day_name: ex.day_name || 'Giorno 1',
+          week_number: ex.week_number || 1,
+          target_weight: ex.target_weight || null,
+          rir_target: ex.rir_target || null,
+          tut: ex.tut || null,
+          is_time_based: ex.is_time_based || false,
+          duration_seconds: ex.duration_seconds || null,
+          alternative_exercise: ex.alternative_exercise || null,
+        }));
+        const { error: insErr } = await supabase.from('workout_exercises').insert(toInsert);
+        if (insErr) throw insErr;
+      }
+
+      await Promise.all([
+        loadCoachTemplates(),
+        loadAssignedWorkouts(),
+      ]);
+      technicalLogger.info('workouts', 'RESTORE_SNAPSHOT_SUCCESS', `Snapshot ${snapshotKey} ripristinato con successo.`);
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Errore ripristino snapshot';
+      technicalLogger.error('workouts', 'RESTORE_SNAPSHOT_FAILED', msg);
+      return { success: false, error: msg };
+    }
+  }, [user, loadCoachTemplates, loadAssignedWorkouts]);
 
   const deleteWorkoutTemplate = async (workoutId: string) => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
@@ -531,7 +674,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.error(error);
       return [];
     }
-    return (data || []) as any; // Type coercion for nested join
+    return (data || []) as unknown as AthleteAssignedWorkout[];
   };
 
   const getExercisesForWorkout = async (workoutId: string) => {
@@ -740,29 +883,110 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const refreshMyWorkouts = useCallback(async () => {
     if (!user || user.role !== 'athlete') return;
+    setLoading(true);
+
     try {
-      const { data, error } = await supabase
+      // 1. Risoluzione sicura dell'id atleta (athletes.id, non auth_user_id)
+      let targetAthleteId = user.athleteId;
+      if (!targetAthleteId && user.id) {
+        const { data: athRecord } = await supabase
+          .from('athletes')
+          .select('id')
+          .or(`auth_user_id.eq.${user.id},email.ilike.${(user.email || '').trim()}`)
+          .maybeSingle();
+
+        if (athRecord?.id) {
+          targetAthleteId = athRecord.id;
+        }
+      }
+
+      if (!targetAthleteId) {
+        technicalLogger.warn('athlete', 'RESOLVE_ATHLETE_ID_PENDING', 'Athlete ID non ancora risolto, preservato stato/cache corrente.');
+        return;
+      }
+
+      // 2. Query assegnazioni con join sul workout
+      let { data, error } = await supabase
         .from('athlete_assigned_workouts')
         .select(`
           *,
           workout:workouts(*)
         `)
-        .eq('athlete_id', user.athleteId || user.id)
+        .eq('athlete_id', targetAthleteId)
         .eq('is_active', true)
         .order('assigned_date', { ascending: false });
 
-      if (!error && data) {
-        setMyAssignedWorkouts(data as any);
-        try {
-          localStorage.setItem('builder_cached_my_workouts', JSON.stringify(data));
-        } catch (_) {}
+      // 3. Fallback resiliente se is_active non è impostato o è null
+      if (!error && (!data || data.length === 0)) {
+        const fallbackRes = await supabase
+          .from('athlete_assigned_workouts')
+          .select(`
+            *,
+            workout:workouts(*)
+          `)
+          .eq('athlete_id', targetAthleteId)
+          .order('assigned_date', { ascending: false });
+
+        if (!fallbackRes.error && fallbackRes.data && fallbackRes.data.length > 0) {
+          data = fallbackRes.data;
+          error = null;
+        }
       }
-    } catch (err) {
-      console.warn('Errore refreshMyWorkouts:', err);
+
+      if (error) {
+        technicalLogger.error('workouts', 'FETCH_MY_WORKOUTS_ERROR', error.message, { athleteId: targetAthleteId });
+        return;
+      }
+
+      const validAssigned = ((data || []) as AthleteAssignedWorkout[]).filter(
+        (a) => a.workout != null
+      );
+
+      // 4. Regola di sicurezza Anti-Wipe: non cancellare la cache se la query è vuota ma esisteva già una scheda valida
+      const versionedCacheKey = `ac_cached_my_workouts_v2_${targetAthleteId}`;
+      if (validAssigned.length === 0) {
+        const existingCached = localStorage.getItem(versionedCacheKey) || localStorage.getItem('builder_cached_my_workouts');
+        if (existingCached) {
+          try {
+            const parsed = JSON.parse(existingCached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              technicalLogger.warn('workouts', 'ANTI_WIPE_PREVENTED', 'Risposta vuota dal backend ignorata: conservata scheda valida esistente in cache.');
+              setMyAssignedWorkouts(parsed as AthleteAssignedWorkout[]);
+              return;
+            }
+          } catch {
+            // parsing non critico
+          }
+        }
+      }
+
+      setMyAssignedWorkouts(validAssigned);
+      try {
+        if (validAssigned.length > 0) {
+          const serialized = JSON.stringify(validAssigned);
+          localStorage.setItem(versionedCacheKey, serialized);
+          localStorage.setItem('builder_cached_my_workouts', serialized);
+        }
+      } catch (cacheErr) {
+        technicalLogger.warn('workouts', 'CACHE_WRITE_FAILED', String(cacheErr));
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      technicalLogger.error('workouts', 'REFRESH_MY_WORKOUTS_EXCEPTION', msg);
     } finally {
       setLoading(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user && isCoachRole(user.role)) {
+      loadFolders();
+      loadCoachTemplates();
+      loadAssignedWorkouts();
+    } else if (user && user.role === 'athlete') {
+      refreshMyWorkouts();
+    }
+  }, [user, loadFolders, loadCoachTemplates, loadAssignedWorkouts, refreshMyWorkouts]);
 
   const startWorkoutSession = async (workoutId: string, targetAthleteId?: string, weekNumber?: number, dayName?: string) => {
     if (!user) return { session: null, error: 'Unauthorized' };
@@ -896,7 +1120,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const saveExerciseLogs = async (logs: Partial<ExerciseLog>[]) => {
     if (logs.length === 0) return { success: true };
     try {
-      const sanitizedLogs = logs.map((l: any) => ({
+      const sanitizedLogs = logs.map((l) => ({
         session_id: l.session_id,
         exercise_id: l.exercise_id,
         set_number: Number(l.set_number) || 1,
@@ -921,15 +1145,6 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // --- INIT ---
-  useEffect(() => {
-    if (user?.role === 'owner') {
-      loadCoachTemplates();
-    } else if (user?.role === 'athlete') {
-      refreshMyWorkouts();
-    }
-  }, [user, loadCoachTemplates, refreshMyWorkouts]);
-
   return (
     <WorkoutsContext.Provider
         value={{
@@ -944,6 +1159,8 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           moveWorkoutToFolder,
           createWorkoutTemplate,
           updateWorkoutTemplate,
+          getWorkoutSnapshots,
+          restoreWorkoutSnapshot,
           duplicateWorkoutTemplate,
           deleteWorkoutTemplate,
           assignWorkoutToAthlete,

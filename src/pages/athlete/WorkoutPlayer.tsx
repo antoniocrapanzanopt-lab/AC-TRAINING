@@ -50,6 +50,7 @@ interface WorkoutPlayerProps {
   exercises: WorkoutExercise[];
   targetAthleteId?: string;
   targetWeekNumber?: number;
+  targetDayName?: string;
   onClose: () => void;
 }
 
@@ -58,6 +59,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   exercises,
   targetAthleteId,
   targetWeekNumber,
+  targetDayName,
   onClose,
 }) => {
   const { startWorkoutSession, endWorkoutSession, saveExerciseLogs } = useWorkouts();
@@ -86,11 +88,11 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const activeExercises = useMemo(() => {
     if (!exercises || exercises.length === 0) return [];
 
-    const targetDay = (exercises[0].day_name || 'Giorno A').trim().toLowerCase();
+    const explicitTargetDay = (targetDayName || exercises[0]?.day_name || '').trim().toLowerCase();
 
     const singleDayExercises = exercises.filter((ex) => {
-      const exDay = (ex.day_name || 'Giorno A').trim().toLowerCase();
-      return exDay === targetDay;
+      const exDay = (ex.day_name || '').trim().toLowerCase();
+      return explicitTargetDay ? exDay === explicitTargetDay : true;
     });
 
     const list = singleDayExercises.length > 0 ? singleDayExercises : exercises;
@@ -98,11 +100,11 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       ...ex,
       week_number: currentWeekNumber,
     }));
-  }, [exercises, currentWeekNumber]);
+  }, [exercises, currentWeekNumber, targetDayName]);
 
   const currentDayName = useMemo(() => {
-    return activeExercises?.[0]?.day_name || 'Giorno A';
-  }, [activeExercises]);
+    return targetDayName || activeExercises?.[0]?.day_name || exercises?.[0]?.day_name || 'Giorno 1';
+  }, [targetDayName, activeExercises, exercises]);
 
   // Stato Connessione Realtime
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
@@ -412,7 +414,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
 
     if (!sessionId && navigator.onLine) {
       const weekNum = currentWeekNumber;
-      const dayName = activeExercises[0]?.day_name || 'Giorno A';
+      const dayName = currentDayName;
       startWorkoutSession(workout.id, targetAthleteId || athleteId, weekNum, dayName).then((res) => {
         if (res.session) {
           setSessionId(res.session.id);
@@ -476,7 +478,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           startTimestampRef.current = Date.now() - elapsedTime * 1000;
           if (!sessionId && navigator.onLine) {
             const weekNum = currentWeekNumber;
-            const dayName = activeExercises[0]?.day_name || 'Giorno A';
+            const dayName = currentDayName;
             startWorkoutSession(workout.id, targetAthleteId || athleteId, weekNum, dayName).then((res) => {
               if (res.session) {
                 setSessionId(res.session.id);
@@ -532,7 +534,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       if (!effectiveSessionId && navigator.onLine) {
         try {
           const weekNum = currentWeekNumber;
-          const dayName = activeExercises[0]?.day_name || 'Giorno A';
+          const dayName = currentDayName;
           const startRes = await startWorkoutSession(workout.id, targetAthleteId || athleteId, weekNum, dayName);
           if (startRes.session?.id) {
             effectiveSessionId = startRes.session.id;
@@ -653,7 +655,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       const nowIso = new Date().toISOString();
       const startIso = new Date(startTimestampRef.current).toISOString();
       const weekNum = currentWeekNumber;
-      const dayName = activeExercises[0]?.day_name || 'Giorno A';
+      const dayName = currentDayName;
 
       // Backup locale istantaneo dei log completati
       if (effectiveSessionId) {
@@ -1416,7 +1418,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           onClose={() => setIsSkipModalOpen(false)}
           workout={workout}
           weekNumber={currentWeekNumber}
-          dayName={activeExercises[0]?.day_name || 'Giorno A'}
+          dayName={currentDayName}
           athleteId={targetAthleteId || athleteId}
           onSuccess={() => {
             clearActiveWorkoutDraft(targetAthleteId || athleteId);

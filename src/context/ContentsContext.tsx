@@ -33,8 +33,8 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { showSuccess, showError } = useToast();
 
   const fetchContents = useCallback(async () => {
-    // Gli atleti non gestiscono i contenuti social del coach: bypass istantaneo a costo 0
-    if (user?.role === 'athlete') {
+    // Gli atleti o utenti non loggati non gestiscono i contenuti social del coach: bypass istantaneo a costo 0
+    if (!user || user.role === 'athlete') {
       setContents([]);
       setIsLoading(false);
       return;
@@ -44,12 +44,13 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsLoading(true);
       const data = await getInstagramContents();
       setContents(data);
-    } catch (err: any) {
-      console.error('Errore caricamento Instagram contents:', err);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Errore caricamento Instagram contents:', msg);
     } finally {
       setIsLoading(false);
     }
-  }, [user?.role]);
+  }, [user]);
 
   useEffect(() => {
     fetchContents();
@@ -61,8 +62,9 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setContents((prev) => [newContent, ...prev]);
       showSuccess('Nuovo contenuto aggiunto alla Pipeline!');
       return newContent;
-    } catch (err: any) {
-      showError(err.message || 'Errore creazione contenuto.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore creazione contenuto.';
+      showError(msg);
       throw err;
     }
   };
@@ -76,8 +78,9 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setContents((prev) => prev.map((c) => (c.id === id ? updated : c)));
       showSuccess('Contenuto aggiornato.');
       return updated;
-    } catch (err: any) {
-      showError(err.message || 'Errore aggiornamento.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore aggiornamento.';
+      showError(msg);
       throw err;
     }
   };
@@ -89,8 +92,9 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
     try {
       await updateContentStatus(id, newStatus);
-    } catch (err: any) {
-      showError(err.message || 'Errore spostamento stato.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore spostamento stato.';
+      showError(msg);
       fetchContents(); // rollback in caso di errore
     }
   };
@@ -100,8 +104,9 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await deleteInstagramContent(id);
       setContents((prev) => prev.filter((c) => c.id !== id));
       showSuccess('Contenuto eliminato.');
-    } catch (err: any) {
-      showError(err.message || 'Errore eliminazione.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore eliminazione.';
+      showError(msg);
     }
   };
 
