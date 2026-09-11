@@ -4,12 +4,14 @@ import {
   Plus,
   Edit3,
   Trash2,
+  ArrowUpDown,
 } from 'lucide-react';
 import { useContents } from '../../context/ContentsContext';
 import { useToast } from '../../context/ToastContext';
 import { InstagramContent } from '../../types/inboxAndContent';
 import { InstagramCarousel } from '../../types/carousel';
 import { createEmptyCarousel, createEmptyCoverSlide } from '../../services/carouselGeneratorService';
+import { getContentGraphics } from '../../services/contentsService';
 import { SectionErrorBoundary } from '../../components/common/SectionErrorBoundary';
 
 // Precaricamento anticipato del chunk per eliminare la latenza di caricamento dinamico
@@ -31,9 +33,12 @@ export const StudioCarouselPage: React.FC<StudioCarouselPageProps> = ({
   const { contents, createContent, updateContent, deleteContentById } = useContents();
   const { showError } = useToast();
 
+  const [isReversed, setIsReversed] = useState<boolean>(false);
+
   const carouselContents = useMemo(() => {
-    return contents.filter((c) => c.type === 'carousel');
-  }, [contents]);
+    const list = contents.filter((c) => c.type === 'carousel');
+    return isReversed ? [...list].reverse() : list;
+  }, [contents, isReversed]);
 
   // Modale editor Carousel Studio
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(Boolean(initialContent));
@@ -50,12 +55,33 @@ export const StudioCarouselPage: React.FC<StudioCarouselPageProps> = ({
     preloadCarouselModal();
   }, []);
 
-  // Apertura editor per contenuto esistente
-  const handleOpenEditor = (content: InstagramContent) => {
+  // Apertura editor per contenuto esistente — lazy load del carousel_data pesante
+  const handleOpenEditor = async (content: InstagramContent) => {
     currentActiveIdRef.current = content.id;
     pendingCreationRef.current = null;
+
+    // Se i dati grafici non sono già in memoria, li carichiamo ora (lazy fetch)
+    if (!content.carousel_data && !content.id.startsWith('temp_')) {
+      try {
+        const graphics = await getContentGraphics(content.id);
+        const enriched: InstagramContent = { ...content, ...graphics };
+        setActiveContent(enriched);
+        setIsEditorOpen(true);
+        return;
+      } catch {
+        // Se fallisce usiamo il content così com'è (apre l'editor senza crash)
+      }
+    }
+
     setActiveContent(content);
     setIsEditorOpen(true);
+  };
+
+  // Prefetch on-hover: pre-carica i dati grafici quando il mouse passa sulla card
+  const handlePrefetchGraphics = (content: InstagramContent) => {
+    if (!content.carousel_data && !content.id.startsWith('temp_')) {
+      getContentGraphics(content.id).catch(() => {});
+    }
   };
 
   // Creazione NUOVO Carousel istantaneo (0ms di attesa + Slide 1 Cover già pronta da editare)
@@ -172,15 +198,29 @@ export const StudioCarouselPage: React.FC<StudioCarouselPageProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCreateNewCarousel}
-          onMouseEnter={preloadCarouselModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-purple-400 hover:bg-purple-300 text-slate-950 shadow-md shadow-purple-500/20 transition-all active:scale-[0.98]"
-        >
-          <Plus className="w-4 h-4" />
-          <span>+ Nuovo Carosello</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {contents.some((c) => c.type === 'carousel') && (
+            <button
+              type="button"
+              onClick={() => setIsReversed((prev) => !prev)}
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-900 border border-slate-700 hover:border-purple-500/50 text-slate-300 hover:text-white transition-all shadow-sm cursor-pointer"
+              title="Inverti l'ordine di visualizzazione dei caroselli"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-purple-400" />
+              <span>{isReversed ? 'Più vecchi prima' : 'Inverti Ordine'}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleCreateNewCarousel}
+            onMouseEnter={preloadCarouselModal}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-purple-400 hover:bg-purple-300 text-slate-950 shadow-md shadow-purple-500/20 transition-all active:scale-[0.98] cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Nuovo Carosello</span>
+          </button>
+        </div>
       </div>
 
       {/* GRIGLIA DEI CAROSELLI */}
@@ -211,13 +251,13 @@ export const StudioCarouselPage: React.FC<StudioCarouselPageProps> = ({
             return (
               <div
                 key={item.id}
+                onMouseEnter={() => { preloadCarouselModal(); handlePrefetchGraphics(item); }}
                 className="group p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-purple-500/40 transition-all flex flex-col justify-between shadow-md space-y-3"
               >
                 <div>
                   {/* ANTEPRIMA COVER SLIDE #1 */}
                   <div
                     onClick={() => handleOpenEditor(item)}
-                    onMouseEnter={preloadCarouselModal}
                     className="w-full h-44 rounded-xl bg-slate-950 border border-slate-800 relative overflow-hidden cursor-pointer flex items-center justify-center p-4 text-center group-hover:border-purple-500/50 transition-colors"
                   >
                     {coverImage ? (

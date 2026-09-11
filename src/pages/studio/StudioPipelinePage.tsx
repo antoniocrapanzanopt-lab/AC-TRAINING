@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Kanban,
   Plus,
@@ -26,6 +26,7 @@ import {
   STUDIO_PIPELINE_COLUMNS,
   StudioTab,
 } from '../../types/studio';
+import { preloadDrawerEditors } from '../../components/contents/ContentDrawerEditor';
 
 interface StudioPipelinePageProps {
   onOpenContentEditor: (content: InstagramContent) => void;
@@ -43,6 +44,14 @@ export const StudioPipelinePage: React.FC<StudioPipelinePageProps> = ({
 
   const [formatFilter, setFormatFilter] = useState<StudioFormatFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Precarica i moduli editor pesanti in background dopo il primo render
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      preloadDrawerEditors();
+    }, 200);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Eliminazione contenuto con conferma
   const handleDeleteContent = async (item: InstagramContent) => {

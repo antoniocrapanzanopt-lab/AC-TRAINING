@@ -203,16 +203,21 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
   };
 
   const handleRequestVideo = async () => {
+    if (!alertData) return;
     setIsProcessing(true);
     setOutcomeType('video_requested');
     persistDismissedAlert();
 
-    addTimelineEvent(
-      alertData.athleteId,
-      'other',
-      `Richiesto Video Esecuzione (${targetWeek})`,
-      `Il coach ha richiesto un video di controllo tecnico per ${exName}. Nessuna modifica applicata alla scheda.`
-    );
+    try {
+      addTimelineEvent(
+        alertData.athleteId,
+        'other',
+        `Richiesto Video Esecuzione (${targetWeek})`,
+        `Il coach ha richiesto un video di controllo tecnico per ${exName}. Nessuna modifica applicata alla scheda.`
+      );
+    } catch (e) {
+      console.warn('Errore timeline event:', e);
+    }
 
     if (chatMessageText.trim()) {
       try {
@@ -222,16 +227,14 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
       }
     }
 
-    setCurrentStep('success');
+    setIsProcessing(false);
     showSuccess(
       'Video Check-in Richiesto!',
       `Istruzioni inviate in chat a ${alertData.athleteName}.`
     );
 
-    setTimeout(() => {
-      onApplied?.(alertData.athleteId);
-      onClose();
-    }, 900);
+    onApplied?.(alertData.athleteId);
+    onClose();
   };
 
   const handleExecuteCustomCommand = (cmdText: string) => {
@@ -287,21 +290,27 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
       }
       localStorage.setItem('builder_copilot_dismissed_alerts', JSON.stringify(Array.from(set)));
       window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('copilot_dismissed_update'));
     } catch (_) {}
   };
 
   // Applicazione modifiche alla scheda
   const handleApply = async () => {
+    if (!alertData) return;
     setIsProcessing(true);
     setOutcomeType('applied');
     persistDismissedAlert();
 
-    addTimelineEvent(
-      alertData.athleteId,
-      'other',
-      `Intervento Copilot (${targetWeek})`,
-      `${primaryActionTitle}`
-    );
+    try {
+      addTimelineEvent(
+        alertData.athleteId,
+        'other',
+        `Intervento Copilot (${targetWeek})`,
+        primaryActionTitle || 'Intervento Copilot applicato al programma'
+      );
+    } catch (e) {
+      console.warn('Errore timeline event:', e);
+    }
 
     if (sendChatNotification && chatMessageText.trim()) {
       try {
@@ -311,27 +320,29 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
       }
     }
 
-    setCurrentStep('success');
+    setIsProcessing(false);
     showSuccess('Modifica Applicata al Programma!', `Scheda aggiornata per ${alertData.athleteName}.`);
-
-    setTimeout(() => {
-      onApplied?.(alertData.athleteId);
-      onClose();
-    }, 900);
+    onApplied?.(alertData.athleteId);
+    onClose();
   };
 
   // Gestione senza modifiche ("Non Applicare Nulla")
   const handleDismissNoChange = async () => {
+    if (!alertData) return;
     setIsProcessing(true);
     setOutcomeType('no_changes');
     persistDismissedAlert();
 
-    addTimelineEvent(
-      alertData.athleteId,
-      'other',
-      `Avviso Copilot Visionato (${targetWeek})`,
-      `Nessuna modifica apportata alla scheda dal coach.${sendChatNotification && chatMessageText.trim() ? ' Inviato messaggio di feedback in chat.' : ''}`
-    );
+    try {
+      addTimelineEvent(
+        alertData.athleteId,
+        'other',
+        `Avviso Copilot Visionato (${targetWeek})`,
+        `Nessuna modifica apportata alla scheda dal coach.${sendChatNotification && chatMessageText.trim() ? ' Inviato messaggio di feedback in chat.' : ''}`
+      );
+    } catch (e) {
+      console.warn('Errore timeline event:', e);
+    }
 
     if (sendChatNotification && chatMessageText.trim()) {
       try {
@@ -341,22 +352,22 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
       }
     }
 
-    setCurrentStep('success');
+    setIsProcessing(false);
     showSuccess(
       'Avviso Gestito',
       sendChatNotification && chatMessageText.trim()
         ? 'Messaggio inviato all\'atleta e avviso archiviato senza modifiche alla scheda.'
         : 'Avviso archiviato senza modifiche alla scheda.'
     );
-
-    setTimeout(() => {
-      onApplied?.(alertData.athleteId);
-      onClose();
-    }, 900);
+    onApplied?.(alertData.athleteId);
+    onClose();
   };
 
   const handleImmediateFinish = () => {
-    onApplied?.(alertData.athleteId);
+    persistDismissedAlert();
+    if (alertData) {
+      onApplied?.(alertData.athleteId);
+    }
     onClose();
   };
 

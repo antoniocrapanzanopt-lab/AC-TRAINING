@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getAdherenceRank } from '../utils/adherenceRanks';
 
 export interface AdherencePillar {
   name: string;
@@ -137,35 +138,38 @@ export function computeAdherenceScore(inputs: AdherenceInputs): AdherenceScoreRe
   const rawWeighted = workoutScore * 0.40 + setsScore * 0.30 + feedbackScore * 0.20 + checkinScore * 0.10;
   const totalScore = Math.min(100, Math.max(0, Math.round(rawWeighted)));
 
-  // Livelli e Tono Costruttivo
+  // Livelli e Tono Costruttivo basati sui Gradi Cavallereschi
+  const rankResult = getAdherenceRank(totalScore);
+  const rankName = rankResult.rank?.name || 'Iniziato';
+
   let level: AdherenceScoreResult['level'] = 'optimal';
-  let label = 'Ottima Aderenza';
-  let colorClass = 'text-emerald-400';
-  let bgClass = 'bg-emerald-500/15';
-  let borderClass = 'border-emerald-500/30';
-  let message = 'Costanza eccellente e dati accurati. Stai massimizzando i risultati del percorso!';
+  let label = rankName;
+  let colorClass = 'text-yellow-400';
+  let bgClass = 'bg-yellow-500/15';
+  let borderClass = 'border-yellow-500/30';
+  let message = 'Eccellenza assoluta! Stai guidando il percorso ai vertici dell\'aderenza.';
 
   if (totalScore < 50) {
     level = 'critical';
-    label = 'Richiede Attenzione';
-    colorClass = 'text-rose-400';
-    bgClass = 'bg-rose-500/15';
-    borderClass = 'border-rose-500/30';
-    message = 'La costanza è al di sotto del target: confrontati con il tuo coach per riallineare il programma.';
+    label = rankName;
+    colorClass = 'text-cyan-400';
+    bgClass = 'bg-cyan-500/15';
+    borderClass = 'border-cyan-500/30';
+    message = 'Ogni seduta conta: mantieni la costanza e confrontati con il tuo coach per salire di grado!';
   } else if (totalScore < 75) {
     level = 'attention';
-    label = 'Da Potenziare';
+    label = rankName;
+    colorClass = 'text-emerald-400';
+    bgClass = 'bg-emerald-500/15';
+    borderClass = 'border-emerald-500/30';
+    message = 'Ottima base di lavoro: con un po\' di regolarità in più sbloccherai il prossimo grado d\'onore!';
+  } else if (totalScore < 90) {
+    level = 'good';
+    label = rankName;
     colorClass = 'text-amber-400';
     bgClass = 'bg-amber-500/15';
     borderClass = 'border-amber-500/30';
-    message = 'Buona base di partenza: aumentando la regolarità delle sedute e i feedback sbloccherai il pieno potenziale.';
-  } else if (totalScore < 90) {
-    level = 'good';
-    label = 'Buona Aderenza';
-    colorClass = 'text-sky-400';
-    bgClass = 'bg-sky-500/15';
-    borderClass = 'border-sky-500/30';
-    message = 'Ottimo ritmo di lavoro! Continua a registrare con precisione carichi, serie e sensazioni.';
+    message = 'Prestazioni eccellenti! Continua a registrare carichi e feedback per puntare ai massimi gradi.';
   }
 
   const result: AdherenceScoreResult = {

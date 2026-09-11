@@ -33,6 +33,12 @@ import { getAthleteOnboardingResponse } from '../../services/questionnaireServic
 import { fetchAthleteAdherenceData, AdherenceScoreResult } from '../../services/adherenceService';
 import { AthleteOnboardingRecord } from '../../types/questionnaire';
 import { Sparkles } from 'lucide-react';
+import {
+  isCompletedSession,
+  normalizeDayName,
+  resolveRelatedWorkoutIds,
+  calculateCurrentActiveWeek,
+} from '../../services/workoutProgressService';
 
 interface AthleteDashboardProps {
   onStartWorkout: (workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string, targetWeekNumber?: number, targetDayName?: string) => void;
@@ -61,13 +67,13 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   const totalWeeks = assigned.workout?.total_weeks && assigned.workout.total_weeks > 0 ? assigned.workout.total_weeks : 1;
   const normDay = (str: string) => (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-  // Calcola la settimana attiva corrente
+  // Calcola la settimana attiva corrente in base all'avanzamento reale dell'atleta
   const currentActiveWeek = useMemo(() => {
-    for (let w = 1; w <= totalWeeks; w++) {
-      const allDone = days.length > 0 && days.every((d) => completedMap[`${w}-${d}`] || completedMap[`${w}-${normDay(d)}`]);
-      if (!allDone) return w;
-    }
-    return totalWeeks;
+    return calculateCurrentActiveWeek({
+      totalWeeks,
+      days,
+      completedMap,
+    });
   }, [totalWeeks, days, completedMap]);
 
   const [selectedWeek, setSelectedWeek] = useState<number>(currentActiveWeek);
@@ -141,7 +147,7 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
           {Array.from({ length: totalWeeks }, (_, idx) => {
             const wNum = idx + 1;
             const isSelected = selectedWeek === wNum;
-            const isWeekDone = days.every((d) => completedMap[`${wNum}-${d}`]);
+            const isWeekDone = days.length > 0 && days.every((d) => completedMap[`${wNum}-${d}`] || completedMap[`${wNum}-${normDay(d)}`]);
             const isCurrent = currentActiveWeek === wNum;
 
             return (
@@ -642,19 +648,80 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   }, [firstAssigned?.athlete_id, user?.athleteId, user?.id]);
 
   // ─── STATO PROGRESSO CENTRALIZZATO NEL PARENT (NON SI SMONTA MAI) ───────────
-  const [cachedSessionsForHistory, setCachedSessionsForHistory] = useState<SessionRow[]>([]);
-  const [globalProgressMap, setGlobalProgressMap] = useState<Record<string, boolean>>(() => {
-    if (!firstAssigned) return {};
-    try {
-      const cached = localStorage.getItem(`builder_progress_${athleteId}_${firstAssigned.workout_id}`);
-      return cached ? JSON.parse(cached) : {};
-    } catch {
-      return {};
+  const [cachedSessionsForHistory, setCachedSessionsForHistory] = useState<SessionRow[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const athId = user?.athleteId || user?.id || athleteId;
+        if (athId && athId !== 'ath-local') {
+          const cached = localStorage.getItem(`ac_cached_sessions_${athId}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          }
+        }
+      } catch {}
     }
+    return [];
   });
+
+  const [globalProgressMap, setGlobalProgressMap] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const athId = user?.athleteId || user?.id || athleteId;
+        if (firstAssigned?.workout_id && athId) {
+          const cached = localStorage.getItem(`builder_progress_${athId}_${firstAssigned.workout_id}`);
+          if (cached) return JSON.parse(cached);
+        }
+        if (athId && athId !== 'ath-local') {
+          const genCached = localStorage.getItem(`ac_cached_progress_map_${athId}`);
+          if (genCached) return JSON.parse(genCached);
+        }
+      } catch {}
+    }
+    return {};
+  });
+
   const [globalSessionDetailsMap, setGlobalSessionDetailsMap] = useState<
     Record<string, { status?: string; skip_reason?: string; coach_justified?: boolean | null; skip_notes?: string }>
-  >({});
+  >(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const athId = user?.athleteId || user?.id || athleteId;
+        if (athId && athId !== 'ath-local') {
+          const cached = localStorage.getItem(`ac_cached_details_map_${athId}`);
+          if (cached) return JSON.parse(cached);
+        }
+      } catch {}
+    }
+    return {};
+  });
+
+  // Idratazione reattiva rapida della cache se i parametri atleta si stabilizzano post-render
+  useEffect(() => {
+    const realAthId = user?.athleteId || user?.id || (athleteId !== 'ath-local' ? athleteId : '');
+    if (!realAthId) return;
+    try {
+      if (firstAssigned?.workout_id) {
+        const progCached = localStorage.getItem(`builder_progress_${realAthId}_${firstAssigned.workout_id}`) || localStorage.getItem(`ac_cached_progress_map_${realAthId}`);
+        if (progCached) {
+          const parsed = JSON.parse(progCached);
+          setGlobalProgressMap((prev) => (Object.keys(prev).length === 0 ? parsed : prev));
+        }
+      }
+      const sessCached = localStorage.getItem(`ac_cached_sessions_${realAthId}`);
+      if (sessCached) {
+        const parsed = JSON.parse(sessCached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCachedSessionsForHistory((prev) => (prev.length === 0 ? parsed : prev));
+        }
+      }
+      const detailsCached = localStorage.getItem(`ac_cached_details_map_${realAthId}`);
+      if (detailsCached) {
+        const parsed = JSON.parse(detailsCached);
+        setGlobalSessionDetailsMap((prev) => (Object.keys(prev).length === 0 ? parsed : prev));
+      }
+    } catch {}
+  }, [user?.athleteId, user?.id, athleteId, firstAssigned?.workout_id]);
 
   // Mappa giorni reali per ogni scheda assegnata
   const [workoutDaysMap, setWorkoutDaysMap] = useState<Record<string, string[]>>(() => {
@@ -674,47 +741,84 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   });
   const [loadingDaysMap, setLoadingDaysMap] = useState<Record<string, boolean>>({});
 
-  // Carica i giorni reali per ciascuna scheda assegnata senza fallback fittizi
+  // Carica i giorni reali per ciascuna scheda assegnata con singola query batch e guardia isMounted
   useEffect(() => {
     if (myAssignedWorkouts.length === 0) return;
+    let isMounted = true;
+
+    const workoutToTargetIdsMap = new Map<string, string[]>();
+    const allQueryIds: string[] = [];
 
     myAssignedWorkouts.forEach((assigned) => {
       const wId = assigned.workout_id;
       const targetWIds = Array.from(
         new Set([wId, assigned.workout?.id, assigned.workout?.parent_template_id].filter(Boolean) as string[])
       );
-      if (targetWIds.length === 0) return;
+      if (targetWIds.length > 0) {
+        workoutToTargetIdsMap.set(wId, targetWIds);
+        allQueryIds.push(...targetWIds);
+      }
+    });
 
-      setLoadingDaysMap((prev) => ({ ...prev, [wId]: true }));
+    if (allQueryIds.length === 0) return;
+    const uniqueQueryIds = Array.from(new Set(allQueryIds));
 
-      (async () => {
-        try {
-          const { data, error } = await supabase
-            .from('workout_exercises')
-            .select('day_name')
-            .in('workout_id', targetWIds)
-            .order('order_index', { ascending: true });
+    setLoadingDaysMap((prev) => {
+      const next = { ...prev };
+      myAssignedWorkouts.forEach((a) => {
+        next[a.workout_id] = true;
+      });
+      return next;
+    });
 
-          if (error) {
-            console.warn('[AthleteDashboard] Errore caricamento giorni:', error.message);
-          } else if (data && data.length > 0) {
-            const rawDays = data.map((e) => (e.day_name || '').trim()).filter(Boolean);
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('workout_exercises')
+          .select('workout_id, day_name')
+          .in('workout_id', uniqueQueryIds)
+          .order('order_index', { ascending: true });
+
+        if (!isMounted) return;
+
+        if (error) {
+          console.warn('[AthleteDashboard] Errore caricamento giorni:', error.message);
+        } else if (data) {
+          const newWorkoutDaysMap: Record<string, string[]> = {};
+
+          myAssignedWorkouts.forEach((assigned) => {
+            const wId = assigned.workout_id;
+            const targetWIds = workoutToTargetIdsMap.get(wId) || [wId];
+            const matchingRows = data.filter((e) => targetWIds.includes(e.workout_id));
+            const rawDays = matchingRows.map((e) => (e.day_name || '').trim()).filter(Boolean);
             const unique = Array.from(new Set(rawDays)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
             const daysToSet = unique.length > 0 ? unique : ['Giorno 1'];
-            setWorkoutDaysMap((prev) => ({ ...prev, [wId]: daysToSet }));
+            newWorkoutDaysMap[wId] = daysToSet;
             try {
               localStorage.setItem(`builder_days_v2_${wId}`, JSON.stringify(daysToSet));
             } catch (_) {}
-          } else {
-            setWorkoutDaysMap((prev) => ({ ...prev, [wId]: [] }));
-          }
-        } catch (fetchErr) {
-          console.warn('[AthleteDashboard] Eccezione fetch giorni:', fetchErr);
-        } finally {
-          setLoadingDaysMap((prev) => ({ ...prev, [wId]: false }));
+          });
+
+          setWorkoutDaysMap((prev) => ({ ...prev, ...newWorkoutDaysMap }));
         }
-      })();
-    });
+      } catch (fetchErr) {
+        console.warn('[AthleteDashboard] Eccezione fetch giorni:', fetchErr);
+      } finally {
+        if (isMounted) {
+          setLoadingDaysMap((prev) => {
+            const next = { ...prev };
+            myAssignedWorkouts.forEach((a) => {
+              next[a.workout_id] = false;
+            });
+            return next;
+          });
+        }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
   }, [myAssignedWorkouts]);
 
   const firstAssignedRef = React.useRef(firstAssigned);
@@ -742,52 +846,37 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     lastSyncTimestampRef.current = now;
     const startTime = performance.now();
 
-    const currentDays = (currentFirstAssigned.workout_id && workoutDaysMapRef.current[currentFirstAssigned.workout_id]) || [];
-    const daysList = currentDays.length > 0 ? currentDays : ['Giorno 1'];
     const totalWeeksCount = currentFirstAssigned.workout?.total_weeks && currentFirstAssigned.workout.total_weeks > 0
       ? currentFirstAssigned.workout.total_weeks
       : 1;
-    const norm = (str: string) => (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-    interface DashboardSessionRow {
-      id: string;
-      week_number?: number | null;
-      day_name?: string | null;
-      status?: string | null;
-      skip_reason?: string | null;
-      skip_notes?: string | null;
-      coach_justified?: boolean | null;
-      start_time?: string | null;
-      end_time?: string | null;
-      rpe?: number | null;
-      notes?: string | null;
-      workout_id?: string | null;
-      workouts?: { title: string } | null;
-    }
+    const relatedWorkoutIds = resolveRelatedWorkoutIds({
+      assignedWorkoutId: currentFirstAssigned.workout_id,
+      parentTemplateId: currentFirstAssigned.workout?.parent_template_id,
+    });
 
     try {
-      let rawSessions: DashboardSessionRow[] = [];
-      const { data, error } = await supabase
+      let rawSessions: SessionRow[] = [];
+      let query = supabase
         .from('workout_sessions')
-        .select('id, week_number, day_name, status, skip_reason, skip_notes, coach_justified, start_time, end_time, rpe, notes, workout_id, workouts(title)')
-        .in('athlete_id', athIds)
-        .not('end_time', 'is', null)
-        .order('start_time', { ascending: true });
+        .select('id, week_number, day_name, status, skip_reason, skip_notes, coach_justified, coach_feedback, start_time, end_time, rpe, notes, workout_id, workouts(title, total_weeks)')
+        .in('athlete_id', athIds);
+
+      const { data, error } = await query.order('start_time', { ascending: true });
 
       if (error) {
-        const retry = await supabase
+        let retryQuery = supabase
           .from('workout_sessions')
-          .select('id, week_number, day_name, status, start_time, end_time, rpe, notes, workout_id, workouts(title)')
-          .in('athlete_id', athIds)
-          .not('end_time', 'is', null)
-          .order('start_time', { ascending: true });
+          .select('id, week_number, day_name, status, start_time, end_time, rpe, notes, workout_id, workouts(title, total_weeks)')
+          .in('athlete_id', athIds);
+        const retry = await retryQuery.order('start_time', { ascending: true });
         if (retry.error) {
           console.warn('[AthleteDashboard] Errore query workout_sessions:', retry.error);
           return;
         }
-        rawSessions = (retry.data as unknown as DashboardSessionRow[]) || [];
+        rawSessions = (retry.data as unknown as SessionRow[]) || [];
       } else {
-        rawSessions = (data as unknown as DashboardSessionRow[]) || [];
+        rawSessions = (data as unknown as SessionRow[]) || [];
       }
 
       console.log(`[AthleteDashboard] syncProgressFromDb completato in ${(performance.now() - startTime).toFixed(1)}ms. Righe: ${rawSessions.length}`);
@@ -795,21 +884,36 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       const currentMap: Record<string, boolean> = {};
       const detailsMap: Record<string, { status?: string; skip_reason?: string; coach_justified?: boolean | null; skip_notes?: string }> = {};
 
-      rawSessions.forEach((s, idx) => {
+      rawSessions.forEach((s) => {
         const rawWeek = Number(s.week_number);
-        const wNum = rawWeek > 0
-          ? (totalWeeksCount > 0 ? Math.min(totalWeeksCount, rawWeek) : rawWeek)
-          : Math.min(totalWeeksCount, Math.floor(idx / Math.max(1, daysList.length)) + 1);
-        const dName = s.day_name || daysList[idx % Math.max(1, daysList.length)];
-        [dName, norm(dName)].forEach((key) => {
-          currentMap[`${wNum}-${key}`] = true;
-          detailsMap[`${wNum}-${key}`] = {
-            status: s.status || undefined,
-            skip_reason: s.skip_reason || undefined,
-            skip_notes: s.skip_notes || undefined,
-            coach_justified: s.coach_justified,
-          };
-        });
+        const rawD = (s.day_name || '').trim();
+        const normD = normalizeDayName(rawD);
+        const isDone = isCompletedSession(s);
+        const isSkipped = s.status === 'skipped';
+
+        // Solo le sessioni pertinenti alla scheda attiva o alla sua lineage con settimana e giorno validi
+        const isCurrentWorkout = Boolean(
+          s.workout_id &&
+          relatedWorkoutIds.length > 0 &&
+          relatedWorkoutIds.includes(s.workout_id)
+        );
+
+        if (isCurrentWorkout && rawWeek > 0 && normD) {
+          const wNum = totalWeeksCount > 0 ? Math.min(totalWeeksCount, rawWeek) : rawWeek;
+          [rawD, normD].filter(Boolean).forEach((key) => {
+            if (isDone) {
+              currentMap[`${wNum}-${key}`] = true;
+            }
+            if (isDone || isSkipped) {
+              detailsMap[`${wNum}-${key}`] = {
+                status: s.status || undefined,
+                skip_reason: s.skip_reason || undefined,
+                skip_notes: s.skip_notes || undefined,
+                coach_justified: s.coach_justified,
+              };
+            }
+          });
+        }
       });
 
       setGlobalProgressMap(currentMap);
@@ -818,7 +922,12 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
       // Aggiorna anche localStorage come cache
       athIds.forEach((aid) => {
-        try { localStorage.setItem(`builder_progress_${aid}_${currentFirstAssigned.workout_id}`, JSON.stringify(currentMap)); } catch (_) {}
+        try {
+          localStorage.setItem(`builder_progress_${aid}_${currentFirstAssigned.workout_id}`, JSON.stringify(currentMap));
+          localStorage.setItem(`ac_cached_progress_map_${aid}`, JSON.stringify(currentMap));
+          localStorage.setItem(`ac_cached_sessions_${aid}`, JSON.stringify(rawSessions));
+          localStorage.setItem(`ac_cached_details_map_${aid}`, JSON.stringify(detailsMap));
+        } catch (_) {}
       });
     } finally {
       isSyncingRef.current = false;
@@ -828,7 +937,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   // Esegui sync all'avvio e ad ogni evento di completamento con debounce
   useEffect(() => {
     syncProgressFromDb();
-    let timer: NodeJS.Timeout | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const handleWorkoutDone = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => syncProgressFromDb(true), 300);
@@ -840,7 +949,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       window.removeEventListener('athlete_workout_completed', handleWorkoutDone);
       window.removeEventListener('athlete_workout_skipped', handleWorkoutDone);
     };
-  }, [syncProgressFromDb]);
+  }, [syncProgressFromDb, firstAssigned?.workout_id]);
 
   if (isOnboardingModalOpen) {
     return (

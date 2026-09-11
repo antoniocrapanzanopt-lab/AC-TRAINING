@@ -22,6 +22,7 @@ import { AthleteMetric } from '../../types/metrics';
 interface AthleteMetricsTrendChartProps {
   metrics: AthleteMetric[];
   onOpenCheckIn?: () => void;
+  className?: string;
 }
 
 type MetricKey =
@@ -44,14 +45,15 @@ const METRIC_OPTIONS: MetricOption[] = [
   { key: 'weight_kg', label: 'Peso', unit: 'kg', icon: '⚖️', color: 'var(--color-primary)' },
   { key: 'body_fat_percentage', label: '% Grasso', unit: '%', icon: '📉', color: '#f59e0b' },
   { key: 'waist_cm', label: 'Vita', unit: 'cm', icon: '📏', color: '#38bdf8' },
-  { key: 'chest_cm', label: 'Torace', unit: 'cm', icon: '📐', color: '#a855f7' },
-  { key: 'bicep_right_cm', label: 'Braccia', unit: 'cm', icon: '💪', color: '#ec4899' },
+  { key: 'chest_cm', label: 'Petto', unit: 'cm', icon: '📐', color: '#a855f7' },
+  { key: 'bicep_right_cm', label: 'Bicipiti', unit: 'cm', icon: '💪', color: '#ec4899' },
   { key: 'thigh_right_cm', label: 'Cosce', unit: 'cm', icon: '🦵', color: '#10b981' },
 ];
 
 export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> = ({
   metrics,
   onOpenCheckIn,
+  className,
 }) => {
   const [selectedMetricKey, setSelectedMetricKey] = useState<MetricKey>('weight_kg');
 
@@ -62,19 +64,27 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
   // Prepara i dati ordinati cronologicamente (dal più vecchio al più recente per il grafico)
   const chartData = useMemo(() => {
     return metrics
-      .filter((m) => {
-        const val = m[selectedMetricKey];
-        return typeof val === 'number' && !isNaN(val) && val > 0;
-      })
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .map((m) => {
+        let val: number | null = null;
+        if (selectedMetricKey === 'bicep_right_cm') {
+          val = m.bicep_right_cm ?? m.bicep_left_cm ?? null;
+        } else if (selectedMetricKey === 'thigh_right_cm') {
+          val = m.thigh_right_cm ?? m.thigh_left_cm ?? null;
+        } else {
+          val = m[selectedMetricKey] ?? null;
+        }
+        return { m, val };
+      })
+      .filter(({ val }) => typeof val === 'number' && !isNaN(val) && val > 0)
+      .sort((a, b) => new Date(a.m.date).getTime() - new Date(b.m.date).getTime())
+      .map(({ m, val }) => {
         const dateObj = new Date(m.date);
         return {
           id: m.id,
           date: m.date,
           formattedDate: dateObj.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' }),
           fullDate: dateObj.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: 'long', year: 'numeric' }),
-          value: Number(m[selectedMetricKey]),
+          value: Number(val),
           notes: m.notes || '',
         };
       });
@@ -109,7 +119,7 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
   }, [stats]);
 
   return (
-    <div className="p-4 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-md space-y-4 sm:space-y-5 overflow-hidden">
+    <div className={`p-4 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-md space-y-4 sm:space-y-5 overflow-hidden ${className || ''}`}>
       
       {/* ─── HEADER & SELETTORE METRICHE CON SCORRIMENTO TOUCH ─── */}
       <div className="space-y-3 border-b border-[var(--color-border)] pb-3 sm:pb-4">
@@ -218,9 +228,9 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
               <defs>
-                <linearGradient id="metricGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0.0} />
+                <linearGradient id={`metricGradient-${selectedMetricKey}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={selectedMetric.color} stopOpacity={0.35} />
+                  <stop offset="95%" stopColor={selectedMetric.color} stopOpacity={0.0} />
                 </linearGradient>
               </defs>
 
@@ -254,7 +264,9 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
                         </div>
                         <div className="text-base font-black font-mono text-white flex items-center gap-1">
                           <span>{data.value}</span>
-                          <span className="text-xs text-[var(--color-primary)] font-bold">{selectedMetric.unit}</span>
+                          <span className="text-xs font-bold" style={{ color: selectedMetric.color }}>
+                            {selectedMetric.unit}
+                          </span>
                         </div>
                         {data.notes && (
                           <p className="text-[11px] text-slate-300 italic pt-1 border-t border-slate-800/80 max-w-xs">
@@ -271,11 +283,11 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
               <Area
                 type="monotone"
                 dataKey="value"
-                stroke="var(--color-primary)"
+                stroke={selectedMetric.color}
                 strokeWidth={2.5}
-                fill="url(#metricGradient)"
-                activeDot={{ r: 5, fill: 'var(--color-primary)', stroke: '#0f172a', strokeWidth: 2 }}
-                dot={{ r: 3.5, fill: '#0f172a', stroke: 'var(--color-primary)', strokeWidth: 2 }}
+                fill={`url(#metricGradient-${selectedMetricKey})`}
+                activeDot={{ r: 5, fill: selectedMetric.color, stroke: '#0f172a', strokeWidth: 2 }}
+                dot={{ r: 3.5, fill: '#0f172a', stroke: selectedMetric.color, strokeWidth: 2 }}
               />
             </AreaChart>
           </ResponsiveContainer>

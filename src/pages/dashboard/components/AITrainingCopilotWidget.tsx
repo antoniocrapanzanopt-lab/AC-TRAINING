@@ -101,7 +101,8 @@ export const AITrainingCopilotWidget: React.FC = () => {
   const [realAttentionList, setRealAttentionList] = useState<AttentionAthleteItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const isPainText = (text: string): boolean => {
+  const isPainText = (text?: string | null): boolean => {
+    if (!text) return false;
     return isPainFeedback(text);
   };
 
@@ -116,10 +117,37 @@ export const AITrainingCopilotWidget: React.FC = () => {
     try {
       const athleteIds = athletes.map((a) => a.id);
 
+      interface LocalAlertItem {
+        athleteId?: string;
+        athleteName?: string;
+        isPain?: boolean;
+        notes?: string;
+      }
+
+      interface AssignmentRecord {
+        id?: string;
+        athlete_id?: string;
+        workout_id?: string | null;
+        assigned_date?: string | null;
+        is_active?: boolean;
+        workout?: { id?: string; title?: string; total_weeks?: number } | Array<{ id?: string; title?: string; total_weeks?: number }> | null;
+      }
+
+      interface RawSessionItem {
+        id: string;
+        athlete_id: string;
+        workout_id?: string | null;
+        start_time: string;
+        end_time?: string | null;
+        notes?: string | null;
+        rpe?: number | null;
+        workouts?: { title?: string } | Array<{ title?: string }> | null;
+      }
+
       // 0. Carica note salvate in locale da WorkoutPlayer (realtime in-session)
-      let localAlerts: any[] = [];
+      let localAlerts: LocalAlertItem[] = [];
       try {
-        localAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]');
+        localAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]') as LocalAlertItem[];
       } catch (e) {
         console.warn('Errore lettura note copilot locale:', e);
       }
@@ -143,12 +171,17 @@ export const AITrainingCopilotWidget: React.FC = () => {
         .in('athlete_id', athleteIds)
         .eq('is_active', true);
 
+      const assignmentsList = (activeAssignments || []) as unknown as AssignmentRecord[];
+
       const allUniqueWorkoutIds = Array.from(
         new Set(
-          (activeAssignments || [])
-            .map((a: any) => a.workout_id || a.workout?.id)
+          assignmentsList
+            .map((a) => {
+              const wObj = Array.isArray(a.workout) ? a.workout[0] : a.workout;
+              return a.workout_id || wObj?.id;
+            })
             .concat(allAssignedWorkouts.map((a) => a.workout_id))
-            .filter(Boolean)
+            .filter((id): id is string => Boolean(id))
         )
       );
 
@@ -162,7 +195,7 @@ export const AITrainingCopilotWidget: React.FC = () => {
 
         if (workoutExData) {
           const daysSetMap = new Map<string, Set<string>>();
-          workoutExData.forEach((we: any) => {
+          workoutExData.forEach((we: { workout_id: string; day_name?: string | null }) => {
             if (!daysSetMap.has(we.workout_id)) {
               daysSetMap.set(we.workout_id, new Set<string>());
             }
@@ -175,21 +208,24 @@ export const AITrainingCopilotWidget: React.FC = () => {
         }
       }
 
-      if (activeAssignments && activeAssignments.length > 0) {
-        activeAssignments.forEach((assign: any) => {
-          const wId = assign.workout_id || assign.workout?.id;
+      if (assignmentsList.length > 0) {
+        assignmentsList.forEach((assign) => {
+          const wObj = Array.isArray(assign.workout) ? assign.workout[0] : assign.workout;
+          const wId = assign.workout_id || wObj?.id;
           const calculatedDays = (wId && daysPerWorkoutMap.get(wId)) || 3;
-          activeWorkoutByAthlete.set(assign.athlete_id, {
-            workoutId: wId,
-            title: assign.workout?.title || 'Scheda Attiva',
-            durationWeeks: Number(assign.workout?.total_weeks) || 5,
-            daysPerWeek: calculatedDays,
-            startDate: assign.assigned_date,
-          });
+          if (assign.athlete_id) {
+            activeWorkoutByAthlete.set(assign.athlete_id, {
+              workoutId: wId,
+              title: wObj?.title || 'Scheda Attiva',
+              durationWeeks: Number(wObj?.total_weeks) || 5,
+              daysPerWeek: calculatedDays,
+              startDate: assign.assigned_date || undefined,
+            });
+          }
         });
       }
 
-      allAssignedWorkouts.forEach((assign: any) => {
+      allAssignedWorkouts.forEach((assign: { athlete_id: string; workout_id?: string; workout?: { title?: string }; workout_title?: string; assigned_date?: string; created_at?: string }) => {
         if (!activeWorkoutByAthlete.has(assign.athlete_id)) {
           const calculatedDays = (assign.workout_id && daysPerWorkoutMap.get(assign.workout_id)) || 3;
           activeWorkoutByAthlete.set(assign.athlete_id, {
@@ -220,15 +256,14 @@ export const AITrainingCopilotWidget: React.FC = () => {
         .gte('start_time', thirtyDaysAgoIso)
         .order('start_time', { ascending: false });
 
-      const sessionsByAthlete = new Map<string, any[]>();
-      if (recentSessionsData) {
-        recentSessionsData.forEach((s: any) => {
-          if (!sessionsByAthlete.has(s.athlete_id)) {
-            sessionsByAthlete.set(s.athlete_id, []);
-          }
-          sessionsByAthlete.get(s.athlete_id)!.push(s);
-        });
-      }
+      const sessionsByAthlete = new Map<string, RawSessionItem[]>();
+      const sessionsList = (recentSessionsData || []) as unknown as RawSessionItem[];
+      sessionsList.forEach((s) => {
+        if (!sessionsByAthlete.has(s.athlete_id)) {
+          sessionsByAthlete.set(s.athlete_id, []);
+        }
+        sessionsByAthlete.get(s.athlete_id)!.push(s);
+      });
 
       const sevenDaysAgoTime = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const items: AttentionAthleteItem[] = [];
@@ -237,16 +272,17 @@ export const AITrainingCopilotWidget: React.FC = () => {
         const assignedInfo = activeWorkoutByAthlete.get(athlete.id);
         const athleteSessions = sessionsByAthlete.get(athlete.id) || [];
         const localAthleteAlerts = localAlerts.filter(
-          (a: any) =>
+          (a) =>
             a.athleteId === athlete.id ||
             (a.athleteName && a.athleteName.toLowerCase() === athlete.fullName.toLowerCase())
         );
 
-        const athleteRecents: RecentSessionSummary[] = athleteSessions.map((s: any) => {
+        const athleteRecents: RecentSessionSummary[] = athleteSessions.map((s) => {
           const isPain = isPainText(s.notes);
           const endD = new Date(s.end_time || s.start_time);
           const startD = new Date(s.start_time);
           const durMin = Math.max(1, Math.round((endD.getTime() - startD.getTime()) / 60000));
+          const wTitle = Array.isArray(s.workouts) ? s.workouts[0]?.title : s.workouts?.title;
           return {
             id: s.id,
             dateFormatted: new Date(s.start_time).toLocaleDateString('it-IT', {
@@ -255,12 +291,12 @@ export const AITrainingCopilotWidget: React.FC = () => {
               hour: '2-digit',
               minute: '2-digit',
             }),
-            dayName: s.workouts?.title || 'Sessione',
-            workoutTitle: s.workouts?.title || 'Allenamento',
+            dayName: wTitle || 'Sessione',
+            workoutTitle: wTitle || 'Allenamento',
             durationMinutes: durMin,
-            rpe: s.rpe,
+            rpe: s.rpe || undefined,
             isPainReported: isPain,
-            notes: s.notes,
+            notes: s.notes || undefined,
           };
         });
 
@@ -292,11 +328,11 @@ export const AITrainingCopilotWidget: React.FC = () => {
 
         // ── CASO 2: FASTIDI ARTICOLARI O SEGNALAZIONI DOLORE ──
         const painSessions = athleteRecents.filter((r) => r.isPainReported);
-        const hasLocalPain = localAthleteAlerts.some((a: any) => a.isPain || isPainText(a.notes));
+        const hasLocalPain = localAthleteAlerts.some((a) => a.isPain || isPainText(a.notes));
 
         if (painSessions.length > 0 || hasLocalPain) {
           const mostRecentPain = painSessions[0];
-          const localNoteObj = localAthleteAlerts.find((a: any) => a.isPain || isPainText(a.notes));
+          const localNoteObj = localAthleteAlerts.find((a) => a.isPain || isPainText(a.notes));
           const noteExcerpt = localNoteObj?.notes || mostRecentPain?.notes || 'Fastidio articolare segnalato';
 
           items.push({
@@ -309,7 +345,7 @@ export const AITrainingCopilotWidget: React.FC = () => {
             totalWeeks: assignedInfo.durationWeeks || 5,
             currentDayName: mostRecentPain?.dayName || 'Questionario Fine Workout',
             blockProgressPercent: 25,
-            completedWorkoutsInWeek: athleteSessions.filter((s: any) => new Date(s.start_time).getTime() >= sevenDaysAgoTime).length,
+            completedWorkoutsInWeek: athleteSessions.filter((s) => new Date(s.start_time).getTime() >= sevenDaysAgoTime).length,
             targetWorkoutsInWeek: assignedInfo.daysPerWeek || 3,
             primaryAlertCategory: 'pain',
             priority: 'high',
@@ -379,7 +415,7 @@ export const AITrainingCopilotWidget: React.FC = () => {
 
           if (elapsedWeeks === totalWeeks - 1 || elapsedWeeks >= totalWeeks) {
             const weekSessionsCount = athleteSessions.filter(
-              (s: any) => new Date(s.start_time).getTime() >= sevenDaysAgoTime
+              (s) => new Date(s.start_time).getTime() >= sevenDaysAgoTime
             ).length;
 
             items.push({

@@ -21,6 +21,9 @@ const mapAthleteFromDB = (row: any): Athlete => ({
   email: row.email || '',
   phone: row.phone || '',
   dateOfBirth: row.birth_date || '',
+  gender: row.gender || undefined,
+  fiscalCode: row.tax_code || row.fiscal_code || '',
+  address: row.address || '',
   city: row.city || '',
   province: row.province || '',
   status: row.status || 'active',
@@ -43,8 +46,8 @@ const mapAthleteFromDB = (row: any): Athlete => ({
   assignedCoachId: row.assigned_coach_id || '',
   assignedCoachName: row.assigned_coach_name || '',
   assignedCoachIds: row.assigned_coach_id ? [row.assigned_coach_id] : [],
-  privacyConsent: true,
-  newsletterConsent: false,
+  privacyConsent: row.privacy_consent ?? true,
+  newsletterConsent: row.newsletter_consent ?? false,
   createdAt: row.created_at || new Date().toISOString(),
   updatedAt: row.updated_at || new Date().toISOString(),
 });
@@ -57,8 +60,11 @@ const mapAthleteToDB = (a: any): any => {
   if (a.email !== undefined) data.email = a.email;
   if (a.phone !== undefined) data.phone = a.phone;
   if (a.dateOfBirth !== undefined) data.birth_date = a.dateOfBirth || null;
-  if (a.city !== undefined) data.city = a.city;
-  if (a.province !== undefined) data.province = a.province;
+  if (a.gender !== undefined) data.gender = a.gender || null;
+  if (a.fiscalCode !== undefined) data.tax_code = a.fiscalCode ? a.fiscalCode.toUpperCase().trim() : null;
+  if (a.address !== undefined) data.address = a.address ? a.address.trim() : null;
+  if (a.city !== undefined) data.city = a.city ? a.city.trim() : null;
+  if (a.province !== undefined) data.province = a.province ? a.province.toUpperCase().trim() : null;
   if (a.status !== undefined) data.status = a.status;
   if (a.paymentStatus !== undefined) data.payment_status = a.paymentStatus;
   if (a.tags !== undefined) data.tags = a.tags;
@@ -155,15 +161,22 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
 
-    const [athRes, notesRes, timeRes] = await Promise.all([
-      supabase.from('athletes').select('*').order('created_at', { ascending: false }),
-      supabase.from('athlete_notes').select('*').order('created_at', { ascending: false }),
-      supabase.from('athlete_timeline').select('*').order('created_at', { ascending: false })
-    ]);
+    // Fase 1: carica SUBITO solo gli atleti → UI si aggiorna prima possibile
+    const athRes = await supabase
+      .from('athletes')
+      .select('*')
+      .order('created_at', { ascending: false });
 
     if (athRes.data) {
       setAthletes(athRes.data.map(mapAthleteFromDB));
     }
+    setIsLoading(false);
+
+    // Fase 2: carica note e timeline in background (non bloccante per la UI)
+    const [notesRes, timeRes] = await Promise.all([
+      supabase.from('athlete_notes').select('*').order('created_at', { ascending: false }),
+      supabase.from('athlete_timeline').select('*').order('created_at', { ascending: false }).limit(500)
+    ]);
 
     if (notesRes.data) {
       const groupedNotes: Record<string, AthleteNote[]> = {};
@@ -205,9 +218,8 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
       setTimeline(groupedTime);
     }
-
-    setIsLoading(false);
   }, [user]);
+
 
   useEffect(() => {
     fetchData();
@@ -220,7 +232,17 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       assignedCoachName: user?.name || ''
     });
 
-    const { data: inserted, error } = await supabase.from('athletes').insert([dbData]).select().single();
+    let { data: inserted, error } = await supabase.from('athletes').insert([dbData]).select().single();
+    
+    // Resilienza: se la colonna address non è ancora presente nel DB remoto (prima della migrazione)
+    if (error && (error.message?.includes('address') || (error as any)?.code === 'PGRST204')) {
+      console.warn('[AthletesContext] Colonna address non ancora presente su Supabase, retry insert senza address:', error);
+      const fallbackData = { ...dbData };
+      delete fallbackData.address;
+      const retry = await supabase.from('athletes').insert([fallbackData]).select().single();
+      inserted = retry.data;
+      error = retry.error;
+    }
     
     if (error || !inserted) {
       console.error('Error adding athlete:', error);
@@ -229,6 +251,10 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     const newAthlete = mapAthleteFromDB(inserted);
+    // Preserva address nello stato React anche se il DB remoto non aveva ancora la colonna
+    if (data.address && !newAthlete.address) {
+      newAthlete.address = data.address;
+    }
     setAthletes(prev => [newAthlete, ...prev]);
     return newAthlete;
   }, [user]);
@@ -236,7 +262,17 @@ export const AthletesProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateAthlete = useCallback(async (id: string, data: Partial<AthleteFormData>): Promise<boolean> => {
     const dbData = mapAthleteToDB(data);
     
-    const { error } = await supabase.from('athletes').update(dbData).eq('id', id);
+    let { error } = await supabase.from('athletes').update(dbData).eq('id', id);
+
+    // Resilienza: se la colonna address non è ancora presente nel DB remoto
+    if (error && (error.message?.includes('address') || (error as any)?.code === 'PGRST204')) {
+      console.warn('[AthletesContext] Colonna address non ancora presente su Supabase, retry update senza address:', error);
+      const fallbackData = { ...dbData };
+      delete fallbackData.address;
+      const retry = await supabase.from('athletes').update(fallbackData).eq('id', id);
+      error = retry.error;
+    }
+
     if (error) {
       console.error('Error updating athlete:', error);
       return false;

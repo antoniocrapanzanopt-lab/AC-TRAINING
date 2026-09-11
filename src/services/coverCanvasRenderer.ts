@@ -1,5 +1,7 @@
 import { InstagramCoverData } from '../types/cover';
 import { hexToRgb } from './coverColorUtils';
+import { RecordedTextItem } from './carouselCanvasRenderer';
+import { jsPDF } from 'jspdf';
 
 export const REEL_WIDTH = 1080;
 export const REEL_HEIGHT = 1920;
@@ -7,9 +9,41 @@ export const POST_WIDTH = 1080;
 export const POST_HEIGHT = 1350;
 export const GRID_SQUARE_SIZE = 1080;
 
+type PdfBaseline = 'alphabetic' | 'ideographic' | 'bottom' | 'top' | 'middle' | 'hanging';
+type PdfAlign = 'left' | 'center' | 'right' | 'justify';
+
+function parseRgbColor(col: string): { r: number; g: number; b: number } {
+  if (col.startsWith('#')) {
+    const hex = col.replace('#', '');
+    if (hex.length === 3) {
+      return {
+        r: parseInt(hex[0] + hex[0], 16),
+        g: parseInt(hex[1] + hex[1], 16),
+        b: parseInt(hex[2] + hex[2], 16),
+      };
+    }
+    return {
+      r: parseInt(hex.slice(0, 2), 16),
+      g: parseInt(hex.slice(2, 4), 16),
+      b: parseInt(hex.slice(4, 6), 16),
+    };
+  }
+  const match = col.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (match) {
+    return {
+      r: parseInt(match[1], 10),
+      g: parseInt(match[2], 10),
+      b: parseInt(match[3], 10),
+    };
+  }
+  return { r: 255, g: 255, b: 255 };
+}
+
 export interface CoverRenderOptions {
   previewMode?: 'full' | 'grid'; // 'full' (intero canvas) o 'grid' (crop 1:1 feed instagram)
   showSafeArea?: boolean;
+  skipText?: boolean;
+  onRecordText?: (item: RecordedTextItem) => void;
 }
 
 /**
@@ -106,6 +140,41 @@ export async function renderCoverToCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  const originalFillText = ctx.fillText.bind(ctx);
+  if (options.skipText || options.onRecordText) {
+    ctx.fillText = function (text: string | number, x: number, y: number) {
+      const textStr = String(text ?? '');
+      if (!textStr.trim()) return;
+
+      if (options.onRecordText) {
+        const fontStr = ctx.font || '';
+        const sizeMatch = fontStr.match(/(\d+)px/);
+        const fontSize = sizeMatch ? parseInt(sizeMatch[1], 10) : 28;
+        const isBold = fontStr.includes('bold') || fontStr.includes('700') || fontStr.includes('800') || fontStr.includes('900');
+        const color = typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '#FFFFFF';
+        const align: 'left' | 'center' | 'right' = (ctx.textAlign as 'left' | 'center' | 'right') || 'left';
+        const rawBaseline = ctx.textBaseline;
+        const baseline: 'top' | 'middle' | 'bottom' | 'alphabetic' =
+          rawBaseline === 'middle' ? 'middle' : rawBaseline === 'top' ? 'top' : rawBaseline === 'bottom' ? 'bottom' : 'alphabetic';
+
+        options.onRecordText({
+          text: textStr,
+          x,
+          y,
+          fontSize,
+          isBold,
+          color,
+          align,
+          baseline,
+        });
+      }
+
+      if (!options.skipText) {
+        originalFillText(textStr, x, y);
+      }
+    };
+  }
+
   const badgeColor = cover.badgeColor || cover.accentColor || '#F5C518';
   const titleColor = cover.titleColor || cover.textColor || '#FFFFFF';
   const highlightColor = cover.highlightColor || cover.accentColor || '#F5C518';
@@ -193,6 +262,29 @@ export async function renderCoverToCanvas(
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, width, height);
 
+  // 3b. Logo AC Watermark in Background
+  if (cover.showLogoWatermark) {
+    try {
+      const isBlue = cover.logoWatermarkVariant === 'blue';
+      const logoSrc = isBlue ? '/ac-logo.png' : '/ac-logo-transparent.png';
+      const logoImg = await loadImage(logoSrc);
+      const logoSize = cover.logoWatermarkSize || (isReel ? 620 : 540);
+      const defaultOpacity = isBlue ? 0.16 : 0.12;
+      const logoOpacity = cover.logoWatermarkOpacity !== undefined ? cover.logoWatermarkOpacity : defaultOpacity;
+      const logoX = (width - logoSize) / 2;
+      const contentCenterY = isReel ? 960 : 660;
+      const offsetY = cover.logoWatermarkOffsetY || 0;
+      const logoY = contentCenterY - logoSize / 2 + offsetY;
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.02, Math.min(0.60, logoOpacity));
+      ctx.drawImage(logoImg, logoX, logoY, logoSize, logoSize);
+      ctx.restore();
+    } catch (e) {
+      console.warn('Errore rendering watermark logo su cover:', e);
+    }
+  }
+
   // 4. Bordo Geometrico & Angoli Tech (Hypertrophy Science / Brand Kit)
   if (cover.templateId === 'scientific_breakdown' || cover.templateId === 'bold_editorial') {
     const pad = 45;
@@ -237,7 +329,8 @@ export async function renderCoverToCanvas(
   const headline = (cover.headline || 'TITOLO COPERTINA').toUpperCase();
   const headlineHighlight = (cover.headlineHighlight || '').toUpperCase();
   const subheadline = cover.subheadline || '';
-  const categoryBadge = cover.categoryBadge || '■ GUIDA BIOMECCANICA';
+  const categoryBadge = (cover.categoryBadge ?? '').trim();
+  const hasBadge = Boolean(categoryBadge);
   const authorHandle = cover.authorHandle || '@antoniocrapanzano_coach';
 
   const maxWidth = width - 180;
@@ -257,15 +350,15 @@ export async function renderCoverToCanvas(
   const subheadlineLineHeight = 44;
 
   const totalTextBlockHeight =
-    50 + // badge gap
+    (hasBadge ? 50 : 0) + // badge gap solo se presente
     headlineLines.length * headlineLineHeight +
     (highlightLines.length > 0 ? highlightLines.length * highlightLineHeight + 10 : 0) +
     (subheadlineLines.length > 0 ? subheadlineLines.length * subheadlineLineHeight + 35 : 0);
 
   let currentY = contentCenterY - totalTextBlockHeight / 2;
 
-  // 5a. Badge Categoria
-  if (categoryBadge) {
+  // 5a. Badge Categoria (se presente e non rimosso)
+  if (hasBadge) {
     ctx.font = `800 24px "${fontBody}", Inter, sans-serif`;
     const badgeText = categoryBadge.toUpperCase();
     const badgeWidth = ctx.measureText(badgeText).width + 36;
@@ -415,4 +508,71 @@ export async function renderCoverToCanvas(
     }
     ctx.restore();
   }
+
+  if (options.skipText || options.onRecordText) {
+    ctx.fillText = originalFillText;
+  }
+}
+
+/**
+ * Esporta la singola copertina in formato PDF vettoriale per Canva
+ */
+export async function exportCoverAsVectorPdf(
+  cover: InstagramCoverData
+): Promise<void> {
+  const isReel = cover.format === '9:16';
+  const width = isReel ? REEL_WIDTH : POST_WIDTH;
+  const height = isReel ? REEL_HEIGHT : POST_HEIGHT;
+
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'px',
+    format: [width, height],
+    hotfixes: ['px_scaling'],
+  });
+
+  const canvas = document.createElement('canvas');
+  const recordedTexts: RecordedTextItem[] = [];
+
+  // 1. Renderizza la canvas con skipText: true
+  await renderCoverToCanvas(canvas, cover, {
+    skipText: true,
+    onRecordText: (item) => recordedTexts.push(item),
+  });
+
+  // 2. Inserisci lo sfondo grafico come layer di fondo
+  const bgDataUrl = canvas.toDataURL('image/jpeg', 0.96);
+  doc.addImage(bgDataUrl, 'JPEG', 0, 0, width, height, undefined, 'FAST');
+
+  // 3. Posiziona tutti i testi vettoriali nativi
+  for (const item of recordedTexts) {
+    doc.setFont('helvetica', item.isBold ? 'bold' : 'normal');
+    doc.setFontSize(item.fontSize);
+    const rgb = parseRgbColor(item.color);
+    doc.setTextColor(rgb.r, rgb.g, rgb.b);
+
+    const baseline: PdfBaseline =
+      item.baseline === 'middle'
+        ? 'middle'
+        : item.baseline === 'bottom'
+        ? 'bottom'
+        : item.baseline === 'alphabetic'
+        ? 'alphabetic'
+        : 'top';
+
+    const align: PdfAlign =
+      item.align === 'center' ? 'center' : item.align === 'right' ? 'right' : 'left';
+
+    doc.text(item.text, item.x, item.y, {
+      align,
+      baseline,
+    });
+  }
+
+  const cleanTitle = (cover.headline || 'copertina')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '_')
+    .slice(0, 30);
+  const fileName = `${cleanTitle}_copertina_canva_${Date.now()}.pdf`;
+  doc.save(fileName);
 }

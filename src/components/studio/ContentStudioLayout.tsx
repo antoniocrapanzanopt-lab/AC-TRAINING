@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { StudioTab } from '../../types/studio';
 import { ContentStudioHeader } from './ContentStudioHeader';
 import { ContentStudioSidebar } from './ContentStudioSidebar';
@@ -13,7 +13,7 @@ import { StudioStoryPage } from '../../pages/studio/StudioStoryPage';
 import { StudioCoverPage } from '../../pages/studio/StudioCoverPage';
 import { StudioBrandKitPage } from '../../pages/studio/StudioBrandKitPage';
 import { StudioAnalyticsPage } from '../../pages/studio/StudioAnalyticsPage';
-import { ContentDrawerEditor } from '../contents/ContentDrawerEditor';
+import { ContentDrawerEditor, preloadDrawerEditors } from '../contents/ContentDrawerEditor';
 import { useContents } from '../../context/ContentsContext';
 import { useInbox } from '../../context/InboxContext';
 import { InstagramContent, ContentType, ContentStatus } from '../../types/inboxAndContent';
@@ -41,6 +41,14 @@ export const ContentStudioLayout: React.FC<ContentStudioLayoutProps> = ({
 
   const { contents } = useContents();
   const { entries } = useInbox();
+
+  // Precarica in idle i moduli editor in modo che al click siano già caldi in memoria
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      preloadDrawerEditors();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, []);
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 

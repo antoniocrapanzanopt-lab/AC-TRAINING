@@ -74,16 +74,21 @@ export const validateSlideQuality = (
   // 2. Controllo Titolo della Slide
   const headlineClean = (slide.headline || '').trim();
   const headlineWords = headlineClean ? headlineClean.split(/\s+/).filter(Boolean).length : 0;
+  const isFinalCtaWithContent = (slide.layout === 'final_cta' || slide.type === 'cta') && Boolean(
+    slide.bodyText?.trim() || slide.ctaBoxTitle?.trim() || slide.punchlineQuote?.trim() || slide.takeawayTag?.trim()
+  );
 
   if (!headlineClean) {
-    issues.push({
-      id: `missing_headline_${index}`,
-      severity: 'critical',
-      title: 'Titolo assente o vuoto',
-      message: 'La slide non ha un titolo. Ogni slide deve avere un\'intestazione chiara.',
-      actionType: 'manual_edit',
-      actionLabel: 'Inserisci Titolo',
-    });
+    if (!isFinalCtaWithContent) {
+      issues.push({
+        id: `missing_headline_${index}`,
+        severity: 'critical',
+        title: 'Titolo assente o vuoto',
+        message: 'La slide non ha un titolo. Ogni slide deve avere un\'intestazione chiara.',
+        actionType: 'manual_edit',
+        actionLabel: 'Inserisci Titolo',
+      });
+    }
   } else if (headlineClean.length < 4) {
     issues.push({
       id: `short_title_${index}`,
@@ -218,7 +223,11 @@ export const validateSlideQuality = (
   }
 
   // 6. Controllo Lunghezza Testo e Rischio Overflow
-  if (wordCount > 65) {
+  const isFinalCta = slide.layout === 'final_cta' || slide.type === 'cta';
+  const severeLimit = isFinalCta ? 90 : 65;
+  const denseLimit = isFinalCta ? 75 : 40;
+
+  if (wordCount > severeLimit) {
     issues.push({
       id: `overflow_severe_${index}`,
       severity: 'critical',
@@ -227,12 +236,12 @@ export const validateSlideQuality = (
       actionType: 'ai_reduce',
       actionLabel: 'Riduci con AI',
     });
-  } else if (wordCount > 40) {
+  } else if (wordCount > denseLimit) {
     issues.push({
       id: `overflow_warning_${index}`,
       severity: 'warning',
-      title: `Testo troppo denso: ${wordCount} parole`,
-      message: `${wordCount} parole presenti: per formato 1080×1350 consigliamo massimo 35–40 parole per garantire lettura immediata da smartphone.`,
+      title: `Testo denso: ${wordCount} parole`,
+      message: `${wordCount} parole presenti: per formato 1080×1350 consigliamo sintesi per garantire lettura immediata da smartphone.`,
       actionType: 'ai_reduce',
       actionLabel: 'Riduci con AI',
     });

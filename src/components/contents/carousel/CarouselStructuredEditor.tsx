@@ -9,6 +9,8 @@ import {
   generateCarouselFromContent,
   createEmptyCoverSlide,
   generateCarouselProposalFromIdea,
+  parseScriptToCarouselSlides,
+  exportSlidesToScript,
 } from '../../../services/carouselGeneratorService';
 import {
   exportFullCarouselZip,
@@ -32,7 +34,14 @@ import {
   ArrowRight,
   Plus,
   X,
+  FileText,
+  Copy,
+  Check,
+  RefreshCw,
+  Wand2,
+  ArrowLeftRight,
 } from 'lucide-react';
+import { CarouselTextEditorModal } from './CarouselTextEditorModal';
 
 interface CarouselStructuredEditorProps {
   carousel: InstagramCarousel;
@@ -42,6 +51,10 @@ interface CarouselStructuredEditorProps {
   onFocusTitle?: () => void;
   showDetails: boolean;
   onToggleDetails: () => void;
+  scriptBody?: string;
+  onChangeScriptBody?: (text: string) => void;
+  caption?: string;
+  onChangeCaption?: (text: string) => void;
 }
 
 const TYPE_CONFIG: Record<SlideType, { label: string; icon: string; badgeClass: string }> = {
@@ -68,6 +81,10 @@ export const CarouselStructuredEditor: React.FC<CarouselStructuredEditorProps> =
   contentTitle,
   showDetails,
   onToggleDetails,
+  scriptBody,
+  onChangeScriptBody,
+  caption,
+  onChangeCaption,
 }) => {
   const { showSuccess, showError } = useToast();
   const coverSectionCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -82,6 +99,70 @@ export const CarouselStructuredEditor: React.FC<CarouselStructuredEditorProps> =
 
   // Stato espansione elenco completo slide (modalità compatta default)
   const [isFullSlideListOpen, setIsFullSlideListOpen] = useState(false);
+
+  const [isTextModalOpen, setIsTextModalOpen] = useState(false);
+  const [isCopiedScript, setIsCopiedScript] = useState(false);
+  const [isCopiedCaption, setIsCopiedCaption] = useState(false);
+
+  // Fallback locali nel caso i props non siano passati
+  const [localScript, setLocalScript] = useState('');
+  const [localCaption, setLocalCaption] = useState('');
+
+  const currentScript = scriptBody !== undefined ? scriptBody : localScript;
+  const setScript = onChangeScriptBody || setLocalScript;
+  const currentCaption = caption !== undefined ? caption : localCaption;
+  const setCaptionText = onChangeCaption || setLocalCaption;
+  const hasScript = Boolean(currentScript.trim());
+
+  const detectedSlideCount = useMemo(() => {
+    if (!currentScript.trim()) return 0;
+    const matches = currentScript.match(/(?:(?:Slide|Scena|Punto)\s*\d+|---)/gi);
+    return matches ? Math.max(matches.length, 1) : 1;
+  }, [currentScript]);
+
+  const handleCopyScript = () => {
+    if (!currentScript) return;
+    navigator.clipboard.writeText(currentScript);
+    setIsCopiedScript(true);
+    showSuccess('Bozza testuale copiata negli appunti!');
+    setTimeout(() => setIsCopiedScript(false), 2000);
+  };
+
+  const handleCopyCaption = () => {
+    if (!currentCaption) return;
+    navigator.clipboard.writeText(currentCaption);
+    setIsCopiedCaption(true);
+    showSuccess('Didascalia copiata negli appunti!');
+    setTimeout(() => setIsCopiedCaption(false), 2000);
+  };
+
+  const handleApplyDraftToSlides = () => {
+    if (!currentScript.trim()) {
+      showError('Inserisci prima del testo nella bozza per generare le slide.');
+      return;
+    }
+    const parsed = parseScriptToCarouselSlides(currentScript, contentTitle || 'Nuovo Carosello');
+    if (parsed.length === 0) {
+      showError('Nessuna slide rilevata dal testo. Usa "Slide 1\\nTitolo\\n---\\nSlide 2..."');
+      return;
+    }
+    onChange({
+      ...carousel,
+      slides: parsed,
+      status: 'draft',
+    });
+    showSuccess(`${parsed.length} slide create e collegate dalla bozza testuale!`);
+  };
+
+  const handleExtractFromSlides = () => {
+    if (!carousel.slides || carousel.slides.length === 0) {
+      showError('Nessuna slide da cui estrarre il testo.');
+      return;
+    }
+    const extracted = exportSlidesToScript(carousel.slides);
+    setScript(extracted);
+    showSuccess('Bozza testuale estratta dalle slide attuali!');
+  };
 
   // Creazione da zero (Slide 01 vuota, tipo cover, stato bozza, zero demo text)
   const handleStartFromScratch = () => {
@@ -202,9 +283,8 @@ export const CarouselStructuredEditor: React.FC<CarouselStructuredEditorProps> =
   // Stato testuale della Cover (Slide 01)
   const coverStatusText = useMemo(() => {
     if (!coverSlide) return 'Cover non creata';
-    if (coverQualityReport?.status === 'blocked') return 'Cover · Bloccata · Testo da ridurre';
-    if (coverQualityReport?.editorialStatus === 'hook_improvable') return 'Cover · Pronta · Hook migliorabile';
-    if (coverQualityReport?.status === 'ready') return 'Cover · Pronta · Ottimo Hook';
+    if (coverQualityReport?.status === 'blocked') return 'Cover · Bloccata';
+    if (coverQualityReport?.status === 'ready') return 'Cover · Pronta';
     return 'Cover · Bozza';
   }, [coverSlide, coverQualityReport]);
 
@@ -245,56 +325,248 @@ export const CarouselStructuredEditor: React.FC<CarouselStructuredEditorProps> =
     }
   };
 
+  const renderTextSection = () => {
+    const hasScript = Boolean(currentScript.trim());
+    const hasCaption = Boolean(currentCaption.trim());
+    const scriptWords = hasScript ? currentScript.trim().split(/\s+/).length : 0;
+    const captionWords = hasCaption ? currentCaption.trim().split(/\s+/).length : 0;
+
+    return (
+      <>
+        {/* CARD SOTTO RIEPILOGO SLIDE CON ANTEPRIMA E APERTURA IN NUOVA FINESTRA */}
+        <div className="bg-slate-950/90 border border-slate-800 hover:border-slate-700/90 rounded-2xl p-3.5 sm:p-4 space-y-3 shadow-md transition-colors">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-800/80">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-black text-white uppercase tracking-wider block">
+                  Bozza Testuale &amp; Caption
+                </span>
+                <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+                  <span className={hasScript ? 'text-amber-300 font-bold' : 'text-slate-500'}>
+                    {hasScript ? `${scriptWords} p. bozza` : 'Nessuna bozza'}
+                  </span>
+                  <span>•</span>
+                  <span className={hasCaption ? 'text-blue-300 font-bold' : 'text-slate-500'}>
+                    {hasCaption ? `${captionWords} p. caption` : 'Nessuna caption'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* PULSANTE PRIMARIO: APRI IN NUOVA FINESTRA / MODALE DEDICATA */}
+            <div className="flex items-center gap-2">
+              {hasScript && (
+                <button
+                  type="button"
+                  onClick={handleApplyDraftToSlides}
+                  title="Genera le slide grafiche a partire dalla bozza testuale"
+                  className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-sm shadow-amber-500/20"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Applica a Slide</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setIsTextModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Apri in nuova finestra</span>
+              </button>
+            </div>
+          </div>
+
+          {/* ANTEPRIMA TESTUALE COMPATTA (CLICCABILE PER APRIRE L'EDITOR) */}
+          <div
+            onClick={() => setIsTextModalOpen(true)}
+            className="p-3 bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-xl cursor-pointer transition flex items-center justify-between gap-3 group"
+          >
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  {hasScript ? 'Anteprima Testo Slide:' : hasCaption ? 'Anteprima Caption:' : 'Nessuna bozza inserita'}
+                </span>
+                {hasScript && (
+                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-950 text-amber-400 border border-amber-500/20">
+                    {detectedSlideCount} slide rilevate
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-300 font-mono line-clamp-2 italic">
+                {hasScript ? currentScript : hasCaption ? currentCaption : 'Clicca qui o sul pulsante per aprire la finestra di scrittura per bozza e didascalia...'}
+              </p>
+            </div>
+
+            <div className="shrink-0 flex items-center gap-1 text-slate-400 group-hover:text-amber-400 transition-colors">
+              <span className="text-xs font-bold hidden sm:inline">Scrivi</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </div>
+
+          {/* BOTTONI DI AZIONE RAPIDA */}
+          <div className="flex items-center justify-between text-xs text-slate-400 pt-0.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              {slides.length > 0 && !hasScript && (
+                <button
+                  type="button"
+                  onClick={handleExtractFromSlides}
+                  className="text-amber-400 hover:text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition hover:underline"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Estrai bozza dalle slide</span>
+                </button>
+              )}
+              {!hasScript && hasCaption && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScript(currentCaption);
+                    showSuccess('Testo didascalia copiato nella bozza slide!');
+                  }}
+                  className="text-blue-400 hover:text-blue-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition hover:underline"
+                >
+                  <ArrowLeftRight className="w-3 h-3" />
+                  <span>Usa Caption come bozza</span>
+                </button>
+              )}
+              {hasScript && !hasCaption && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCaptionText(currentScript);
+                    showSuccess('Bozza slide copiata nella didascalia!');
+                  }}
+                  className="text-purple-400 hover:text-purple-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition hover:underline"
+                >
+                  <ArrowLeftRight className="w-3 h-3" />
+                  <span>Copia bozza in Caption</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              {hasScript && (
+                <button
+                  type="button"
+                  onClick={handleCopyScript}
+                  className="text-slate-400 hover:text-slate-200 text-[11px] font-medium flex items-center gap-1 cursor-pointer transition"
+                >
+                  {isCopiedScript ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{isCopiedScript ? 'Copiato!' : 'Copia bozza'}</span>
+                </button>
+              )}
+              {hasCaption && (
+                <button
+                  type="button"
+                  onClick={handleCopyCaption}
+                  className="text-slate-400 hover:text-slate-200 text-[11px] font-medium flex items-center gap-1 cursor-pointer transition"
+                >
+                  {isCopiedCaption ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{isCopiedCaption ? 'Copiata!' : 'Copia caption'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ─── MODALE DEDICATA A TUTTO SCHERMO / NUOVA FINESTRA ─── */}
+        {isTextModalOpen && (
+          <CarouselTextEditorModal
+            isOpen={isTextModalOpen}
+            onClose={() => setIsTextModalOpen(false)}
+            contentTitle={contentTitle}
+            scriptBody={currentScript}
+            onChangeScriptBody={setScript}
+            caption={currentCaption}
+            onChangeCaption={setCaptionText}
+            slides={carousel.slides}
+            onApplyDraftToSlides={(newSlides) => {
+              onChange({ ...carousel, slides: newSlides, status: 'draft' });
+            }}
+          />
+        )}
+      </>
+    );
+  };
+
   return (
     <div className="flex-1 min-h-0 flex flex-col space-y-4">
       {/* ─── STATO VUOTO: NESSUNA SLIDE CREATA (START FROM SCRATCH O PROPOSTA AI) ─── */}
       {slides.length === 0 ? (
-        <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-6 sm:p-8 flex flex-col items-center text-center space-y-4 shadow-xl animate-fadeIn">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-lg shadow-amber-500/10">
-            📑
-          </div>
+        <div className="space-y-4">
+          <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-6 sm:p-8 flex flex-col items-center text-center space-y-4 shadow-xl animate-fadeIn">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-2xl shadow-lg shadow-amber-500/10">
+              📑
+            </div>
 
-          <div className="space-y-1 max-w-md">
-            <h3 className="text-base sm:lg font-black text-white">
-              Nuovo Carosello
-            </h3>
-            <p className="text-[11px] text-amber-400 font-mono">
-              Instagram 4:5 · 1080×1350
-            </p>
-            <p className="text-xs text-slate-400 font-medium pt-1">
-              Nessuna slide creata.
-            </p>
-          </div>
+            <div className="space-y-1 max-w-md">
+              <h3 className="text-base sm:lg font-black text-white">
+                Nuovo Carosello
+              </h3>
+              <p className="text-[11px] text-amber-400 font-mono">
+                Instagram 4:5 · 1080×1350
+              </p>
+              <p className="text-xs text-slate-400 font-medium pt-1">
+                Nessuna slide creata.
+              </p>
+            </div>
 
-          <div className="space-y-2.5 w-full max-w-sm pt-2">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              Come vuoi iniziare?
-            </span>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setAiIdeaInput(contentTitle || '');
-                  setAiSlideCount(7);
-                  setAiProposalSlides(null);
-                  setIsAiModalOpen(true);
-                }}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 transition cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Genera struttura con AI</span>
-              </button>
+            {hasScript && detectedSlideCount > 0 ? (
+              <div className="w-full max-w-md p-4 rounded-2xl bg-amber-500/10 border border-amber-500/40 text-center space-y-2.5 my-1 shadow-lg shadow-amber-500/5 animate-fadeIn">
+                <div className="flex items-center justify-center gap-2 text-amber-300 text-xs font-black uppercase tracking-wider">
+                  <Wand2 className="w-4 h-4 text-amber-400" />
+                  <span>{detectedSlideCount} Slide Rilevate nella tua Bozza!</span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Hai già scritto il testo del carosello. Clicca qui per trasformare subito la bozza nelle slide grafiche:
+                </p>
+                <button
+                  type="button"
+                  onClick={handleApplyDraftToSlides}
+                  className="w-full px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 transition cursor-pointer active:scale-98"
+                >
+                  <Wand2 className="w-4 h-4" />
+                  <span>⚡ Applica e Genera le {detectedSlideCount} Slide dalla Bozza</span>
+                </button>
+              </div>
+            ) : null}
 
-              <button
-                type="button"
-                onClick={handleStartFromScratch}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Inizia da zero</span>
-              </button>
+            <div className="space-y-2.5 w-full max-w-sm pt-2">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                {hasScript && detectedSlideCount > 0 ? 'Oppure' : 'Come vuoi iniziare?'}
+              </span>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiIdeaInput(contentTitle || '');
+                    setAiSlideCount(7);
+                    setAiProposalSlides(null);
+                    setIsAiModalOpen(true);
+                  }}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 transition cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Genera struttura con AI</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleStartFromScratch}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Inizia da zero</span>
+                </button>
+              </div>
             </div>
           </div>
+          {renderTextSection()}
         </div>
       ) : (
         <>
@@ -483,10 +755,7 @@ export const CarouselStructuredEditor: React.FC<CarouselStructuredEditorProps> =
                               <span>Da rivedere</span>
                             </span>
                             <span className="text-amber-300/90 font-medium truncate">
-                              {mainIssue?.title ||
-                                (report?.editorialStatus === 'hook_improvable'
-                                  ? 'Hook di copertina migliorabile'
-                                  : 'Elementi da revisionare')}
+                              {mainIssue?.title || 'Elementi da revisionare'}
                             </span>
                           </>
                         ) : (
@@ -497,10 +766,10 @@ export const CarouselStructuredEditor: React.FC<CarouselStructuredEditorProps> =
                             </span>
                             <span className="text-slate-400 font-medium">
                               {isFirst
-                                ? 'Ottimo Hook di copertina'
+                                ? 'Copertina'
                                 : isLast
-                                ? 'CTA configurata'
-                                : `${report?.wordCount || 0} parole · Layout ottimale`}
+                                ? 'CTA Finale'
+                                : `${report?.wordCount || 0} parole`}
                             </span>
                           </>
                         )}
@@ -550,7 +819,10 @@ export const CarouselStructuredEditor: React.FC<CarouselStructuredEditorProps> =
             )}
           </div>
 
-          {/* ─── 4. PULSANTE TOGGLE OPZIONI GRAFICHE & TEMPLATE ─── */}
+          {/* ─── 4. SEZIONE TESTUALE: BOZZA SLIDE & CAPTION (SOTTO RIEPILOGO SLIDE) ─── */}
+          {renderTextSection()}
+
+          {/* ─── 5. PULSANTE TOGGLE OPZIONI GRAFICHE & TEMPLATE ─── */}
           <div className="flex items-center justify-center pt-1">
             <button
               type="button"

@@ -1,5 +1,36 @@
 import { InstagramCarousel, CarouselSlide } from '../types/carousel';
-import { renderSlideToCanvas } from './carouselCanvasRenderer';
+import { renderSlideToCanvas, RecordedTextItem, CANVAS_WIDTH, CANVAS_HEIGHT } from './carouselCanvasRenderer';
+import { jsPDF } from 'jspdf';
+
+type PdfBaseline = 'alphabetic' | 'ideographic' | 'bottom' | 'top' | 'middle' | 'hanging';
+type PdfAlign = 'left' | 'center' | 'right' | 'justify';
+
+function parseRgbColor(col: string): { r: number; g: number; b: number } {
+  if (col.startsWith('#')) {
+    const hex = col.replace('#', '');
+    if (hex.length === 3) {
+      return {
+        r: parseInt(hex[0] + hex[0], 16),
+        g: parseInt(hex[1] + hex[1], 16),
+        b: parseInt(hex[2] + hex[2], 16),
+      };
+    }
+    return {
+      r: parseInt(hex.slice(0, 2), 16),
+      g: parseInt(hex.slice(2, 4), 16),
+      b: parseInt(hex.slice(4, 6), 16),
+    };
+  }
+  const match = col.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (match) {
+    return {
+      r: parseInt(match[1], 10),
+      g: parseInt(match[2], 10),
+      b: parseInt(match[3], 10),
+    };
+  }
+  return { r: 255, g: 255, b: 255 };
+}
 
 /**
  * Funzione helper per scaricare un Blob come file nel browser
@@ -36,6 +67,27 @@ export const exportSingleSlideAsPng = async (
     }, 'image/png', 1.0);
   });
 };
+
+/**
+ * Esporta tutte le slide come singoli file PNG sequenziali
+ */
+export const exportAllSlidesAsPng = async (
+  carousel: InstagramCarousel,
+  onProgress?: (current: number, total: number) => void
+): Promise<void> => {
+  const slides = carousel.slides;
+  for (let i = 0; i < slides.length; i++) {
+    if (onProgress) {
+      onProgress(i + 1, slides.length);
+    }
+    await exportSingleSlideAsPng(slides[i], carousel);
+    // Piccolo delay per non saturare la coda di download del browser
+    if (i < slides.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+};
+
 
 /**
  * Esporta il file caption.txt con testo e hashtag
@@ -273,4 +325,118 @@ export const exportCarouselAsPdfPreview = async (carousel: InstagramCarousel): P
 
   printWindow.document.write(html);
   printWindow.document.close();
+};
+
+/**
+ * Esporta il carosello in PDF vettoriale multipagina modificabile direttamente su Canva
+ */
+export const exportCarouselAsVectorPdf = async (
+  carousel: InstagramCarousel,
+  onProgress?: (progressText: string) => void,
+  title?: string
+): Promise<void> => {
+  const slides = carousel.slides;
+  if (!slides || slides.length === 0) return;
+
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'px',
+    format: [CANVAS_WIDTH, CANVAS_HEIGHT],
+    hotfixes: ['px_scaling'],
+  });
+
+  const canvas = document.createElement('canvas');
+
+  for (let i = 0; i < slides.length; i++) {
+    if (onProgress) {
+      onProgress(`Generazione pagina ${i + 1}/${slides.length} vettoriale per Canva...`);
+    }
+
+    if (i > 0) {
+      doc.addPage([CANVAS_WIDTH, CANVAS_HEIGHT], 'portrait');
+    }
+
+    const recordedTexts: RecordedTextItem[] = [];
+
+    // 1. Renderizza la canvas con skipText: true per ottenere lo sfondo grafico pulito (senza testi rasterizzati)
+    await renderSlideToCanvas(canvas, slides[i], carousel.settings, slides.length, {
+      skipText: true,
+      onRecordText: (item) => recordedTexts.push(item),
+    });
+
+    // 2. Inserisci lo sfondo grafico (gradienti, foto, watermark logo, box e card) come layer di fondo PNG nitido
+    const bgDataUrl = canvas.toDataURL('image/png');
+    doc.addImage(bgDataUrl, 'PNG', 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT, undefined, 'FAST');
+
+    // 3. Posiziona tutti i testi vettoriali nativi con font e coordinate esatte (completamente modificabili su Canva)
+    for (const item of recordedTexts) {
+      doc.setFont('helvetica', item.isBold ? 'bold' : 'normal');
+
+      // Conversione precisa pixel -> pt: in jsPDF setFontSize accetta sempre pt (1 pt = 1.3333 px -> pt = px * 0.75)
+      let ptSize = item.fontSize * 0.75;
+      doc.setFontSize(ptSize);
+
+      // Adattamento metriche: Helvetica ha glifi leggermente più larghi di Inter.
+      // Se il testo è stato misurato su canvas (targetWidth) e su Helvetica risulta più largo,
+      // scaliamo la dimensione proporzionalmente in modo che occupi esattamente la larghezza visiva prevista
+      let measuredPdfWidth = doc.getTextWidth(item.text);
+      if (item.targetWidth && item.targetWidth > 0 && measuredPdfWidth > item.targetWidth) {
+        const scale = item.targetWidth / measuredPdfWidth;
+        ptSize = Math.max(6, ptSize * scale);
+        doc.setFontSize(ptSize);
+        measuredPdfWidth = doc.getTextWidth(item.text);
+      }
+
+      // Safeguard anti-taglio bordi pagina (margine di sicurezza 50px)
+      const minMargin = 50;
+      let leftEdge = item.x;
+      if (item.align === 'center') {
+        leftEdge = item.x - measuredPdfWidth / 2;
+      } else if (item.align === 'right') {
+        leftEdge = item.x - measuredPdfWidth;
+      }
+      const rightEdge = leftEdge + measuredPdfWidth;
+
+      if (rightEdge > CANVAS_WIDTH - minMargin || leftEdge < minMargin) {
+        const maxAvailableWidth = item.align === 'center'
+          ? Math.max(100, Math.min(item.x - minMargin, (CANVAS_WIDTH - minMargin) - item.x) * 2)
+          : item.align === 'right'
+          ? Math.max(100, item.x - minMargin)
+          : Math.max(100, (CANVAS_WIDTH - minMargin) - item.x);
+
+        if (measuredPdfWidth > maxAvailableWidth) {
+          const fitScale = maxAvailableWidth / measuredPdfWidth;
+          ptSize = Math.max(6, ptSize * fitScale);
+          doc.setFontSize(ptSize);
+        }
+      }
+
+      const rgb = parseRgbColor(item.color);
+      doc.setTextColor(rgb.r, rgb.g, rgb.b);
+
+      const baseline: PdfBaseline =
+        item.baseline === 'middle'
+          ? 'middle'
+          : item.baseline === 'bottom'
+          ? 'bottom'
+          : item.baseline === 'alphabetic'
+          ? 'alphabetic'
+          : 'top';
+
+      const align: PdfAlign =
+        item.align === 'center' ? 'center' : item.align === 'right' ? 'right' : 'left';
+
+      doc.text(item.text, item.x, item.y, {
+        align,
+        baseline,
+      });
+    }
+  }
+
+  const cleanTitle = (title || carousel.slides?.[0]?.headline || 'carosello')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '_')
+    .slice(0, 30);
+  const fileName = `${cleanTitle}_vettoriale_canva_${Date.now()}.pdf`;
+  doc.save(fileName);
 };

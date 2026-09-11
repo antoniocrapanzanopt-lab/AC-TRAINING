@@ -31,6 +31,10 @@ import {
   PreviousExerciseHistory
 } from '../../utils/workoutHistoryResolver';
 import {
+  parseWeightToNumber,
+  parseRepsToNumber
+} from '../../utils/weightParser';
+import {
   initOrResumeAudioContext,
   playRestCompleteTone,
   isRestAudioEnabled,
@@ -170,6 +174,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const restEndTimestampRef = useRef<number | null>(null);
   const hasInitializedRef = useRef<boolean>(false);
   const autosaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isSubmittingRef = useRef<boolean>(false);
 
   // Snapshot per autosave continuo senza causare re-render a catena
   const draftStateRef = useRef({
@@ -253,7 +258,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       // Inizializza in MODALITÀ CONSULTAZIONE / ANTEPRIMA (Timer fermo, nessuna sessione avviata)
       const initialLogs: Record<string, { reps: string; weight: string; rpe: string }[]> = {};
       activeExercises.forEach((ex) => {
-        initialLogs[ex.id] = Array(ex.sets).fill({ reps: '', weight: '', rpe: '' });
+        initialLogs[ex.id] = Array.from({ length: ex.sets || 1 }, () => ({ reps: '', weight: '', rpe: '' }));
       });
       setLogs(initialLogs);
       setIsWorkoutStarted(false);
@@ -442,7 +447,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     // Re-inizializza i log vuoti
     const resetLogs: Record<string, { reps: string; weight: string; rpe: string }[]> = {};
     activeExercises.forEach((ex) => {
-      resetLogs[ex.id] = Array(ex.sets).fill({ reps: '', weight: '', rpe: '' });
+      resetLogs[ex.id] = Array.from({ length: ex.sets || 1 }, () => ({ reps: '', weight: '', rpe: '' }));
     });
     setLogs(resetLogs);
     setCompletedSets({});
@@ -522,8 +527,10 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     setShowQuestionnaireModal(true);
   };
 
-  // ── 4. SALVATAGGIO RESILIENTE CON FALLBACK OFFLINE ──
+  // ── 4. SALVATAGGIO RESILIENTE CON FALLBACK OFFLINE E TRANSAZIONALITÀ ──
   const executeWorkoutSave = async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsTimerRunning(false);
     setIsSaving(true);
     setShowQuestionnaireModal(false);
@@ -543,12 +550,15 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             console.error('[CRITICAL] startWorkoutSession ha fallito la persistenza DB:', startRes.error);
             showError('Errore di Connessione', startRes.error || 'Impossibile registrare la sessione sul database.');
             setIsSaving(false);
+            isSubmittingRef.current = false;
             return;
           }
-        } catch (e: any) {
-          console.error('[CRITICAL] Errore creazione sessione all\'uscita:', e);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Errore sconosciuto';
+          console.error('[CRITICAL] Errore creazione sessione all\'uscita:', msg);
           showError('Errore', 'Impossibile comunicare con il database per avviare la sessione.');
           setIsSaving(false);
+          isSubmittingRef.current = false;
           return;
         }
       }
@@ -556,6 +566,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       if (!effectiveSessionId && navigator.onLine) {
         showError('Errore Sessione', 'Nessuna sessione attiva presente sul database. Salvataggio interrotto.');
         setIsSaving(false);
+        isSubmittingRef.current = false;
         return;
       }
 
@@ -568,48 +579,31 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         const userFeedback = exerciseNotes[ex.id]?.trim();
         const completedMap = completedSets[ex.id] || [];
 
-        for (let idx = 0; idx < ex.sets; idx++) {
+        for (let idx = 0; idx < (ex.sets || 1); idx++) {
           const setLog = exLogs[idx] || { reps: '', weight: '', rpe: '' };
           const isCompleted = !!completedMap[idx];
 
-          let repsNum = setLog.reps ? parseInt(String(setLog.reps).replace(/[^0-9]/g, ''), 10) : 0;
-          let weightNum = setLog.weight ? parseFloat(String(setLog.weight).replace(',', '.')) : 0;
+          const repsNum = parseRepsToNumber(setLog.reps, 0);
+          const parsedWeight = parseWeightToNumber(setLog.weight);
+          const weightNum = parsedWeight.weightKg;
 
-          // Se la serie è stata spuntata/completata ma non sono stati digitati i numeri a mano
-          if (isCompleted && repsNum === 0) {
-            const parsedTargetReps = parseInt(String(ex.reps_target || '').replace(/[^0-9]/g, ''), 10);
-            if (parsedTargetReps > 0) {
-              repsNum = parsedTargetReps;
-            } else {
-              const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
-              const histSet = hist?.sets?.[idx] || hist?.sets?.[hist.sets.length - 1];
-              repsNum = Number(histSet?.reps) || 10;
-            }
-          }
-          if (isCompleted && weightNum === 0) {
-            if (ex.target_weight) {
-              weightNum = parseFloat(String(ex.target_weight).replace(',', '.')) || 0;
-            }
-            if (weightNum === 0) {
-              const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
-              const histSet = hist?.sets?.[idx] || hist?.sets?.[hist.sets.length - 1];
-              if (histSet?.weightKg) {
-                weightNum = Number(histSet.weightKg) || 0;
-              }
-            }
-          }
+          // Un set è valido SOLO se l'atleta ha inserito reps, carico, RPE,
+          // oppure se ha spuntato il set come completato (con almeno un dato reale)
+          const hasRealData = repsNum > 0 || weightNum > 0 || Boolean(setLog.rpe && setLog.rpe.trim());
+          const shouldSave = hasRealData || isCompleted;
 
-          if (repsNum > 0 || weightNum > 0 || isCompleted || setLog.rpe || userFeedback) {
+          if (shouldSave) {
             const noteParts: string[] = [];
             if (setLog.rpe) noteParts.push(`RPE: ${setLog.rpe}`);
+            if (parsedWeight.note) noteParts.push(parsedWeight.note);
             if (userFeedback && idx === 0) noteParts.push(`Feedback: ${userFeedback}`);
 
             logsToSave.push({
               session_id: effectiveSessionId || 'offline-pending',
               exercise_id: ex.id,
               set_number: idx + 1,
-              reps_completed: repsNum || 1,
-              weight_kg: weightNum || 0,
+              reps_completed: repsNum > 0 ? repsNum : undefined,
+              weight_kg: weightNum > 0 ? weightNum : undefined,
               notes: noteParts.length > 0 ? noteParts.join(' | ') : undefined,
             });
 
@@ -666,14 +660,15 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         } catch (_) {}
       }
 
-      // SE ONLINE: Salva su Supabase con controllo errori rigoroso
+      // SE ONLINE: Salva su Supabase con controllo transazionale rigoroso
       if (navigator.onLine && effectiveSessionId) {
         if (logsToSave.length > 0) {
           const logsRes = await saveExerciseLogs(logsToSave);
           if (!logsRes.success) {
             console.error('[CRITICAL] Errore salvataggio exercise_logs su Supabase:', logsRes.error);
-            showError('Errore Salvataggio Carichi', logsRes.error || 'Impossibile registrare le serie sul database. Salvataggio interrotto per proteggere i dati.');
+            showError('Errore Salvataggio Carichi', 'Impossibile salvare carichi e serie. Riprova prima di chiudere l\'allenamento.');
             setIsSaving(false);
+            isSubmittingRef.current = false;
             return;
           }
         }
@@ -682,6 +677,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           console.error('[CRITICAL] endWorkoutSession ha fallito l\'update su Supabase:', endRes.error);
           showError('Errore Completamento', endRes.error || 'Impossibile contrassegnare la sessione come completata.');
           setIsSaving(false);
+          isSubmittingRef.current = false;
           return;
         }
       } else if (!navigator.onLine) {
@@ -749,28 +745,6 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         } catch (_) {}
       }
 
-      // Alert se sessione completata senza carichi registrati (Volume 0 kg)
-      if (logsToSave.length === 0 || logsToSave.every(l => !l.weight_kg || l.weight_kg === 0)) {
-        try {
-          const existingAlerts = JSON.parse(localStorage.getItem('builder_copilot_critical_notes') || '[]');
-          const missingWeightsAlert = {
-            id: `cn-mw-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            athleteId,
-            athleteName: currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : user?.name || 'Atleta',
-            workoutTitle: workout.title,
-            weekNumber: weekNum,
-            dayName,
-            exerciseName: 'Log Incompleto (Volume 0 kg)',
-            noteText: `Sessione completata senza carichi registrati. Invia promemoria compilazione.`,
-            severity: 'medium',
-            date: 'Oggi',
-            category: 'missing_weights',
-          };
-          localStorage.setItem('builder_copilot_critical_notes', JSON.stringify([missingWeightsAlert, ...existingAlerts]));
-          window.dispatchEvent(new Event('copilot_notes_updated'));
-        } catch (_) {}
-      }
-
       // Calcola Volume Totale Sollevato & Serie per la Celebration Screen direttamente dai log effettivi salvati
       const calculatedVolumeKg = logsToSave.reduce(
         (sum, item) => sum + ((Number(item.weight_kg) || 0) * (Number(item.reps_completed) || 0)),
@@ -805,9 +779,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       if (user?.id) clearActiveWorkoutDraft(user.id);
       window.dispatchEvent(new Event('athlete_workout_completed'));
       window.dispatchEvent(new Event('athlete_draft_updated'));
-      setIsSaving(false);
 
-      // Apri la Celebration Screen
+      // Apri la Celebration Screen solo a salvataggio avvenuto
       setCelebrationData({
         workoutTitle: workout.title,
         durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
@@ -818,46 +791,12 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         earnedXP: 100 + (prResults.length * 50),
       });
     } catch (err: unknown) {
-      console.warn('Errore in executeWorkoutSave, fallback completamento immediato:', err);
-      clearActiveWorkoutDraft(athleteId);
+      const msg = err instanceof Error ? err.message : 'Errore imprevisto durante il salvataggio';
+      console.error('[CRITICAL] Errore in executeWorkoutSave:', msg, err);
+      showError('Errore Salvataggio', 'Impossibile completare la sessione: i dati rimangono salvati nella bozza per evitare perdite.');
+    } finally {
       setIsSaving(false);
-
-      let fallbackVolume = 0;
-      let fallbackCompletedSets = 0;
-
-      activeExercises.forEach((ex) => {
-        const exLogs = logs[ex.id] || [];
-        const completedMap = completedSets[ex.id] || [];
-        for (let idx = 0; idx < ex.sets; idx++) {
-          const l = exLogs[idx];
-          const isDone = !!completedMap[idx];
-          if (isDone) fallbackCompletedSets++;
-
-          let w = l?.weight ? parseFloat(String(l.weight).replace(',', '.')) || 0 : 0;
-          let r = l?.reps ? parseInt(String(l.reps).replace(/[^0-9]/g, ''), 10) || 0 : 0;
-
-          if (isDone && w === 0 && ex.target_weight) {
-            w = parseFloat(String(ex.target_weight).replace(',', '.')) || 0;
-          }
-          if (isDone && r === 0 && ex.reps_target) {
-            r = parseInt(String(ex.reps_target).replace(/[^0-9]/g, ''), 10) || 10;
-          }
-
-          if (w > 0 && r > 0) {
-            fallbackVolume += w * r;
-          }
-        }
-      });
-
-      setCelebrationData({
-        workoutTitle: workout.title,
-        durationMinutes: Math.max(1, Math.round(elapsedTime / 60)),
-        totalVolumeKg: Math.round(fallbackVolume),
-        completedSetsCount: fallbackCompletedSets,
-        totalSetsCount: activeExercises.reduce((acc, e) => acc + e.sets, 0),
-        newPRs: [],
-        earnedXP: 100,
-      });
+      isSubmittingRef.current = false;
     }
   };
 
@@ -1116,26 +1055,26 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           for (let i = 0; i < ex.sets; i++) {
             const l = exLogs[i];
             const isDone = !!completedMap[i];
-            let w = l?.weight ? parseFloat(String(l.weight).replace(',', '.')) || 0 : 0;
-            let r = l?.reps ? parseInt(String(l.reps).replace(/[^0-9]/g, ''), 10) || 0 : 0;
+            let w = parseWeightToNumber(l?.weight).weightKg;
+            let r = parseRepsToNumber(l?.reps, 0);
 
             if (isDone && w === 0 && ex.target_weight) {
-              w = parseFloat(String(ex.target_weight).replace(',', '.')) || 0;
+              w = parseWeightToNumber(ex.target_weight).weightKg;
             }
             if (isDone && w === 0) {
               const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
               const histSet = hist?.sets?.[i] || hist?.sets?.[hist.sets.length - 1];
               if (histSet?.weightKg) {
-                w = Number(histSet.weightKg) || 0;
+                w = parseWeightToNumber(histSet.weightKg).weightKg;
               }
             }
             if (isDone && r === 0 && ex.reps_target) {
-              r = parseInt(String(ex.reps_target).replace(/[^0-9]/g, ''), 10) || 10;
+              r = parseRepsToNumber(ex.reps_target, 10);
             }
             if (isDone && r === 0) {
               const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
               const histSet = hist?.sets?.[i] || hist?.sets?.[hist.sets.length - 1];
-              r = Number(histSet?.reps) || 10;
+              r = parseRepsToNumber(histSet?.reps, 10);
             }
 
             if (w > 0 && r > 0) {

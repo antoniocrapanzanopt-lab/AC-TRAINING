@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -18,43 +18,155 @@ import {
   CheckSquare,
   Square,
   ArrowUpRight,
+  AlertTriangle,
+  SlidersHorizontal,
+  ChevronDown,
+  RotateCcw,
+  X,
+  Table,
 } from 'lucide-react';
 import {
   TimeframeOption,
   TeamOverviewReportData,
   AthleteReportSummary,
   DecisionPriorityItem,
+  Athlete,
 } from '../../../types';
 import { AthleteAdherenceBadge } from '../../../components/coach/AthleteAdherenceBadge';
 import { fetchBatchAthletesAdherence, AdherenceScoreResult } from '../../../services/adherenceService';
+import { AthleteTableView } from './AthleteTableView';
+import {
+  buildAthleteTimelineItems,
+  calculateTimelineCounters,
+  TimelineWorkoutAssignment,
+  TimelineWorkoutSession,
+} from '../utils/timelineCalculator';
+
+export type TeamViewMode = 'priority' | 'table';
 
 interface TeamOverviewReportViewProps {
   reportData: TeamOverviewReportData;
   timeframe: TimeframeOption;
+  athletes?: Athlete[];
+  sessions?: TimelineWorkoutSession[];
+  assignments?: TimelineWorkoutAssignment[];
+  workoutDaysMap?: Record<string, string[]>;
+  isLoading?: boolean;
   onTimeframeChange: (tf: TimeframeOption) => void;
   onSelectAthlete: (athleteId: string) => void;
   onAssignProgram?: (athleteId: string) => void;
-  onOpenCopilot?: (athleteId: string, customAlert?: any) => void;
+  onOpenCopilot?: (athleteId: string, customAlert?: unknown) => void;
   onAssignMultiplePrograms?: (athleteIds: string[]) => void;
+  activeViewMode?: TeamViewMode;
+  onViewModeChange?: (mode: TeamViewMode) => void;
 }
 
-type FilterTab = 'all' | 'active' | 'penultimate' | 'positive' | 'stable' | 'monitor' | 'unassigned';
+export type MainFilter = 'attention' | 'end_of_block' | 'unassigned' | 'all';
+export type SortByOption = 'priority' | 'attendance_asc' | 'end_block_first' | 'name_asc';
+export type ProgramStatusFilter = 'all' | 'active' | 'unassigned' | 'completed' | 'paused';
+export type PerformanceFilter = 'all' | 'attention' | 'stable' | 'positive';
+export type ProgressFilter = 'all' | 'start' | 'mid' | 'end';
+export type AdherenceFilter = 'all' | '<50' | '50-75' | '>75';
+export type PainFilter = 'all' | 'yes' | 'no';
+
+export interface SecondaryFilters {
+  programStatus: ProgramStatusFilter;
+  performance: PerformanceFilter;
+  progress: ProgressFilter;
+  adherence: AdherenceFilter;
+  pain: PainFilter;
+  sortBy: SortByOption;
+}
+
+const defaultSecondaryFilters: SecondaryFilters = {
+  programStatus: 'all',
+  performance: 'all',
+  progress: 'all',
+  adherence: 'all',
+  pain: 'all',
+  sortBy: 'priority',
+};
 
 export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
   reportData,
   timeframe,
+  athletes = [],
+  sessions = [],
+  assignments = [],
+  workoutDaysMap = {},
+  isLoading = false,
   onTimeframeChange,
   onSelectAthlete,
   onAssignProgram,
   onOpenCopilot,
   onAssignMultiplePrograms,
+  activeViewMode,
+  onViewModeChange,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
+  // Default: 'attention' (Richiedono attenzione prioritari)
+  const [mainFilter, setMainFilter] = useState<MainFilter>('attention');
+  const [secondaryFilters, setSecondaryFilters] = useState<SecondaryFilters>(defaultSecondaryFilters);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+
+  // Modalità di visualizzazione: [Priorità] | [Tabella]
+  const [viewMode, setViewMode] = useState<TeamViewMode>(() => {
+    if (activeViewMode && (activeViewMode === 'priority' || activeViewMode === 'table')) return activeViewMode;
+    try {
+      const saved = localStorage.getItem('ac_performance_view_mode');
+      if (saved === 'priority' || saved === 'table') return saved;
+    } catch (_) {}
+    return 'priority';
+  });
+
+  useEffect(() => {
+    if (activeViewMode && (activeViewMode === 'priority' || activeViewMode === 'table')) {
+      setViewMode(activeViewMode);
+    }
+  }, [activeViewMode]);
+
+  const handleViewModeChange = (mode: TeamViewMode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('ac_performance_view_mode', mode);
+    } catch (_) {}
+    onViewModeChange?.(mode);
+  };
+
+  // Calcolo dati cronologici e contatori
+  const timelineItems = useMemo(() => {
+    if (!athletes || athletes.length === 0) return [];
+    return buildAthleteTimelineItems(
+      athletes,
+      assignments,
+      sessions,
+      workoutDaysMap
+    );
+  }, [athletes, assignments, sessions, workoutDaysMap]);
+
+  const timelineCounters = useMemo(() => {
+    return calculateTimelineCounters(timelineItems);
+  }, [timelineItems]);
+
   const [selectedUnassignedIds, setSelectedUnassignedIds] = useState<string[]>([]);
   const [adherenceMap, setAdherenceMap] = useState<Record<string, AdherenceScoreResult>>({});
 
-  React.useEffect(() => {
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
+        setIsFilterMenuOpen(false);
+      }
+    };
+    if (isFilterMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isFilterMenuOpen]);
+
+  useEffect(() => {
     if (!reportData.athletesReports || reportData.athletesReports.length === 0) return;
     let isMounted = true;
 
@@ -86,26 +198,211 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
     return reportData.athletesReports.filter((a) => a.programStatus === 'unassigned');
   }, [reportData.athletesReports]);
 
-  // Filtro atleti con programma
+  // Criterio per atleti che richiedono attenzione (unifica Da Monitorare, Penultima Sett. e alert pendenti)
+  const isAthleteNeedingAttention = useCallback((ath: AthleteReportSummary): boolean => {
+    if (ath.programStatus === 'unassigned') return false;
+    const isPainActive = ath.painReportsCount.current > 0 && ath.singleDecisionCtaLabel !== 'Gestito';
+    const isLowAttendance = ath.attendance.current < 70 && ath.completedSessions.current > 0;
+    const isNegativeTrend = ath.trend === 'negative';
+    const isEndOfBlock = ath.isPenultimateWeek || ath.currentWeek >= ath.totalWeeks;
+    const hasPendingDecision = Boolean(
+      ath.singleDecisionCtaLabel &&
+      ath.singleDecisionCtaLabel !== 'Gestito' &&
+      ath.singleDecisionType !== 'maintain'
+    );
+    return isPainActive || isLowAttendance || isNegativeTrend || isEndOfBlock || hasPendingDecision;
+  }, []);
+
+  // Criterio a fine blocco
+  const isAthleteEndOfBlock = useCallback((ath: AthleteReportSummary): boolean => {
+    return (
+      ath.isPenultimateWeek ||
+      ath.currentWeek >= ath.totalWeeks ||
+      ath.programStatus === 'penultimate_week' ||
+      ath.programStatus === 'completed'
+    );
+  }, []);
+
+  // Conteggi sintetici
+  const attentionCount = useMemo(() => {
+    return activeProgramAthletes.filter(isAthleteNeedingAttention).length;
+  }, [activeProgramAthletes, isAthleteNeedingAttention]);
+
+  const endOfBlockCount = useMemo(() => {
+    return activeProgramAthletes.filter(isAthleteEndOfBlock).length;
+  }, [activeProgramAthletes, isAthleteEndOfBlock]);
+
+  const pendingStartAthletes = useMemo(() => {
+    return activeProgramAthletes.filter(
+      (a) => a.programStatus === 'pending_start' || (a.completedSessions.current === 0 && a.programStatus !== 'active')
+    );
+  }, [activeProgramAthletes]);
+
+  const unassignedCount = useMemo(() => {
+    return unassignedAthletes.length + pendingStartAthletes.length;
+  }, [unassignedAthletes.length, pendingStartAthletes.length]);
+
+  const totalCount = reportData.totalAthletesCount;
+
+  // Calcolo Priorità Deterministico: badge rossi e gialli in cima, stabili in fondo
+  const getAthletePriorityScore = useCallback((ath: AthleteReportSummary): number => {
+    let score = 0;
+
+    // 1. Fastidio/dolore attivo non gestito (Badge rosso / Massima urgenza)
+    if (ath.painReportsCount.current > 0 && ath.singleDecisionCtaLabel !== 'Gestito') {
+      score += 1000;
+    }
+
+    // 2. Aderenza critica < 50%
+    if (ath.attendance.current < 50 && ath.completedSessions.current > 0) {
+      score += 600;
+    }
+
+    // 3. Fine blocco imminente (Penultima o ultima settimana: Badge giallo)
+    if (ath.isPenultimateWeek || ath.currentWeek >= ath.totalWeeks) {
+      score += 400;
+    }
+
+    // 4. Aderenza medio-bassa (50-70%) o trend negativo
+    if (ath.attendance.current >= 50 && ath.attendance.current < 70) {
+      score += 250;
+    }
+    if (ath.trend === 'negative') {
+      score += 200;
+    }
+
+    // 5. Decisione attiva non ancora gestita
+    if (ath.singleDecisionCtaLabel && ath.singleDecisionCtaLabel !== 'Gestito' && ath.singleDecisionType !== 'maintain') {
+      score += 150;
+    }
+
+    // 6. Da avviare / in attesa di inizio (Badge blu/indigo)
+    if (ath.programStatus === 'unassigned' || ath.programStatus === 'pending_start' || ath.completedSessions.current === 0) {
+      score += 100;
+    }
+
+    // 7. Stabili o positivi senza problemi
+    if (ath.trend === 'positive') {
+      score += 10;
+    } else if (ath.trend === 'stable') {
+      score += 20;
+    }
+
+    return score;
+  }, []);
+
+  const hasActiveSecondaryFilters = useMemo(() => {
+    return (
+      secondaryFilters.programStatus !== 'all' ||
+      secondaryFilters.performance !== 'all' ||
+      secondaryFilters.progress !== 'all' ||
+      secondaryFilters.adherence !== 'all' ||
+      secondaryFilters.pain !== 'all' ||
+      secondaryFilters.sortBy !== 'priority'
+    );
+  }, [secondaryFilters]);
+
+  const activeSecondaryFiltersCount = useMemo(() => {
+    let count = 0;
+    if (secondaryFilters.programStatus !== 'all') count++;
+    if (secondaryFilters.performance !== 'all') count++;
+    if (secondaryFilters.progress !== 'all') count++;
+    if (secondaryFilters.adherence !== 'all') count++;
+    if (secondaryFilters.pain !== 'all') count++;
+    if (secondaryFilters.sortBy !== 'priority') count++;
+    return count;
+  }, [secondaryFilters]);
+
+  const handleResetSecondaryFilters = () => {
+    setSecondaryFilters(defaultSecondaryFilters);
+  };
+
+  // Filtro e ordinamento combinato atleti con programma
   const filteredActiveAthletes = useMemo(() => {
-    return activeProgramAthletes.filter((ath) => {
+    const result = activeProgramAthletes.filter((ath) => {
+      // 1. Ricerca testuale
       const matchesSearch =
         ath.athleteName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         ath.workoutTitle.toLowerCase().includes(searchTerm.toLowerCase());
 
       if (!matchesSearch) return false;
 
-      if (activeFilter === 'all' || activeFilter === 'active') return true;
-      if (activeFilter === 'penultimate') return ath.isPenultimateWeek;
-      if (activeFilter === 'positive') return ath.trend === 'positive';
-      if (activeFilter === 'stable') return ath.trend === 'stable';
-      if (activeFilter === 'monitor') {
-        return ath.painReportsCount.current > 0 || (ath.programStatus === 'active' && (ath.attendance.current < 70 || ath.trend === 'negative'));
+      // 2. Filtro Principale
+      if (mainFilter === 'attention') {
+        if (!isAthleteNeedingAttention(ath)) return false;
+      } else if (mainFilter === 'end_of_block') {
+        if (!isAthleteEndOfBlock(ath)) return false;
+      } else if (mainFilter === 'unassigned') {
+        const isPending = ath.programStatus === 'pending_start' || (ath.completedSessions.current === 0 && ath.programStatus !== 'active');
+        if (!isPending) return false;
       }
-      if (activeFilter === 'unassigned') return false;
+      // 'all' passa tutti
+
+      // 3. Filtri Secondari
+      if (secondaryFilters.programStatus !== 'all') {
+        if (secondaryFilters.programStatus === 'active' && ath.programStatus !== 'active' && ath.programStatus !== 'penultimate_week') return false;
+        if (secondaryFilters.programStatus === 'unassigned' && ath.programStatus !== 'unassigned' && ath.programStatus !== 'pending_start') return false;
+        if (secondaryFilters.programStatus === 'completed' && ath.programStatus !== 'completed') return false;
+        if (secondaryFilters.programStatus === 'paused' && ath.programStatus !== 'inactive' && ath.programStatus !== 'overdue') return false;
+      }
+
+      if (secondaryFilters.performance !== 'all') {
+        if (secondaryFilters.performance === 'attention' && !isAthleteNeedingAttention(ath)) return false;
+        if (secondaryFilters.performance === 'stable' && ath.trend !== 'stable') return false;
+        if (secondaryFilters.performance === 'positive' && ath.trend !== 'positive') return false;
+      }
+
+      if (secondaryFilters.progress !== 'all') {
+        const ratio = ath.totalWeeks > 0 ? ath.currentWeek / ath.totalWeeks : 0;
+        if (secondaryFilters.progress === 'start' && ratio >= 0.34) return false;
+        if (secondaryFilters.progress === 'mid' && (ratio < 0.34 || ratio >= 0.67)) return false;
+        if (secondaryFilters.progress === 'end' && ratio < 0.67 && !ath.isPenultimateWeek) return false;
+      }
+
+      if (secondaryFilters.adherence !== 'all') {
+        if (secondaryFilters.adherence === '<50' && ath.attendance.current >= 50) return false;
+        if (secondaryFilters.adherence === '50-75' && (ath.attendance.current < 50 || ath.attendance.current > 75)) return false;
+        if (secondaryFilters.adherence === '>75' && ath.attendance.current <= 75) return false;
+      }
+
+      if (secondaryFilters.pain !== 'all') {
+        const hasPain = ath.painReportsCount.current > 0;
+        if (secondaryFilters.pain === 'yes' && !hasPain) return false;
+        if (secondaryFilters.pain === 'no' && hasPain) return false;
+      }
+
       return true;
     });
-  }, [activeProgramAthletes, searchTerm, activeFilter]);
+
+    // 4. Ordinamento
+    result.sort((a, b) => {
+      if (secondaryFilters.sortBy === 'attendance_asc') {
+        return a.attendance.current - b.attendance.current;
+      }
+      if (secondaryFilters.sortBy === 'end_block_first') {
+        const ratioA = a.totalWeeks > 0 ? a.currentWeek / a.totalWeeks : 0;
+        const ratioB = b.totalWeeks > 0 ? b.currentWeek / b.totalWeeks : 0;
+        return ratioB - ratioA;
+      }
+      if (secondaryFilters.sortBy === 'name_asc') {
+        return a.athleteName.localeCompare(b.athleteName);
+      }
+      // Default: Priorità decrescente (Badge rossi > gialli > blu > verdi)
+      const priorityDiff = getAthletePriorityScore(b) - getAthletePriorityScore(a);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.athleteName.localeCompare(b.athleteName);
+    });
+
+    return result;
+  }, [
+    activeProgramAthletes,
+    searchTerm,
+    mainFilter,
+    secondaryFilters,
+    isAthleteNeedingAttention,
+    isAthleteEndOfBlock,
+    getAthletePriorityScore,
+  ]);
 
   // Filtro atleti da avviare
   const filteredUnassignedAthletes = useMemo(() => {
@@ -256,7 +553,7 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
       </div>
 
       {/* ─── 2. PRIORITÀ DI OGGI (MAX 3 AZIONI IMMEDIATE) ─── */}
-      <div className="p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-2xl space-y-3 relative overflow-hidden">
+      <div id="performance-copilot-priorities" className="p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-2xl space-y-3 relative overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
@@ -432,112 +729,455 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
         </div>
       </div>
 
-      {/* ─── 4. FILTRI E BARRA DI RICERCA ─── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-2">
-        {/* Filtri a Pillola */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-slate-950 border border-slate-800">
-          <button
-            type="button"
-            onClick={() => setActiveFilter('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeFilter === 'all'
-                ? 'bg-[var(--color-primary)] text-slate-950 font-black'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Tutti ({reportData.totalAthletesCount})
-          </button>
+      {/* ─── RIEPILOGO COMPATTO IN PILLOLE & SELETTORE VISTA ─── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-xl">
+        {/* Pillole Contatori Riepilogo */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+          {/* Da seguire oggi */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
+            <span className="text-slate-400">Da seguire oggi:</span>
+            <span className="px-1.5 py-0.2 rounded-md font-mono font-black bg-rose-500/20 text-rose-300">
+              {timelineCounters.needAttentionToday}
+            </span>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveFilter('active')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeFilter === 'active'
-                ? 'bg-[var(--color-primary)] text-slate-950 font-black'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Attivi ({reportData.eligibleAthletesCount})
-          </button>
+          {/* In ritardo */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
+            <span className="text-slate-400">In ritardo:</span>
+            <span className="px-1.5 py-0.2 rounded-md font-mono font-black bg-amber-500/20 text-amber-300">
+              {timelineCounters.late}
+            </span>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveFilter('penultimate')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-              activeFilter === 'penultimate'
-                ? 'bg-amber-400 text-slate-950 font-black'
-                : 'text-amber-400 hover:text-amber-300'
-            }`}
-          >
-            <Clock className="w-3 h-3" />
-            <span>Penultima Sett. ({reportData.penultimateWeekAthletesCount})</span>
-          </button>
+          {/* Attivi oggi */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
+            <span className="text-slate-400">Attivi oggi:</span>
+            <span className="px-1.5 py-0.2 rounded-md font-mono font-black bg-emerald-500/20 text-emerald-300">
+              {timelineCounters.activeToday}
+            </span>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveFilter('positive')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeFilter === 'positive'
-                ? 'bg-emerald-500 text-white font-black'
-                : 'text-slate-400 hover:text-emerald-400'
-            }`}
-          >
-            In Crescita ({reportData.positiveAthletesCount})
-          </button>
+          {/* Fine blocco */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
+            <span className="text-slate-400">Fine blocco:</span>
+            <span className="px-1.5 py-0.2 rounded-md font-mono font-black bg-amber-400/20 text-amber-300">
+              {timelineCounters.endOfBlock}
+            </span>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveFilter('monitor')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeFilter === 'monitor'
-                ? 'bg-rose-500 text-white font-black'
-                : 'text-slate-400 hover:text-rose-400'
-            }`}
-          >
-            Da Monitorare ({reportData.activeAlertsCount})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveFilter('unassigned')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeFilter === 'unassigned'
-                ? 'bg-indigo-500 text-white font-black'
-                : 'text-slate-400 hover:text-indigo-400'
-            }`}
-          >
-            Da Avviare ({reportData.unassignedAthletesCount})
-          </button>
+          {/* Senza attività */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 shadow-sm">
+            <span className="text-slate-400">Senza attività:</span>
+            <span className="px-1.5 py-0.2 rounded-md font-mono font-black bg-slate-800 text-slate-300">
+              {timelineCounters.noActivity}
+            </span>
+          </div>
         </div>
 
-        {/* Barra di ricerca */}
-        <div className="relative w-full lg:w-72">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Cerca atleta o scheda..."
-            className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)] transition-colors"
-          />
+        {/* Selettore Modalità di Visualizzazione: [Priorità] [Tabella] */}
+        <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-900 border border-slate-800 self-start md:self-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => handleViewModeChange('priority')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              viewMode === 'priority'
+                ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Priorità</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleViewModeChange('table')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              viewMode === 'table'
+                ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Table className="w-3.5 h-3.5" />
+            <span>Tabella</span>
+          </button>
         </div>
       </div>
 
-      {/* ─── 5. SEZIONE: ATLETI CON PROGRAMMA ATTIVO ─── */}
-      {activeFilter !== 'unassigned' && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">
-              {activeFilter === 'monitor'
-                ? `Atleti da Monitorare (${filteredActiveAthletes.length})`
-                : activeFilter === 'penultimate'
-                ? `Atleti a Penultima Settimana (${filteredActiveAthletes.length})`
-                : activeFilter === 'positive'
-                ? `Atleti in Crescita (${filteredActiveAthletes.length})`
-                : `Atleti con Programma (${filteredActiveAthletes.length})`}
+      {/* ─── VISTA 1: PRIORITÀ (VISTA ESISTENTE A CARD CON DECISIONI) ─── */}
+      {viewMode === 'priority' && (
+        <div className="space-y-6">
+          {/* ─── 4. INTESTAZIONE SEZIONE, RICERCA E FILTRI ─── */}
+          <div className="space-y-3 pt-2">
+        {/* Riga superiore: Titolo con contatore, sottotitolo dinamico e ricerca */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+              <span>Atleti da monitorare</span>
+              <span className="text-slate-500 font-normal">·</span>
+              <span className="text-[var(--color-primary)] font-mono">{attentionCount}</span>
             </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {attentionCount > 0
+                ? `${attentionCount} ${attentionCount === 1 ? 'atleta richiede' : 'atleti richiedono'} attenzione`
+                : 'Nessun atleta richiede attenzione'}
+            </p>
           </div>
 
+          {/* Ricerca a destra */}
+          <div className="relative w-full sm:w-72">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Cerca atleta o scheda..."
+              className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Riga filtri principali e menu compatto [Filtri ▾] */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Gruppo Filtri Principali */}
+          <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-slate-950 border border-slate-800/90">
+            {/* 1. Richiedono attenzione (Default, prioritario) */}
+            <button
+              type="button"
+              onClick={() => setMainFilter('attention')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                mainFilter === 'attention'
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-md shadow-amber-500/20'
+                  : 'text-amber-400/90 hover:text-amber-300 hover:bg-slate-900/60'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Richiedono attenzione</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black ${
+                mainFilter === 'attention' ? 'bg-slate-950/20 text-slate-950' : 'bg-amber-400/15 text-amber-300'
+              }`}>
+                {attentionCount}
+              </span>
+            </button>
+
+            {/* 2. A fine blocco */}
+            <button
+              type="button"
+              onClick={() => setMainFilter('end_of_block')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                mainFilter === 'end_of_block'
+                  ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-amber-500/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>A fine blocco</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black ${
+                mainFilter === 'end_of_block' ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-300'
+              }`}>
+                {endOfBlockCount}
+              </span>
+            </button>
+
+            {/* 3. Da avviare */}
+            <button
+              type="button"
+              onClick={() => setMainFilter('unassigned')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                mainFilter === 'unassigned'
+                  ? 'bg-indigo-500 text-white font-black shadow-md shadow-indigo-500/20'
+                  : 'text-indigo-400/90 hover:text-indigo-300 hover:bg-slate-900/60'
+              }`}
+            >
+              <FilePlus2 className="w-3.5 h-3.5" />
+              <span>Da avviare</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black ${
+                mainFilter === 'unassigned' ? 'bg-black/30 text-white' : 'bg-indigo-500/20 text-indigo-300'
+              }`}>
+                {unassignedCount}
+              </span>
+            </button>
+
+            {/* 4. Tutti (Neutro, non evidenziato di default) */}
+            <button
+              type="button"
+              onClick={() => setMainFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                mainFilter === 'all'
+                  ? 'bg-slate-800 text-white font-bold border border-slate-700 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
+              }`}
+            >
+              <span>Tutti</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                mainFilter === 'all' ? 'bg-slate-900 text-slate-200 font-bold' : 'bg-slate-900/80 text-slate-400'
+              }`}>
+                {totalCount}
+              </span>
+            </button>
+          </div>
+
+          {/* 5. Menu compatto [Filtri ▾] */}
+          <div className="relative" ref={filterMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsFilterMenuOpen((prev) => !prev)}
+              className={`px-3 py-2 rounded-2xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-2 ${
+                hasActiveSecondaryFilters
+                  ? 'bg-slate-900 text-[var(--color-primary)] border-[var(--color-primary)]/40 shadow-sm shadow-amber-500/10'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Filtri</span>
+              {hasActiveSecondaryFilters && (
+                <span className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-pulse" />
+              )}
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isFilterMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu Popover */}
+            {isFilterMenuOpen && (
+              <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-84 sm:w-96 rounded-2xl bg-slate-950/98 backdrop-blur-2xl border border-slate-800 p-4 shadow-2xl z-50 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
+                {/* Header Menu */}
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-4 h-4 text-[var(--color-primary)]" />
+                    <span className="text-xs font-black uppercase tracking-wider text-white">Filtri & Ordinamento</span>
+                    {hasActiveSecondaryFilters && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-amber-400/20 text-amber-300 font-bold">
+                        {activeSecondaryFiltersCount} attivi
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasActiveSecondaryFilters && (
+                      <button
+                        type="button"
+                        onClick={handleResetSecondaryFilters}
+                        className="text-[11px] text-slate-400 hover:text-amber-400 flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Reimposta tutti i filtri secondari"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Reimposta</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterMenuOpen(false)}
+                      className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 1. Ordinamento */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Ordinamento
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: 'priority', label: 'Priorità' },
+                      { id: 'attendance_asc', label: 'Aderenza più bassa' },
+                      { id: 'end_block_first', label: 'Fine blocco più vicina' },
+                      { id: 'name_asc', label: 'Nome' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setSecondaryFilters((prev) => ({
+                            ...prev,
+                            sortBy: opt.id as SortByOption,
+                          }))
+                        }
+                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-left transition-all cursor-pointer border ${
+                          secondaryFilters.sortBy === opt.id
+                            ? 'bg-[var(--color-primary)] text-slate-950 border-[var(--color-primary)] font-black'
+                            : 'bg-slate-900/70 text-slate-400 border-slate-800/80 hover:text-white hover:bg-slate-900'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Stato Programma */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Stato Programma
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: 'all', label: 'Tutti' },
+                      { id: 'active', label: 'Attivo' },
+                      { id: 'unassigned', label: 'Da avviare' },
+                      { id: 'completed', label: 'Completato' },
+                      { id: 'paused', label: 'In pausa' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setSecondaryFilters((prev) => ({
+                            ...prev,
+                            programStatus: opt.id as ProgramStatusFilter,
+                          }))
+                        }
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                          secondaryFilters.programStatus === opt.id
+                            ? 'bg-[var(--color-primary)] text-slate-950 border-[var(--color-primary)] font-black'
+                            : 'bg-slate-900/70 text-slate-400 border-slate-800/80 hover:text-white hover:bg-slate-900'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Stato Performance */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Stato Performance
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: 'all', label: 'Tutti' },
+                      { id: 'attention', label: 'Richiede attenzione' },
+                      { id: 'stable', label: 'Stabile' },
+                      { id: 'positive', label: 'In crescita' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setSecondaryFilters((prev) => ({
+                            ...prev,
+                            performance: opt.id as PerformanceFilter,
+                          }))
+                        }
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                          secondaryFilters.performance === opt.id
+                            ? 'bg-[var(--color-primary)] text-slate-950 border-[var(--color-primary)] font-black'
+                            : 'bg-slate-900/70 text-slate-400 border-slate-800/80 hover:text-white hover:bg-slate-900'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4. Avanzamento */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Avanzamento
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: 'all', label: 'Tutti' },
+                      { id: 'start', label: 'Inizio blocco' },
+                      { id: 'mid', label: 'Metà blocco' },
+                      { id: 'end', label: 'Fine blocco' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setSecondaryFilters((prev) => ({
+                            ...prev,
+                            progress: opt.id as ProgressFilter,
+                          }))
+                        }
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                          secondaryFilters.progress === opt.id
+                            ? 'bg-[var(--color-primary)] text-slate-950 border-[var(--color-primary)] font-black'
+                            : 'bg-slate-900/70 text-slate-400 border-slate-800/80 hover:text-white hover:bg-slate-900'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 5. Aderenza */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Aderenza
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: 'all', label: 'Tutti' },
+                      { id: '<50', label: 'Sotto 50%' },
+                      { id: '50-75', label: '50–75%' },
+                      { id: '>75', label: 'Sopra 75%' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setSecondaryFilters((prev) => ({
+                            ...prev,
+                            adherence: opt.id as AdherenceFilter,
+                          }))
+                        }
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                          secondaryFilters.adherence === opt.id
+                            ? 'bg-[var(--color-primary)] text-slate-950 border-[var(--color-primary)] font-black'
+                            : 'bg-slate-900/70 text-slate-400 border-slate-800/80 hover:text-white hover:bg-slate-900'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 6. Presenza Fastidi */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Presenza Fastidi
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { id: 'all', label: 'Tutti' },
+                      { id: 'yes', label: 'Sì' },
+                      { id: 'no', label: 'No' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setSecondaryFilters((prev) => ({
+                            ...prev,
+                            pain: opt.id as PainFilter,
+                          }))
+                        }
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                          secondaryFilters.pain === opt.id
+                            ? 'bg-[var(--color-primary)] text-slate-950 border-[var(--color-primary)] font-black'
+                            : 'bg-slate-900/70 text-slate-400 border-slate-800/80 hover:text-white hover:bg-slate-900'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── 5. SEZIONE: LISTA CARD ATLETI ─── */}
+      {(mainFilter !== 'unassigned' || filteredActiveAthletes.length > 0) && (
+        <div className="space-y-3">
           {filteredActiveAthletes.length === 0 ? (
             <div className="p-8 text-center bg-slate-950/60 border border-slate-800/80 rounded-2xl text-slate-500 text-xs">
               Nessun atleta corrisponde ai filtri selezionati.
@@ -625,37 +1265,44 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
                         </p>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onOpenCopilot) {
-                            let category = 'progression';
-                            if (ath.singleDecisionType === 'pain') category = 'pain';
-                            else if (ath.singleDecisionType === 'penultimate_week') category = 'penultimate_week';
-                            else if (ath.singleDecisionType === 'missing_weights') category = 'missing_weights';
-                            else if (ath.singleDecisionType === 'inactivity' || ath.programStatus === 'pending_start' || ath.programStatus === 'inactive' || ath.completedSessions.current === 0) category = 'inactivity';
-                            else if (ath.singleDecisionType === 'plateau') category = 'stagnation';
+                      {ath.singleDecisionCtaLabel === 'Gestito' ? (
+                        <div className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-black shrink-0 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Gestito</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onOpenCopilot) {
+                              let category = 'progression';
+                              if (ath.singleDecisionType === 'pain') category = 'pain';
+                              else if (ath.singleDecisionType === 'penultimate_week') category = 'penultimate_week';
+                              else if (ath.singleDecisionType === 'missing_weights') category = 'missing_weights';
+                              else if (ath.singleDecisionType === 'inactivity' || ath.programStatus === 'pending_start' || ath.programStatus === 'inactive' || ath.completedSessions.current === 0) category = 'inactivity';
+                              else if (ath.singleDecisionType === 'plateau') category = 'stagnation';
 
-                            onOpenCopilot(ath.athleteId, {
-                              athleteId: ath.athleteId,
-                              athleteName: ath.athleteName,
-                              category,
-                              summary: ath.singleDecisionTitle,
-                              rationale: ath.singleDecisionRationale,
-                              exerciseName: ath.painDetailsSummary,
-                              noteText: ath.painDetailsSummary ? `Fastidio su ${ath.painDetailsSummary}: ${ath.singleDecisionRationale}` : ath.singleDecisionRationale,
-                              severity: ath.singleDecisionType === 'pain' ? 'high' : 'medium',
-                            });
-                          } else {
-                            onSelectAthlete(ath.athleteId);
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-[var(--color-primary)] text-slate-950 text-xs font-black hover:bg-[var(--color-primary-hover)] transition-all shrink-0 flex items-center gap-1 cursor-pointer shadow-sm shadow-amber-500/20"
-                      >
-                        <span>{ath.singleDecisionCtaLabel}</span>
-                        <ArrowUpRight className="w-3.5 h-3.5" />
-                      </button>
+                              onOpenCopilot(ath.athleteId, {
+                                athleteId: ath.athleteId,
+                                athleteName: ath.athleteName,
+                                category,
+                                summary: ath.singleDecisionTitle,
+                                rationale: ath.singleDecisionRationale,
+                                exerciseName: ath.painDetailsSummary,
+                                noteText: ath.painDetailsSummary ? `Fastidio su ${ath.painDetailsSummary}: ${ath.singleDecisionRationale}` : ath.singleDecisionRationale,
+                                severity: ath.singleDecisionType === 'pain' ? 'high' : 'medium',
+                              });
+                            } else {
+                              onSelectAthlete(ath.athleteId);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-[var(--color-primary)] text-slate-950 text-xs font-black hover:bg-[var(--color-primary-hover)] transition-all shrink-0 flex items-center gap-1 cursor-pointer shadow-sm shadow-amber-500/20"
+                        >
+                          <span>{ath.singleDecisionCtaLabel}</span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -666,7 +1313,7 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
       )}
 
       {/* ─── 6. SEZIONE: ATLETI DA AVVIARE (TABELLA COMPATTA & MASSIVA) ─── */}
-      {(activeFilter === 'all' || activeFilter === 'unassigned') && unassignedAthletes.length > 0 && (
+      {(mainFilter === 'all' || mainFilter === 'unassigned') && unassignedAthletes.length > 0 && (
         <div className="p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-2xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3.5">
             <div className="flex items-center gap-2.5">
@@ -778,6 +1425,17 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
             </table>
           </div>
         </div>
+      )}
+        </div>
+      )}
+
+      {/* ─── VISTA 2: TABELLA (VISUALIZZAZIONE COMPATTA ORDINABILE CON RICERCA E FILTRI) ─── */}
+      {viewMode === 'table' && (
+        <AthleteTableView
+          timelineItems={timelineItems}
+          onSelectAthlete={onSelectAthlete}
+          isLoading={isLoading}
+        />
       )}
     </div>
   );

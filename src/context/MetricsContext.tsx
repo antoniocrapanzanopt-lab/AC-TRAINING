@@ -120,7 +120,8 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const { data, error } = await supabase
         .from('athlete_metrics')
         .select('*')
-        .order('date', { ascending: false });
+        .order('date', { ascending: false })
+        .limit(2000);
 
       if (!error && data) {
         setMetrics(prev => {
@@ -159,7 +160,8 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const { data, error } = await supabase
         .from('athlete_max_lifts')
         .select('*')
-        .order('date', { ascending: false });
+        .order('date', { ascending: false })
+        .limit(2000);
 
       if (!error && data) {
         setMaxLifts(prev => {
@@ -178,8 +180,8 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [user]);
 
   useEffect(() => {
-    fetchAllMetrics();
-    fetchAllMaxLifts();
+    // Avvio parallelo: le due fetch non dipendono l'una dall'altra
+    Promise.all([fetchAllMetrics(), fetchAllMaxLifts()]);
   }, [fetchAllMetrics, fetchAllMaxLifts]);
 
   // Carica le metriche di uno specifico atleta e fonde Supabase + localStorage
@@ -251,16 +253,20 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Aggiorna una misurazione esistente
   const updateMetric = async (id: string, metricData: Partial<AthleteMetricInput>): Promise<{ success: boolean; error?: string }> => {
     try {
-      await supabase
+      const { error } = await supabase
         .from('athlete_metrics')
         .update({ ...metricData, updated_at: new Date().toISOString() })
         .eq('id', id);
+
+      if (error) {
+        console.warn('Aggiornamento remoto fallito (mantenuto in locale):', error.message);
+      }
     } catch (err) {
       console.warn('Aggiornamento remoto fallito, aggiornato in locale:', err);
     }
 
     setMetrics(prev => {
-      const updated = prev.map(m => (m.id === id ? { ...m, ...metricData } : m));
+      const updated = prev.map(m => (m.id === id ? { ...m, ...metricData, updated_at: new Date().toISOString() } : m));
       setStorageItem('builder_athlete_metrics', updated);
       return updated;
     });
@@ -272,10 +278,14 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Elimina una misurazione
   const deleteMetric = async (id: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      await supabase
+      const { error } = await supabase
         .from('athlete_metrics')
         .delete()
         .eq('id', id);
+
+      if (error) {
+        console.warn('Eliminazione remota fallita (rimosso da locale):', error.message);
+      }
     } catch (err) {
       console.warn('Eliminazione remota fallita, rimosso da locale:', err);
     }

@@ -127,7 +127,8 @@ export function buildAthleteReport(
   sessions: RawSession[],
   logs: RawExerciseLog[],
   assignments: RawAssignment[],
-  exerciseNamesMap: Map<string, string>
+  exerciseNamesMap: Map<string, string>,
+  dismissedAlerts?: Set<string>
 ): AthleteReportSummary {
   const days = getTimeframeDays(timeframe);
   const now = Date.now();
@@ -435,6 +436,18 @@ export function buildAthleteReport(
 
   const isMissingWeights = hasAssignment && currentSessions.length > 0 && curVol === 0;
 
+  const activeDismissedAlerts: Set<string> = dismissedAlerts || (() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('builder_copilot_dismissed_alerts') : null;
+      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  })();
+
+  const isPainDismissed = activeDismissedAlerts.has(athlete.id) || activeDismissedAlerts.has(`prio-pain-${athlete.id}`);
+  const isPenultDismissed = activeDismissedAlerts.has(athlete.id) || activeDismissedAlerts.has(`prio-penult-${athlete.id}`);
+
   if (!hasAssignment) {
     singleDecisionTitle = 'Assegna Scheda di Allenamento';
     singleDecisionRationale = 'Nessun programma attivo. Crea o assegna un mesociclo per avviare il percorso.';
@@ -450,7 +463,7 @@ export function buildAthleteReport(
     singleDecisionRationale = 'Sessione completata ma senza carichi registrati (Volume 0 kg). Sollecita l\'inserimento dei dati per tracciare la progressione.';
     singleDecisionType = 'missing_weights';
     singleDecisionCtaLabel = 'Sollecita Compilazione';
-  } else if (currentPainCount > 0) {
+  } else if (currentPainCount > 0 && !isPainDismissed) {
     const painSubject = painDetailsSummary ? `su ${painDetailsSummary}` : 'nelle ultime sessioni';
     if (currentPainCount === 1 && totalCompletedInHistory <= 2) {
       singleDecisionTitle = painDetailsSummary ? `Fastidio su ${painDetailsSummary}` : 'Richiedi Video o Check Tecnico';
@@ -463,11 +476,18 @@ export function buildAthleteReport(
       singleDecisionType = 'pain';
       singleDecisionCtaLabel = 'Apri Decisione';
     }
-  } else if (isPenultimateWeek) {
+  } else if (isPenultimateWeek && !isPenultDismissed) {
     singleDecisionTitle = 'Prepara Prossimo Mesociclo';
     singleDecisionRationale = `L'atleta è alla settimana ${currentWeek} di ${totalWeeks}. Prepara il prossimo blocco per dare continuità.`;
     singleDecisionType = 'penultimate_week';
     singleDecisionCtaLabel = 'Prepara Prossimo Blocco';
+  } else if (isPainDismissed) {
+    singleDecisionTitle = 'Decisione Applicata • In Monitoraggio';
+    singleDecisionRationale = painDetailsSummary
+      ? `Intervento registrato per ${painDetailsSummary}. Monitoraggio attivo delle prossime sessioni.`
+      : 'Intervento Copilot registrato con successo nel programma.';
+    singleDecisionType = 'maintain';
+    singleDecisionCtaLabel = 'Gestito';
   } else if (currentAttendancePct < 70) {
     singleDecisionTitle = 'Intervento su Aderenza Bassa';
     singleDecisionRationale = `Aderenza al ${currentAttendancePct}%. Verifica frequenza settimanale o carico di lavoro.`;
@@ -609,8 +629,18 @@ export function buildTeamOverviewReport(
   const currentRangeLabel = `${currentStart.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })} – ${now.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}`;
   const previousRangeLabel = `${previousStart.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })} – ${currentStart.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}`;
 
+  // Lettura alert archiviati / gestiti dal coach
+  const dismissedAlerts: Set<string> = (() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('builder_copilot_dismissed_alerts') : null;
+      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  })();
+
   const athletesReports = athletes.map((ath) =>
-    buildAthleteReport(ath, timeframe, sessions, logs, assignments, exerciseNamesMap)
+    buildAthleteReport(ath, timeframe, sessions, logs, assignments, exerciseNamesMap, dismissedAlerts)
   );
 
   const eligibleReports = athletesReports.filter((a) => a.programStatus !== 'unassigned');
@@ -630,21 +660,12 @@ export function buildTeamOverviewReport(
   const positiveCount = eligibleReports.filter((a) => a.trend === 'positive').length;
   const stableCount = eligibleReports.filter((a) => a.trend === 'stable').length;
   const negativeCount = eligibleReports.filter((a) => a.trend === 'negative').length;
-  const activeAlertsCount = eligibleReports.filter(
-    (a) => a.painReportsCount.current > 0 || (a.programStatus === 'active' && (a.attendance.current < 70 || a.trend === 'negative'))
-  ).length;
+  const activeAlertsCount = eligibleReports.filter((a) => {
+    const isPainDismissed = dismissedAlerts.has(a.athleteId) || dismissedAlerts.has(`prio-pain-${a.athleteId}`);
+    return (!isPainDismissed && a.painReportsCount.current > 0) || (a.programStatus === 'active' && (a.attendance.current < 70 || a.trend === 'negative'));
+  }).length;
 
   const todayPriorities: DecisionPriorityItem[] = [];
-
-  // Lettura alert archiviati / gestiti dal coach
-  const dismissedAlerts: Set<string> = (() => {
-    try {
-      const saved = localStorage.getItem('builder_copilot_dismissed_alerts');
-      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
-    } catch {
-      return new Set<string>();
-    }
-  })();
 
   // 1. Dolori articolari segnalati (Priorità Alta)
   const painAthletes = eligibleReports.filter(
@@ -694,14 +715,17 @@ export function buildTeamOverviewReport(
   });
 
   // 3. Atleti Da Avviare / Senza Programma
-  if (unassignedReports.length > 0 && todayPriorities.length < 3) {
-    const firstUnassigned = unassignedReports[0];
+  const pendingUnassignedReports = unassignedReports.filter(
+    (a) => !dismissedAlerts.has(a.athleteId) && !dismissedAlerts.has(`prio-unassigned-${a.athleteId}`)
+  );
+  if (pendingUnassignedReports.length > 0 && todayPriorities.length < 3) {
+    const firstUnassigned = pendingUnassignedReports[0];
     todayPriorities.push({
       id: `prio-unassigned-${firstUnassigned.athleteId}`,
       athleteId: firstUnassigned.athleteId,
       athleteName: firstUnassigned.athleteName,
-      title: `${unassignedReports.length} Atleti senza programma attivo`,
-      rationale: `${firstUnassigned.athleteName} e altri ${unassignedReports.length - 1} atleti attendono l'assegnazione della scheda.`,
+      title: `${pendingUnassignedReports.length} Atleti senza programma attivo`,
+      rationale: `${firstUnassigned.athleteName} e altri ${pendingUnassignedReports.length - 1} atleti attendono l'assegnazione della scheda.`,
       type: 'unassigned',
       urgency: 'medium',
       ctaLabel: 'Assegna Programma',

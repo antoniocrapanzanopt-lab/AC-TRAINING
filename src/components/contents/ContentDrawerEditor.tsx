@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   X,
   Save,
@@ -25,6 +25,8 @@ import {
   Hash,
   Smile,
   Trash2,
+  ArrowRight,
+  ArrowLeftRight,
 } from 'lucide-react';
 import {
   InstagramContent,
@@ -39,6 +41,7 @@ import { useContents } from '../../context/ContentsContext';
 import { useToast } from '../../context/ToastContext';
 import { createEmptyCarousel } from '../../services/carouselGeneratorService';
 import { generateDefaultCoverFromContent } from '../../services/coverGeneratorService';
+import { getContentGraphics } from '../../services/contentsService';
 import { CoverCardPreview } from './cover/CoverCardPreview';
 import { openContentStudio, normalizeContentFormat } from '../../utils/contentStudioRouter';
 import { SectionErrorBoundary } from '../common/SectionErrorBoundary';
@@ -58,6 +61,22 @@ const StoryStudioModal = React.lazy(() =>
 const StoryStructuredEditor = React.lazy(() =>
   import('./story/StoryStructuredEditor').then((m) => ({ default: m.StoryStructuredEditor }))
 );
+
+/**
+ * Precarica i moduli pesanti degli editor in background (idle)
+ * per eliminare qualsiasi latenza o schermata di caricamento al click
+ */
+export const preloadDrawerEditors = (): void => {
+  try {
+    void import('./carousel/CarouselStructuredEditor');
+    void import('./carousel/CarouselStudioModal');
+    void import('./cover/CoverStudioModal');
+    void import('./story/StoryStructuredEditor');
+    void import('./story/StoryStudioModal');
+  } catch {
+    // ignore
+  }
+};
 
 interface ContentDrawerEditorProps {
   isOpen: boolean;
@@ -182,7 +201,7 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
 }) => {
   const mode: 'create' | 'edit' = propMode || (contentToEdit && contentToEdit.id ? 'edit' : 'create');
   const { createContent, updateContent, deleteContentById } = useContents();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
 
   const handleDelete = async () => {
     if (!contentToEdit?.id) return;
@@ -249,6 +268,83 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
   const lastContentIdRef = useRef<string | undefined>(undefined);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [carouselStudioTargetField, setCarouselStudioTargetField] = useState<string | undefined>(undefined);
+
+  // Tracciamento bozza locale in localStorage per prevenire perdita accidentale dati
+  const draftStorageKey = useMemo(() => {
+    if (contentToEdit?.id) return `ac_content_draft_${contentToEdit.id}`;
+    if (title.trim()) return `ac_content_draft_new_${title.trim().toLowerCase().replace(/[^a-z0-9]/gi, '_')}`;
+    return null;
+  }, [contentToEdit?.id, title]);
+
+  const [localDraftDetected, setLocalDraftDetected] = useState<{
+    scriptBody: string;
+    caption: string;
+    timestamp: number;
+    wordCount: number;
+  } | null>(null);
+
+  // Rileva se esiste una bozza locale non sincronizzata
+  useEffect(() => {
+    if (!isOpen || !draftStorageKey) return;
+    try {
+      const saved = localStorage.getItem(draftStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const draftWords = (parsed.scriptBody || '').trim().split(/\s+/).filter(Boolean).length;
+        const currentWords = (scriptBody || '').trim().split(/\s+/).filter(Boolean).length;
+        if (draftWords > 0 && (draftWords !== currentWords || parsed.scriptBody !== scriptBody)) {
+          setLocalDraftDetected({
+            scriptBody: parsed.scriptBody || '',
+            caption: parsed.caption || '',
+            timestamp: parsed.timestamp || Date.now(),
+            wordCount: draftWords,
+          });
+        }
+      }
+    } catch {
+      // Ignora errori di parsing
+    }
+  }, [isOpen, draftStorageKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Salvataggio automatico continuo in locale (debounced 500ms)
+  useEffect(() => {
+    if (!isOpen || !draftStorageKey) return;
+    if (!scriptBody.trim() && !caption.trim()) return;
+
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          draftStorageKey,
+          JSON.stringify({
+            scriptBody,
+            caption,
+            timestamp: Date.now(),
+          })
+        );
+      } catch (e) {
+        console.warn('Auto-save bozza locale fallito:', e);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, draftStorageKey, scriptBody, caption]);
+
+  const handleRestoreLocalDraft = useCallback(() => {
+    if (!localDraftDetected) return;
+    if (localDraftDetected.scriptBody) setScriptBody(localDraftDetected.scriptBody);
+    if (localDraftDetected.caption) setCaption(localDraftDetected.caption);
+    setLocalDraftDetected(null);
+    showSuccess('Bozza locale recuperata e ripristinata con successo!');
+  }, [localDraftDetected, showSuccess]);
+
+  const handleDismissLocalDraft = useCallback(() => {
+    setLocalDraftDetected(null);
+    if (draftStorageKey) {
+      try {
+        localStorage.removeItem(draftStorageKey);
+      } catch {}
+    }
+  }, [draftStorageKey]);
 
   const handleFocusTitle = useCallback(() => {
     if (titleInputRef.current) {
@@ -346,6 +442,20 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
       setCarouselData(contentToEdit.carousel_data || null);
       setCoverData(contentToEdit.cover_data || null);
       setStoryData(contentToEdit.story_data || null);
+
+      // Se i dati grafici non erano già presenti nell'oggetto listing, caricali via getContentGraphics
+      if (contentToEdit.id && (!contentToEdit.carousel_data && !contentToEdit.cover_data && !contentToEdit.story_data)) {
+        getContentGraphics(contentToEdit.id).then((graphics) => {
+          if (lastContentIdRef.current === contentToEdit.id) {
+            if (graphics.carousel_data) setCarouselData(graphics.carousel_data);
+            if (graphics.cover_data) setCoverData(graphics.cover_data);
+            if (graphics.story_data) setStoryData(graphics.story_data);
+          }
+        }).catch((err) => {
+          console.warn('Errore caricamento graphics on-demand in drawer:', err);
+        });
+      }
+
       if (normalizedType === 'story') {
         setActiveTab('story_visual');
       } else if (normalizedType === 'post') {
@@ -431,6 +541,7 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
         title: title.trim(),
         type,
         pillar,
+        status,
         hook: type === 'story' && storyData?.stories?.[0]
           ? storyData.stories[0].headline
           : type === 'carousel' && carouselData?.slides?.[0]
@@ -456,13 +567,23 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
       } else {
         await createContent(payload);
       }
+
+      // Rimuovi bozza locale dopo salvataggio completato
+      if (draftStorageKey) {
+        try {
+          localStorage.removeItem(draftStorageKey);
+        } catch {}
+      }
+
       onClose();
-    } catch {
-      // Errore gestito nel context
+    } catch (err: unknown) {
+      console.error('Errore salvataggio:', err);
+      const msg = err instanceof Error ? err.message : 'Errore nel salvataggio del contenuto.';
+      showError(`Salvataggio non completato: ${msg}. La bozza è comunque al sicuro nella cache locale.`);
     } finally {
       setIsSaving(false);
     }
-  }, [title, isSaving, type, pillar, status, hook, scriptBody, caption, callToAction, scheduledFor, internalNotes, carouselData, coverData, storyData, contentToEdit, initialData, updateContent, createContent, onClose]);
+  }, [title, isSaving, type, pillar, status, hook, scriptBody, caption, callToAction, scheduledFor, internalNotes, carouselData, coverData, storyData, contentToEdit, initialData, updateContent, createContent, onClose, draftStorageKey, showError]);
 
   // Scorciatoia da tastiera: Cmd+S / Ctrl+S per salvare, Esc per chiudere focus
   useEffect(() => {
@@ -965,6 +1086,10 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
                   onFocusTitle={handleFocusTitle}
                   showDetails={showCarouselDetails}
                   onToggleDetails={() => setShowCarouselDetails((prev) => !prev)}
+                  scriptBody={scriptBody}
+                  onChangeScriptBody={setScriptBody}
+                  caption={caption}
+                  onChangeCaption={setCaption}
                 />
               </React.Suspense>
             </div>
@@ -1059,6 +1184,36 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
                     {fontFamily === 'mono' ? 'Mono' : 'Sans'}
                   </button>
 
+                  {/* Trasferimento Rapido Script <-> Caption se uno dei due è vuoto */}
+                  {activeTab === 'script' && !scriptBody && caption && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScriptBody(caption);
+                        showSuccess('Testo didascalia copiato nello Script!');
+                      }}
+                      title="Usa il testo della didascalia come script per questo Reel"
+                      className="px-2.5 py-1.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-xs font-bold text-blue-300 flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Usa Caption ({captionWords} p.)</span>
+                    </button>
+                  )}
+                  {activeTab === 'caption' && !caption && scriptBody && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCaption(scriptBody);
+                        showSuccess('Script copiato nella Didascalia!');
+                      }}
+                      title="Usa il testo dello script come didascalia feed"
+                      className="px-2.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-xs font-bold text-purple-300 flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Usa Script ({wordCount} p.)</span>
+                    </button>
+                  )}
+
                   {/* Copia Rapida in base al tab attivo */}
                   {activeTab === 'caption' ? (
                     caption && (
@@ -1148,6 +1303,87 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
                     </div>
                   </div>
 
+                  {/* BANNER RIPRISTINO INTELLIGENTE SE LO SCRIPT È VUOTO MA LA CAPTION HA TESTO (CASO REEL CON TESTO IN CAPTION) */}
+                  {!trimmedScript && trimmedCaption && (
+                    <div className="p-3 bg-blue-950/60 border border-blue-500/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fadeIn shrink-0 shadow-lg shadow-blue-500/10">
+                      <div className="flex items-start sm:items-center gap-2.5 text-blue-200">
+                        <MessageSquare className="w-4 h-4 text-blue-400 shrink-0 mt-0.5 sm:mt-0" />
+                        <div>
+                          <p className="font-bold text-white flex items-center gap-1.5">
+                            <span>Testo rilevato nella Didascalia</span>
+                            <span className="px-1.5 py-0.2 rounded bg-blue-500/30 text-blue-300 font-mono text-[10px]">
+                              {captionWords} parole
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-blue-200/90 mt-0.5">
+                            Lo script per questo {type.toUpperCase()} è vuoto. Vuoi ripristinarlo o spostarlo qui nello Script per scaletta e teleprompter?
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScriptBody(caption);
+                            showSuccess('Testo didascalia copiato nello Script!');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copia nello Script</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScriptBody(caption);
+                            setCaption('');
+                            showSuccess('Testo trasferito nello Script con successo!');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs flex items-center gap-1.5 transition cursor-pointer border border-slate-700"
+                        >
+                          <ArrowRight className="w-3.5 h-3.5" />
+                          <span>Sposta nello Script</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* BANNER BOZZA LOCALE SALVATA AUTOMATICAMENTE SE PRESENTE */}
+                  {localDraftDetected && (
+                    <div className="p-3 bg-amber-950/60 border border-amber-500/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fadeIn shrink-0 shadow-lg shadow-amber-500/10">
+                      <div className="flex items-start sm:items-center gap-2.5 text-amber-200">
+                        <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+                        <div>
+                          <p className="font-bold text-white flex items-center gap-1.5">
+                            <span>Bozza locale recente non salvata</span>
+                            <span className="px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-300 font-mono text-[10px]">
+                              {localDraftDetected.wordCount} parole
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-amber-200/90 mt-0.5">
+                            È presente una versione locale salvata in automatico prima della chiusura. Vuoi recuperarla?
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={handleRestoreLocalDraft}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition cursor-pointer shadow-md"
+                        >
+                          Ripristina Bozza
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDismissLocalDraft}
+                          className="text-slate-400 hover:text-slate-200 text-xs transition cursor-pointer px-1"
+                        >
+                          Ignora
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* TEXTAREA DELLO SCRIPT A TUTTA ALTEZZA */}
                   <div className="relative flex-1 min-h-0 h-full">
                     <textarea
@@ -1214,63 +1450,124 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
                 </div>
               </div>
 
-              {/* TEXTAREA DELLA CAPTION A TUTTA ALTEZZA */}
-              <div className="relative flex-1 min-h-0 h-full">
-                <textarea
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Scrivi qui il testo completo della didascalia da pubblicare su Instagram:&#10;&#10;• Gancio iniziale accattivante&#10;• Spiegazione approfondita del concetto&#10;• Punti chiave pratici&#10;• Invito all'azione (CTA) finale&#10;• Hashtag pertinenti..."
-                  className={`w-full h-full min-h-0 px-4 py-3.5 bg-slate-950/95 border border-slate-700/90 focus:border-blue-500 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none resize-none editor-scrollbar shadow-inner ${
-                    fontFamily === 'mono' ? 'font-mono' : 'font-sans'
-                  } ${FONT_SIZE_CLASSES[fontSize].editor}`}
-                />
-              </div>
-            </div>
-          )}
+                  {/* BANNER INTELLIGENTE SE LA CAPTION È VUOTA MA LO SCRIPT HA TESTO */}
+                  {!trimmedCaption && trimmedScript && (
+                    <div className="p-3 bg-purple-950/60 border border-purple-500/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-fadeIn shrink-0 shadow-lg shadow-purple-500/10">
+                      <div className="flex items-start sm:items-center gap-2.5 text-purple-200">
+                        <FileText className="w-4 h-4 text-purple-400 shrink-0 mt-0.5 sm:mt-0" />
+                        <div>
+                          <p className="font-bold text-white flex items-center gap-1.5">
+                            <span>Hai uno Script pronto</span>
+                            <span className="px-1.5 py-0.2 rounded bg-purple-500/30 text-purple-300 font-mono text-[10px]">
+                              {wordCount} parole
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-purple-200/90 mt-0.5">
+                            Vuoi copiare il testo dello Script qui nella Didascalia per preparare il copy del feed?
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCaption(scriptBody);
+                          showSuccess('Script copiato nella Didascalia!');
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shrink-0 self-end sm:self-auto"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copia da Script</span>
+                      </button>
+                    </div>
+                  )}
 
-          {/* ─── TAB 3: VISTA DIVISA / SPLIT (SCRIPT IN ALTO + CAPTION IN BASSO) ─── */}
-          {activeTab === 'split' && (
-            <div className="flex-1 min-h-0 grid grid-rows-2 gap-3">
-              
-              {/* SCRIPT CARD (50%) */}
-              <div className="flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl p-3 shadow-inner space-y-2 min-h-0">
-                <div className="flex items-center justify-between shrink-0">
-                  <label className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-purple-400" />
-                    Script & Scaletta Scene
-                  </label>
-                  <span className="text-[10px] font-mono text-slate-400">{wordCount} parole</span>
+                  {/* TEXTAREA DELLA CAPTION A TUTTA ALTEZZA */}
+                  <div className="relative flex-1 min-h-0 h-full">
+                    <textarea
+                      value={caption}
+                      onChange={(e) => setCaption(e.target.value)}
+                      placeholder="Scrivi qui il testo completo della didascalia da pubblicare su Instagram:&#10;&#10;• Gancio iniziale accattivante&#10;• Spiegazione approfondita del concetto&#10;• Punti chiave pratici&#10;• Invito all'azione (CTA) finale&#10;• Hashtag pertinenti..."
+                      className={`w-full h-full min-h-0 px-4 py-3.5 bg-slate-950/95 border border-slate-700/90 focus:border-blue-500 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none resize-none editor-scrollbar shadow-inner ${
+                        fontFamily === 'mono' ? 'font-mono' : 'font-sans'
+                      } ${FONT_SIZE_CLASSES[fontSize].editor}`}
+                    />
+                  </div>
                 </div>
-                <textarea
-                  value={scriptBody}
-                  onChange={(e) => setScriptBody(e.target.value)}
-                  placeholder="Script e scaletta scene..."
-                  className={`w-full flex-1 min-h-0 px-3 py-2 bg-slate-950/95 border border-slate-700/90 focus:border-purple-500 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none resize-none editor-scrollbar ${
-                    fontFamily === 'mono' ? 'font-mono' : 'font-sans'
-                  } ${FONT_SIZE_CLASSES[fontSize].editor}`}
-                />
-              </div>
+              )}
 
-              {/* CAPTION CARD (50%) */}
-              <div className="flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl p-3 shadow-inner space-y-2 min-h-0">
-                <div className="flex items-center justify-between shrink-0">
-                  <label className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
-                    <MessageSquare className="w-3.5 h-3.5 text-blue-400" />
-                    Caption / Didascalia Instagram
-                  </label>
-                  <span className="text-[10px] font-mono text-slate-400">{captionWords} parole</span>
+              {/* ─── TAB 3: VISTA DIVISA / SPLIT (SCRIPT IN ALTO + CAPTION IN BASSO) ─── */}
+              {activeTab === 'split' && (
+                <div className="flex-1 min-h-0 grid grid-rows-2 gap-3">
+                  
+                  {/* SCRIPT CARD (50%) */}
+                  <div className="flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl p-3 shadow-inner space-y-2 min-h-0">
+                    <div className="flex items-center justify-between shrink-0">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-purple-400" />
+                          Script & Scaletta Scene
+                        </label>
+                        <span className="text-[10px] font-mono text-slate-400">{wordCount} parole</span>
+                      </div>
+                      {caption && !scriptBody && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScriptBody(caption);
+                            showSuccess('Testo copiato da Didascalia a Script!');
+                          }}
+                          className="px-2 py-0.5 rounded-md bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Usa da Didascalia</span>
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      value={scriptBody}
+                      onChange={(e) => setScriptBody(e.target.value)}
+                      placeholder="Script e scaletta scene..."
+                      className={`w-full flex-1 min-h-0 px-3 py-2 bg-slate-950/95 border border-slate-700/90 focus:border-purple-500 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none resize-none editor-scrollbar ${
+                        fontFamily === 'mono' ? 'font-mono' : 'font-sans'
+                      } ${FONT_SIZE_CLASSES[fontSize].editor}`}
+                    />
+                  </div>
+
+                  {/* CAPTION CARD (50%) */}
+                  <div className="flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl p-3 shadow-inner space-y-2 min-h-0">
+                    <div className="flex items-center justify-between shrink-0">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                          <MessageSquare className="w-3.5 h-3.5 text-blue-400" />
+                          Caption / Didascalia Instagram
+                        </label>
+                        <span className="text-[10px] font-mono text-slate-400">{captionWords} parole</span>
+                      </div>
+                      {scriptBody && !caption && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCaption(scriptBody);
+                            showSuccess('Testo copiato da Script a Didascalia!');
+                          }}
+                          className="px-2 py-0.5 rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Usa da Script</span>
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      value={caption}
+                      onChange={(e) => setCaption(e.target.value)}
+                      placeholder="Caption e testo post..."
+                      className={`w-full flex-1 min-h-0 px-3 py-2 bg-slate-950/95 border border-slate-700/90 focus:border-blue-500 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none resize-none editor-scrollbar ${
+                        fontFamily === 'mono' ? 'font-mono' : 'font-sans'
+                      } ${FONT_SIZE_CLASSES[fontSize].editor}`}
+                    />
+                  </div>
                 </div>
-                <textarea
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Caption e testo post..."
-                  className={`w-full flex-1 min-h-0 px-3 py-2 bg-slate-950/95 border border-slate-700/90 focus:border-blue-500 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none resize-none editor-scrollbar ${
-                    fontFamily === 'mono' ? 'font-mono' : 'font-sans'
-                  } ${FONT_SIZE_CLASSES[fontSize].editor}`}
-                />
-              </div>
-            </div>
-          )}
+              )}
 
           {/* ─── COPERTINA INSTAGRAM SOTTO LA SCALETTA (REEL & POST) ─── */}
           {(type === 'reel' || type === 'post') && (
@@ -1481,6 +1778,28 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
               </div>
             )}
 
+            {/* Banner recupero rapido da didascalia in Focus Mode */}
+            {!scriptBody.trim() && caption.trim() && (
+              <div className="mb-6 p-4 rounded-2xl bg-blue-500/15 border border-blue-500/40 text-blue-200 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-blue-400 shrink-0" />
+                  <span className="text-sm font-medium">
+                    Lo script è vuoto, ma sono presenti <strong>{captionWords} parole</strong> nella Didascalia.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScriptBody(caption);
+                    showSuccess('Testo della didascalia importato nel Teleprompter!');
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition cursor-pointer shadow-md shrink-0"
+                >
+                  Usa testo Didascalia
+                </button>
+              </div>
+            )}
+
             {/* Textarea ad alto contrasto per teleprompter e scrittura focus */}
             <textarea
               value={scriptBody}
@@ -1575,6 +1894,9 @@ export const ContentDrawerEditor: React.FC<ContentDrawerEditorProps> = ({
               }}
               onSaveCover={(updatedCover) => {
                 setCoverData(updatedCover);
+                if (contentToEdit?.id) {
+                  void updateContent(contentToEdit.id, { cover_data: updatedCover });
+                }
               }}
             />
           </React.Suspense>

@@ -33,10 +33,17 @@ import { ContentStudioLayout } from './components/studio/ContentStudioLayout';
 import { WelcomeDisclaimerModal } from './components/common/WelcomeDisclaimerModal';
 import { RequireAAL2 } from './components/auth/RequireAAL2';
 import { Loader2 } from 'lucide-react';
+import { runDevDiagnosis } from './utils/devSessionDiagnose';
 
 const AppContent: React.FC = () => {
-  const { isLoading } = useApp();
-  const { isAuthenticated, user, markDisclaimerAsSeen, isPasswordRecovery } = useAuth();
+  const { isLoading: isAppLoading } = useApp();
+  const { isAuthenticated, user, loading: isAuthLoading, markDisclaimerAsSeen, isPasswordRecovery } = useAuth();
+
+  React.useEffect(() => {
+    if (import.meta.env.DEV) {
+      runDevDiagnosis();
+    }
+  }, [isAuthenticated, user]);
 
   const [activeApp, setActiveApp] = React.useState<'coaching' | 'content_studio'>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -77,7 +84,7 @@ const AppContent: React.FC = () => {
   };
 
   // 1. Schermata di caricamento iniziale senza lampi
-  if (isLoading) {
+  if (isAppLoading || (isAuthLoading && !user)) {
     return (
       <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-6">
         <div className="flex flex-col items-center gap-3 text-[var(--color-primary)]">

@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Plus, Save, Trash2, X, GripVertical, Sliders, Clock, Sparkles, Pencil, Loader2, Info, Dumbbell, Calendar, Copy, Repeat, ArrowLeft, Zap, FileText, Activity, Compass, ArrowRight, Target, RotateCcw, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Flame, TrendingUp, User, Link2, Unlink2, Layers, AlertTriangle, FastForward } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import { generateAISmartSuggestions, CoPilotActionableSuggestion } from '../../lib/ai/workoutGenerator';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
@@ -12,12 +11,14 @@ import { calculateEstimatedWorkoutTime } from '../../utils/workoutUtils';
 import { extractGroupTagFromNotes, encodeGroupTagInNotes } from '../../utils/noteCleaner';
 import { AICoPilotModal } from './AICoPilotModal';
 import { GeneratedWorkoutResponse, normalizeDayName } from '../../lib/ai/workoutGenerator';
+import { getAthleteWorkoutProgress } from '../../services/workoutProgressService';
 import { ExerciseProgressionControl } from './progression/ExerciseProgressionControl';
 import { generateWeeklyBlockProjection } from '../../lib/progression/progressionEngine';
 import { MuscleVolumeSummary } from './MuscleVolumeSummary';
 import { AIVolumeCoach } from './AIVolumeCoach';
 import { calculateMuscleVolumeSummary } from '../../utils/muscleVolumeCalculator';
 import { analyzeVolumeWithAI, ActionPayload } from '../../utils/aiVolumeCoach';
+import { extractErrorMessage } from '../../utils/errorUtils';
 
 // Helper di formattazione e parsing per i tempi di recupero (REC)
 export function formatRestSeconds(seconds?: number): string {
@@ -308,7 +309,6 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     getExercisesForWorkout, 
     folders, 
     forkWorkoutForAthlete, 
-    forkWorkoutForAllAssigned, 
     forceSyncMasterTemplate 
   } = useWorkouts();
   const { exercises: libraryExercises, createExercise } = useExercises();
@@ -625,9 +625,29 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     showSuccess("Gruppo Scollegato", "Tutti gli esercizi del gruppo sono ora indipendenti.");
   };
 
-  const [exercises, setExercises] = useState<Partial<WorkoutExercise>[]>([
-    { name: '', sets: 3, reps_target: '10', rest_seconds: 60, week_number: 1, day_name: 'Giorno A', is_time_based: false }
-  ]);
+  interface OriginalWorkoutSnapshot {
+    workoutId: string;
+    workout: WorkoutTemplate;
+    exerciseCount: number;
+    exerciseIds: string[];
+    totalWeeks: number;
+    days: string[];
+  }
+
+  const [isHydrated, setIsHydrated] = useState<boolean>(!initialWorkout);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isFetchingExercises, setIsFetchingExercises] = useState<boolean>(Boolean(initialWorkout?.id));
+  const originalSnapshotRef = useRef<OriginalWorkoutSnapshot | null>(null);
+  const explicitlyDeletedExerciseIdsRef = useRef<Set<string>>(new Set());
+
+  const [exercises, setExercises] = useState<Partial<WorkoutExercise>[]>(() => {
+    if (initialWorkout) {
+      return [];
+    }
+    return [
+      { name: '', sets: 3, reps_target: '10', rest_seconds: 60, week_number: 1, day_name: 'Giorno A', is_time_based: false }
+    ];
+  });
   const [isCompactMode, setIsCompactMode] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -772,10 +792,16 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   const [aiReasoning, setAiReasoning] = useState<string>('');
 
   useEffect(() => {
-    if (initialWorkout) {
-      getExercisesForWorkout(initialWorkout.id).then((fetchedExercises) => {
-        if (fetchedExercises && fetchedExercises.length > 0) {
-          const mapped = fetchedExercises.map((ex) => {
+    if (initialWorkout?.id) {
+      let isMounted = true;
+      setIsFetchingExercises(true);
+      setIsHydrated(false);
+      setFetchError(null);
+
+      getExercisesForWorkout(initialWorkout.id)
+        .then((fetchedExercises) => {
+          if (!isMounted) return;
+          const mapped = (fetchedExercises || []).map((ex) => {
             const { groupTag, cleanNotes } = extractGroupTagFromNotes(ex.notes);
             return {
               ...ex,
@@ -783,24 +809,58 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
               notes: cleanNotes !== undefined ? cleanNotes : ex.notes,
             };
           });
-          setExercises(mapped);
-          
+
           // Estrai giorni unici
-          const uniqueDays = Array.from(new Set(fetchedExercises.map(e => e.day_name || 'Giorno A')));
-          if (uniqueDays.length > 0) {
-            setDaysList(uniqueDays);
-            setActiveDay(uniqueDays[0]);
-          }
+          const uniqueDays = Array.from(new Set(mapped.map(e => e.day_name || 'Giorno A'))).filter(Boolean);
+          const finalDays = uniqueDays.length > 0 ? uniqueDays : ['Giorno A', 'Giorno B'];
           
           // Estrai max settimane
-          const maxW = Math.max(...fetchedExercises.map(e => e.week_number || 1), initialWorkout.total_weeks || 1);
+          const maxW = Math.max(...mapped.map(e => e.week_number || 1), initialWorkout.total_weeks || 1);
+
+          // Salva snapshot immutabile iniziale per controlli diagnostici pre-salvataggio
+          originalSnapshotRef.current = {
+            workoutId: initialWorkout.id,
+            workout: initialWorkout,
+            exerciseCount: mapped.length,
+            exerciseIds: mapped.map(e => e.id).filter(Boolean) as string[],
+            totalWeeks: maxW,
+            days: finalDays,
+          };
+          explicitlyDeletedExerciseIdsRef.current.clear();
+
+          setExercises(mapped.length > 0 ? mapped : [
+            { name: '', sets: 3, reps_target: '10', rest_seconds: 60, week_number: 1, day_name: finalDays[0], is_time_based: false }
+          ]);
+          setDaysList(finalDays);
+          setActiveDay(finalDays[0]);
           setTotalWeeks(maxW);
-        }
-      }).catch((err) => {
-        console.error("Error fetching exercises:", err);
-      });
+          setIsHydrated(true);
+        })
+        .catch((err: unknown) => {
+          if (!isMounted) return;
+          console.error("Error fetching exercises:", err);
+          const msg = err instanceof Error ? err.message : 'Errore nel caricamento degli esercizi della scheda';
+          setFetchError(msg);
+          setIsHydrated(false);
+          showError('Errore caricamento scheda', msg);
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsFetchingExercises(false);
+          }
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    } else {
+      setIsHydrated(true);
+      setIsFetchingExercises(false);
+      setFetchError(null);
+      originalSnapshotRef.current = null;
+      explicitlyDeletedExerciseIdsRef.current.clear();
     }
-  }, [initialWorkout]);
+  }, [initialWorkout?.id]);
 
   // Sincronizzazione automatica di activeDay con i giorni reali disponibili
   useEffect(() => {
@@ -819,6 +879,8 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   // ─── TRACCIAMENTO AVANZAMENTO ATLETA (SETTIMANA & GIORNO CORRENTI) ───
   interface AthleteExecutionProgress {
     loading: boolean;
+    status: 'loading' | 'success' | 'error';
+    errorMessage?: string;
     hasStarted: boolean;
     currentWeek: number;
     currentDay: string;
@@ -826,14 +888,18 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     lastSessionRpe: number | null;
     lastCompletedDay: string | null;
     lastCompletedWeek: number | null;
+    lastCompletedSessionLabel: string;
+    nextSessionLabel: string;
     completedMap: Record<string, boolean>;
     completedSessionsCount: number;
     totalPlannedSessions: number;
     progressPercent: number;
+    needsRealignment?: boolean;
   }
 
   const [athleteProgress, setAthleteProgress] = useState<AthleteExecutionProgress>({
-    loading: false,
+    loading: Boolean(assignedAthleteId),
+    status: assignedAthleteId ? 'loading' : 'success',
     hasStarted: false,
     currentWeek: 1,
     currentDay: 'Giorno A',
@@ -841,142 +907,70 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     lastSessionRpe: null,
     lastCompletedDay: null,
     lastCompletedWeek: null,
+    lastCompletedSessionLabel: 'Nessuna',
+    nextSessionLabel: 'Settimana 1 · Giorno A',
     completedMap: {},
     completedSessionsCount: 0,
     totalPlannedSessions: 0,
     progressPercent: 0,
+    needsRealignment: false,
   });
+
+  const fetchAthleteProgress = useCallback(async () => {
+    if (!assignedAthleteId) return;
+
+    setAthleteProgress(prev => ({
+      ...prev,
+      loading: true,
+      status: 'loading',
+      errorMessage: undefined,
+    }));
+
+    try {
+      const res = await getAthleteWorkoutProgress({
+        athleteId: assignedAthleteId,
+        authUserId: currentAthlete?.auth_user_id,
+        assignedWorkoutId: initialWorkout?.id || '',
+        parentTemplateId: initialWorkout?.parent_template_id,
+        totalWeeks,
+        workoutTitle: title || initialWorkout?.title,
+      });
+
+      setAthleteProgress({
+        loading: false,
+        status: res.status,
+        errorMessage: res.errorMessage,
+        hasStarted: res.hasStarted,
+        currentWeek: res.currentWeek,
+        currentDay: res.currentDay,
+        lastSessionDateFormatted: res.lastSessionDateFormatted,
+        lastSessionRpe: res.lastSessionRpe,
+        lastCompletedDay: res.lastCompletedDay,
+        lastCompletedWeek: res.lastCompletedWeek,
+        lastCompletedSessionLabel: res.lastCompletedSessionLabel,
+        nextSessionLabel: res.nextSessionLabel,
+        completedMap: res.completedMap,
+        completedSessionsCount: res.completedSessionsCount,
+        totalPlannedSessions: res.totalPlannedSessions,
+        progressPercent: res.progressPercent,
+        needsRealignment: res.needsRealignment,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore sconosciuto nel calcolo avanzamento';
+      console.error('[WorkoutBuilderModal] Errore fetchAthleteProgress:', msg);
+      setAthleteProgress(prev => ({
+        ...prev,
+        loading: false,
+        status: 'error',
+        errorMessage: msg,
+      }));
+    }
+  }, [assignedAthleteId, currentAthlete?.auth_user_id, initialWorkout?.id, initialWorkout?.parent_template_id, totalWeeks, title, initialWorkout?.title]);
 
   useEffect(() => {
     if (!assignedAthleteId) return;
-
-    let isMounted = true;
-
-    const fetchAthleteProgress = async () => {
-      setAthleteProgress(prev => ({ ...prev, loading: true }));
-      try {
-        const currentDays = daysList.length > 0 ? daysList : ['Giorno A', 'Giorno B', 'Giorno C'];
-        const totalPlanned = Math.max(1, totalWeeks * currentDays.length);
-
-        // 1. Query Supabase (fonte di verità reale: solo sessioni effettivamente completate)
-        let query = supabase
-          .from('workout_sessions')
-          .select(`
-            id,
-            start_time,
-            end_time,
-            notes,
-            rpe,
-            workout_id,
-            exercise_logs (
-              id,
-              exercise_id,
-              workout_exercises (
-                id,
-                week_number,
-                day_name
-              )
-            )
-          `)
-          .eq('athlete_id', assignedAthleteId)
-          .not('end_time', 'is', null)
-          .order('start_time', { ascending: false });
-
-        if (initialWorkout?.id) {
-          query = query.eq('workout_id', initialWorkout.id);
-        }
-
-        const { data: sessionsData } = await query.limit(50);
-
-        const dbCompletedMap: Record<string, boolean> = {};
-        let lastDateIso: string | null = null;
-        let lastRpe: number | null = null;
-        let lastCompWeek: number | null = null;
-        let lastCompDay: string | null = null;
-
-        if (sessionsData && sessionsData.length > 0) {
-          const first = sessionsData[0];
-          lastDateIso = first.end_time || first.start_time;
-          lastRpe = first.rpe || null;
-
-          sessionsData.forEach(session => {
-            const logs = session.exercise_logs;
-            if (Array.isArray(logs)) {
-              logs.forEach((log: any) => {
-                const we = log.workout_exercises;
-                if (we && we.week_number && we.day_name) {
-                  const key = `${we.week_number}-${we.day_name}`;
-                  dbCompletedMap[key] = true;
-                  if (!lastCompWeek) {
-                    lastCompWeek = we.week_number;
-                    lastCompDay = we.day_name;
-                  }
-                }
-              });
-            }
-          });
-        }
-
-        const completedCount = Object.keys(dbCompletedMap).length;
-        const progressPct = Math.min(100, Math.round((completedCount / totalPlanned) * 100));
-
-        let currentW = 1;
-        let currentD = currentDays[0] || 'Giorno A';
-        let foundPending = false;
-
-        for (let w = 1; w <= totalWeeks; w++) {
-          for (const d of currentDays) {
-            if (!dbCompletedMap[`${w}-${d}`]) {
-              currentW = w;
-              currentD = d;
-              foundPending = true;
-              break;
-            }
-          }
-          if (foundPending) break;
-        }
-
-        if (!foundPending && completedCount > 0) {
-          currentW = totalWeeks;
-          currentD = currentDays[currentDays.length - 1] || 'Giorno A';
-        }
-
-        let formattedDate: string | null = null;
-        if (lastDateIso) {
-          const d = new Date(lastDateIso);
-          formattedDate = d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
-        }
-
-        if (isMounted) {
-          setAthleteProgress({
-            loading: false,
-            hasStarted: completedCount > 0,
-            currentWeek: currentW,
-            currentDay: currentD,
-            lastSessionDateFormatted: formattedDate,
-            lastSessionRpe: lastRpe,
-            lastCompletedDay: lastCompDay,
-            lastCompletedWeek: lastCompWeek,
-            completedMap: dbCompletedMap,
-            completedSessionsCount: completedCount,
-            totalPlannedSessions: totalPlanned,
-            progressPercent: progressPct,
-          });
-        }
-      } catch (err: any) {
-        console.error("Errore fetch avanzamento atleta:", err);
-        if (isMounted) {
-          setAthleteProgress(prev => ({ ...prev, loading: false }));
-        }
-      }
-    };
-
     fetchAthleteProgress();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [assignedAthleteId, initialWorkout?.id, totalWeeks, daysList]);
+  }, [assignedAthleteId, fetchAthleteProgress]);
 
   // Esercizi filtrati per la settimana ed il giorno correntemente selezionati
   const currentWeekDayExercises = exercises.filter(
@@ -1448,6 +1442,9 @@ ${result.regole_adattamento || '-'}
         );
         if (!confirmDelete) return;
       }
+      if (exToRemove.id) {
+        explicitlyDeletedExerciseIdsRef.current.add(exToRemove.id);
+      }
     }
     const newEx = exercises.filter((_, i) => i !== globalIndex);
     setExercises(newEx);
@@ -1691,6 +1688,11 @@ ${result.regole_adattamento || '-'}
       return;
     }
     if (confirm(`Sei sicuro di voler eliminare la Settimana ${weekNum} e tutti i suoi esercizi?`)) {
+      const deletedExercises = exercises.filter(ex => (ex.week_number || 1) === weekNum);
+      deletedExercises.forEach(ex => {
+        if (ex.id) explicitlyDeletedExerciseIdsRef.current.add(ex.id);
+      });
+
       const remainingExercises = exercises
         .filter(ex => (ex.week_number || 1) !== weekNum)
         .map(ex => {
@@ -1712,6 +1714,11 @@ ${result.regole_adattamento || '-'}
       showError('Il programma deve contenere almeno una settimana.');
       return;
     }
+
+    const deletedExercises = exercises.filter((ex) => weeksToDelete.includes(ex.week_number || 1));
+    deletedExercises.forEach(ex => {
+      if (ex.id) explicitlyDeletedExerciseIdsRef.current.add(ex.id);
+    });
 
     // 1. Calcola le settimane superstiti in ordine crescente
     const remainingOldWeeks: number[] = [];
@@ -1853,6 +1860,11 @@ ${result.regole_adattamento || '-'}
     );
     const dayIndex = daysList.indexOf(dayName);
 
+    // Traccia ID cancellati esplicitamente
+    targetExercises.forEach(ex => {
+      if (ex.id) explicitlyDeletedExerciseIdsRef.current.add(ex.id);
+    });
+
     const record: DeletedDayRecord = {
       id: `del-day-w${weekNum}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       dayName,
@@ -1893,6 +1905,11 @@ ${result.regole_adattamento || '-'}
   const confirmDeleteDayAllWeeks = (dayName: string) => {
     const dayExercises = exercises.filter((ex) => (ex.day_name || 'Giorno A') === dayName);
     const dayIndex = daysList.indexOf(dayName);
+
+    // Traccia ID cancellati esplicitamente
+    dayExercises.forEach(ex => {
+      if (ex.id) explicitlyDeletedExerciseIdsRef.current.add(ex.id);
+    });
 
     const record: DeletedDayRecord = {
       id: `del-day-all-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -1945,12 +1962,15 @@ ${result.regole_adattamento || '-'}
         setDaysList(newDaysList);
       }
 
-      const restoredExercises = record.exercises.map((ex, idx) => ({
-        ...ex,
-        day_name: targetName,
-        week_number: record.weekNumber,
-        id: `restored-w-ex-${Date.now()}-${idx}`,
-      }));
+      const restoredExercises = record.exercises.map((ex, idx) => {
+        if (ex.id) explicitlyDeletedExerciseIdsRef.current.delete(ex.id);
+        return {
+          ...ex,
+          day_name: targetName,
+          week_number: record.weekNumber,
+          id: ex.id || `restored-w-ex-${Date.now()}-${idx}`,
+        };
+      });
 
       // Rimuovi eventuali duplicati prima di aggiungere
       setExercises((prev) => [
@@ -1984,12 +2004,15 @@ ${result.regole_adattamento || '-'}
     newDaysList.splice(insertIndex, 0, targetName);
     setDaysList(newDaysList);
 
-    // Rigenera ID univoci per gli esercizi ripristinati e assegna il targetName
-    const restoredExercises = record.exercises.map((ex, idx) => ({
-      ...ex,
-      day_name: targetName,
-      id: `restored-d-ex-${Date.now()}-${idx}`,
-    }));
+    // Ripristina esercizi preservando ID e rimuovendoli dal tracking cancellazioni
+    const restoredExercises = record.exercises.map((ex, idx) => {
+      if (ex.id) explicitlyDeletedExerciseIdsRef.current.delete(ex.id);
+      return {
+        ...ex,
+        day_name: targetName,
+        id: ex.id || `restored-d-ex-${Date.now()}-${idx}`,
+      };
+    });
 
     setExercises((prev) => [...prev, ...restoredExercises]);
     setActiveDay(targetName);
@@ -2060,22 +2083,22 @@ ${result.regole_adattamento || '-'}
   };
 
   const handleSave = async (globalUpdateMode?: 'ALL' | 'NEW_ONLY') => {
+    if (initialWorkout && (!isHydrated || isFetchingExercises)) {
+      showError('Caricamento in corso', 'Attendi il caricamento completo della scheda prima di salvare.');
+      return;
+    }
+    if (fetchError) {
+      showError('Salvataggio bloccato', 'Il caricamento iniziale della scheda ha riscontrato un errore. Ricarica la pagina per evitare la perdita di dati.');
+      return;
+    }
+
     if (!title.trim()) {
       showError('Inserisci un titolo per la scheda');
       return;
     }
     
-    const validExercises = exercises
-      .filter(ex => ex.name?.trim() !== '')
-      .sort((a, b) => {
-        const weekDiff = (a.week_number || 1) - (b.week_number || 1);
-        if (weekDiff !== 0) return weekDiff;
-        const dayIndexA = daysList.indexOf(a.day_name || 'Giorno A');
-        const dayIndexB = daysList.indexOf(b.day_name || 'Giorno A');
-        const safeA = dayIndexA >= 0 ? dayIndexA : 999;
-        const safeB = dayIndexB >= 0 ? dayIndexB : 999;
-        return safeA - safeB;
-      });
+    const validExercises = exercises.filter(ex => ex.name && ex.name.trim() !== '');
+
     let isExplicitEmptyConfirmed = false;
     if (validExercises.length === 0) {
       const confirmEmpty = window.confirm(
@@ -2086,6 +2109,63 @@ ${result.regole_adattamento || '-'}
         return;
       }
       isExplicitEmptyConfirmed = true;
+    }
+
+    // ─── CONTROLLI DIAGNOSTICI PRE-SUBMIT E GUARDIE ANTI-DATA-LOSS ───
+    const countAllExercises = (exs: unknown[]) => Array.isArray(exs) ? exs.length : 0;
+    const originalExerciseCount = countAllExercises(originalSnapshotRef.current?.exerciseIds || []);
+    const nextExerciseCount = countAllExercises(validExercises);
+
+    const nextExerciseIds = validExercises.map(e => e.id).filter(Boolean) as string[];
+    const missingOriginalIds = (originalSnapshotRef.current?.exerciseIds || []).filter(
+      (id) => !nextExerciseIds.includes(id)
+    );
+    const unconfirmedDeletedIds = missingOriginalIds.filter(
+      (id) => !explicitlyDeletedExerciseIdsRef.current.has(id)
+    );
+
+    console.info('[WorkoutBuilderModal:DiagnosticCheck]', {
+      originalWeeks: originalSnapshotRef.current?.totalWeeks,
+      nextWeeks: totalWeeks,
+      originalDaysCount: originalSnapshotRef.current?.days?.length,
+      nextDaysCount: daysList.length,
+      originalExerciseCount,
+      nextExerciseCount,
+      missingOriginalIdsCount: missingOriginalIds.length,
+      unconfirmedDeletedIdsCount: unconfirmedDeletedIds.length,
+    });
+
+    // Controllo requisito 7:
+    if (
+      originalSnapshotRef.current &&
+      nextExerciseCount < originalExerciseCount &&
+      !isExplicitEmptyConfirmed &&
+      unconfirmedDeletedIds.length > 0
+    ) {
+      showError('Salvataggio bloccato', 'Il salvataggio contiene meno esercizi rispetto alla scheda originale. Nessun dato è stato modificato.');
+      return;
+    }
+
+    // Guardia di protezione specifica richiesta
+    if (
+      originalSnapshotRef.current &&
+      nextExerciseCount < originalExerciseCount &&
+      !isExplicitEmptyConfirmed &&
+      unconfirmedDeletedIds.length > 0
+    ) {
+      throw new Error("Il salvataggio contiene meno esercizi della scheda originale.");
+    }
+
+    // Verifica che nessun esercizio abbia settimana o giorno mancanti
+    for (const ex of validExercises) {
+      if (!ex.day_name || ex.day_name.trim() === '') {
+        showError('Giorno mancante', `L'esercizio "${ex.name}" non ha un giorno assegnato.`);
+        return;
+      }
+      if (!ex.week_number || ex.week_number < 1) {
+        showError('Settimana mancante', `L'esercizio "${ex.name}" non ha una settimana valida.`);
+        return;
+      }
     }
 
     // Registra in background nella libreria globale eventuali nuovi esercizi personalizzati
@@ -2102,6 +2182,48 @@ ${result.regole_adattamento || '-'}
       }
     });
 
+    // Ordinamento stabile e coerente per settimana, giorno e ordine interno
+    const sortedExercises = [...validExercises].sort((a, b) => {
+      const weekDiff = (a.week_number || 1) - (b.week_number || 1);
+      if (weekDiff !== 0) return weekDiff;
+      const dayIndexA = daysList.indexOf(a.day_name || 'Giorno A');
+      const dayIndexB = daysList.indexOf(b.day_name || 'Giorno A');
+      const safeA = dayIndexA >= 0 ? dayIndexA : 999;
+      const safeB = dayIndexB >= 0 ? dayIndexB : 999;
+      if (safeA !== safeB) return safeA - safeB;
+      const orderA = typeof a.order_index === 'number' ? a.order_index : 0;
+      const orderB = typeof b.order_index === 'number' ? b.order_index : 0;
+      return orderA - orderB;
+    });
+
+    const dayCounters = new Map<string, number>();
+    const exercisesToSave: Partial<WorkoutExercise>[] = sortedExercises.map((ex) => {
+      const key = `${ex.week_number || 1}__${ex.day_name || 'Giorno A'}`;
+      const currentIdx = dayCounters.get(key) || 0;
+      dayCounters.set(key, currentIdx + 1);
+
+      return {
+        id: ex.id,
+        workout_id: initialWorkout?.id,
+        name: ex.name!.trim(),
+        sets: Number(ex.sets) || 1,
+        reps_target: ex.reps_target ? String(ex.reps_target) : '10',
+        rest_seconds: Number(ex.rest_seconds) || 60,
+        order_index: currentIdx,
+        notes: encodeGroupTagInNotes(ex.notes, ex.group_tag) || undefined,
+        day_name: ex.day_name || 'Giorno A',
+        week_number: Number(ex.week_number) || 1,
+        target_weight: ex.target_weight ? String(ex.target_weight) : undefined,
+        rir_target: ex.rir_target ? String(ex.rir_target) : undefined,
+        tut: ex.tut ? String(ex.tut) : undefined,
+        is_time_based: Boolean(ex.is_time_based),
+        duration_seconds: ex.duration_seconds ? Number(ex.duration_seconds) : undefined,
+        alternative_exercise: ex.alternative_exercise || undefined,
+        progression_rule_id: ex.progression_rule_id || undefined,
+        video_url: ex.video_url || undefined,
+      };
+    });
+
     // Modalità "Edit Template" dal catalogo
     if (initialWorkout && initialWorkout.is_template && !assignedAthleteId && !globalUpdateMode) {
       setShowTemplateUpdatePrompt(true);
@@ -2110,42 +2232,50 @@ ${result.regole_adattamento || '-'}
 
     setIsSaving(true);
 
-    const exercisesToSave = validExercises.map((ex) => ({
-      ...ex,
-      notes: encodeGroupTagInNotes(ex.notes, ex.group_tag),
-    }));
-
     try {
+      let targetWorkoutId = initialWorkout?.id;
+
       if (initialWorkout) {
-        if (assignedAthleteId && initialWorkout.is_template) {
-          // Edit di un template dalla pagina di un singolo Atleta -> FORK!
-          const { success, error } = await forkWorkoutForAthlete(
+        // Se la scheda ha assignedAthleteId:
+        // Controlliamo se è un master template condiviso con più atleti
+        const isMasterShared = initialWorkout.is_template && (
+          allAssignedWorkouts.filter(a => a.workout_id === initialWorkout.id).length > 1
+        );
+
+        if (assignedAthleteId && isMasterShared) {
+          // Edit di un template master condiviso -> FORK SICURO CON MIGRAZIONE SESSIONI!
+          const forkRes = await forkWorkoutForAthlete(
             initialWorkout.id,
             assignedAthleteId,
-            { title, description, total_weeks: totalWeeks, estimated_duration_minutes: estimatedTime.display },
+            { 
+              title: title.trim(), 
+              description: description.trim(), 
+              total_weeks: totalWeeks, 
+              estimated_duration_minutes: estimatedTime.display 
+            },
             exercisesToSave
           );
-          if (!success) throw new Error(error);
+          if (!forkRes.success) throw new Error(forkRes.error || 'Errore durante la duplicazione della scheda atleta');
           showSuccess('Copia locale creata e assegnata all\'atleta con successo!');
         } else {
-          // Edit di un template dal catalogo (con globalUpdateMode) o di una scheda già privata
-          if (globalUpdateMode === 'NEW_ONLY') {
-            await forkWorkoutForAllAssigned(initialWorkout.id);
-          }
-          const { success, error } = await updateWorkoutTemplate(
+          // Modifica in-place sicura e diretta!
+          const updateRes = await updateWorkoutTemplate(
             initialWorkout.id,
             { 
-              title, 
-              description, 
+              title: title.trim(), 
+              description: description.trim(), 
               total_weeks: totalWeeks, 
               folder_id: folderId, 
-              is_template: !assignedAthleteId,
+              is_template: assignedAthleteId ? false : (initialWorkout.is_template ?? true),
               estimated_duration_minutes: estimatedTime.display 
             },
             exercisesToSave,
-            { confirmedDestructive: isExplicitEmptyConfirmed }
+            { 
+              confirmedDestructive: isExplicitEmptyConfirmed,
+              deletedExerciseIds: Array.from(explicitlyDeletedExerciseIdsRef.current),
+            }
           );
-          if (!success) throw new Error(error);
+          if (!updateRes.success) throw new Error(updateRes.error || 'Errore durante l\'aggiornamento della scheda');
 
           if (globalUpdateMode === 'ALL') {
             const syncResult = await forceSyncMasterTemplate(initialWorkout.id);
@@ -2162,29 +2292,50 @@ ${result.regole_adattamento || '-'}
             await assignWorkoutToAthlete(assignedAthleteId, initialWorkout.id);
           }
           
-          showSuccess(globalUpdateMode === 'NEW_ONLY' ? 'Template aggiornato (le vecchie assegnazioni sono state congelate).' : 'Scheda e assegnazioni aggiornate con successo!');
+          showSuccess('Scheda e modifiche salvate con successo!');
         }
       } else {
         // Creazione nuova scheda
-        const { success, error, workoutId } = await createWorkoutTemplate(
-          { title, description, is_template: !assignedAthleteId, total_weeks: totalWeeks, folder_id: folderId, estimated_duration_minutes: estimatedTime.display }, 
+        const createRes = await createWorkoutTemplate(
+          { 
+            title: title.trim(), 
+            description: description.trim(), 
+            is_template: !assignedAthleteId, 
+            total_weeks: totalWeeks, 
+            folder_id: folderId, 
+            estimated_duration_minutes: estimatedTime.display 
+          }, 
           exercisesToSave
         );
 
-        if (!success) throw new Error(error);
+        if (!createRes.success) throw new Error(createRes.error || 'Errore creazione scheda');
+        targetWorkoutId = createRes.workoutId;
 
-        if (workoutId && assignedAthleteId) {
-          await assignWorkoutToAthlete(assignedAthleteId, workoutId);
+        if (createRes.workoutId && assignedAthleteId) {
+          await assignWorkoutToAthlete(assignedAthleteId, createRes.workoutId);
           showSuccess('Scheda creata e assegnata con successo!');
         } else {
           showSuccess('Scheda salvata nel catalogo!');
         }
       }
-      
+
+      // ─── VERIFICA POST-SALVATAGGIO DAL DATABASE ───
+      if (targetWorkoutId) {
+        const refetched = await getExercisesForWorkout(targetWorkoutId);
+        if (exercisesToSave.length > 0 && (!refetched || refetched.length === 0)) {
+          throw new Error('Verifica fallita: la scheda ricaricata dal database risulta vuota.');
+        }
+        if (refetched.length < exercisesToSave.length) {
+          throw new Error(`Verifica fallita: attesi ${exercisesToSave.length} esercizi, rilevati ${refetched.length} nel database.`);
+        }
+      }
+
+      // Solo dopo che tutto è confermato e verificato da Supabase, chiudi il builder
       onClose();
-    } catch (err: any) {
-      console.error(err);
-      showError('Errore durante il salvataggio: ' + (err.message || ''));
+    } catch (err: unknown) {
+      console.error('Errore durante il salvataggio:', err);
+      const errMsg = extractErrorMessage(err);
+      showError('Errore durante il salvataggio: ' + errMsg);
     } finally {
       setIsSaving(false);
       setShowTemplateUpdatePrompt(false);
@@ -2238,17 +2389,29 @@ ${result.regole_adattamento || '-'}
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-300">
                       <Compass className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span className="font-bold">Avanzamento:</span>
-                      {athleteProgress.hasStarted ? (
-                        <span className="font-black text-white bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-500/30">
-                          Settimana {athleteProgress.currentWeek} • {athleteProgress.currentDay}
+                      {athleteProgress.loading ? (
+                        <span className="text-amber-400/80 animate-pulse flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Verifica avanzamento...
                         </span>
+                      ) : athleteProgress.status === 'error' ? (
+                        <span className="text-rose-400 font-semibold flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          Errore sincronizzazione
+                        </span>
+                      ) : athleteProgress.hasStarted ? (
+                        <>
+                          <span className="font-black text-white bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-500/30">
+                            {athleteProgress.completedSessionsCount}/{athleteProgress.totalPlannedSessions} sessioni ({athleteProgress.progressPercent}%) • {athleteProgress.nextSessionLabel}
+                          </span>
+                          {athleteProgress.lastSessionDateFormatted && (
+                            <span className="text-[11px] text-slate-400">
+                              (Ultimo: <strong className="text-slate-200">{athleteProgress.lastCompletedSessionLabel}</strong> il {athleteProgress.lastSessionDateFormatted})
+                            </span>
+                          )}
+                        </>
                       ) : (
                         <span className="text-slate-400 italic">Non ancora iniziato (Settimana 1)</span>
-                      )}
-                      {athleteProgress.lastSessionDateFormatted && (
-                        <span className="text-[11px] text-slate-400">
-                          (Ultimo workout: <strong className="text-slate-200">{athleteProgress.lastSessionDateFormatted}</strong>{athleteProgress.lastCompletedDay ? ` • ${athleteProgress.lastCompletedDay} fatto` : ''})
-                        </span>
                       )}
                     </div>
                   </div>
@@ -2290,78 +2453,122 @@ ${result.regole_adattamento || '-'}
           
           {/* BANNER PROMINENTE AVANZAMENTO ATLETA */}
           {assignedAthleteId && (
-            <div className="p-4 rounded-3xl bg-slate-950/90 border border-amber-500/30 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
-              
-              <div className="flex items-center gap-3.5 min-w-0 relative z-10">
-                <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/10">
-                  <Compass className="w-6 h-6 animate-pulse" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-black text-amber-400 uppercase tracking-wider">
-                      Stato Attuale di {currentAthlete ? currentAthlete.firstName : 'Atleta'}:
-                    </span>
-                    {athleteProgress.hasStarted ? (
-                      <span className="text-sm font-black text-white px-2.5 py-0.5 rounded-xl bg-amber-500/20 border border-amber-500/40 shadow-sm flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                        Settimana {athleteProgress.currentWeek} • {athleteProgress.currentDay}
-                        {athleteProgress.lastCompletedDay && (
-                          <span className="text-[10px] text-emerald-400 font-mono font-bold ml-1 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
-                            (Ultimo svolto: {athleteProgress.lastCompletedDay})
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="text-xs font-bold text-slate-400 italic">
-                        Scheda assegnata • In attesa del primo allenamento
-                      </span>
-                    )}
+            <div className="space-y-3">
+              <div className="p-4 rounded-3xl bg-slate-950/90 border border-amber-500/30 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+                
+                <div className="flex items-center gap-3.5 min-w-0 relative z-10">
+                  <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/10">
+                    <Compass className={`w-6 h-6 ${athleteProgress.loading ? 'animate-spin text-amber-400' : 'animate-pulse'}`} />
                   </div>
-                  
-                  <div className="flex items-center gap-3 mt-2 flex-wrap text-xs text-slate-400">
-                    {athleteProgress.lastSessionDateFormatted && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Ultimo workout: <strong className="text-slate-200">{athleteProgress.lastSessionDateFormatted}</strong></span>
-                        {athleteProgress.lastSessionRpe && (
-                          <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
-                            RPE {athleteProgress.lastSessionRpe}/10
-                          </span>
-                        )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black text-amber-400 uppercase tracking-wider">
+                        Stato Attuale di {currentAthlete ? currentAthlete.firstName : 'Atleta'}:
                       </span>
-                    )}
-                    
-                    <div className="flex items-center gap-2">
-                      <div className="w-28 sm:w-36 h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700/60">
-                        <div
-                          className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 rounded-full transition-all duration-500"
-                          style={{ width: `${athleteProgress.progressPercent}%` }}
-                        />
-                      </div>
-                      <span className="font-mono font-bold text-slate-300 text-[11px]">
-                        {athleteProgress.completedSessionsCount}/{athleteProgress.totalPlannedSessions} sessioni ({athleteProgress.progressPercent}%)
-                      </span>
+                      {athleteProgress.loading ? (
+                        <span className="text-xs font-bold text-amber-400/80 animate-pulse flex items-center gap-1.5">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Verifica avanzamento sessioni in corso...
+                        </span>
+                      ) : athleteProgress.status === 'error' ? (
+                        <span className="text-xs font-bold text-rose-400 flex items-center gap-1.5 bg-rose-500/10 px-2 py-0.5 rounded-lg border border-rose-500/30">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                          Errore sincronizzazione: {athleteProgress.errorMessage || 'Impossibile leggere le sessioni'}
+                        </span>
+                      ) : athleteProgress.hasStarted ? (
+                        <span className="text-sm font-black text-white px-2.5 py-0.5 rounded-xl bg-amber-500/20 border border-amber-500/40 shadow-sm flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                          Settimana {athleteProgress.currentWeek} in corso • Prossimo: {athleteProgress.nextSessionLabel}
+                          {athleteProgress.lastCompletedDay && (
+                            <span className="text-[10px] text-emerald-400 font-mono font-bold ml-1 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                              (Ultimo svolto: {athleteProgress.lastCompletedSessionLabel})
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-slate-400 italic">
+                          Scheda assegnata • In attesa del primo allenamento
+                        </span>
+                      )}
                     </div>
+                    
+                    {!athleteProgress.loading && (
+                      <div className="flex items-center gap-3 mt-2 flex-wrap text-xs text-slate-400">
+                        {athleteProgress.lastSessionDateFormatted && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Ultimo workout: <strong className="text-slate-200">{athleteProgress.lastCompletedSessionLabel} ({athleteProgress.lastSessionDateFormatted})</strong></span>
+                            {athleteProgress.lastSessionRpe && (
+                              <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                                RPE {athleteProgress.lastSessionRpe}/10
+                              </span>
+                            )}
+                          </span>
+                        )}
+                        
+                        <div className="flex items-center gap-2">
+                          <div className="w-28 sm:w-36 h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700/60">
+                            <div
+                              className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 rounded-full transition-all duration-500"
+                              style={{ width: `${athleteProgress.progressPercent}%` }}
+                            />
+                          </div>
+                          <span className="font-mono font-bold text-slate-300 text-[11px]">
+                            {athleteProgress.completedSessionsCount}/{athleteProgress.totalPlannedSessions} sessioni ({athleteProgress.progressPercent}%)
+                          </span>
+                        </div>
+
+                        {athleteProgress.status === 'error' && (
+                          <button
+                            type="button"
+                            onClick={fetchAthleteProgress}
+                            className="px-2 py-0.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[11px] font-bold border border-rose-500/40 flex items-center gap-1 transition-colors"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Riprova
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {/* Azione rapida Salta alla settimana corrente */}
+                {!athleteProgress.loading && athleteProgress.hasStarted && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveWeek(athleteProgress.currentWeek);
+                      setActiveDay(athleteProgress.currentDay);
+                      setActiveBuilderTab('exercises');
+                    }}
+                    className="self-start md:self-auto px-4 py-2.5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all flex items-center gap-2 shrink-0 cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 active:scale-95 relative z-10"
+                  >
+                    <Target className="w-4 h-4" />
+                    <span>Vai a Sett. {athleteProgress.currentWeek} ({athleteProgress.currentDay})</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
-              {/* Azione rapida Salta alla settimana corrente */}
-              {athleteProgress.hasStarted && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveWeek(athleteProgress.currentWeek);
-                    setActiveDay(athleteProgress.currentDay);
-                    setActiveBuilderTab('exercises');
-                  }}
-                  className="self-start md:self-auto px-4 py-2.5 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all flex items-center gap-2 shrink-0 cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 active:scale-95 relative z-10"
-                >
-                  <Target className="w-4 h-4" />
-                  <span>Vai a Sett. {athleteProgress.currentWeek} ({athleteProgress.currentDay})</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+              {/* BANNER NOTA DISALLINEAMENTO TITOLO (Req 14) */}
+              {currentAthlete && title && !title.toLowerCase().includes(currentAthlete.firstName.toLowerCase()) && (
+                <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-200">
+                  <div className="flex items-center gap-2.5">
+                    <Info className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      Attenzione: questa scheda ha titolo <strong className="text-white font-mono">‘{title}’</strong> ma è assegnata ad <strong className="text-white">{currentAthlete.fullName || `${currentAthlete.firstName} ${currentAthlete.lastName}`}</strong>. Lo storico delle sessioni svolte ({athleteProgress.completedSessionsCount} completate) è preservato.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTitle(`Scheda - ${currentAthlete.firstName} ${currentAthlete.lastName}`)}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 hover:text-white border border-amber-500/40 text-[11px] font-bold shrink-0 transition-colors cursor-pointer"
+                  >
+                    Rinomina per {currentAthlete.firstName}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -2741,7 +2948,10 @@ ${result.regole_adattamento || '-'}
                 const countEx = exercises.filter(e => (e.week_number || 1) === wNum).length;
 
                 // Calcolo stato avanzamento atleta per questa settimana
-                const isWeekCompleted = assignedAthleteId && daysList.length > 0 && daysList.every(d => Boolean(athleteProgress.completedMap[`${wNum}-${d}`]));
+                const isWeekCompleted = assignedAthleteId && daysList.length > 0 && daysList.every(d => {
+                  const norm = normalizeDayName(d);
+                  return Boolean(athleteProgress.completedMap[`${wNum}-${d}`] || athleteProgress.completedMap[`${wNum}-${norm}`]);
+                });
                 const isAthleteCurrentWeek = assignedAthleteId && athleteProgress.currentWeek === wNum && athleteProgress.hasStarted;
 
                 return (
@@ -2841,8 +3051,9 @@ ${result.regole_adattamento || '-'}
                   ).length;
 
                   // Calcolo avanzamento giorno per la settimana attiva
-                  const isDayDone = assignedAthleteId && Boolean(athleteProgress.completedMap[`${activeWeek}-${dName}`]);
-                  const isAthleteTargetDay = assignedAthleteId && athleteProgress.currentWeek === activeWeek && athleteProgress.currentDay === dName && athleteProgress.hasStarted;
+                  const normD = normalizeDayName(dName);
+                  const isDayDone = assignedAthleteId && Boolean(athleteProgress.completedMap[`${activeWeek}-${dName}`] || athleteProgress.completedMap[`${activeWeek}-${normD}`]);
+                  const isAthleteTargetDay = assignedAthleteId && athleteProgress.currentWeek === activeWeek && normalizeDayName(athleteProgress.currentDay) === normD && athleteProgress.hasStarted;
 
                   return (
                     <div key={dName} className="flex items-center group/day shrink-0">
@@ -3185,7 +3396,20 @@ ${result.regole_adattamento || '-'}
               </div>
             )}
 
-            {currentWeekDayExercises.length === 0 ? (
+            {isFetchingExercises ? (
+              <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-16 text-center flex flex-col items-center justify-center space-y-3">
+                <Loader2 className="w-8 h-8 text-[var(--color-primary)] animate-spin" />
+                <p className="text-sm font-bold text-white">Caricamento scheda in corso...</p>
+                <p className="text-xs text-slate-400">Recupero di tutti gli esercizi, settimane e parametri dal database.</p>
+              </div>
+            ) : fetchError ? (
+              <div className="bg-rose-950/20 border border-rose-800/40 rounded-2xl p-8 text-center space-y-3">
+                <AlertTriangle className="w-8 h-8 text-rose-400 mx-auto" />
+                <h4 className="text-sm font-bold text-white">Errore nel caricamento della scheda</h4>
+                <p className="text-xs text-rose-300 max-w-md mx-auto">{fetchError}</p>
+                <p className="text-[11px] text-slate-400">Il salvataggio è disabilitato per proteggere i dati esistenti.</p>
+              </div>
+            ) : currentWeekDayExercises.length === 0 ? (
               <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-10 text-center">
                 <p className="text-sm text-slate-400 mb-3 font-medium">Nessun esercizio inserito per {activeDay} nella Settimana {activeWeek}.</p>
                 <button
@@ -3851,15 +4075,17 @@ ${result.regole_adattamento || '-'}
           <button 
             type="button"
             onClick={() => handleSave()}
-            disabled={isSaving || exercises.length === 0}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-50"
+            disabled={isSaving || !isHydrated || isFetchingExercises || fetchError !== null || (exercises.length === 0 && !initialWorkout)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
           >
             {isSaving ? (
               <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+            ) : isFetchingExercises ? (
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
             ) : (
               <Save className="w-4 h-4" />
             )}
-            {isSaving ? 'Salvataggio...' : initialWorkout ? 'Salva Modifiche' : assignedAthleteId ? 'Salva e Assegna' : 'Salva Programma'}
+            {isSaving ? 'Salvataggio...' : isFetchingExercises ? 'Caricamento...' : initialWorkout ? 'Salva Modifiche' : assignedAthleteId ? 'Salva e Assegna' : 'Salva Programma'}
           </button>
         </div>
 

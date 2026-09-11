@@ -70,6 +70,7 @@ const menuSections: MenuSection[] = [
     },
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { id: 'atleti', label: 'Atleti', icon: Users, badgeKey: 'athletes' },
       { id: 'attivita', label: 'Task & Attività', icon: Activity },
     ],
   },
@@ -86,7 +87,6 @@ const menuSections: MenuSection[] = [
     },
     items: [
       { id: 'analisi_report', label: 'Performance & Copilot', icon: Brain },
-      { id: 'atleti', label: 'Atleti', icon: Users, badgeKey: 'athletes' },
       { id: 'schede', label: 'Schede Allenamento', icon: Dumbbell, badgeKey: 'workouts' },
       { id: 'cronologia_allenamenti', label: 'Storico Allenamenti', icon: History },
       { id: 'progressioni', label: 'Progressioni', icon: TrendingUp },

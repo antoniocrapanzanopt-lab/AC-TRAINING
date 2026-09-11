@@ -39,9 +39,15 @@ export const AthleteProfileView: React.FC = () => {
 
   // Carica stato questionario onboarding
   useEffect(() => {
+    let isMounted = true;
     if (athleteId) {
-      getAthleteOnboardingResponse(athleteId).then((rec) => setOnboardingRecord(rec));
+      getAthleteOnboardingResponse(athleteId).then((rec) => {
+        if (isMounted) setOnboardingRecord(rec);
+      });
     }
+    return () => {
+      isMounted = false;
+    };
   }, [athleteId]);
 
   // Carica massimali (PR)
@@ -147,9 +153,19 @@ export const AthleteProfileView: React.FC = () => {
               <span className="text-[var(--color-text-muted)]">Stato Account:</span>
               <span className="font-semibold text-emerald-500 capitalize">{currentAthlete?.status || 'Attivo'}</span>
             </div>
-            <div className="flex justify-between py-1.5">
+            <div className="flex justify-between py-1.5 border-b border-[var(--color-border)]">
               <span className="text-[var(--color-text-muted)]">Codice Fiscale:</span>
-              <span className="font-mono text-[var(--color-text)]">{currentAthlete?.fiscalCode || '—'}</span>
+              <span className="font-mono font-semibold tracking-wider text-[var(--color-text)]">{currentAthlete?.fiscalCode || '—'}</span>
+            </div>
+            <div className="flex justify-between py-1.5 border-b border-[var(--color-border)]">
+              <span className="text-[var(--color-text-muted)]">Indirizzo:</span>
+              <span className="font-medium text-[var(--color-text)]">{currentAthlete?.address || '—'}</span>
+            </div>
+            <div className="flex justify-between py-1.5">
+              <span className="text-[var(--color-text-muted)]">Città:</span>
+              <span className="font-medium text-[var(--color-text)]">
+                {currentAthlete?.city ? `${currentAthlete.city}${currentAthlete.province ? ` (${currentAthlete.province})` : ''}` : '—'}
+              </span>
             </div>
           </div>
         </div>

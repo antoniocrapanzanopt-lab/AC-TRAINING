@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { AdherenceScoreResult } from '../../services/adherenceService';
+import { AdherenceRankBadge } from '../common/AdherenceRankBadge';
 
 interface AthleteAdherenceCardProps {
   adherence: AdherenceScoreResult;
@@ -33,7 +34,7 @@ export const AthleteAdherenceCard: React.FC<AthleteAdherenceCardProps> = ({
     );
   }
 
-  const { score, label, colorClass, bgClass, borderClass, message, pillars } = adherence;
+  const { score, colorClass, bgClass, borderClass, message, pillars } = adherence;
 
   return (
     <div className="rounded-3xl bg-[var(--color-surface)]/90 backdrop-blur-xl border border-[var(--color-border)] p-4 sm:p-5 shadow-lg space-y-3.5 transition-all relative">
@@ -54,9 +55,7 @@ export const AthleteAdherenceCard: React.FC<AthleteAdherenceCardProps> = ({
               <h3 className="text-base sm:text-lg font-black text-[var(--color-text)]">
                 Indice Aderenza
               </h3>
-              <span className={`px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black border ${bgClass} ${colorClass} ${borderClass}`}>
-                {label}
-              </span>
+              <AdherenceRankBadge adherence={score} variant="full" size="sm" />
             </div>
           </div>
         </div>

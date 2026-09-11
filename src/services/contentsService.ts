@@ -1,49 +1,77 @@
 import { supabase } from '../lib/supabase';
 import { InstagramContent, ContentStatus } from '../types/inboxAndContent';
 
-interface ContentGraphicFallback {
+// ─── CACHE IN-MEMORY ───────────────────────────────────────────────────────
+// Evita round-trip Supabase ripetuti per i JSONB grafici già caricati
+const graphicsCache = new Map<string, {
   carousel_data?: InstagramContent['carousel_data'];
   cover_data?: InstagramContent['cover_data'];
   story_data?: InstagramContent['story_data'];
+}>();
+
+interface ContentLocalFallback {
+  carousel_data?: InstagramContent['carousel_data'];
+  cover_data?: InstagramContent['cover_data'];
+  story_data?: InstagramContent['story_data'];
+  script_body?: string | null;
+  caption?: string | null;
+  internal_notes?: string | null;
+  call_to_action?: string | null;
 }
 
 function cacheContentFallback(id: string, updates: Partial<InstagramContent>): void {
   try {
     const key = `ac_content_fallback_${id}`;
     const existingStr = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
-    const existing: ContentGraphicFallback = existingStr ? JSON.parse(existingStr) : {};
-    const merged: ContentGraphicFallback = {
+    const existing: ContentLocalFallback = existingStr ? JSON.parse(existingStr) : {};
+    const merged: ContentLocalFallback = {
       ...existing,
       ...(updates.carousel_data !== undefined && { carousel_data: updates.carousel_data }),
       ...(updates.cover_data !== undefined && { cover_data: updates.cover_data }),
       ...(updates.story_data !== undefined && { story_data: updates.story_data }),
+      ...(updates.script_body !== undefined && { script_body: updates.script_body }),
+      ...(updates.caption !== undefined && { caption: updates.caption }),
+      ...(updates.internal_notes !== undefined && { internal_notes: updates.internal_notes }),
+      ...(updates.call_to_action !== undefined && { call_to_action: updates.call_to_action }),
     };
     if (typeof window !== 'undefined') {
       localStorage.setItem(key, JSON.stringify(merged));
     }
+    // Aggiorna anche la cache in-memory
+    if (updates.carousel_data !== undefined || updates.cover_data !== undefined || updates.story_data !== undefined) {
+      graphicsCache.set(id, {
+        carousel_data: merged.carousel_data,
+        cover_data: merged.cover_data,
+        story_data: merged.story_data,
+      });
+    }
   } catch (e) {
-    console.warn('Impossibile salvare fallback locale grafica:', e);
+    console.warn('Impossibile salvare fallback locale contenuto:', e);
   }
 }
 
-function getContentFallback(id: string): ContentGraphicFallback {
+function getContentFallback(id: string): ContentLocalFallback {
   try {
     if (typeof window === 'undefined') return {};
     const key = `ac_content_fallback_${id}`;
     const str = localStorage.getItem(key);
-    return str ? (JSON.parse(str) as ContentGraphicFallback) : {};
+    return str ? (JSON.parse(str) as ContentLocalFallback) : {};
   } catch {
     return {};
   }
 }
 
+// Colonne complete per il listing (include carousel_data, cover_data, story_data)
+const LIST_SELECT = 'id,coach_id,title,type,pillar,status,hook,call_to_action,internal_notes,performance_metrics,origin_inbox_id,created_at,updated_at,scheduled_for,published_at,script_body,caption,carousel_data,cover_data,story_data';
+
 /**
- * Recupera tutti i contenuti Instagram del coach
+ * Recupera tutti i contenuti Instagram del coach.
+ * Include metadati e dati grafici (carousel_data/cover_data/story_data).
  */
 export async function getInstagramContents(): Promise<InstagramContent[]> {
   const { data, error } = await supabase
     .from('instagram_contents')
-    .select('*')
+    .select(LIST_SELECT)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -53,15 +81,92 @@ export async function getInstagramContents(): Promise<InstagramContent[]> {
 
   const rows = (data || []) as InstagramContent[];
   return rows.map((row) => {
-    const fallback = getContentFallback(row.id);
+    // Aggiorna la cache in-memory per accessi istantanei (0ms) successivi
+    if (row.carousel_data || row.cover_data || row.story_data) {
+      graphicsCache.set(row.id, {
+        carousel_data: row.carousel_data,
+        cover_data: row.cover_data,
+        story_data: row.story_data,
+      });
+    }
+
+    const cached = graphicsCache.get(row.id);
+    // Controlla il localStorage fallback solo se un campo essenziale è mancante
+    const needsFallback = !row.carousel_data && !row.script_body && !row.caption;
+    const fallback = needsFallback ? getContentFallback(row.id) : {};
+
     return {
       ...row,
-      carousel_data: row.carousel_data || fallback.carousel_data || null,
-      cover_data: row.cover_data || fallback.cover_data || null,
-      story_data: row.story_data || fallback.story_data || null,
+      script_body: row.script_body || fallback.script_body || null,
+      caption: row.caption || fallback.caption || null,
+      internal_notes: row.internal_notes || fallback.internal_notes || null,
+      call_to_action: row.call_to_action || fallback.call_to_action || null,
+      carousel_data: row.carousel_data ?? cached?.carousel_data ?? fallback.carousel_data ?? null,
+      cover_data: row.cover_data ?? cached?.cover_data ?? fallback.cover_data ?? null,
+      story_data: row.story_data ?? cached?.story_data ?? fallback.story_data ?? null,
     };
   });
 }
+
+/**
+ * Carica on-demand i dati grafici pesanti (carousel_data, cover_data, story_data)
+ * per un singolo contenuto. Usato quando l'utente apre l'editor.
+ * Usa la cache in-memory per risposta istantanea al secondo accesso.
+ */
+export async function getContentGraphics(id: string): Promise<{
+  carousel_data: InstagramContent['carousel_data'];
+  cover_data: InstagramContent['cover_data'];
+  story_data: InstagramContent['story_data'];
+}> {
+  // Risposta istantanea dalla cache in-memory (0ms)
+  if (graphicsCache.has(id)) {
+    const cached = graphicsCache.get(id)!;
+    return {
+      carousel_data: cached.carousel_data ?? null,
+      cover_data: cached.cover_data ?? null,
+      story_data: cached.story_data ?? null,
+    };
+  }
+
+  const localFallback = getContentFallback(id);
+
+  try {
+    const { data, error } = await supabase
+      .from('instagram_contents')
+      .select('carousel_data,cover_data,story_data')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
+      return {
+        carousel_data: localFallback.carousel_data ?? null,
+        cover_data: localFallback.cover_data ?? null,
+        story_data: localFallback.story_data ?? null,
+      };
+    }
+
+    const row = data as {
+      carousel_data: InstagramContent['carousel_data'];
+      cover_data: InstagramContent['cover_data'];
+      story_data: InstagramContent['story_data'];
+    };
+    const result = {
+      carousel_data: row.carousel_data ?? localFallback.carousel_data ?? null,
+      cover_data: row.cover_data ?? localFallback.cover_data ?? null,
+      story_data: row.story_data ?? localFallback.story_data ?? null,
+    };
+    graphicsCache.set(id, result);
+    return result;
+  } catch {
+    return {
+      carousel_data: localFallback.carousel_data ?? null,
+      cover_data: localFallback.cover_data ?? null,
+      story_data: localFallback.story_data ?? null,
+    };
+  }
+}
+
+
 const isSchemaCacheError = (err: { message?: string; code?: string; details?: string } | null): boolean => {
   if (!err) return false;
   const msg = (err.message || '').toLowerCase();
@@ -168,8 +273,8 @@ export async function createInstagramContent(
 
   const createdRow = data as InstagramContent;
 
-  // Salva sempre copia locale di sicurezza per i dati grafici
-  if (createdRow.id && (payload.carousel_data || payload.cover_data || payload.story_data)) {
+  // Salva sempre copia locale di sicurezza per script, didascalia e dati grafici
+  if (createdRow.id) {
     cacheContentFallback(createdRow.id, payload);
   }
 
@@ -188,6 +293,8 @@ export async function createInstagramContent(
   return {
     ...fallback,
     ...createdRow,
+    script_body: createdRow.script_body || fallback.script_body || null,
+    caption: createdRow.caption || fallback.caption || null,
     carousel_data: createdRow.carousel_data || fallback.carousel_data || null,
     cover_data: createdRow.cover_data || fallback.cover_data || null,
     story_data: createdRow.story_data || fallback.story_data || null,
@@ -201,10 +308,8 @@ export async function updateInstagramContent(
   id: string,
   updates: Partial<InstagramContent>
 ): Promise<InstagramContent> {
-  // Salva sempre copia locale di sicurezza per i dati grafici
-  if (updates.carousel_data !== undefined || updates.cover_data !== undefined || updates.story_data !== undefined) {
-    cacheContentFallback(id, updates);
-  }
+  // Salva sempre copia locale di sicurezza immediata (script, didascalia e grafiche)
+  cacheContentFallback(id, updates);
 
   const hasDbColumns = await checkGraphicsColumnsAvailability();
 
@@ -260,6 +365,8 @@ export async function updateInstagramContent(
   return {
     ...fallback,
     ...updatedRow,
+    script_body: updatedRow.script_body || fallback.script_body || null,
+    caption: updatedRow.caption || fallback.caption || null,
     carousel_data: updatedRow.carousel_data || fallback.carousel_data || null,
     cover_data: updatedRow.cover_data || fallback.cover_data || null,
     story_data: updatedRow.story_data || fallback.story_data || null,

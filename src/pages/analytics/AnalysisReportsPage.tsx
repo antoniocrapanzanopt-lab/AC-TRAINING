@@ -5,17 +5,22 @@ import {
   TrendingUp,
   Users,
   User,
+  ArrowLeft,
+  LayoutDashboard,
+  Zap,
+  Table,
 } from 'lucide-react';
 import { useAthletes } from '../../context/AthletesContext';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import {
   TimeframeOption,
   TeamOverviewReportData,
 } from '../../types';
 import { buildTeamOverviewReport } from './utils/reportCalculator';
-import { TeamOverviewReportView } from './components/TeamOverviewReportView';
+import { TeamOverviewReportView, TeamViewMode } from './components/TeamOverviewReportView';
 import { AthleteDetailReportView } from './components/AthleteDetailReportView';
 import { TeamOverviewSkeleton, AthleteDetailSkeleton } from './components/AnalyticsSkeletons';
 import { AICopilotActionModal, CopilotAlertContext } from '../dashboard/components/AICopilotActionModal';
@@ -27,6 +32,7 @@ interface AnalysisDataCache {
   assignments: any[];
   exerciseNamesMap: Map<string, string>;
   exerciseMetaMap: Map<string, { name: string; day_name?: string; week_number?: number }>;
+  workoutDaysMap?: Record<string, string[]>;
   athleteIdsKey: string;
   timestamp: number;
 }
@@ -34,10 +40,19 @@ interface AnalysisDataCache {
 let globalAnalysisCache: AnalysisDataCache | null = null;
 const ANALYSIS_CACHE_TTL = 120 * 1000;
 
-export const AnalysisReportsPage: React.FC = () => {
+export interface AnalysisReportsPageProps {
+  isFullscreen?: boolean;
+  onBackToPlatform?: () => void;
+}
+
+export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
+  isFullscreen = false,
+  onBackToPlatform,
+}) => {
   const { athletes, selectedAthleteId: globalAthleteId, setSelectedAthleteId } = useAthletes();
   const { allAssignedWorkouts } = useWorkouts();
-  const { setActiveTab } = useApp();
+  const { setActiveTab, ownerProfile } = useApp();
+  const { user } = useAuth();
 
   const mountTimeRef = useRef<number>(Date.now());
   const athleteIdsKey = useMemo(() => (athletes || []).map((a) => a.id).sort().join(','), [athletes]);
@@ -62,9 +77,45 @@ export const AnalysisReportsPage: React.FC = () => {
   // Vista Selezionata: null = Vista Generale Coach; string = ID Atleta per Vista Dettagliata
   const [selectedAthleteId, setLocalSelectedAthleteId] = useState<string | null>(null);
 
+  // Modalità di visualizzazione della panoramica squadra ('priority' | 'table')
+  const [teamViewMode, setTeamViewMode] = useState<TeamViewMode>(() => {
+    try {
+      const saved = localStorage.getItem('ac_performance_view_mode');
+      if (saved === 'priority' || saved === 'table') return saved;
+    } catch (_) {}
+    return 'priority';
+  });
+
+  // Navigazione interna specifica per Performance & Copilot: [Panoramica] [Priorità] [Tabella] [Singolo atleta]
+  const [activeSubNav, setActiveSubNav] = useState<'panoramica' | 'priorita' | 'tabella' | 'atleta'>('panoramica');
+
+  // Sincronizza lo stato di navigazione interna con la vista corrente
+  useEffect(() => {
+    if (selectedAthleteId) {
+      setActiveSubNav('atleta');
+    } else {
+      if (teamViewMode === 'table') setActiveSubNav('tabella');
+      else if (activeSubNav !== 'priorita') setActiveSubNav('panoramica');
+    }
+  }, [selectedAthleteId, teamViewMode]);
+
   // Modale Copilot
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [copilotContext, setCopilotContext] = useState<CopilotAlertContext | null>(null);
+  const [dismissedVersion, setDismissedVersion] = useState(0);
+
+  // Sincronizza archiviazioni alert in tempo reale
+  useEffect(() => {
+    const handleAlertsUpdate = () => {
+      setDismissedVersion((v) => v + 1);
+    };
+    window.addEventListener('storage', handleAlertsUpdate);
+    window.addEventListener('copilot_dismissed_update', handleAlertsUpdate);
+    return () => {
+      window.removeEventListener('storage', handleAlertsUpdate);
+      window.removeEventListener('copilot_dismissed_update', handleAlertsUpdate);
+    };
+  }, []);
 
   // Dati Reali (Inizializzati subito da cache se disponibili per First Meaningful Paint istantaneo a 0ms)
   const [sessions, setSessions] = useState<any[]>(() => hasValidCache ? globalAnalysisCache!.sessions : []);
@@ -72,6 +123,7 @@ export const AnalysisReportsPage: React.FC = () => {
   const [assignments, setAssignments] = useState<any[]>(() => hasValidCache ? globalAnalysisCache!.assignments : []);
   const [exerciseNamesMap, setExerciseNamesMap] = useState<Map<string, string>>(() => hasValidCache ? globalAnalysisCache!.exerciseNamesMap : new Map());
   const [exerciseMetaMap, setExerciseMetaMap] = useState<Map<string, { name: string; day_name?: string; week_number?: number }>>(() => hasValidCache ? globalAnalysisCache!.exerciseMetaMap : new Map());
+  const [workoutDaysMap, setWorkoutDaysMap] = useState<Record<string, string[]>>(() => (hasValidCache && globalAnalysisCache!.workoutDaysMap) ? globalAnalysisCache!.workoutDaysMap : {});
 
   // Stato caricamento: false se abbiamo la cache, true solo al primo caricamento a freddo
   const [isLoading, setIsLoading] = useState<boolean>(() => !hasValidCache);
@@ -113,7 +165,7 @@ export const AnalysisReportsPage: React.FC = () => {
             workout_id,
             assigned_date,
             is_active,
-            workout:workouts(id, title, total_weeks)
+            workout:workouts(id, title, total_weeks, parent_template_id)
           `)
           .in('athlete_id', athleteIds),
         supabase
@@ -122,17 +174,23 @@ export const AnalysisReportsPage: React.FC = () => {
             id,
             athlete_id,
             workout_id,
+            week_number,
+            day_name,
+            status,
+            skip_reason,
+            skip_notes,
+            coach_justified,
             start_time,
             end_time,
             notes,
             rpe,
-            workouts ( id, title, total_weeks )
+            workouts ( id, title, total_weeks, parent_template_id )
           `)
           .in('athlete_id', athleteIds)
           .gte('start_time', oneYearAgoIso)
           .not('end_time', 'is', null)
           .order('start_time', { ascending: false })
-          .limit(150),
+          .limit(600),
       ]);
 
       const mergedAssignments: any[] = assignRes.data || [];
@@ -145,11 +203,46 @@ export const AnalysisReportsPage: React.FC = () => {
             workout_title: localAssign.workout?.title || localAssign.workout_title || 'Scheda Attiva',
             workout: {
               title: localAssign.workout?.title || localAssign.workout_title || 'Scheda Attiva',
-              total_weeks: 5,
+              total_weeks: localAssign.workout?.total_weeks || 5,
+              parent_template_id: localAssign.workout?.parent_template_id || null,
             },
           });
         }
       });
+
+      // Recupera i giorni reali di ogni scheda assegnata da workout_exercises (senza fallback fissi)
+      const targetWIds = Array.from(
+        new Set(
+          mergedAssignments
+            .flatMap((a: any) => [a.workout_id, a.workout?.id, a.workout?.parent_template_id])
+            .filter(Boolean) as string[]
+        )
+      );
+
+      let wDaysMap: Record<string, string[]> = {};
+      if (targetWIds.length > 0) {
+        try {
+          const { data: daysData } = await supabase
+            .from('workout_exercises')
+            .select('workout_id, day_name')
+            .in('workout_id', targetWIds)
+            .order('order_index', { ascending: true });
+
+          if (daysData) {
+            daysData.forEach((row) => {
+              const wId = row.workout_id;
+              const dName = (row.day_name || '').trim();
+              if (wId && dName) {
+                if (!wDaysMap[wId]) wDaysMap[wId] = [];
+                if (!wDaysMap[wId].includes(dName)) {
+                  wDaysMap[wId].push(dName);
+                }
+              }
+            });
+          }
+        } catch (_) {}
+      }
+      setWorkoutDaysMap(wDaysMap);
 
       // Carica sessioni da backup locale se presenti
       let localSessionList: any[] = [];
@@ -232,6 +325,7 @@ export const AnalysisReportsPage: React.FC = () => {
         assignments: mergedAssignments,
         exerciseNamesMap: namesMap,
         exerciseMetaMap: metaMap,
+        workoutDaysMap: wDaysMap,
         athleteIdsKey,
         timestamp: Date.now(),
       };
@@ -261,7 +355,7 @@ export const AnalysisReportsPage: React.FC = () => {
       assignments,
       exerciseNamesMap
     );
-  }, [timeframe, athletes, sessions, logs, assignments, exerciseNamesMap]);
+  }, [timeframe, athletes, sessions, logs, assignments, exerciseNamesMap, dismissedVersion]);
 
   // Report Atleta Selezionato
   const selectedAthleteReport = useMemo(() => {
@@ -276,6 +370,39 @@ export const AnalysisReportsPage: React.FC = () => {
 
   const handleBackToOverview = () => {
     setLocalSelectedAthleteId(null);
+  };
+
+  // Navigazione interna specifica per Performance & Copilot
+  const handleSubNavPanoramica = () => {
+    setLocalSelectedAthleteId(null);
+    setTeamViewMode('priority');
+    setActiveSubNav('panoramica');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSubNavPriorita = () => {
+    setLocalSelectedAthleteId(null);
+    setTeamViewMode('priority');
+    setActiveSubNav('priorita');
+    setTimeout(() => {
+      const el = document.getElementById('performance-copilot-priorities');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 50);
+  };
+
+  const handleSubNavTabella = () => {
+    setLocalSelectedAthleteId(null);
+    setTeamViewMode('table');
+    setActiveSubNav('tabella');
+  };
+
+  const handleSubNavAtleta = () => {
+    setActiveSubNav('atleta');
+    if (!selectedAthleteId && athletes.length > 0) {
+      handleSelectAthlete(athletes[0].id);
+    }
   };
 
   const handleNavigateToChat = (athleteId: string) => {
@@ -324,131 +451,307 @@ export const AnalysisReportsPage: React.FC = () => {
   const hasReportData = teamReportData && teamReportData.athletesReports.length > 0;
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto pb-12 animate-in fade-in duration-200">
-      {/* ─── 1. HEADER & TOOLBAR PRINCIPALE (SEMPRE RENDERIZZATO SUBITO A 0 MS) ─── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/20 to-amber-600/10 border border-[var(--color-primary)]/40 flex items-center justify-center text-[var(--color-primary)] shadow-lg shrink-0">
-            <Brain className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                Performance & Copilot
-              </h1>
-              <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                <TrendingUp className="w-3 h-3" />
-                Centro Decisionale
-              </span>
-              {isUpdatingBackground && (
-                <span className="text-[10px] font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
-                  <RefreshCw className="w-2.5 h-2.5 animate-spin text-[var(--color-primary)]" />
-                  Sincronizzazione...
-                </span>
+    <div className={`w-full min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans ${isFullscreen ? '' : 'max-w-[1600px] mx-auto pb-12 animate-in fade-in duration-200'}`}>
+      {/* ─── TOP BAR FULLSCREEN ─── (2 righe separate, mai sovrapposizione) */}
+      {isFullscreen && (
+        <header className="sticky top-0 z-40 bg-slate-900/98 backdrop-blur-md border-b border-slate-800 shadow-xl select-none shrink-0">
+          {/* ── RIGA 1: Identità — Sinistra: Back+Logo+Titolo | Destra: Aggiorna+Profilo ── */}
+          <div className="h-12 px-4 sm:px-5 flex items-center justify-between gap-3 border-b border-slate-800/60">
+            {/* Sinistra */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              {onBackToPlatform && (
+                <button
+                  type="button"
+                  onClick={onBackToPlatform}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold shrink-0"
+                  title="Torna al gestionale"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">Torna al gestionale</span>
+                </button>
               )}
+
+              {onBackToPlatform && <div className="h-5 w-px bg-slate-700/60 shrink-0" />}
+
+              {/* Logo + Titolo + Badge */}
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--color-primary)]/20 to-amber-600/10 border border-[var(--color-primary)]/40 flex items-center justify-center text-[var(--color-primary)] shrink-0">
+                  <Brain className="w-3.5 h-3.5" />
+                </div>
+                <h2 className="text-sm font-black text-white tracking-tight whitespace-nowrap">
+                  Performance & Copilot
+                </h2>
+                <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 whitespace-nowrap shrink-0">
+                  <TrendingUp className="w-2.5 h-2.5" />
+                  Centro decisionale
+                </span>
+                {isUpdatingBackground && (
+                  <span className="hidden md:inline-flex items-center gap-1 text-[9px] font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap shrink-0">
+                    <RefreshCw className="w-2 h-2 animate-spin text-[var(--color-primary)]" />
+                    Sincronizzazione...
+                  </span>
+                )}
+              </div>
             </div>
-            <p className="text-xs sm:text-sm text-slate-400 font-medium mt-0.5">
-              Confronta i progressi degli atleti e decidi il prossimo intervento.
-            </p>
-          </div>
-        </div>
 
-        {/* Toggle Vista: Squadra vs Singolo Atleta + Bottone Ricarica */}
-        <div className="flex items-center gap-2.5 flex-wrap self-start sm:self-auto">
-          <div className="inline-flex bg-slate-950 p-1 rounded-2xl border border-slate-800 gap-1 text-xs shadow-inner">
-            <button
-              type="button"
-              onClick={handleBackToOverview}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                !selectedAthleteId
-                  ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Panoramica Squadra</span>
-            </button>
+            {/* Destra: Aggiorna + Profilo */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => loadData(true)}
+                disabled={isUpdatingBackground}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/80 text-xs font-bold text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-50"
+                title="Ricarica dati"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isUpdatingBackground ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Aggiorna</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (!selectedAthleteId && athletes.length > 0) {
-                  handleSelectAthlete(athletes[0].id);
-                }
-              }}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                selectedAthleteId
-                  ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <User className="w-3.5 h-3.5" />
-              <span>Singolo Atleta</span>
-            </button>
+              <div className="h-5 w-px bg-slate-700/60" />
+
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-950/60 border border-slate-800">
+                <div className="w-6 h-6 rounded-md bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 flex items-center justify-center shrink-0">
+                  <User className="w-3 h-3 text-[var(--color-primary)]" />
+                </div>
+                <span className="text-xs font-bold text-white max-w-[80px] truncate hidden md:inline">
+                  {user?.name || ownerProfile?.fullName || 'Coach'}
+                </span>
+              </div>
+            </div>
           </div>
 
-          {/* Bottone Ricarica */}
-          <button
-            type="button"
-            onClick={() => loadData(true)}
-            disabled={isUpdatingBackground}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white hover:border-slate-700 transition-all cursor-pointer shadow-sm"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isUpdatingBackground ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Aggiorna</span>
-          </button>
-        </div>
-      </div>
+          {/* ── RIGA 2: Navigazione — Tab al centro | Toggle Squadra/Atleta a destra ── */}
+          <div className="h-10 px-4 sm:px-5 flex items-center justify-between gap-3">
+            {/* Tab di navigazione principali */}
+            <nav className="flex items-center gap-0.5 p-0.5 rounded-xl bg-slate-950/70 border border-slate-800/70 text-xs overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={handleSubNavPanoramica}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  !selectedAthleteId && activeSubNav === 'panoramica'
+                    ? 'bg-[var(--color-primary)] text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <LayoutDashboard className="w-3 h-3 shrink-0" />
+                <span>Panoramica</span>
+              </button>
 
-      {/* ─── 2. CONTENUTO PRINCIPALE PROGRESSIVO (SKELETON SE VUOTO, ALTRIMENTI VISTA VIVA) ─── */}
-      {isLoading && !hasReportData ? (
-        /* SKELETON PROGRESSIVO NON BLOCCANTE */
-        selectedAthleteId ? <AthleteDetailSkeleton /> : <TeamOverviewSkeleton />
-      ) : selectedAthleteReport ? (
-        /* VISTA DETTAGLIO ATLETA */
-        <AthleteDetailReportView
-          athleteReport={selectedAthleteReport}
-          allAthletes={athletes}
-          allReports={teamReportData.athletesReports}
-          timeframe={timeframe}
-          currentRangeLabel={teamReportData.currentRangeLabel}
-          previousRangeLabel={teamReportData.previousRangeLabel}
-          sessions={sessions}
-          logs={logs}
-          exerciseMetaMap={exerciseMetaMap}
-          onDataUpdated={() => loadData(true)}
-          onTimeframeChange={setTimeframe}
-          onSelectAthlete={handleSelectAthlete}
-          onBackToOverview={handleBackToOverview}
-          onNavigateToChat={handleNavigateToChat}
-          onNavigateToWorkouts={handleNavigateToWorkouts}
-          onOpenCopilot={(athleteId, athleteName, workoutTitle) => {
-            const athReport = selectedAthleteReport;
-            let category = 'progression';
-            if (athReport?.singleDecisionType === 'pain') category = 'pain';
-            else if (athReport?.singleDecisionType === 'inactivity' || athReport?.completedSessions.current === 0 || athReport?.programStatus === 'pending_start') category = 'inactivity';
-            else if (athReport?.singleDecisionType === 'plateau') category = 'stagnation';
-            handleOpenCopilotModal(athleteId, { athleteId, athleteName, workoutTitle, category, summary: athReport?.singleDecisionTitle });
-          }}
-        />
-      ) : (
-        /* VISTA GENERALE SQUADRA & CENTRO DECISIONALE */
-        <TeamOverviewReportView
-          reportData={teamReportData}
-          timeframe={timeframe}
-          onTimeframeChange={setTimeframe}
-          onSelectAthlete={handleSelectAthlete}
-          onAssignProgram={handleNavigateToWorkouts}
-          onOpenCopilot={handleOpenCopilotModal}
-          onAssignMultiplePrograms={handleAssignMultiple}
-        />
+              <button
+                type="button"
+                onClick={handleSubNavPriorita}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  !selectedAthleteId && activeSubNav === 'priorita'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Zap className="w-3 h-3 shrink-0" />
+                <span>Priorità</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSubNavTabella}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  !selectedAthleteId && activeSubNav === 'tabella'
+                    ? 'bg-[var(--color-primary)] text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Table className="w-3 h-3 shrink-0" />
+                <span>Tabella</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSubNavAtleta}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  selectedAthleteId
+                    ? 'bg-[var(--color-primary)] text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <User className="w-3 h-3 shrink-0" />
+                <span>Singolo atleta</span>
+              </button>
+            </nav>
+
+            {/* Toggle Panoramica Squadra / Singolo Atleta — a destra della riga 2 */}
+            <div className="flex items-center gap-1 p-0.5 rounded-xl bg-slate-950/70 border border-slate-800/70 text-xs shrink-0">
+              <button
+                type="button"
+                onClick={handleBackToOverview}
+                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  !selectedAthleteId
+                    ? 'bg-[var(--color-primary)] text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Users className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline">Squadra</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedAthleteId && athletes.length > 0) {
+                    handleSelectAthlete(athletes[0].id);
+                  }
+                }}
+                className={`px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  selectedAthleteId
+                    ? 'bg-[var(--color-primary)] text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <User className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline">Atleta</span>
+              </button>
+            </div>
+          </div>
+        </header>
       )}
+
+
+      {/* ─── CORPO PRINCIPALE A TUTTA LARGHEZZA SENZA COMPRESSIONI ─── */}
+      <div className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* Intestazione pagina — visibile solo fuori dalla modalità fullscreen (in fullscreen la top bar basta) */}
+        {!isFullscreen && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[var(--color-primary)]/20 to-amber-600/10 border border-[var(--color-primary)]/40 flex items-center justify-center text-[var(--color-primary)] shadow-lg shrink-0">
+                <Brain className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                    Performance &amp; Copilot
+                  </h1>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" />
+                    Centro Decisionale
+                  </span>
+                  {isUpdatingBackground && (
+                    <span className="text-[10px] font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                      <RefreshCw className="w-2.5 h-2.5 animate-spin text-[var(--color-primary)]" />
+                      Sincronizzazione...
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs sm:text-sm text-slate-400 font-medium mt-0.5">
+                  Confronta i progressi degli atleti e decidi il prossimo intervento.
+                </p>
+              </div>
+            </div>
+
+            {/* Toggle Vista & Ricarica (visibili nell'intestazione solo se NON in fullscreen) */}
+            <div className="flex items-center gap-2.5 flex-wrap self-start sm:self-auto">
+              <div className="inline-flex bg-slate-950 p-1 rounded-2xl border border-slate-800 gap-1 text-xs shadow-inner">
+                <button
+                  type="button"
+                  onClick={handleBackToOverview}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    !selectedAthleteId
+                      ? "bg-[var(--color-primary)] text-slate-950 font-black shadow-md"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Panoramica Squadra</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedAthleteId && athletes.length > 0) {
+                      handleSelectAthlete(athletes[0].id);
+                    }
+                  }}
+                  className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    selectedAthleteId
+                      ? "bg-[var(--color-primary)] text-slate-950 font-black shadow-md"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <User className="w-3.5 h-3.5" />
+                  <span>Singolo Atleta</span>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => loadData(true)}
+                disabled={isUpdatingBackground}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white hover:border-slate-700 transition-all cursor-pointer shadow-sm"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isUpdatingBackground ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">Aggiorna</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── CONTENUTO PRINCIPALE PROGRESSIVO (SKELETON SE VUOTO, ALTRIMENTI VISTA VIVA) ─── */}
+        {isLoading && !hasReportData ? (
+          /* SKELETON PROGRESSIVO NON BLOCCANTE */
+          selectedAthleteId ? <AthleteDetailSkeleton /> : <TeamOverviewSkeleton />
+        ) : selectedAthleteReport ? (
+          /* VISTA DETTAGLIO ATLETA */
+          <AthleteDetailReportView
+            athleteReport={selectedAthleteReport}
+            allAthletes={athletes}
+            allReports={teamReportData.athletesReports}
+            timeframe={timeframe}
+            currentRangeLabel={teamReportData.currentRangeLabel}
+            previousRangeLabel={teamReportData.previousRangeLabel}
+            sessions={sessions}
+            logs={logs}
+            exerciseMetaMap={exerciseMetaMap}
+            onDataUpdated={() => loadData(true)}
+            onTimeframeChange={setTimeframe}
+            onSelectAthlete={handleSelectAthlete}
+            onBackToOverview={handleBackToOverview}
+            onNavigateToChat={handleNavigateToChat}
+            onNavigateToWorkouts={handleNavigateToWorkouts}
+            onOpenCopilot={(athleteId, athleteName, workoutTitle) => {
+              const athReport = selectedAthleteReport;
+              let category = 'progression';
+              if (athReport?.singleDecisionType === 'pain') category = 'pain';
+              else if (athReport?.singleDecisionType === 'inactivity' || athReport?.completedSessions.current === 0 || athReport?.programStatus === 'pending_start') category = 'inactivity';
+              else if (athReport?.singleDecisionType === 'plateau') category = 'stagnation';
+              handleOpenCopilotModal(athleteId, { athleteId, athleteName, workoutTitle, category, summary: athReport?.singleDecisionTitle });
+            }}
+          />
+        ) : (
+          /* VISTA GENERALE SQUADRA & CENTRO DECISIONALE */
+          <TeamOverviewReportView
+            reportData={teamReportData}
+            timeframe={timeframe}
+            athletes={athletes}
+            sessions={sessions}
+            assignments={assignments}
+            workoutDaysMap={workoutDaysMap}
+            isLoading={isLoading}
+            onTimeframeChange={setTimeframe}
+            onSelectAthlete={handleSelectAthlete}
+            onAssignProgram={handleNavigateToWorkouts}
+            onOpenCopilot={handleOpenCopilotModal}
+            onAssignMultiplePrograms={handleAssignMultiple}
+            activeViewMode={teamViewMode}
+            onViewModeChange={setTeamViewMode}
+          />
+        )}
+      </div>
 
       {/* ─── 3. MODALE COPILOT DECISIONALE ─── */}
       {isCopilotOpen && copilotContext && (
         <AICopilotActionModal
           isOpen={isCopilotOpen}
-          onClose={() => setIsCopilotOpen(false)}
+          onClose={() => {
+            setIsCopilotOpen(false);
+            setCopilotContext(null);
+          }}
           alertData={copilotContext}
           onApplied={(athleteId) => {
             try {
@@ -459,8 +762,12 @@ export const AnalysisReportsPage: React.FC = () => {
               set.add(`prio-penult-${athleteId}`);
               set.add(`prio-unassigned-${athleteId}`);
               localStorage.setItem('builder_copilot_dismissed_alerts', JSON.stringify(Array.from(set)));
+              window.dispatchEvent(new Event('storage'));
+              window.dispatchEvent(new CustomEvent('copilot_dismissed_update'));
             } catch (_) {}
+            setDismissedVersion((v) => v + 1);
             setIsCopilotOpen(false);
+            setCopilotContext(null);
             loadData(true);
           }}
         />

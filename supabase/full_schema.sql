@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS public.athletes (
     phone TEXT,
     city TEXT,
     province TEXT,
+    address TEXT,
     birth_date DATE,
     gender TEXT CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
     tax_code TEXT,
@@ -150,6 +151,7 @@ CREATE TABLE IF NOT EXISTS public.athletes (
 -- Colonne aggiuntive se la tabella esisteva già
 ALTER TABLE public.athletes 
 ADD COLUMN IF NOT EXISTS gender TEXT CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
+ADD COLUMN IF NOT EXISTS address TEXT,
 ADD COLUMN IF NOT EXISTS medical_cert_url TEXT,
 ADD COLUMN IF NOT EXISTS medical_cert_type TEXT DEFAULT 'agonistico',
 ADD COLUMN IF NOT EXISTS telegram_username TEXT,
@@ -289,6 +291,7 @@ CREATE TABLE IF NOT EXISTS public.workout_exercises (
     is_time_based BOOLEAN DEFAULT false,
     duration_seconds INTEGER,
     alternative_exercise TEXT,
+    video_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -300,7 +303,8 @@ ADD COLUMN IF NOT EXISTS rir_target TEXT,
 ADD COLUMN IF NOT EXISTS tut TEXT,
 ADD COLUMN IF NOT EXISTS is_time_based BOOLEAN DEFAULT false,
 ADD COLUMN IF NOT EXISTS duration_seconds INTEGER,
-ADD COLUMN IF NOT EXISTS alternative_exercise TEXT;
+ADD COLUMN IF NOT EXISTS alternative_exercise TEXT,
+ADD COLUMN IF NOT EXISTS video_url TEXT;
 
 -- 1.8 ATHLETE ASSIGNED WORKOUTS
 CREATE TABLE IF NOT EXISTS public.athlete_assigned_workouts (
@@ -690,6 +694,18 @@ USING (
 );
 
 -- 3.7 TABELLA: public.workout_exercises
+DROP POLICY IF EXISTS "coach_read_exercises" ON public.workout_exercises;
+CREATE POLICY "coach_read_exercises" ON public.workout_exercises
+FOR SELECT TO authenticated
+USING (
+    public.is_coach() OR 
+    EXISTS (
+        SELECT 1 FROM public.workouts w 
+        WHERE w.id::uuid = workout_exercises.workout_id::uuid 
+        AND w.coach_id::uuid = auth.uid()::uuid
+    )
+);
+
 DROP POLICY IF EXISTS "coach_manage_exercises" ON public.workout_exercises;
 DROP POLICY IF EXISTS "coach_manage_exercises_mfa" ON public.workout_exercises;
 CREATE POLICY "coach_manage_exercises_mfa" ON public.workout_exercises 
@@ -799,9 +815,9 @@ USING (
     public.is_coach() OR 
     EXISTS (
         SELECT 1 FROM public.workout_sessions ws
-        JOIN public.workouts w ON w.id::uuid = ws.workout_id::uuid
-        WHERE ws.id::uuid = exercise_logs.session_id::uuid 
-        AND w.coach_id::uuid = auth.uid()::uuid
+        JOIN public.workouts w ON w.id = ws.workout_id
+        WHERE ws.id = exercise_logs.session_id 
+        AND w.coach_id = auth.uid()::text
     )
 );
 
@@ -809,20 +825,20 @@ DROP POLICY IF EXISTS "coach_manage_logs_mfa" ON public.exercise_logs;
 CREATE POLICY "coach_manage_logs_mfa" ON public.exercise_logs 
 FOR ALL TO authenticated 
 USING (
+    public.is_coach() OR
     (EXISTS (
         SELECT 1 FROM public.workout_sessions ws
-        JOIN public.workouts w ON w.id::uuid = ws.workout_id::uuid
-        WHERE ws.id::uuid = exercise_logs.session_id::uuid AND w.coach_id::uuid = auth.uid()::uuid
-    ) OR public.is_coach())
-    AND (auth.jwt()->>'aal') = 'aal2'
+        JOIN public.workouts w ON w.id = ws.workout_id
+        WHERE ws.id = exercise_logs.session_id AND w.coach_id = auth.uid()::text
+    ) AND (auth.jwt()->>'aal') = 'aal2')
 )
 WITH CHECK (
+    public.is_coach() OR
     (EXISTS (
         SELECT 1 FROM public.workout_sessions ws
-        JOIN public.workouts w ON w.id::uuid = ws.workout_id::uuid
-        WHERE ws.id::uuid = exercise_logs.session_id::uuid AND w.coach_id::uuid = auth.uid()::uuid
-    ) OR public.is_coach())
-    AND (auth.jwt()->>'aal') = 'aal2'
+        JOIN public.workouts w ON w.id = ws.workout_id
+        WHERE ws.id = exercise_logs.session_id AND w.coach_id = auth.uid()::text
+    ) AND (auth.jwt()->>'aal') = 'aal2')
 );
 
 -- 3.11 TABELLA: public.messages
@@ -2119,6 +2135,9 @@ CREATE INDEX IF NOT EXISTS idx_athletes_auth_user_id ON public.athletes(auth_use
 CREATE INDEX IF NOT EXISTS idx_workout_sessions_athlete_start ON public.workout_sessions(athlete_id, start_time DESC);
 CREATE INDEX IF NOT EXISTS idx_workout_sessions_athlete_end ON public.workout_sessions(athlete_id, end_time DESC);
 CREATE INDEX IF NOT EXISTS idx_exercise_logs_session_id ON public.exercise_logs(session_id);
+CREATE INDEX IF NOT EXISTS idx_exercise_logs_exercise_id ON public.exercise_logs(exercise_id);
+CREATE INDEX IF NOT EXISTS idx_workout_sessions_athlete_id ON public.workout_sessions(athlete_id);
+CREATE INDEX IF NOT EXISTS idx_workout_sessions_workout_id ON public.workout_sessions(workout_id);
 CREATE INDEX IF NOT EXISTS idx_assigned_workouts_athlete_active ON public.athlete_assigned_workouts(athlete_id, is_active);
 CREATE INDEX IF NOT EXISTS idx_assigned_workouts_workout_id ON public.athlete_assigned_workouts(workout_id);
 CREATE INDEX IF NOT EXISTS idx_workout_exercises_workout_id ON public.workout_exercises(workout_id);

@@ -57,6 +57,7 @@ import { NutritionMonitoringView } from '../../components/nutrition/NutritionMon
 import { NutritionRevisionsView } from '../../components/nutrition/NutritionRevisionsView';
 import { CoachAnamnesisDossier } from '../../components/questionnaires/CoachAnamnesisDossier';
 import { AthleteAdherenceBadge } from '../../components/coach/AthleteAdherenceBadge';
+import { AdherenceRankBadge } from '../../components/common/AdherenceRankBadge';
 import { fetchAthleteAdherenceData, AdherenceScoreResult } from '../../services/adherenceService';
 import { Scale, TrendingUp, TrendingDown } from 'lucide-react';
 
@@ -707,9 +708,11 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
             {/* ── 4. DATI ANAGRAFICI ── */}
             <CollapsibleSection title="Dati Anagrafici" icon={<User className="w-4 h-4" />} defaultOpen={false} onEdit={() => { setEditModalSection('anagrafica'); setIsEditModalOpen(true); }}>
               <InfoRow label="Nome completo" value={safeFullName} />
+              <InfoRow label="Codice Fiscale" value={athlete.fiscalCode ? <span className="font-mono font-semibold tracking-wider text-slate-200">{athlete.fiscalCode}</span> : undefined} missing="Non fornito" />
               <InfoRow label="Data di nascita" value={athlete.dateOfBirth ? (<div className="flex items-center gap-2"><span>{formatDate(athlete.dateOfBirth)}</span>{athleteAge !== null && (<span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-[var(--color-primary)] border border-slate-700">{athleteAge} anni</span>)}</div>) : '—'} />
               <InfoRow label="Genere" value={athlete.gender ? ({ male: 'Uomo', female: 'Donna', other: 'Altro', prefer_not_to_say: 'Preferisce non indicare' }[athlete.gender]) : undefined} missing="Non specificato" />
-              <InfoRow label="Città" value={athlete.city ? `${athlete.city}${athlete.province ? ` (${athlete.province})` : ''}` : undefined} />
+              <InfoRow label="Indirizzo" value={athlete.address} missing="Non specificato" />
+              <InfoRow label="Città / Prov." value={athlete.city ? `${athlete.city}${athlete.province ? ` (${athlete.province})` : ''}` : (athlete.province ? athlete.province : undefined)} missing="Non specificata" />
             </CollapsibleSection>
 
             {/* ── 5. CONTATTI ── */}
@@ -780,7 +783,7 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 <div className="flex items-center justify-between"><span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pagamenti</span><PaymentStatusBadge status={athlete.paymentStatus} /></div>
                 <div className="flex items-center justify-between"><span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Coach</span><span className="text-sm text-slate-200 font-bold">{athlete.assignedCoachName || '—'}</span></div>
                 <InfoRow label="Fonte acquisizione" value={athlete.acquisitionSource ? (acquisitionSourceLabel[athlete.acquisitionSource] || athlete.acquisitionSource) : undefined} />
-                <InfoRow label="Codice Fiscale" value={athlete.fiscalCode} missing="Non fornito" />
+                <InfoRow label="Codice Fiscale" value={athlete.fiscalCode ? <span className="font-mono font-semibold tracking-wider text-slate-200">{athlete.fiscalCode}</span> : undefined} missing="Non fornito" />
                 <InfoRow label="Indirizzo" value={athlete.address} missing="Non fornito" />
               </div>
             </CollapsibleSection>
@@ -905,7 +908,13 @@ export const AthleteDetailPage: React.FC<AthleteDetailPageProps> = ({ athleteId,
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h2 className="text-2xl font-black text-white tracking-tight">{safeFullName}</h2>
                   <AthleteStatusBadge status={athlete.status} />
-                  {adherenceData && <AthleteAdherenceBadge adherence={adherenceData} />}
+                  {adherenceData && (
+                    <AdherenceRankBadge
+                      adherence={adherenceData.score}
+                      variant="full"
+                      showNextRank
+                    />
+                  )}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap font-medium">
                   {athlete.phone && (

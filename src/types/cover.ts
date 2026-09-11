@@ -39,6 +39,14 @@ export interface InstagramCoverData {
   fontBody?: string;     // Inter
   showGridCropGuide?: boolean; // Guide 1080x1080 per i Reel
   showSafeArea?: boolean;
+
+  // Logo AC in Background (Watermark)
+  showLogoWatermark?: boolean;
+  logoWatermarkOpacity?: number; // 0.04 a 0.45
+  logoWatermarkSize?: number;    // 300 a 750 px
+  logoWatermarkOffsetY?: number; // offset Y in px
+  logoWatermarkVariant?: 'white' | 'blue';
+
   updated_at?: string;
 }
 

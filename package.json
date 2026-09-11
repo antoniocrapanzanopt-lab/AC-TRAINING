@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.469.0",
     "motion": "^11.15.0",
     "pdfjs-dist": "^3.11.174",

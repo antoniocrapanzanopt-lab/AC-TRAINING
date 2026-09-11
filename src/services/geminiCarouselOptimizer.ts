@@ -1,12 +1,11 @@
 /**
- * GEMINI 3.7 FLASH CAROUSEL OPTIMIZER & DESIGN INTELLIGENCE
+ * GEMINI FLASH CAROUSEL ART DIRECTOR & GRAPHIC INTELLIGENCE
  * 
- * Modulo di intelligenza artificiale per:
- * 1. Ottimizzare e ristrutturare layout, interfaccia e impaginazione delle slide
- * 2. Posizionamento ideale delle immagini (bottom_cutout, right_side, top_half, background_full)
- * 3. Formattazione a 2 toni per i titoli (Riga 1 bianco + Riga 2 accento)
- * 4. Generazione badge categoria (■ Tag), citazioni scientifiche reali (PMID) e flussi logici
- * 5. Calibrazione automatica di font family e grandezze in pixel (px)
+ * Modulo di intelligenza artificiale che opera ESCLUSIVAMENTE come ART DIRECTOR GRAFICO.
+ * NON modifica, corregge, accorcia o riscrive mai il testo dell'utente.
+ * Il testo è sacro e immutabile.
+ * Genera esclusivamente parametri di design: tipografia, dimensioni, colori,
+ * allineamento, posizioni, layout, sfondo e accento cromatico.
  */
 
 import { generateContentWithGemini } from '../lib/ai/geminiClient';
@@ -17,229 +16,609 @@ import {
   SlideImagePosition,
   TitleFontFamily,
   BodyFontFamily,
+  SubtitleFontFamily,
+  BrandKit,
   CoverHookAlternative,
 } from '../types/carousel';
 import { InstagramContent } from '../types/inboxAndContent';
 
-interface GeminiSlideOptimizationResponse {
-  headline: string;
-  headlineHighlight?: string;
-  subheadline?: string;
-  bodyText: string;
-  layout: SlideLayoutId;
-  titleFont: TitleFontFamily;
-  bodyFont: BodyFontFamily;
-  titleFontSizePx: number;
-  bodyFontSizePx: number;
-  textAlign: 'left' | 'center' | 'right';
-  categoryTag?: string;
-  citationSource?: string;
-  punchlineQuote?: string;
-  diagramStep1?: string;
-  diagramStep2?: string;
-  diagramHighlightResult?: string;
-  bulletPoints?: string[];
-  visualCue?: string;
-  takeawayTag?: string;
-  imagePosition?: SlideImagePosition;
-  imageOpacity?: number;
-  wrongText?: string;
-  correctText?: string;
-}
+export type ArtDirectionFocus =
+  | 'typography_hierarchy'
+  | 'positioning_layout'
+  | 'palette_contrast'
+  | 'background_texture'
+  | 'brand_kit_coherence';
 
-export type CarouselAIOperationType =
-  | 'improve_all'
-  | 'improve_title'
-  | 'reduce_text'
-  | 'make_direct'
-  | 'make_technical'
-  | 'make_persuasive'
-  | 'convert_bullets'
-  | 'generate_alternatives'
-  | 'check_clarity';
+export type ArtDirectionIntensity = 'light' | 'medium' | 'strong';
 
-export interface AIOperationOption {
-  id: CarouselAIOperationType;
+export interface ArtDirectionFocusOption {
+  id: ArtDirectionFocus;
   label: string;
   desc: string;
   icon: string;
 }
 
-export const CAROUSEL_AI_OPERATIONS: AIOperationOption[] = [
-  { id: 'improve_title', label: 'Migliora solo il titolo', desc: 'Titolo a due toni magnetico, grande e incisivo', icon: '📝' },
-  { id: 'reduce_text', label: 'Riduci testo (<40 parole)', desc: 'Sintetizza per massima leggibilità da smartphone', icon: '✂️' },
-  { id: 'make_direct', label: 'Rendi più diretto & hook forte', desc: 'Elimina preamboli, vai dritto al punto con impatto', icon: '⚡' },
-  { id: 'make_technical', label: 'Rendi più tecnico & scientifico', desc: 'Usa biomeccanica, leve e kinesiologia del Metodo AC', icon: '🧬' },
-  { id: 'make_persuasive', label: 'Rendi più persuasivo (CTA & Save)', desc: 'Spingi alla conservazione e interazione nel post', icon: '🎯' },
-  { id: 'convert_bullets', label: 'Crea una lista a punti', desc: 'Riorganizza il testo in 3-4 punti pratici numerati', icon: '🔢' },
-  { id: 'generate_alternatives', label: 'Genera 3 alternative', desc: 'Riformula con diversa angolazione e impatto', icon: '🔄' },
-  { id: 'check_clarity', label: 'Controlla chiarezza & errori', desc: 'Verifica punteggiatura, leggibilità e fluidità', icon: '🔍' },
-  { id: 'improve_all', label: 'Migliora tutta la slide', desc: 'Ottimizza layout, impaginazione, font e posizionamento', icon: '✨' },
+export const ART_DIRECTION_FOCUS_OPTIONS: ArtDirectionFocusOption[] = [
+  { id: 'typography_hierarchy', label: 'Gerarchia tipografica', desc: 'Contrasto pesi, font e grandezze titoli/corpo', icon: '📝' },
+  { id: 'positioning_layout', label: 'Posizionamento & Margini', desc: 'Centratura, offset verticali e ingombri safe area', icon: '📐' },
+  { id: 'palette_contrast', label: 'Palette e contrasto', desc: 'Visibilità mobile, colori accento e tonalità', icon: '🎨' },
+  { id: 'background_texture', label: 'Sfondo & Texture', desc: 'Glow atmosferico, gradiente dark e profondità', icon: '🌌' },
+  { id: 'brand_kit_coherence', label: 'Coerenza Brand Kit', desc: 'Armonia con colori ufficiali e font del brand', icon: '👑' },
 ];
 
+export interface ArtDirectorStyleProposal {
+  // Tipografia Titolo (Riga 1)
+  titleFont?: TitleFontFamily;
+  titleFontSizePx?: number;
+  titleBold?: boolean;
+  titleColor?: string;
+
+  // Tipografia Riga 2 Evidenziata
+  highlightFont?: TitleFontFamily;
+  highlightFontSizePx?: number;
+  highlightBold?: boolean;
+  highlightColor?: string;
+
+  // Tipografia Sottotitolo
+  subtitleFont?: SubtitleFontFamily;
+  subtitleFontSizePx?: number;
+  subtitleBold?: boolean;
+  subtitleColor?: string;
+
+  // Tipografia Corpo
+  bodyFont?: BodyFontFamily;
+  bodyFontSizePx?: number;
+  bodyBold?: boolean;
+  bodyColor?: string;
+
+  // Allineamento e posizionamento
+  textAlign?: 'left' | 'center' | 'right';
+  titleOffsetY?: number;
+  contentOffsetY?: number;
+
+  // Layout e Immagine
+  layout?: SlideLayoutId;
+  imagePosition?: SlideImagePosition;
+  imageOpacity?: number;
+
+  // Sfondo & Accento
+  bgColor?: string;
+  accentColor?: string;
+  backgroundType?: 'solid' | 'gradient' | 'ambient_glow';
+  backgroundTexture?: 'clean' | 'subtle_grid' | 'tech_corners' | 'ambient_glow';
+
+  // Nota sintetica stilistica (solo estetica/tecnica, mai testo)
+  notes?: string;
+
+  // Metadati di diagnosi
+  isFallback?: boolean;
+  intensity?: ArtDirectionIntensity;
+  appliedFocuses?: ArtDirectionFocus[];
+}
+
+export interface ArtDirectorResult {
+  proposal: ArtDirectorStyleProposal;
+  appliedSlide: CarouselSlide;
+  originalSlide: CarouselSlide;
+  isFallback: boolean;
+}
+
+const VALID_TITLE_FONTS: TitleFontFamily[] = ['Inter', 'Outfit', 'Montserrat', 'Bebas Neue'];
+const VALID_BODY_FONTS: BodyFontFamily[] = ['Inter', 'Roboto', 'Montserrat', 'Outfit', 'System'];
+const VALID_SUBTITLE_FONTS: SubtitleFontFamily[] = ['Inter', 'Outfit', 'Montserrat', 'Bebas Neue', 'Roboto', 'System'];
+const VALID_LAYOUTS: SlideLayoutId[] = [
+  'text_left',
+  'text_right',
+  'text_center',
+  'dual_tone_cover',
+  'connected_icon_list',
+  'diagram_flow',
+  'photo_dominant',
+  'text_over_image',
+  'numbered_list',
+  'step_by_step',
+  'final_cta',
+  'error_vs_correct',
+  'product_breakdown',
+];
+const VALID_IMAGE_POSITIONS: SlideImagePosition[] = ['bottom_cutout', 'right_side', 'top_half', 'background_full'];
+
+const HEX_COLOR_REGEX = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
+
 /**
- * Ottimizza una singola slide con Google Gemini 3.8 Flash con supporto per azione contestuale specifica
+ * Fallback "Editorial Dark": applica il preset di default garantito in caso di offline o JSON non valido
+ */
+export function getDefaultEditorialDarkProposal(
+  slide: CarouselSlide,
+  slideIndex: number,
+  totalSlides: number,
+  brandKit?: Partial<BrandKit>
+): ArtDirectorStyleProposal {
+  const isCover = slideIndex === 0 || slide.type === 'cover';
+  const isCta = slideIndex === totalSlides - 1 || slide.type === 'cta';
+
+  const totalWords = (slide.headline + ' ' + (slide.subheadline || '') + ' ' + (slide.bodyText || ''))
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+
+  // Se il testo è molto lungo, riduciamo solo la dimensione del font, MAI tagliare o riscrivere parole
+  let titleSize = isCover ? 64 : 50;
+  let bodySize = 26;
+  if (totalWords > 55) {
+    titleSize = isCover ? 52 : 40;
+    bodySize = 22;
+  } else if (totalWords > 40) {
+    titleSize = isCover ? 56 : 46;
+    bodySize = 24;
+  }
+
+  const primaryBg = brandKit?.primaryColor || '#070A10';
+  const accent = brandKit?.accentColor || '#F59E0B';
+
+  return {
+    titleFont: brandKit?.titleFont || 'Bebas Neue',
+    titleFontSizePx: titleSize,
+    titleBold: true,
+    titleColor: '#FFFFFF',
+    highlightFont: brandKit?.titleFont || 'Bebas Neue',
+    highlightFontSizePx: titleSize,
+    highlightBold: true,
+    highlightColor: accent,
+    subtitleFont: 'Inter',
+    subtitleFontSizePx: isCover ? 28 : 24,
+    subtitleBold: true,
+    subtitleColor: isCover ? '#E2E8F0' : accent,
+    bodyFont: brandKit?.bodyFont || 'Inter',
+    bodyFontSizePx: bodySize,
+    bodyBold: false,
+    bodyColor: isCover ? '#CBD5E1' : '#94A3B8',
+    textAlign: isCover ? 'center' : 'left',
+    layout: isCover ? 'dual_tone_cover' : isCta ? 'final_cta' : (slide.layout || 'text_left'),
+    titleOffsetY: 0,
+    contentOffsetY: 0,
+    imagePosition: slide.imagePosition || 'bottom_cutout',
+    imageOpacity: slide.imageOpacity ?? 0.6,
+    bgColor: primaryBg,
+    accentColor: accent,
+    backgroundType: 'solid',
+    backgroundTexture: 'clean',
+    notes: 'Stile Dark Editorial: gerarchia ad alto contrasto con accento oro e sfondo ossidiana profondo.',
+    isFallback: true,
+  };
+}
+
+/**
+ * Validazione rigida del JSON in ingresso:
+ * Se contiene chiavi che alterano il testo (o se il testo è stato modificato), la risposta è considerata invalida.
+ */
+function validateAndSanitizeArtDirectorJSON(
+  rawJson: unknown,
+  originalSlide: CarouselSlide
+): ArtDirectorStyleProposal | null {
+  if (!rawJson || typeof rawJson !== 'object') {
+    return null;
+  }
+
+  const obj = rawJson as Record<string, unknown>;
+
+  // CONTROLLO RIGIDO: se l'oggetto contiene chiavi testuali con stringhe diverse dall'originale, scarta la risposta!
+  const textKeysToCheck = [
+    'headline',
+    'headlineHighlight',
+    'subheadline',
+    'bodyText',
+    'wrongText',
+    'correctText',
+    'bulletPoints',
+    'rewrittenText',
+    'text',
+    'content',
+  ];
+
+  for (const k of textKeysToCheck) {
+    if (k in obj) {
+      const val = obj[k];
+      if (typeof val === 'string' && val.trim() !== '') {
+        const origVal = (originalSlide as unknown as Record<string, unknown>)[k];
+        if (typeof origVal === 'string' && origVal.trim() !== val.trim()) {
+          console.warn(`[ArtDirector Validation] Tentativo di alterare il testo rilevato nella chiave "${k}". Risposta scartata.`);
+          return null;
+        }
+      } else if (Array.isArray(val)) {
+        console.warn(`[ArtDirector Validation] Array di testo rilevato nella chiave "${k}". Risposta scartata.`);
+        return null;
+      }
+    }
+  }
+
+  // Estrai sia da struttura annidata (typography, layout, background) che flat
+  const typography = (obj.typography && typeof obj.typography === 'object' ? obj.typography : obj) as Record<string, unknown>;
+  const layout = (obj.layout && typeof obj.layout === 'object' ? obj.layout : obj) as Record<string, unknown>;
+  const background = (obj.background && typeof obj.background === 'object' ? obj.background : obj) as Record<string, unknown>;
+
+  const proposal: ArtDirectorStyleProposal = {};
+
+  // 1. Tipografia Titolo
+  if (typeof typography.titleFont === 'string' && VALID_TITLE_FONTS.includes(typography.titleFont as TitleFontFamily)) {
+    proposal.titleFont = typography.titleFont as TitleFontFamily;
+  }
+  if (typeof typography.titleFontSizePx === 'number' && typography.titleFontSizePx >= 28 && typography.titleFontSizePx <= 84) {
+    proposal.titleFontSizePx = Math.round(typography.titleFontSizePx);
+  } else if (typeof typography.titleFontSize === 'number') {
+    proposal.titleFontSizePx = Math.max(28, Math.min(84, Math.round(typography.titleFontSize)));
+  }
+  if (typeof typography.titleBold === 'boolean') {
+    proposal.titleBold = typography.titleBold;
+  }
+  if (typeof typography.titleColor === 'string' && HEX_COLOR_REGEX.test(typography.titleColor)) {
+    proposal.titleColor = typography.titleColor;
+  }
+
+  // 2. Tipografia Riga 2 Evidenziata
+  if (typeof typography.highlightFont === 'string' && VALID_TITLE_FONTS.includes(typography.highlightFont as TitleFontFamily)) {
+    proposal.highlightFont = typography.highlightFont as TitleFontFamily;
+  }
+  if (typeof typography.highlightFontSizePx === 'number' && typography.highlightFontSizePx >= 28 && typography.highlightFontSizePx <= 84) {
+    proposal.highlightFontSizePx = Math.round(typography.highlightFontSizePx);
+  }
+  if (typeof typography.highlightBold === 'boolean') {
+    proposal.highlightBold = typography.highlightBold;
+  }
+  if (typeof typography.highlightColor === 'string' && HEX_COLOR_REGEX.test(typography.highlightColor)) {
+    proposal.highlightColor = typography.highlightColor;
+  }
+
+  // 3. Tipografia Sottotitolo
+  if (typeof typography.subtitleFont === 'string' && VALID_SUBTITLE_FONTS.includes(typography.subtitleFont as SubtitleFontFamily)) {
+    proposal.subtitleFont = typography.subtitleFont as SubtitleFontFamily;
+  }
+  if (typeof typography.subtitleFontSizePx === 'number' && typography.subtitleFontSizePx >= 18 && typography.subtitleFontSizePx <= 52) {
+    proposal.subtitleFontSizePx = Math.round(typography.subtitleFontSizePx);
+  }
+  if (typeof typography.subtitleBold === 'boolean') {
+    proposal.subtitleBold = typography.subtitleBold;
+  }
+  if (typeof typography.subtitleColor === 'string' && HEX_COLOR_REGEX.test(typography.subtitleColor)) {
+    proposal.subtitleColor = typography.subtitleColor;
+  }
+
+  // 4. Tipografia Corpo
+  if (typeof typography.bodyFont === 'string' && VALID_BODY_FONTS.includes(typography.bodyFont as BodyFontFamily)) {
+    proposal.bodyFont = typography.bodyFont as BodyFontFamily;
+  }
+  if (typeof typography.bodyFontSizePx === 'number' && typography.bodyFontSizePx >= 18 && typography.bodyFontSizePx <= 40) {
+    proposal.bodyFontSizePx = Math.round(typography.bodyFontSizePx);
+  } else if (typeof typography.bodyFontSize === 'number') {
+    proposal.bodyFontSizePx = Math.max(18, Math.min(40, Math.round(typography.bodyFontSize)));
+  }
+  if (typeof typography.bodyBold === 'boolean') {
+    proposal.bodyBold = typography.bodyBold;
+  }
+  if (typeof typography.bodyColor === 'string' && HEX_COLOR_REGEX.test(typography.bodyColor)) {
+    proposal.bodyColor = typography.bodyColor;
+  }
+
+  // 5. Allineamento e Posizioni
+  const alignVal = (layout.alignment || layout.textAlign) as string;
+  if (alignVal === 'left' || alignVal === 'center' || alignVal === 'right') {
+    proposal.textAlign = alignVal;
+  }
+
+  const layoutIdVal = (layout.layoutId || layout.layout) as string;
+  if (typeof layoutIdVal === 'string' && VALID_LAYOUTS.includes(layoutIdVal as SlideLayoutId)) {
+    proposal.layout = layoutIdVal as SlideLayoutId;
+  }
+
+  if (typeof layout.titleOffsetY === 'number') {
+    proposal.titleOffsetY = Math.max(-150, Math.min(150, Math.round(layout.titleOffsetY)));
+  }
+  if (typeof layout.contentOffsetY === 'number') {
+    proposal.contentOffsetY = Math.max(-150, Math.min(150, Math.round(layout.contentOffsetY)));
+  }
+
+  const imgPosVal = (layout.imagePosition || obj.imagePosition) as string;
+  if (typeof imgPosVal === 'string' && VALID_IMAGE_POSITIONS.includes(imgPosVal as SlideImagePosition)) {
+    proposal.imagePosition = imgPosVal as SlideImagePosition;
+  }
+
+  const imgOpacityVal = layout.imageOpacity ?? obj.imageOpacity;
+  if (typeof imgOpacityVal === 'number' && imgOpacityVal >= 0 && imgOpacityVal <= 1) {
+    proposal.imageOpacity = Math.round(imgOpacityVal * 100) / 100;
+  }
+
+  // 6. Sfondo e Accento
+  const bgCol = (background.bgColor || background.primaryColor || obj.bgColor) as string;
+  if (typeof bgCol === 'string' && HEX_COLOR_REGEX.test(bgCol)) {
+    proposal.bgColor = bgCol;
+  }
+
+  const accCol = (background.accentColor || obj.accentColor) as string;
+  if (typeof accCol === 'string' && HEX_COLOR_REGEX.test(accCol)) {
+    proposal.accentColor = accCol;
+  }
+
+  const bgType = (background.type || background.backgroundType) as string;
+  if (bgType === 'solid' || bgType === 'gradient' || bgType === 'ambient_glow') {
+    proposal.backgroundType = bgType;
+  }
+
+  const bgTexture = (background.texture || background.backgroundTexture) as string;
+  if (bgTexture === 'clean' || bgTexture === 'subtle_grid' || bgTexture === 'tech_corners' || bgTexture === 'ambient_glow') {
+    proposal.backgroundTexture = bgTexture;
+  }
+
+  // Estrai note estetiche/tecniche dell'Art Director (max 200 caratteri)
+  if (typeof obj.notes === 'string' && obj.notes.trim()) {
+    proposal.notes = obj.notes.trim().slice(0, 250);
+  }
+
+  return proposal;
+}
+
+/**
+ * Applica i parametri grafici proposti alla slide ESISTENTE.
+ * GARANZIA DI IMMUTABILITÀ: Nessun testo (titolo, sottotitolo, corpo, bullet, correzioni) viene toccato.
+ */
+export function applyArtDirectorStyleToSlide(
+  slide: CarouselSlide,
+  proposal: ArtDirectorStyleProposal
+): CarouselSlide {
+  return {
+    ...slide,
+    // TESTI RIGOROSAMENTE INTATTI E IMMUTABILI:
+    headline: slide.headline,
+    headlineHighlight: slide.headlineHighlight,
+    subheadline: slide.subheadline,
+    bodyText: slide.bodyText,
+    wrongText: slide.wrongText,
+    correctText: slide.correctText,
+    bulletPoints: slide.bulletPoints,
+    diagramStep1: slide.diagramStep1,
+    diagramStep2: slide.diagramStep2,
+    diagramHighlightResult: slide.diagramHighlightResult,
+    citationSource: slide.citationSource,
+    categoryTag: slide.categoryTag,
+    takeawayTag: slide.takeawayTag,
+    punchlineQuote: slide.punchlineQuote,
+
+    // PARAMETRI GRAFICI APPLICATI:
+    titleFont: proposal.titleFont ?? slide.titleFont,
+    titleFontSizePx: proposal.titleFontSizePx ?? slide.titleFontSizePx,
+    titleBold: proposal.titleBold !== undefined ? proposal.titleBold : slide.titleBold,
+    titleColor: proposal.titleColor ?? slide.titleColor,
+
+    highlightFont: proposal.highlightFont ?? slide.highlightFont,
+    highlightFontSizePx: proposal.highlightFontSizePx ?? slide.highlightFontSizePx,
+    highlightBold: proposal.highlightBold !== undefined ? proposal.highlightBold : slide.highlightBold,
+    highlightColor: proposal.highlightColor ?? slide.highlightColor,
+
+    subtitleFont: proposal.subtitleFont ?? slide.subtitleFont,
+    subtitleFontSizePx: proposal.subtitleFontSizePx ?? slide.subtitleFontSizePx,
+    subtitleBold: proposal.subtitleBold !== undefined ? proposal.subtitleBold : slide.subtitleBold,
+    subtitleColor: proposal.subtitleColor ?? slide.subtitleColor,
+
+    bodyFont: proposal.bodyFont ?? slide.bodyFont,
+    bodyFontSizePx: proposal.bodyFontSizePx ?? slide.bodyFontSizePx,
+    bodyBold: proposal.bodyBold !== undefined ? proposal.bodyBold : slide.bodyBold,
+    bodyColor: proposal.bodyColor ?? slide.bodyColor,
+
+    textAlign: proposal.textAlign ?? slide.textAlign,
+    titleOffsetY: proposal.titleOffsetY !== undefined ? proposal.titleOffsetY : slide.titleOffsetY,
+    contentOffsetY: proposal.contentOffsetY !== undefined ? proposal.contentOffsetY : slide.contentOffsetY,
+
+    layout: proposal.layout ?? slide.layout,
+    imagePosition: proposal.imagePosition ?? slide.imagePosition,
+    imageOpacity: proposal.imageOpacity !== undefined ? proposal.imageOpacity : slide.imageOpacity,
+
+    bgColor: proposal.bgColor ?? slide.bgColor,
+    accentColor: proposal.accentColor ?? slide.accentColor,
+    isAiSuggested: true,
+  };
+}
+
+/**
+ * Chiamata a Google Gemini Flash come ART DIRECTOR GRAFICO PURO.
+ */
+export async function generateArtDirectionForSlide(
+  slide: CarouselSlide,
+  _content: Partial<InstagramContent>,
+  slideIndex: number,
+  totalSlides: number,
+  options: {
+    focus?: ArtDirectionFocus[];
+    intensity?: ArtDirectionIntensity;
+    brandKit?: Partial<BrandKit>;
+    currentTemplateId?: string;
+  } = {}
+): Promise<ArtDirectorResult> {
+  const {
+    focus = ['typography_hierarchy', 'palette_contrast', 'positioning_layout'],
+    intensity = 'medium',
+    brandKit,
+    currentTemplateId = 'editorial_dark',
+  } = options;
+
+  const isCover = slideIndex === 0 || slide.type === 'cover';
+  const isCta = slideIndex === totalSlides - 1 || slide.type === 'cta';
+
+  // Conteggi dimensionali (ingombri)
+  const headlineWords = (slide.headline || '').trim().split(/\s+/).filter(Boolean).length;
+  const highlightWords = (slide.headlineHighlight || '').trim().split(/\s+/).filter(Boolean).length;
+  const subtitleWords = (slide.subheadline || '').trim().split(/\s+/).filter(Boolean).length;
+  const bodyWords = (slide.bodyText || '').trim().split(/\s+/).filter(Boolean).length;
+  const totalWords = headlineWords + highlightWords + subtitleWords + bodyWords;
+
+  // SYSTEM PROMPT RIGOROSO COME DA SPECIFICA UTENTE
+  const systemPrompt = `Sei un art director specializzato in caroselli Instagram per un fitness coach premium. Ricevi il testo di una slide SOLO per valutarne ingombro e gerarchia visiva. NON modificare, correggere, riscrivere, tradurre o riassumere il testo: restituiscilo concettualmente invariato. Il tuo output deve essere ESCLUSIVAMENTE un JSON valido con parametri di design: tipografia (font, size, weight, lineHeight, letterSpacing, color), layout (alignment, posizioni, margini, maxWidth, safeArea), background (tipo, colori, texture) e accento cromatico. Nessun testo libero, nessuna spiegazione, nessuna chiave testuale riscritta.`;
+
+  const focusDescriptions = focus
+    .map((f) => {
+      const opt = ART_DIRECTION_FOCUS_OPTIONS.find((o) => o.id === f);
+      return opt ? `- ${opt.label}: ${opt.desc}` : `- ${f}`;
+    })
+    .join('\n');
+
+  const intensityInstruction =
+    intensity === 'light'
+      ? 'Intensità LEGGERA: mantieni quasi inalterato il layout, perfeziona solo il contrasto di colori e calibra minuziosamente i font in pixel.'
+      : intensity === 'strong'
+      ? 'Intensità DECISA: puoi proporre layout strutturali avanzati, forti contrasti cromatici e layout audaci coerenti con il Metodo AC.'
+      : 'Intensità MEDIA: equilibrio ottimale tra contrasto visivo, leggibilità mobile e posizionamento calibrato dei blocchi.';
+
+  const userPrompt = `VALUTAZIONE GRAFICA SLIDE ${slideIndex + 1} di ${totalSlides} (Formato 1080x1350, Ratio 4:5):
+
+CONTESTO FORMATO E SAFE AREA:
+- Risoluzione: 1080 × 1350 pixel
+- Safe Area superiore: 140px (per header IG e profilo)
+- Safe Area inferiore: 140px (per barra interazione IG)
+- Margine orizzontale utile: 80px (larghezza contenuto max 920px)
+
+INGOMBRO TESTUALE ATTUALE (RIFERIMENTO DI DIMENSIONE E SPAZIALITÀ):
+- Titolo Riga 1: ${headlineWords} parole ("${slide.headline.slice(0, 40)}...")
+- Riga 2 Evidenziata: ${highlightWords} parole ("${(slide.headlineHighlight || '').slice(0, 30)}...")
+- Sottotitolo: ${subtitleWords} parole
+- Corpo Spiegazione: ${bodyWords} parole
+- Totale parole slide: ${totalWords} parole.
+REGOLA CRITICA: Se il testo è lungo (${totalWords} parole), PUOI SOLO ridurre le dimensioni dei font (es. bodyFontSizePx a 22-24px, titleFontSizePx a 44-48px) o regolare titleOffsetY/contentOffsetY. NON TAGLIARE NÉ RISCRIVERE MAI PAROLE.
+
+DATI DI PROGETTO E BRAND KIT:
+- Tipo slide: ${slide.type || (isCover ? 'cover' : isCta ? 'cta' : 'practical_guide')}
+- Template grafico attivo: ${currentTemplateId}
+- Brand Kit primario: ${brandKit?.primaryColor || '#070A10'}
+- Brand Kit accento: ${brandKit?.accentColor || '#F59E0B'}
+- Font Titolo Brand: ${brandKit?.titleFont || 'Bebas Neue'}
+- Font Corpo Brand: ${brandKit?.bodyFont || 'Inter'}
+- Ha già immagine caricata: ${Boolean(slide.imageUrl)}
+
+FOCUS ART DIRECTION RICHIESTI DALL'UTENTE:
+${focusDescriptions}
+
+LIVELLO INTENSITÀ:
+${intensityInstruction}
+
+RESTITUISCI ESCLUSIVAMENTE QUESTO SCHEMA JSON (Nessuna chiave di riscrittura testo):
+{
+  "typography": {
+    "titleFont": "Bebas Neue" | "Montserrat" | "Outfit" | "Inter",
+    "titleFontSizePx": 52,
+    "titleBold": true,
+    "titleColor": "#FFFFFF",
+    "highlightFont": "Bebas Neue" | "Montserrat" | "Outfit" | "Inter",
+    "highlightFontSizePx": 52,
+    "highlightBold": true,
+    "highlightColor": "#F59E0B",
+    "subtitleFont": "Inter" | "Outfit" | "Montserrat",
+    "subtitleFontSizePx": 26,
+    "subtitleBold": true,
+    "subtitleColor": "#E2E8F0",
+    "bodyFont": "Inter" | "Roboto" | "Montserrat" | "Outfit",
+    "bodyFontSizePx": 26,
+    "bodyBold": false,
+    "bodyColor": "#CBD5E1"
+  },
+  "layout": {
+    "alignment": "left" | "center" | "right",
+    "layoutId": "dual_tone_cover" | "text_left" | "connected_icon_list" | "diagram_flow" | "error_vs_correct" | "step_by_step" | "numbered_list" | "final_cta",
+    "titleOffsetY": 0,
+    "contentOffsetY": 0,
+    "imagePosition": "bottom_cutout" | "right_side" | "top_half" | "background_full",
+    "imageOpacity": 0.6
+  },
+  "background": {
+    "type": "solid" | "gradient" | "ambient_glow",
+    "bgColor": "#070A10",
+    "accentColor": "#F59E0B",
+    "texture": "clean" | "subtle_grid" | "tech_corners" | "ambient_glow"
+  },
+  "notes": "Spiegazione sintetica (max 1 frase) delle scelte stilistiche grafiche adottate"
+}`;
+
+  try {
+    const aiResult = await generateContentWithGemini({
+      systemPrompt,
+      userPrompt,
+      model: 'gemini-3.8-flash',
+      temperature: 0.3,
+      responseMimeType: 'application/json',
+    });
+
+    const cleanedText = aiResult.text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+    const parsedRaw = JSON.parse(cleanedText);
+
+    const validatedProposal = validateAndSanitizeArtDirectorJSON(parsedRaw, slide);
+
+    if (validatedProposal) {
+      validatedProposal.appliedFocuses = focus;
+      validatedProposal.intensity = intensity;
+      validatedProposal.isFallback = false;
+
+      const applied = applyArtDirectorStyleToSlide(slide, validatedProposal);
+      return {
+        proposal: validatedProposal,
+        appliedSlide: applied,
+        originalSlide: slide,
+        isFallback: false,
+      };
+    } else {
+      console.warn('[ArtDirector] JSON non valido o tentata alterazione testuale: applico fallback Editorial Dark.');
+    }
+  } catch (err) {
+    console.warn('[ArtDirector] Errore chiamata Gemini o parse JSON, applico fallback Editorial Dark:', err);
+  }
+
+  // Fallback garantito "Editorial Dark"
+  const fallbackProposal = getDefaultEditorialDarkProposal(slide, slideIndex, totalSlides, brandKit);
+  fallbackProposal.appliedFocuses = focus;
+  fallbackProposal.intensity = intensity;
+
+  const appliedFallback = applyArtDirectorStyleToSlide(slide, fallbackProposal);
+  return {
+    proposal: fallbackProposal,
+    appliedSlide: appliedFallback,
+    originalSlide: slide,
+    isFallback: true,
+  };
+}
+
+/**
+ * Ottimizza una singola slide come Art Director Grafico (retrocompatibilità per vecchi chiamanti).
+ * Garantisce l'immutabilità del testo.
  */
 export async function optimizeSlideWithGemini(
   slide: CarouselSlide,
   content: Partial<InstagramContent>,
   slideIndex: number,
   totalSlides: number,
-  action: CarouselAIOperationType = 'improve_all'
+  _action?: string
 ): Promise<CarouselSlide> {
-  const isCover = slideIndex === 0;
-  const isCta = slideIndex === totalSlides - 1;
-
-  const systemPrompt = `Sei un Art Director ed Esperto di Comunicazione Visiva e Biomeccanica per Instagram Caroselli (Fitness & Performance Coaching di altissimo livello).
-Il tuo obiettivo è riscrivere e formattare la slide per renderla esteticamente magnetica, scientificamente autorevole e graficamente impeccabile.
-
-Regole di design per i Caroselli Coaching:
-1. TITOLO A 2 TONI: Dividi il titolo in Riga 1 ("headline" - massimo 4-5 parole in maiuscolo) e Riga 2 ("headlineHighlight" - 2-4 parole ad alto impatto in colore accento).
-2. LAYOUT: Scegli il layout più efficace:
-   - "dual_tone_cover" per la copertina
-   - "connected_icon_list" per elenchi a punti chiave con nodi e icone
-   - "diagram_flow" per spiegazioni scientifiche, premesse e risultati
-   - "error_vs_correct" per confronti Errore vs Tecnica Corretta
-   - "step_by_step" per progressioni pratiche
-   - "numbered_list" per regole o recap
-   - "final_cta" per la slide finale
-3. IMMAGINE: Scegli la posizione ideale ("bottom_cutout" se il testo è in alto e la figura è in basso, "right_side" per split 50/50, "top_half" o "background_full").
-4. FONTS E PIXEL:
-   - titleFont: "Bebas Neue" (impatto alto), "Montserrat" (geometrico/biomeccanico), "Outfit" o "Inter".
-   - titleFontSizePx: tra 44px e 68px.
-   - bodyFontSizePx: tra 22px e 30px.
-5. CATEGORIA & FONTI:
-   - categoryTag: tag in maiuscolo preceduto da "■ " (es. "■ FISIOLOGIA DELL'ALLENAMENTO", "■ BIOMECCANICA DELLO SQUAT").
-   - citationSource: paper scientifico reale con PMID se pertinente (es. "Pelland et al 2022: PMID 35247203", "Schoenfeld et al 2021: PMID 33433148").
-
-Rispondi ESCLUSIVAMENTE in formato JSON valido senza blocchi markdown.`;
-
-  let actionInstruction = '';
-  switch (action) {
-    case 'improve_title':
-      actionInstruction = `OBIETTIVO PRIORITARIO: Concentrati sul TITOLO. Riscrivi "headline" e "headlineHighlight" in modo che siano irresistibili, brevi (3-6 parole) e ad altissimo impatto visivo. Mantieni il corpo del testo fedele all'originale.`;
-      break;
-    case 'reduce_text':
-      actionInstruction = `OBIETTIVO PRIORITARIO: SINTESI ESTREMA. Riduci il testo del corpo ("bodyText") sotto le 35-40 parole totali. Elimina prolissità e parole riempitive. Ogni frase deve essere un pugno informativo pulito e rapido per smartphone.`;
-      break;
-    case 'make_direct':
-      actionInstruction = `OBIETTIVO PRIORITARIO: COMUNICAZIONE DIRETTA E PUNCHY. Elimina preamboli. Esprimi la regola o l'errore senza mezzi termini. Hook forte ed energico.`;
-      break;
-    case 'make_technical':
-      actionInstruction = `OBIETTIVO PRIORITARIO: AUTOREVOLEZZA BIOMECCANICA E KINESIOLOGICA. Utilizza i termini scientifici corretti (bracci di leva, tensione meccanica, punto di allungamento, curva di resistenza). Se opportuno, compila o aggiorna "citationSource".`;
-      break;
-    case 'make_persuasive':
-      actionInstruction = `OBIETTIVO PRIORITARIO: RETENTION E INTERAZIONE. Spingi il lettore a salvare il post e commentare. Formula una chiusura incisiva e motivante.`;
-      break;
-    case 'convert_bullets':
-      actionInstruction = `OBIETTIVO PRIORITARIO: TRASFORMAZIONE IN PUNTI ELENCO. Converti il corpo del testo in 3 o 4 bullet points pratici e concisi (array "bulletPoints") e imposta layout su "numbered_list" o "connected_icon_list".`;
-      break;
-    case 'generate_alternatives':
-      actionInstruction = `OBIETTIVO PRIORITARIO: GENERAZIONE ALTERNATIVE CREATIVE. Esplora 3 angolazioni comunicative diverse per questa slide (approccio provocatorio, approccio biomeccanico scientifico, approccio pratico per la palestra). Seleziona la formulazione più potente e magnetica sia per il titolo sia per il corpo.`;
-      break;
-    case 'check_clarity':
-      actionInstruction = `OBIETTIVO PRIORITARIO: MASSIMA CHIAREZZA E LEGGIBILITÀ. Correggi punteggiatura, spaziature, ritorni a capo ed elimina ambiguità semantiche.`;
-      break;
-    default:
-      actionInstruction = `OBIETTIVO PRIORITARIO: Ottimizza a 360° la slide per layout, titolo a 2 toni, leggibilità mobile e valore formativo.`;
-  }
-
-  const userPrompt = `Ottimizza questa slide (${slideIndex + 1} di ${totalSlides}) del carosello:
-Argomento Generale: ${content.title || 'Allenamento e Biomeccanica'}
-Gancio: ${content.hook || ''}
-Pillar: ${content.pillar || 'technique_execution'}
-Azione Richiesta: ${action}
-${actionInstruction}
-
-Stato Attuale Slide:
-- Titolo attuale: ${slide.headline}
-- Evidenziazione attuale: ${slide.headlineHighlight || ''}
-- Sottotitolo: ${slide.subheadline || ''}
-- Testo corpo: ${slide.bodyText}
-- Tipo slide: ${slide.type}
-- Layout attuale: ${slide.layout || 'standard'}
-- Ha già immagine caricata: ${Boolean(slide.imageUrl)}
-
-Genera l'oggetto JSON con:
-{
-  "headline": "string",
-  "headlineHighlight": "string",
-  "subheadline": "string",
-  "bodyText": "string",
-  "layout": "dual_tone_cover" | "connected_icon_list" | "diagram_flow" | "error_vs_correct" | "step_by_step" | "numbered_list" | "final_cta" | "text_left",
-  "titleFont": "Bebas Neue" | "Montserrat" | "Outfit" | "Inter",
-  "bodyFont": "Inter" | "Roboto" | "Montserrat" | "Outfit",
-  "titleFontSizePx": number,
-  "bodyFontSizePx": number,
-  "textAlign": "left" | "center" | "right",
-  "categoryTag": "string",
-  "citationSource": "string",
-  "punchlineQuote": "string",
-  "diagramStep1": "string",
-  "diagramStep2": "string",
-  "diagramHighlightResult": "string",
-  "bulletPoints": ["string"],
-  "visualCue": "string",
-  "takeawayTag": "string",
-  "imagePosition": "bottom_cutout" | "right_side" | "top_half" | "background_full",
-  "imageOpacity": number,
-  "wrongText": "string",
-  "correctText": "string"
-}`;
-
-  const aiResult = await generateContentWithGemini({
-    systemPrompt,
-    userPrompt,
-    model: 'gemini-3.8-flash',
-    temperature: 0.5,
-  });
-
-  const cleanedText = aiResult.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  const parsed = JSON.parse(cleanedText) as GeminiSlideOptimizationResponse;
-
-  return {
-    ...slide,
-    headline: parsed.headline || slide.headline,
-    headlineHighlight: parsed.headlineHighlight !== undefined ? parsed.headlineHighlight : slide.headlineHighlight,
-    subheadline: parsed.subheadline !== undefined ? parsed.subheadline : slide.subheadline,
-    bodyText: parsed.bodyText !== undefined ? parsed.bodyText : slide.bodyText,
-    layout: parsed.layout || (isCover ? 'dual_tone_cover' : isCta ? 'final_cta' : slide.layout),
-    titleFont: parsed.titleFont || slide.titleFont || 'Bebas Neue',
-    bodyFont: parsed.bodyFont || slide.bodyFont || 'Inter',
-    titleFontSizePx: parsed.titleFontSizePx || slide.titleFontSizePx || 54,
-    bodyFontSizePx: parsed.bodyFontSizePx || slide.bodyFontSizePx || 26,
-    textAlign: parsed.textAlign || (isCover ? 'center' : 'left'),
-    categoryTag: parsed.categoryTag || slide.categoryTag,
-    citationSource: parsed.citationSource || slide.citationSource,
-    punchlineQuote: parsed.punchlineQuote || slide.punchlineQuote,
-    diagramStep1: parsed.diagramStep1 || slide.diagramStep1,
-    diagramStep2: parsed.diagramStep2 || slide.diagramStep2,
-    diagramHighlightResult: parsed.diagramHighlightResult || slide.diagramHighlightResult,
-    bulletPoints: parsed.bulletPoints && parsed.bulletPoints.length > 0 ? parsed.bulletPoints : slide.bulletPoints,
-    visualCue: parsed.visualCue || slide.visualCue,
-    takeawayTag: parsed.takeawayTag || slide.takeawayTag,
-    imagePosition: parsed.imagePosition || slide.imagePosition || 'bottom_cutout',
-    imageOpacity: parsed.imageOpacity !== undefined ? parsed.imageOpacity : (slide.imageOpacity || 0.6),
-    wrongText: parsed.wrongText || slide.wrongText,
-    correctText: parsed.correctText || slide.correctText,
-    isAiSuggested: true,
-  };
+  const result = await generateArtDirectionForSlide(slide, content, slideIndex, totalSlides);
+  return result.appliedSlide;
 }
 
 /**
- * Ottimizza l'intero carosello con Google Gemini 3.7 Flash
+ * Ottimizza l'intero carosello applicando Art Direction a tutte le slide senza toccare una sola parola di testo.
  */
-export async function optimizeEntireCarouselWithGemini(
+export async function optimizeEntireCarouselArtDirectionWithGemini(
   carousel: InstagramCarousel,
-  content: Partial<InstagramContent>
+  content: Partial<InstagramContent>,
+  options: {
+    focus?: ArtDirectionFocus[];
+    intensity?: ArtDirectionIntensity;
+  } = {}
 ): Promise<InstagramCarousel> {
   const updatedSlides: CarouselSlide[] = [];
 
   for (let i = 0; i < carousel.slides.length; i++) {
     const s = carousel.slides[i];
     try {
-      const optimized = await optimizeSlideWithGemini(s, content, i, carousel.slides.length);
-      updatedSlides.push(optimized);
+      const result = await generateArtDirectionForSlide(s, content, i, carousel.slides.length, {
+        focus: options.focus,
+        intensity: options.intensity,
+        brandKit: carousel.settings.brandKit,
+        currentTemplateId: carousel.settings.templateId,
+      });
+      updatedSlides.push(result.appliedSlide);
     } catch {
       updatedSlides.push(s);
     }
@@ -248,20 +627,22 @@ export async function optimizeEntireCarouselWithGemini(
   return {
     ...carousel,
     slides: updatedSlides,
-    settings: {
-      ...carousel.settings,
-      templateId: 'hypertrophy_science',
-    },
     updated_at: new Date().toISOString(),
   };
 }
 
 /**
- * Genera 3 alternative di hook per la copertina con Google Gemini
- * Angolazioni:
- * 1. Provocatorio / Curiosità
- * 2. Scientifico / Biomeccanico
- * 3. Pratico / Diretto
+ * Retrocompatibilità con la vecchia firma
+ */
+export async function optimizeEntireCarouselWithGemini(
+  carousel: InstagramCarousel,
+  content: Partial<InstagramContent>
+): Promise<InstagramCarousel> {
+  return optimizeEntireCarouselArtDirectionWithGemini(carousel, content);
+}
+
+/**
+ * Hook alternative generator per la copertina
  */
 export async function generateCoverHookAlternatives(
   slide: CarouselSlide,
@@ -272,31 +653,11 @@ export async function generateCoverHookAlternatives(
 
   const systemPrompt = `Sei un Copywriter ed Esperto di Viral Hook per Instagram specializzato in Fitness Coaching e Biomeccanica d'élite.
 Il tuo compito è generare ESATTAMENTE 3 alternative di titoli ad altissimo impatto per la COPERTINA del carosello.
-Ogni alternativa deve avere:
-1. "headline": riga principale (3-6 parole incisive, in MAIUSCOLO).
-2. "headlineHighlight": seconda riga ad alto contrasto (2-4 parole ad effetto, in MAIUSCOLO).
-3. "subheadline": breve frase di gancio esplicativa (12-18 parole).
-4. "angle": una tra "provocative" (provocazione o domanda spiazzante), "scientific" (dati, leve o biomeccanica), "practical" (soluzione pratica immediata).
-5. "angleLabel": etichetta descrittiva (es. "🔥 Provocatorio", "🧬 Scientifico & Dati", "🎯 Diretto & Pratico").
-6. "description": motivazione editoriale del perché questo hook converte.
-
-Rispondi ESCLUSIVAMENTE con un array JSON di 3 oggetti conforme a questa struttura:
-[
-  {
-    "id": "hook_1",
-    "headline": "...",
-    "headlineHighlight": "...",
-    "subheadline": "...",
-    "angle": "provocative",
-    "angleLabel": "🔥 Provocatorio",
-    "description": "..."
-  }
-]`;
+Rispondi ESCLUSIVAMENTE con un array JSON di 3 oggetti.`;
 
   const userPrompt = `Argomento carosello: ${topic}
 Titolo attuale copertina: "${currentTitle} ${currentHighlight}".
 Sottotitolo attuale: "${slide.subheadline || ''}".
-
 Genera 3 varianti irresistibili per fermare lo scroll nel feed Instagram.`;
 
   try {
@@ -317,45 +678,9 @@ Genera 3 varianti irresistibili per fermare lo scroll nel feed Instagram.`;
       }));
     }
   } catch (err) {
-    console.warn('Errore generazione hook con Gemini, uso fallback intelligente:', err);
+    console.warn('Errore generazione hook con Gemini, uso fallback:', err);
   }
 
-  // Fallback euristico di alta qualità nel Metodo AC
-  const isTallOrLonglimbed = /1[.,]85|alt[oi]|longiline|leve|femor|squat/i.test(`${topic} ${currentTitle} ${slide.subheadline || ''}`);
-
-  if (isTallOrLonglimbed) {
-    return [
-      {
-        id: 'hook_alt_1',
-        headline: 'SEI ALTO OLTRE 1,85 M?',
-        headlineHighlight: 'SMETTI DI SQUATTARE COSÌ',
-        subheadline: 'Femori lunghi e busto inclinato: la correzione biomeccanica per stimolare i quadricipiti senza sovraccaricare la schiena.',
-        angle: 'provocative',
-        angleLabel: '🔥 Specifico Uomini Alti',
-        description: 'Chiama direttamente il target e smonta la tecnica standard inadatta a leve lunghe.',
-      },
-      {
-        id: 'hook_alt_2',
-        headline: 'LEVE LUNGHE & SQUAT:',
-        headlineHighlight: 'IL PARADOSSO DEL FEMORE',
-        subheadline: 'Analisi kinesiologica: come alterare il braccio di leva nello squat per colpire davvero i quadricipiti.',
-        angle: 'scientific',
-        angleLabel: '🧬 Scientifico & Leve',
-        description: 'Spiega la fisica del movimento con autorevolezza biomeccanica incontrovertibile.',
-      },
-      {
-        id: 'hook_alt_3',
-        headline: 'COME SQUATTARE SE SEI ALTO:',
-        headlineHighlight: '3 CORREZIONI IMMEDIATE',
-        subheadline: 'Stance, rialzo del tallone e punto di inversione: 3 modifiche per chi ha arti lunghi.',
-        angle: 'practical',
-        angleLabel: '🎯 Diretto & Pratico',
-        description: 'Offre una checklist esecutiva applicabile fin dalla prossima sessione in palestra.',
-      },
-    ];
-  }
-
-  const safeTopic = topic.length > 5 ? topic.toUpperCase() : 'QUESTO MOVIMENTO';
   return [
     {
       id: 'hook_alt_1',
@@ -369,7 +694,7 @@ Genera 3 varianti irresistibili per fermare lo scroll nel feed Instagram.`;
     {
       id: 'hook_alt_2',
       headline: 'ANALISI BIOMECCANICA:',
-      headlineHighlight: safeTopic,
+      headlineHighlight: topic.toUpperCase(),
       subheadline: 'Bracci di leva, tensione muscolare e progressione reale studiata per la massima ipertrofia.',
       angle: 'scientific',
       angleLabel: '🧬 Scientifico & Leve',
@@ -387,94 +712,52 @@ Genera 3 varianti irresistibili per fermare lo scroll nel feed Instagram.`;
   ];
 }
 
-export interface ReadyCTAPlan {
-  headline: string;
-  headlineHighlight: string;
-  bodyText: string;
-  actionVerb: string;
-  triggerKeyword: string;
-  benefit: string;
-  reason: string;
-}
-
 /**
- * Genera una proposta di Call To Action (CTA) finale completa e pronta all'uso con Gemini 3.8 Flash
- * Include:
- * 1. Verbo d'azione esplicito (SALVA, COMMENTA, SCRIVIMI)
- * 2. Parola chiave trigger (GUIDA, SCHEDA, DM)
- * 3. Beneficio concreto (per ricevere il protocollo, per non perdere le correzioni)
+ * Propaga i parametri di stile dell'Art Director all'intero carosello,
+ * rispettando rigorosamente le gerarchie e le particolarità di ogni tipo di slide
+ * (Copertina con headline imponente, Slide di contenuto calibrate per il corpo, CTA focalizzata).
+ * GARANZIA TOTALE: Nessun testo di alcuna slide viene alterato.
  */
-export async function generateReadyCTASlide(
-  _slide: CarouselSlide,
-  topic: string = 'Allenamento e Ipertrofia'
-): Promise<ReadyCTAPlan> {
-  const systemPrompt = `Sei un Copywriter ed Esperto di Conversion Rate Optimization per Instagram per Coach di Fitness e Biomeccanica d'élite (Metodo AC Training).
-Il tuo compito è creare una Call to Action (CTA) finale magnetica e ad alta conversione per l'ultima slide di un carosello.
+export function propagateArtDirectorStyleToCarousel(
+  carousel: InstagramCarousel,
+  proposal: ArtDirectorStyleProposal
+): InstagramCarousel {
+  const updatedSlides = carousel.slides.map((s, idx) => {
+    const isCover = idx === 0 || s.type === 'cover';
+    const isCTA = idx === carousel.slides.length - 1 || s.type === 'cta' || s.layout === 'final_cta';
 
-Requisiti obbligatori:
-1. "headline": riga principale titolo (es. "VUOI IL PROTOCOLLO COMPLETO?", "SALVA LA GUIDA TECNICA") in MAIUSCOLO.
-2. "headlineHighlight": riga evidenziata ad alto contrasto (es. "COMMENTA ORA 'GUIDA'", "PASSA AL LIVELLO SUCCESSIVO") in MAIUSCOLO.
-3. "bodyText": testo persuasivo della CTA con azione concreta (Salva/Commenta), trigger chiaro ("GUIDA") e beneficio specifico (es. "Salva il post per averlo sempre con te durante l'allenamento. Commenta con la parola 'GUIDA' qui sotto per ricevere l'analisi biomeccanica completa direttamente in DM.").
-4. "actionVerb": verbo principale (es. "Salva e Commenta").
-5. "triggerKeyword": parola chiave da commentare o canale (es. "GUIDA" o "DM").
-6. "benefit": beneficio diretto per l'atleta (es. "Ricevi il protocollo completo e la scheda tecnica in DM").
-7. "reason": spiegazione del perché questa CTA converte.
-
-Rispondi ESCLUSIVAMENTE con un oggetto JSON valido conforme a questa interfaccia:
-{
-  "headline": "...",
-  "headlineHighlight": "...",
-  "bodyText": "...",
-  "actionVerb": "...",
-  "triggerKeyword": "...",
-  "benefit": "...",
-  "reason": "..."
-}`;
-
-  const userPrompt = `Argomento carosello: "${topic}".
-Genera una CTA finale irresistibile per massimizzare salvataggi e commenti qualificati.`;
-
-  try {
-    const aiResult = await generateContentWithGemini({
-      userPrompt,
-      systemPrompt,
-      temperature: 0.7,
-      maxTokens: 600,
-      responseMimeType: 'application/json',
-    });
-
-    const cleaned = aiResult.text.trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
-    const parsed = JSON.parse(cleaned) as ReadyCTAPlan;
-    if (parsed.headline && parsed.bodyText) {
-      return parsed;
+    // Calibrazione della dimensione del titolo in base alla gerarchia della slide
+    let adaptedTitleSize = proposal.titleFontSizePx;
+    if (adaptedTitleSize) {
+      if (isCover) {
+        // La copertina mantiene la grandezza piena decisa dall'Art Director
+        adaptedTitleSize = Math.max(50, Math.min(84, adaptedTitleSize));
+      } else if (isCTA) {
+        // CTA bilanciata tra 38px e 50px
+        adaptedTitleSize = Math.max(38, Math.min(50, Math.round(adaptedTitleSize * 0.75)));
+      } else {
+        // Slide di contenuto: titolo calibrato tra 34px e 46px per non sovrastare il corpo
+        adaptedTitleSize = Math.max(34, Math.min(46, Math.round(adaptedTitleSize * 0.68)));
+      }
     }
-  } catch (err) {
-    console.warn('Errore generazione CTA con Gemini, uso fallback Metodo AC:', err);
-  }
 
-  // Fallback di alto livello nel Metodo AC
-  const isTall = /1[.,]85|alt[oi]|longiline|leve|femor|squat/i.test(`${topic} ${_slide.headline || ''} ${_slide.bodyText || ''}`);
-  if (isTall) {
-    return {
-      headline: 'VUOI IL PROTOCOLLO COMPLETO?',
-      headlineHighlight: 'COMMENTA CON "LEVE"',
-      bodyText: `Salva questo post per consultarlo prima del tuo prossimo allenamento gambe.\n\nCommenta con la parola "LEVE" qui sotto per ricevere l'analisi biomeccanica personalizzata per atleti longilinei direttamente in DM.`,
-      actionVerb: 'Salva e Commenta',
-      triggerKeyword: 'LEVE',
-      benefit: 'Ricevi la guida biomeccanica per atleti longilinei in DM',
-      reason: 'Combina retention (salvataggio) e keyword "LEVE" ad alta pertinenza per il target specifico.',
+    const adaptedProposal: ArtDirectorStyleProposal = {
+      ...proposal,
+      titleFontSizePx: adaptedTitleSize,
+      // Il layout generale dell'Art Director viene applicato alla copertina; per le slide interne si preserva il tipo specifico (es. liste o diagrammi) se non compatibile
+      layout: isCover
+        ? proposal.layout
+        : s.layout === 'numbered_list' || s.layout === 'step_by_step' || s.layout === 'diagram_flow' || s.layout === 'error_vs_correct'
+        ? s.layout
+        : proposal.layout,
     };
-  }
+
+    return applyArtDirectorStyleToSlide(s, adaptedProposal);
+  });
 
   return {
-    headline: 'VUOI IL PROTOCOLLO COMPLETO?',
-    headlineHighlight: 'COMMENTA CON "GUIDA"',
-    bodyText: `Salva questo post per consultarlo prima del tuo prossimo allenamento.\n\nCommenta con la parola "GUIDA" qui sotto per ricevere l'analisi biomeccanica completa su ${topic} direttamente in DM.`,
-    actionVerb: 'Salva e Commenta',
-    triggerKeyword: 'GUIDA',
-    benefit: 'Ricevi il protocollo biomeccanico completo in DM',
-    reason: 'Combina doppio trigger: salvataggio per retention e commento con keyword per viralità.',
+    ...carousel,
+    slides: updatedSlides,
   };
 }
-
 

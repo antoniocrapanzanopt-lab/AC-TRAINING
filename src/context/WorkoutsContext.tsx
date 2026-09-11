@@ -2,6 +2,66 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { WorkoutTemplate, WorkoutExercise, AthleteAssignedWorkout, WorkoutSession, ExerciseLog, WorkoutFolder } from '../types/workout';
+import { parseWeightToNumber, parseRepsToNumber } from '../utils/weightParser';
+import { extractErrorMessage } from '../utils/errorUtils';
+import { technicalLogger } from '../utils/technicalLogger';
+
+// video_url è confermata nello schema (full_schema.sql riga 307) — nessuna probe query necessaria
+let isVideoUrlSupportedCache: boolean | null = true;
+const checkVideoUrlSupport = async (): Promise<boolean> => {
+  if (isVideoUrlSupportedCache !== null) return isVideoUrlSupportedCache;
+  try {
+    const { error } = await supabase.from('workout_exercises').select('video_url').limit(1);
+    isVideoUrlSupportedCache = !error || error.code !== '42703';
+  } catch {
+    isVideoUrlSupportedCache = false;
+  }
+  return isVideoUrlSupportedCache;
+};
+
+
+const isValidUuid = (val: unknown): boolean =>
+  typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+
+/**
+ * Sanitizza rigorosamente ogni record di esercizio prima di inviarlo a Supabase workout_exercises,
+ * evitando errori di tipo, valori NaN o colonne mancanti (come video_url finché la migrazione non è applicata).
+ */
+const sanitizeExerciseRecord = async (
+  ex: Partial<WorkoutExercise>,
+  orderIndex: number,
+  workoutId?: string
+): Promise<Record<string, unknown>> => {
+  const supportsVideo = await checkVideoUrlSupport();
+
+  const record: Record<string, unknown> = {
+    name: ex.name?.trim() || 'Esercizio',
+    sets: Math.max(1, Number(ex.sets) || 1),
+    reps_target: ex.reps_target ? String(ex.reps_target).trim() : '10',
+    rest_seconds: Math.max(0, Number(ex.rest_seconds) || 60),
+    order_index: typeof orderIndex === 'number' && !isNaN(orderIndex) ? orderIndex : 0,
+    notes: ex.notes ? String(ex.notes) : null,
+    day_name: ex.day_name ? String(ex.day_name) : 'Giorno A',
+    week_number: Math.max(1, Number(ex.week_number) || 1),
+    target_weight: ex.target_weight ? String(ex.target_weight).trim() : null,
+    rir_target: ex.rir_target ? String(ex.rir_target).trim() : null,
+    tut: ex.tut ? String(ex.tut).trim() : null,
+    is_time_based: Boolean(ex.is_time_based),
+    duration_seconds: ex.duration_seconds && !isNaN(Number(ex.duration_seconds)) ? Math.round(Number(ex.duration_seconds)) : null,
+    alternative_exercise: ex.alternative_exercise ? String(ex.alternative_exercise).trim() : null,
+    progression_rule_id: isValidUuid(ex.progression_rule_id) ? (ex.progression_rule_id as string).trim() : null,
+  };
+
+  if (workoutId) {
+    record.workout_id = workoutId;
+  }
+
+  if (supportsVideo && ex.video_url !== undefined) {
+    record.video_url = ex.video_url ? String(ex.video_url).trim() : null;
+  }
+
+  return record;
+};
 
 interface WorkoutsContextType {
   // Coach specific
@@ -15,7 +75,7 @@ interface WorkoutsContextType {
   deleteFolder: (folderId: string) => Promise<{ success: boolean; error?: string }>;
   moveWorkoutToFolder: (workoutId: string, folderId: string | null) => Promise<{ success: boolean; error?: string }>;
   createWorkoutTemplate: (workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string; workoutId?: string }>;
-  updateWorkoutTemplate: (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[], options?: { confirmedDestructive?: boolean }) => Promise<{ success: boolean; error?: string }>;
+  updateWorkoutTemplate: (workoutId: string, workout: Partial<WorkoutTemplate>, exercises: Partial<WorkoutExercise>[], options?: { confirmedDestructive?: boolean; deletedExerciseIds?: string[] }) => Promise<{ success: boolean; error?: string }>;
   getWorkoutSnapshots: (workoutId: string) => Array<{ key: string; timestamp: number; workout: WorkoutTemplate; exercises: WorkoutExercise[] }>;
   restoreWorkoutSnapshot: (snapshotKey: string) => Promise<{ success: boolean; error?: string }>;
   duplicateWorkoutTemplate: (workoutId: string, customTitle?: string) => Promise<{ success: boolean; newWorkoutId?: string; error?: string }>;
@@ -38,8 +98,6 @@ interface WorkoutsContextType {
   
   loading: boolean;
 }
-
-import { technicalLogger } from '../utils/technicalLogger';
 
 const WorkoutsContext = createContext<WorkoutsContextType | undefined>(undefined);
 
@@ -84,7 +142,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .select(`
         *,
         athlete:athletes(id, first_name, last_name, email, status),
-        workout:workouts(*)
+        workout:workouts(id, title, description, total_weeks, estimated_duration_minutes, is_template, coach_id, parent_template_id, folder_id, created_at, updated_at)
       `)
       .order('assigned_date', { ascending: false });
 
@@ -101,6 +159,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       technicalLogger.error('workouts', 'LOAD_ASSIGNED_WORKOUTS_ERROR', error.message);
     }
   }, [user]);
+
 
   const loadFolders = useCallback(async () => {
     if (!user || !isCoachRole(user.role)) return;
@@ -137,7 +196,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await loadFolders();
       return { success: true };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = extractErrorMessage(err);
       return { success: false, error: msg };
     }
   };
@@ -157,7 +216,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await loadFolders();
       return { success: true };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = extractErrorMessage(err);
       return { success: false, error: msg };
     }
   };
@@ -175,7 +234,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await loadCoachTemplates();
       return { success: true };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = extractErrorMessage(err);
       return { success: false, error: msg };
     }
   };
@@ -195,7 +254,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       await loadCoachTemplates();
       return { success: true };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = extractErrorMessage(err);
       return { success: false, error: msg };
     }
   };
@@ -247,23 +306,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // 2. Inserisci gli esercizi
       if (exercises.length > 0) {
-        const exercisesToInsert = exercises.map((ex, index) => ({
-          workout_id: newWorkout.id,
-          name: ex.name,
-          sets: ex.sets || 1,
-          reps_target: ex.reps_target || '10',
-          rest_seconds: ex.rest_seconds || 60,
-          order_index: index,
-          notes: ex.notes || null,
-          day_name: ex.day_name || 'Giorno A',
-          week_number: ex.week_number || 1,
-          target_weight: ex.target_weight || null,
-          rir_target: ex.rir_target || null,
-          tut: ex.tut || null,
-          is_time_based: ex.is_time_based || false,
-          duration_seconds: ex.duration_seconds || null,
-          alternative_exercise: ex.alternative_exercise || null,
-        }));
+        const exercisesToInsert = await Promise.all(
+          exercises.map((ex, index) => sanitizeExerciseRecord(ex, index, newWorkout.id))
+        );
 
         const { error: exercisesError } = await supabase
           .from('workout_exercises')
@@ -276,7 +321,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: true, workoutId: newWorkout.id };
     } catch (error: unknown) {
       console.error("Error creating workout:", error);
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = extractErrorMessage(error);
       return { success: false, error: msg };
     }
   };
@@ -285,8 +330,8 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     workoutId: string,
     workout: Partial<WorkoutTemplate>,
     exercises: Partial<WorkoutExercise>[],
-    options?: { confirmedDestructive?: boolean }
-  ) => {
+    options?: { confirmedDestructive?: boolean; deletedExerciseIds?: string[] }
+  ): Promise<{ success: boolean; error?: string }> => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     if (!workoutId || typeof workoutId !== 'string' || workoutId.trim() === '') {
       technicalLogger.error('workouts', 'UPDATE_BLOCKED_INVALID_ID', 'ID workout mancante o non valido per update.');
@@ -294,92 +339,214 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     try {
-      // 1. Snapshot automatico di sicurezza prima di modifiche strutturali
+      // 1. Fetch record correnti dal database (Workout ed Esercizi)
+      const { data: existingWorkout, error: workoutFetchErr } = await supabase
+        .from('workouts')
+        .select('*')
+        .eq('id', workoutId)
+        .maybeSingle();
+
+      if (workoutFetchErr || !existingWorkout) {
+        const msg = workoutFetchErr?.message || 'Scheda non trovata nel database';
+        technicalLogger.error('workouts', 'UPDATE_FETCH_WORKOUT_FAILED', msg, { workoutId });
+        return { success: false, error: msg };
+      }
+
+      const { data: existingExercisesData, error: exercisesFetchErr } = await supabase
+        .from('workout_exercises')
+        .select('*')
+        .eq('workout_id', workoutId)
+        .order('week_number', { ascending: true })
+        .order('order_index', { ascending: true });
+
+      if (exercisesFetchErr) {
+        technicalLogger.error('workouts', 'UPDATE_FETCH_EXERCISES_FAILED', exercisesFetchErr.message, { workoutId });
+        return { success: false, error: `Errore lettura esercizi DB: ${exercisesFetchErr.message}` };
+      }
+
+      const dbExercises = (existingExercisesData || []) as WorkoutExercise[];
+
+      // 2. Snapshot automatico di sicurezza prima di qualsiasi modifica
       try {
-        const { data: existingWorkout } = await supabase.from('workouts').select('*').eq('id', workoutId).maybeSingle();
-        const { data: existingExercises } = await supabase.from('workout_exercises').select('*').eq('workout_id', workoutId);
-        if (existingWorkout && typeof window !== 'undefined') {
+        if (typeof window !== 'undefined') {
           const snapshotKey = `ac_workout_snapshot_${workoutId}_${Date.now()}`;
-          localStorage.setItem(snapshotKey, JSON.stringify({ workout: existingWorkout, exercises: existingExercises || [] }));
+          localStorage.setItem(snapshotKey, JSON.stringify({ workout: existingWorkout, exercises: dbExercises }));
           technicalLogger.info('workouts', 'SNAPSHOT_CREATED', `Snapshot salvato con chiave ${snapshotKey}`);
         }
       } catch (snapErr) {
         technicalLogger.warn('workouts', 'SNAPSHOT_CREATION_FAILED', 'Impossibile creare snapshot locale prima di update', { error: String(snapErr) });
       }
 
+      // 3. Controllo diagnostico e guardie anti-perdita dati
+      const originalExerciseCount = dbExercises.length;
+      const nextExerciseCount = exercises.length;
+
+      const missingDbIds = dbExercises
+        .map(e => e.id)
+        .filter(id => !exercises.some(payloadEx => payloadEx.id === id));
+
+      const unconfirmedMissingIds = missingDbIds.filter(
+        id => !options?.deletedExerciseIds?.includes(id)
+      );
+
+      if (
+        nextExerciseCount < originalExerciseCount &&
+        !options?.confirmedDestructive &&
+        unconfirmedMissingIds.length > 0
+      ) {
+        const errorMsg = 'Il salvataggio contiene meno esercizi rispetto alla scheda originale. Nessun dato è stato modificato.';
+        technicalLogger.error('workouts', 'UPDATE_BLOCKED_LESS_EXERCISES', errorMsg, {
+          originalCount: originalExerciseCount,
+          nextCount: nextExerciseCount,
+          unconfirmedCount: unconfirmedMissingIds.length,
+        });
+        return { success: false, error: errorMsg };
+      }
+
+      if (exercises.length === 0 && !options?.confirmedDestructive) {
+        return { success: false, error: 'Impossibile salvare una scheda vuota senza conferma esplicita.' };
+      }
+
+      // 4. Aggiornamento metadati scheda
       const updateData: Record<string, unknown> = {
-        title: workout.title,
-        description: workout.description,
-        folder_id: workout.folder_id !== undefined ? workout.folder_id : null,
-        total_weeks: workout.total_weeks || 1,
-        estimated_duration_minutes: workout.estimated_duration_minutes ? String(workout.estimated_duration_minutes) : null,
+        title: workout.title ?? existingWorkout.title,
+        description: workout.description !== undefined ? workout.description : existingWorkout.description,
+        folder_id: workout.folder_id !== undefined ? workout.folder_id : existingWorkout.folder_id,
+        total_weeks: workout.total_weeks || existingWorkout.total_weeks || 1,
+        estimated_duration_minutes: workout.estimated_duration_minutes ? String(workout.estimated_duration_minutes) : existingWorkout.estimated_duration_minutes,
         updated_at: new Date().toISOString(),
       };
       if (workout.is_template !== undefined) {
         updateData.is_template = workout.is_template;
       }
 
-      const { error: workoutError } = await supabase
+      const { error: workoutUpdateError } = await supabase
         .from('workouts')
         .update(updateData)
         .eq('id', workoutId);
 
-      if (workoutError) throw workoutError;
+      if (workoutUpdateError) {
+        technicalLogger.error('workouts', 'WORKOUT_METADATA_UPDATE_FAILED', workoutUpdateError.message);
+        throw workoutUpdateError;
+      }
 
-      // 2. Controllo anti-wipe: se exercises è vuoto
-      if (exercises.length === 0) {
-        if (!options?.confirmedDestructive) {
-          technicalLogger.warn('workouts', 'EMPTY_EXERCISES_PAYLOAD_SAFEGUARD', 'Ricevuto payload esercizi vuoto senza conferma distruttiva: metadati aggiornati, esercizi preservati.');
+      // 5. Categorizzazione ed esecuzione transazionale-sicura degli esercizi
+      const dbExerciseMap = new Map<string, WorkoutExercise>();
+      dbExercises.forEach(ex => dbExerciseMap.set(ex.id, ex));
+
+      const exercisesToUpdate: Array<{ id: string; payload: Partial<WorkoutExercise>; order: number }> = [];
+      const exercisesToInsert: Array<{ payload: Partial<WorkoutExercise>; order: number }> = [];
+
+      exercises.forEach((ex, idx) => {
+        const order = typeof ex.order_index === 'number' ? ex.order_index : idx;
+        if (ex.id && dbExerciseMap.has(ex.id)) {
+          exercisesToUpdate.push({ id: ex.id, payload: ex, order });
         } else {
-          technicalLogger.warn('workouts', 'EMPTY_EXERCISES_CONFIRMED_DESTRUCTIVE', `Svuotamento esercizi confermato esplicitamente per workout ${workoutId}`);
-          const { error: deleteError } = await supabase
-            .from('workout_exercises')
-            .delete()
-            .eq('workout_id', workoutId);
-
-          if (deleteError) throw deleteError;
+          exercisesToInsert.push({ payload: ex, order });
         }
-      } else {
-        const { error: deleteError } = await supabase
+      });
+
+      // A) Aggiornamento record esistenti tramite ID (nessun record ricreato, foreign keys e log intatti!)
+      for (const item of exercisesToUpdate) {
+        const updatePayload = await sanitizeExerciseRecord(item.payload, item.order);
+        const { error: updateErr } = await supabase
           .from('workout_exercises')
-          .delete()
+          .update(updatePayload)
+          .eq('id', item.id)
           .eq('workout_id', workoutId);
 
-        if (deleteError) throw deleteError;
+        if (updateErr) {
+          technicalLogger.error('workouts', 'UPDATE_EXERCISE_ERROR', updateErr.message, { id: item.id });
+          throw updateErr;
+        }
+      }
 
-        const exercisesToInsert = exercises.map((ex, index) => ({
-          workout_id: workoutId,
-          name: ex.name,
-          sets: ex.sets || 1,
-          reps_target: ex.reps_target || '10',
-          rest_seconds: ex.rest_seconds || 60,
-          order_index: index,
-          notes: ex.notes || null,
-          day_name: ex.day_name || 'Giorno 1',
-          week_number: ex.week_number || 1,
-          target_weight: ex.target_weight || null,
-          rir_target: ex.rir_target || null,
-          tut: ex.tut || null,
-          is_time_based: ex.is_time_based || false,
-          duration_seconds: ex.duration_seconds || null,
-          alternative_exercise: ex.alternative_exercise || null,
-        }));
+      // B) Inserimento solo nuovi esercizi
+      if (exercisesToInsert.length > 0) {
+        const rowsToInsert = await Promise.all(
+          exercisesToInsert.map(item => sanitizeExerciseRecord(item.payload, item.order, workoutId))
+        );
 
-        const { error: exercisesError } = await supabase
+        const { error: insertErr } = await supabase
           .from('workout_exercises')
-          .insert(exercisesToInsert);
+          .insert(rowsToInsert);
 
-        if (exercisesError) throw exercisesError;
+        if (insertErr) {
+          technicalLogger.error('workouts', 'INSERT_EXERCISES_ERROR', insertErr.message);
+          throw insertErr;
+        }
+      }
+
+      // C) Eliminazione ESCLUSIVAMENTE degli ID confermati dall'utente
+      let idsToDelete: string[] = [];
+      if (options?.confirmedDestructive) {
+        idsToDelete = missingDbIds;
+      } else if (options?.deletedExerciseIds && options.deletedExerciseIds.length > 0) {
+        idsToDelete = options.deletedExerciseIds.filter(id => dbExerciseMap.has(id));
+      }
+
+      if (idsToDelete.length > 0) {
+        const { error: deleteErr } = await supabase
+          .from('workout_exercises')
+          .delete()
+          .eq('workout_id', workoutId)
+          .in('id', idsToDelete);
+
+        if (deleteErr) {
+          technicalLogger.error('workouts', 'DELETE_EXERCISES_ERROR', deleteErr.message, { idsToDelete });
+          throw deleteErr;
+        }
+        technicalLogger.info('workouts', 'EXERCISES_DELETED_CONFIRMED', `Eliminati ${idsToDelete.length} esercizi confermati.`);
+      }
+
+      // 6. Ricarica e verifica post-salvataggio da database
+      const { data: verifiedData, error: verifyErr } = await supabase
+        .from('workout_exercises')
+        .select('*')
+        .eq('workout_id', workoutId)
+        .order('week_number', { ascending: true })
+        .order('order_index', { ascending: true });
+
+      if (verifyErr) {
+        technicalLogger.error('workouts', 'POST_SAVE_VERIFY_FAILED', verifyErr.message);
+        return { success: false, error: `Verifica post-salvataggio fallita: ${verifyErr.message}` };
+      }
+
+      const verifiedExercises = verifiedData || [];
+      const expectedTotal = exercisesToUpdate.length + exercisesToInsert.length;
+
+      if (verifiedExercises.length === 0 && expectedTotal > 0) {
+        const msg = 'Verifica fallita: la scheda risulta vuota nel database dopo il salvataggio.';
+        technicalLogger.error('workouts', 'POST_SAVE_EMPTY_DETECTED', msg);
+        return { success: false, error: msg };
+      }
+
+      if (verifiedExercises.length < expectedTotal) {
+        const msg = `Verifica fallita: attesi ${expectedTotal} esercizi, ma nel database ne risultano ${verifiedExercises.length}.`;
+        technicalLogger.error('workouts', 'POST_SAVE_COUNT_UNDERFLOW', msg);
+        return { success: false, error: msg };
+      }
+
+      // Verifica che tutti gli ID aggiornati siano presenti
+      const verifiedIds = new Set(verifiedExercises.map(e => e.id));
+      for (const upd of exercisesToUpdate) {
+        if (!verifiedIds.has(upd.id)) {
+          const msg = `Verifica fallita: esercizio ID ${upd.id} non riscontrato nel database dopo il salvataggio.`;
+          technicalLogger.error('workouts', 'POST_SAVE_ID_MISSING', msg);
+          return { success: false, error: msg };
+        }
       }
 
       await Promise.all([
         loadCoachTemplates(),
         loadAssignedWorkouts(),
       ]);
+
+      technicalLogger.info('workouts', 'WORKOUT_SAVED_AND_VERIFIED', `Workout ${workoutId} salvato con successo. Esercizi verificati: ${verifiedExercises.length}`);
       return { success: true };
     } catch (error: unknown) {
       console.error("Error updating workout:", error);
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = extractErrorMessage(error);
       return { success: false, error: msg };
     }
   };
@@ -474,7 +641,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       technicalLogger.info('workouts', 'RESTORE_SNAPSHOT_SUCCESS', `Snapshot ${snapshotKey} ripristinato con successo.`);
       return { success: true };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Errore ripristino snapshot';
+      const msg = extractErrorMessage(err, 'Errore ripristino snapshot');
       technicalLogger.error('workouts', 'RESTORE_SNAPSHOT_FAILED', msg);
       return { success: false, error: msg };
     }
@@ -525,7 +692,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: true };
     } catch (error: unknown) {
       console.error("Error deleting workout:", error);
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = extractErrorMessage(error);
       return { success: false, error: msg };
     }
   };
@@ -569,7 +736,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: true, newWorkoutId: result.workoutId };
     } catch (error: unknown) {
       console.error("Error duplicating workout:", error);
-      const msg = error instanceof Error ? error.message : (typeof error === 'object' && error !== null && 'message' in error ? String((error as { message?: unknown }).message) : 'Errore sconosciuto');
+      const msg = extractErrorMessage(error);
       return { success: false, error: msg };
     }
   };
@@ -612,7 +779,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ]);
       return { success: true };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = extractErrorMessage(error);
       return { success: false, error: msg };
     }
   };
@@ -654,7 +821,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ]);
       return { success: true };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = extractErrorMessage(error);
       return { success: false, error: msg };
     }
   };
@@ -677,24 +844,26 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return (data || []) as unknown as AthleteAssignedWorkout[];
   };
 
-  const getExercisesForWorkout = async (workoutId: string) => {
+  const getExercisesForWorkout = async (workoutId: string): Promise<WorkoutExercise[]> => {
+    if (!workoutId) return [];
     const { data, error } = await supabase
       .from('workout_exercises')
       .select('*')
       .eq('workout_id', workoutId)
+      .order('week_number', { ascending: true })
       .order('order_index', { ascending: true });
 
     if (error) {
-      console.error(error);
-      return [];
+      technicalLogger.error('workouts', 'GET_EXERCISES_ERROR', error.message, { workoutId });
+      throw new Error(`Errore caricamento esercizi dal database: ${error.message}`);
     }
-    return data as WorkoutExercise[];
+    return (data || []) as WorkoutExercise[];
   };
 
   const forkWorkoutForAthlete = async (originalWorkoutId: string, athleteId: string, newWorkoutData: Partial<WorkoutTemplate>, newExercises: Partial<WorkoutExercise>[]) => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
-      // 1. Create a private copy of the workout
+      // 1. Crea copia privata del workout
       const { data: clonedWorkout, error: workoutError } = await supabase
         .from('workouts')
         .insert({
@@ -702,7 +871,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           description: newWorkoutData.description,
           coach_id: user.id,
           folder_id: null,
-          is_template: false, // It's a local copy, not a global template
+          is_template: false, // Copia locale specifica per l'atleta
           parent_template_id: originalWorkoutId,
           total_weeks: newWorkoutData.total_weeks || 1,
           estimated_duration_minutes: newWorkoutData.estimated_duration_minutes ? String(newWorkoutData.estimated_duration_minutes) : null,
@@ -712,47 +881,82 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       if (workoutError) throw workoutError;
 
-      // 2. Insert exercises for the clone
+      // 2. Inserisci gli esercizi per il clone preservando tutti i campi
+      let insertedExercises: WorkoutExercise[] = [];
       if (newExercises.length > 0) {
-        const exercisesToInsert = newExercises.map((ex, index) => ({
-          workout_id: clonedWorkout.id,
-          name: ex.name,
-          sets: ex.sets || 1,
-          reps_target: ex.reps_target || '10',
-          rest_seconds: ex.rest_seconds || 60,
-          order_index: index,
-          notes: ex.notes || null,
-          day_name: ex.day_name || 'Giorno A',
-          week_number: ex.week_number || 1,
-          target_weight: ex.target_weight || null,
-          rir_target: ex.rir_target || null,
-          tut: ex.tut || null,
-          is_time_based: ex.is_time_based || false,
-          duration_seconds: ex.duration_seconds || null,
-          alternative_exercise: ex.alternative_exercise || null,
-        }));
+        const exercisesToInsert = await Promise.all(
+          newExercises.map((ex, index) => {
+            const order = typeof ex.order_index === 'number' ? ex.order_index : index;
+            return sanitizeExerciseRecord(ex, order, clonedWorkout.id);
+          })
+        );
 
-        const { error: exercisesError } = await supabase
+        const { data: insertedData, error: exercisesError } = await supabase
           .from('workout_exercises')
-          .insert(exercisesToInsert);
+          .insert(exercisesToInsert)
+          .select();
 
         if (exercisesError) throw exercisesError;
+        insertedExercises = (insertedData || []) as WorkoutExercise[];
       }
 
-      // 3. Unassign the old global template
+      // 3. Mappa vecchio ID -> nuovo ID per migrare sessioni e log storici dell'atleta
+      const oldToNewExMap = new Map<string, string>();
+      newExercises.forEach((oldEx, idx) => {
+        if (oldEx.id && insertedExercises[idx]) {
+          oldToNewExMap.set(oldEx.id, insertedExercises[idx].id);
+        }
+      });
+
+      // 4. MIGRAZIONE SESSIONI: non azzerare lo storico dell'atleta (es. Settimana 2 in corso)
+      const { data: athleteSessions } = await supabase
+        .from('workout_sessions')
+        .select('id')
+        .eq('athlete_id', athleteId)
+        .eq('workout_id', originalWorkoutId);
+
+      if (athleteSessions && athleteSessions.length > 0) {
+        const sessionIds = athleteSessions.map(s => s.id);
+        await supabase
+          .from('workout_sessions')
+          .update({ workout_id: clonedWorkout.id })
+          .eq('athlete_id', athleteId)
+          .eq('workout_id', originalWorkoutId);
+
+        if (oldToNewExMap.size > 0) {
+          for (const [oldId, newId] of oldToNewExMap.entries()) {
+            await supabase
+              .from('exercise_logs')
+              .update({ exercise_id: newId })
+              .in('session_id', sessionIds)
+              .eq('exercise_id', oldId);
+          }
+        }
+      }
+
+      // 5. Rimuovi vecchia assegnazione e assegna la nuova copia
       await supabase
         .from('athlete_assigned_workouts')
         .delete()
         .eq('athlete_id', athleteId)
         .eq('workout_id', originalWorkoutId);
 
-      // 4. Assign the new local copy
       await assignWorkoutToAthlete(athleteId, clonedWorkout.id);
+
+      // 6. Verifica post-fork
+      const { data: verifyExercises } = await supabase
+        .from('workout_exercises')
+        .select('id')
+        .eq('workout_id', clonedWorkout.id);
+
+      if (!verifyExercises || verifyExercises.length < newExercises.length) {
+        throw new Error('Verifica copia scheda fallita: esercizi incompleti nel database.');
+      }
       
       return { success: true };
     } catch (error: unknown) {
       console.error("Error forking workout for athlete:", error);
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = extractErrorMessage(error);
       return { success: false, error: msg };
     }
   };
@@ -834,7 +1038,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: true };
     } catch (error: unknown) {
       console.error("Error freezing workout for assigned athletes:", error);
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = extractErrorMessage(error);
       return { success: false, error: msg };
     }
   };
@@ -874,7 +1078,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: true };
     } catch (err: unknown) {
       console.error("Error force syncing master template:", err);
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = extractErrorMessage(err);
       return { success: false, error: msg };
     }
   };
@@ -971,7 +1175,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         technicalLogger.warn('workouts', 'CACHE_WRITE_FAILED', String(cacheErr));
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
+      const msg = extractErrorMessage(err);
       technicalLogger.error('workouts', 'REFRESH_MY_WORKOUTS_EXCEPTION', msg);
     } finally {
       setLoading(false);
@@ -1044,7 +1248,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.error('[CRITICAL] startWorkoutSession fallito:', errMsg, { insertPayload, error });
       return { session: null, error: errMsg };
     } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : 'Errore imprevisto creazione sessione';
+      const errMsg = extractErrorMessage(error, 'Errore imprevisto creazione sessione');
       console.error('[CRITICAL] startWorkoutSession eccezione:', errMsg, error);
       return { session: null, error: errMsg };
     }
@@ -1111,7 +1315,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       return { success: true };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = extractErrorMessage(error);
       console.error('[CRITICAL] endWorkoutSession exception:', msg, error);
       return { success: false, error: msg };
     }
@@ -1120,30 +1324,59 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const saveExerciseLogs = async (logs: Partial<ExerciseLog>[]) => {
     if (logs.length === 0) return { success: true };
     try {
-      const sanitizedLogs = logs.map((l) => ({
-        session_id: l.session_id,
-        exercise_id: l.exercise_id,
-        set_number: Number(l.set_number) || 1,
-        reps_completed: l.reps_completed !== undefined && l.reps_completed !== null ? Number(l.reps_completed) : null,
-        weight_kg: l.weight_kg !== undefined && l.weight_kg !== null ? Number(l.weight_kg) : null,
-        notes: l.notes || null,
-      }));
+      const sanitizedLogs = logs.map((l) => {
+        const parsedWeight = parseWeightToNumber(l.weight_kg);
+        const parsedReps = parseRepsToNumber(l.reps_completed, 0);
 
-      const { error } = await supabase
+        let combinedNotes = l.notes || null;
+        if (parsedWeight.note) {
+          combinedNotes = combinedNotes ? `${combinedNotes} | ${parsedWeight.note}` : parsedWeight.note;
+        }
+
+        return {
+          session_id: l.session_id,
+          exercise_id: l.exercise_id,
+          set_number: Number(l.set_number) || 1,
+          reps_completed: parsedReps > 0 ? parsedReps : (l.reps_completed !== null && l.reps_completed !== undefined ? Math.max(0, Number(l.reps_completed) || 0) : null),
+          weight_kg: parsedWeight.weightKg,
+          notes: combinedNotes,
+        };
+      });
+
+      console.log('[saveExerciseLogs] Invio a Supabase:', {
+        tabella: 'exercise_logs',
+        righe_da_inserire: sanitizedLogs.length,
+        session_id: sanitizedLogs[0]?.session_id,
+        payload: sanitizedLogs,
+      });
+
+      const { data: insertedRows, error } = await supabase
         .from('exercise_logs')
-        .insert(sanitizedLogs);
+        .insert(sanitizedLogs)
+        .select();
         
       if (error) {
-        console.error('[CRITICAL] saveExerciseLogs errore Supabase:', error.message, sanitizedLogs);
+        console.error('[CRITICAL] saveExerciseLogs errore Supabase:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          payload: sanitizedLogs,
+        });
         return { success: false, error: error.message };
       }
+
+      console.log('[saveExerciseLogs] Successo:', {
+        righe_inserite: insertedRows?.length ?? 0,
+        ids: insertedRows?.map((r) => r.id),
+      });
       return { success: true };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
+      const msg = extractErrorMessage(error);
       console.error('[CRITICAL] saveExerciseLogs exception:', msg, error);
       return { success: false, error: msg };
     }
   };
+
 
   return (
     <WorkoutsContext.Provider

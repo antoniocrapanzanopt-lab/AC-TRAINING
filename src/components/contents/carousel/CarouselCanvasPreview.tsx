@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { CarouselSlide, CarouselSettings } from '../../../types/carousel';
 import { renderSlideToCanvas } from '../../../services/carouselCanvasRenderer';
 import { exportSingleSlideAsPng } from '../../../services/carouselExportService';
+import { calculateContrastRatio } from '../../../services/coverColorUtils';
 import {
   Eye,
   Download,
@@ -25,6 +26,8 @@ import {
   Hash,
 } from 'lucide-react';
 
+export type PreviewViewMode = 'slide' | 'mockup' | 'feed_1_1';
+
 interface CarouselCanvasPreviewProps {
   slide: CarouselSlide;
   settings: CarouselSettings;
@@ -39,7 +42,7 @@ interface CarouselCanvasPreviewProps {
   previousSlide?: CarouselSlide | null;
   isFocusMode?: boolean;
   onToggleFocusMode?: () => void;
-  onUpdateSlide?: (updated: CarouselSlide) => void;
+  onUpdateSlide?: (updatedSlide: CarouselSlide) => void;
   onToggleSlideCounter?: () => void;
 }
 
@@ -61,11 +64,12 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fullscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [showSafeArea, setShowSafeArea] = useState(false);
-  const [showGridCropGuide, setShowGridCropGuide] = useState(false);
+  const [viewMode, setViewMode] = useState<PreviewViewMode>('slide');
+  const isInstagramMockup = viewMode === 'mockup';
+  const showGridCropGuide = viewMode === 'feed_1_1';
   const [isDownloading, setIsDownloading] = useState(false);
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<ZoomMode>('fit');
-  const [isInstagramMockup, setIsInstagramMockup] = useState(false);
   const [isShowingComparison, setIsShowingComparison] = useState(false);
 
   // Stato e riferimenti per drag & touch interattivo su immagine
@@ -152,46 +156,28 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
     }
   };
 
-  // Calcolo densità e indice di leggibilità mobile in tempo reale
-  const activeSlideText = [
-    slide.headline,
-    slide.headlineHighlight || '',
-    slide.subheadline || '',
-    slide.bodyText,
-    slide.wrongText || '',
-    slide.correctText || '',
-    slide.punchlineQuote || '',
-    ...(slide.bulletPoints || []),
-  ].join(' ').trim();
-  const slideWordCount = activeSlideText ? activeSlideText.split(/\s+/).filter(Boolean).length : 0;
+  // Calcolo micro-indicatore di contrasto WCAG (invisibile se conforme AAA/AA, puntino arancione se sotto soglia)
+  const contrastWarning = useMemo(() => {
 
-  const mobileReadability = useMemo(() => {
-    if (slideWordCount <= 45) {
+    const bg = slide.bgColor || '#070A10';
+    const titleCol = slide.titleColor || '#FFFFFF';
+    const bodyCol = slide.bodyColor || '#E2E8F0';
+    const ratioTitle = calculateContrastRatio(titleCol, bg);
+    const ratioBody = calculateContrastRatio(bodyCol, bg);
+    const minRatio = Math.min(ratioTitle, ratioBody);
+    // Soglia minima di contrasto WCAG (4.5:1 per standard AAA su testo grande / AA su testo normale)
+    if (minRatio < 4.5) {
       return {
-        level: 'optimal',
-        label: 'Leggibilità Mobile: Ottimale (AAA)',
-        badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-        dot: '🟢',
+        ratio: Math.round(minRatio * 10) / 10,
+        message: `Attenzione: contrasto testo/sfondo ridotto (${(Math.round(minRatio * 10) / 10)}:1 - raccomandato ≥ 4.5:1)`,
       };
     }
-    if (slideWordCount <= 55) {
-      return {
-        level: 'good',
-        label: 'Leggibilità Mobile: Buona',
-        badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-        dot: '🟡',
-      };
-    }
-    return {
-      level: 'dense',
-      label: 'Leggibilità Mobile: Densità elevata',
-      badgeClass: 'bg-rose-500/15 text-rose-300 border-rose-500/30 font-bold',
-      dot: '🔴',
-    };
-  }, [slideWordCount]);
+    return null;
+  }, [slide.bgColor, slide.titleColor, slide.bodyColor]);
 
   // Calcolo larghezza massima in base allo zoom selezionato e alla modalità Focus
   const getMaxWidthClass = () => {
+
     if (isFocusMode) {
       switch (zoomLevel) {
         case '75%':
@@ -216,27 +202,36 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
 
   return (
     <div className="flex flex-col items-center space-y-3 w-full">
-      {/* ─── 1. TOOLBAR ANTEPRIMA PRO CON ZOOM, MOCKUP IG & SAFE AREA ─── */}
-      <div className="w-full flex items-center justify-between px-1 text-xs flex-wrap gap-2">
+      {/* ─── 1. TOOLBAR SUPERIORE ANTEPRIMA ─── */}
+      <div className="w-full flex items-center justify-between pb-2 border-b border-slate-800/80 px-1 text-xs flex-wrap gap-2">
+        {/* SINISTRA: TITOLO + CONTRASTO WCAG (INVISIBILE SE AAA) + ZOOM + FOCUS */}
         <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-300 flex items-center gap-1.5 font-mono">
+          <div className="flex items-center gap-1 text-slate-400 font-bold">
             <Eye className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">Slide {currentIndex + 1} di {totalSlides}</span>
-            <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-lg text-xs font-bold text-amber-300">
-              {currentIndex + 1}/{totalSlides}
-            </span>
-          </span>
+            <span className="hidden sm:inline">Anteprima</span>
+          </div>
 
-          {/* Selettore Zoom & Focus (Adatta / 75% / 100% / Focus) */}
-          <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px] font-mono">
+          {/* Micro-indicatore Contrasto (invisibile quando conforme AAA, puntino arancione con tooltip se sotto soglia) */}
+          {contrastWarning && (
+            <div
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/40 text-[10px] text-amber-300 font-mono cursor-help transition"
+              title={contrastWarning.message}
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />
+              <span className="hidden xl:inline text-[9px] font-bold">Contrasto basso</span>
+            </div>
+          )}
+
+          {/* Selettore Zoom */}
+          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-[11px]">
             {(['fit', '75%', '100%'] as ZoomMode[]).map((z) => (
               <button
                 key={z}
                 type="button"
                 onClick={() => setZoomLevel(z)}
-                className={`px-1.5 py-0.5 rounded transition cursor-pointer font-bold ${
+                className={`px-2 py-0.5 rounded transition cursor-pointer font-medium ${
                   zoomLevel === z
-                    ? 'bg-amber-500/20 text-amber-300'
+                    ? 'bg-amber-500/20 text-amber-300 font-bold'
                     : 'text-slate-500 hover:text-slate-300'
                 }`}
                 title={`Imposta zoom a ${z === 'fit' ? 'Adatta' : z}`}
@@ -263,6 +258,7 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
           </div>
         </div>
 
+        {/* DESTRA: SELETTORE UNIFICATO "VISTA" + SAFE AREA + NUMERI + FULLSCREEN */}
         <div className="flex items-center gap-1.5">
           {/* Confronto Prima / Dopo (se disponibile versione precedente) */}
           {previousSlide && (
@@ -281,20 +277,48 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
             </button>
           )}
 
-          {/* Modalità Instagram Mockup Frame */}
-          <button
-            type="button"
-            onClick={() => setIsInstagramMockup((prev) => !prev)}
-            title="Mostra / Nascondi mockup cornice Instagram Feed"
-            className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1 ${
-              isInstagramMockup
-                ? 'bg-gradient-to-r from-purple-500/30 to-pink-500/30 text-pink-200 border-pink-500/50 shadow'
-                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Smartphone className="w-3 h-3 text-pink-400" />
-            <span>{isInstagramMockup ? 'Mockup IG On' : 'Mockup IG'}</span>
-          </button>
+          {/* UNICO SELETTORE "VISTA": Slide / Mockup IG / Feed 1:1 */}
+          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-[11px]">
+            <span className="text-[10px] text-slate-500 font-bold px-1.5 hidden xl:inline">Vista:</span>
+            <button
+              type="button"
+              onClick={() => setViewMode('slide')}
+              className={`px-2 py-0.5 rounded transition cursor-pointer font-bold ${
+                viewMode === 'slide'
+                  ? 'bg-amber-500/20 text-amber-300 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Vista standard slide carosello 1080×1350 (4:5)"
+            >
+              Slide
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('mockup')}
+              className={`px-2 py-0.5 rounded transition cursor-pointer font-bold flex items-center gap-1 ${
+                viewMode === 'mockup'
+                  ? 'bg-pink-500/20 text-pink-300 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Mostra anteprima dentro il frame mockup smartphone Instagram"
+            >
+              <Smartphone className="w-3 h-3 text-pink-400" />
+              <span>Mockup IG</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('feed_1_1')}
+              className={`px-2 py-0.5 rounded transition cursor-pointer font-bold flex items-center gap-1 ${
+                viewMode === 'feed_1_1'
+                  ? 'bg-sky-500/20 text-sky-300 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Guida di ritaglio quadrato 1:1 per la griglia feed profilo"
+            >
+              <Grid className="w-3 h-3 text-sky-400" />
+              <span>Feed 1:1</span>
+            </button>
+          </div>
 
           {/* Safe Area Toggle */}
           <button
@@ -309,21 +333,6 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
           >
             <Shield className="w-3 h-3 text-rose-400" />
             <span>{showSafeArea ? 'Safe Area On' : 'Safe Area'}</span>
-          </button>
-
-          {/* Guida Taglio Feed 1:1 */}
-          <button
-            type="button"
-            onClick={() => setShowGridCropGuide((prev) => !prev)}
-            title="Mostra / Nascondi guida ritaglio 1:1 profilo Instagram"
-            className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1 ${
-              showGridCropGuide
-                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
-            }`}
-          >
-            <Grid className="w-3 h-3 text-sky-400" />
-            <span>{showGridCropGuide ? 'Feed 1:1 On' : 'Feed 1:1'}</span>
           </button>
 
           {/* Toggle Numeri Slide (Mostra / Rimuovi numerini) */}
@@ -355,18 +364,6 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
             title="Visualizza a schermo intero (1080x1350)"
           >
             <Maximize2 className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Download PNG rapido */}
-          <button
-            type="button"
-            onClick={handleDownloadCurrent}
-            disabled={isDownloading}
-            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
-            title="Scarica PNG ad alta risoluzione di questa singola slide"
-          >
-            <Download className="w-3 h-3 text-amber-400" />
-            <span>{isDownloading ? '...' : 'PNG'}</span>
           </button>
         </div>
       </div>
@@ -680,16 +677,11 @@ export const CarouselCanvasPreview: React.FC<CarouselCanvasPreviewProps> = ({
         )}
       </div>
 
-      {/* ─── 3. INDICATORE LEGGIBILITÀ MOBILE & NAVIGAZIONE SLIDE 1/7 ─── */}
+      {/* ─── 3. BARRA INFERIORE: SPECIFICHE 1080x1350 & NAVIGAZIONE SLIDE ─── */}
       <div className="w-full flex items-center justify-between px-2 pt-1 border-t border-slate-800/80 text-[11px] gap-2 flex-wrap">
-        <div
-          className={`px-2.5 py-0.5 rounded-full border text-[10px] font-mono flex items-center gap-1.5 shadow-sm ${mobileReadability.badgeClass}`}
-          title={`${slideWordCount} parole presenti in questa slide`}
-        >
-          <span>{mobileReadability.dot}</span>
-          <span>{mobileReadability.label}</span>
-          <span className="opacity-70">({slideWordCount} parole)</span>
-        </div>
+        <span className="text-[10px] font-mono text-slate-500">
+          Instagram 1080×1350 (4:5)
+        </span>
 
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-mono text-slate-400 font-bold">

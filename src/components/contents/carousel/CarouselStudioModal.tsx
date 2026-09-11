@@ -19,12 +19,16 @@ import {
 import {
   exportFullCarouselZip,
   exportCarouselAsPdfPreview,
+  exportCarouselAsVectorPdf,
+  exportSingleSlideAsPng,
+  exportAllSlidesAsPng,
 } from '../../../services/carouselExportService';
 import {
-  optimizeSlideWithGemini,
-  optimizeEntireCarouselWithGemini,
-  CarouselAIOperationType,
-  CAROUSEL_AI_OPERATIONS,
+  generateArtDirectionForSlide,
+  propagateArtDirectorStyleToCarousel,
+  ArtDirectionFocus,
+  ArtDirectionIntensity,
+  ArtDirectorStyleProposal,
 } from '../../../services/geminiCarouselOptimizer';
 import { CarouselSlideEditorCard } from './CarouselSlideEditorCard';
 import { CarouselCanvasPreview } from './CarouselCanvasPreview';
@@ -32,6 +36,7 @@ import { BrandKitModal } from './BrandKitModal';
 import { CarouselAIDiffModal } from './CarouselAIDiffModal';
 import { CarouselQualityChecklistModal } from './CarouselQualityChecklistModal';
 import { CarouselExportProtectionModal } from './CarouselExportProtectionModal';
+import { CarouselVideoModal } from './CarouselVideoModal';
 import { useToast } from '../../../context/ToastContext';
 import {
   ArrowLeft,
@@ -39,6 +44,7 @@ import {
   Download,
   FileText,
   Sparkles,
+  Film,
   Plus,
   CheckCircle2,
   AlertTriangle,
@@ -50,7 +56,12 @@ import {
   ShieldCheck,
   Expand,
   Minimize2,
-  Hash,
+  ChevronDown,
+  ChevronUp,
+  ArrowUpDown,
+  GripVertical,
+  Repeat,
+  FileImage,
 } from 'lucide-react';
 
 interface CarouselStudioModalProps {
@@ -130,60 +141,83 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
   const [isBrandKitOpen, setIsBrandKitOpen] = useState<boolean>(false);
   const [isQualityModalOpen, setIsQualityModalOpen] = useState<boolean>(false);
   const [isExportProtectionModalOpen, setIsExportProtectionModalOpen] = useState<boolean>(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState<boolean>(false);
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState<boolean>(false);
   const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [lastSavedText, setLastSavedText] = useState<string>('ora');
 
-  // Mappa delle versioni precedenti delle slide per il confronto Prima / Dopo
-  const [previousSlideMap, setPreviousSlideMap] = useState<Record<string, CarouselSlide>>({});
+  // Storico per slide (max 10 stati ciascuna per Undo completo)
+  const [slideStyleHistory, setSlideStyleHistory] = useState<Record<string, CarouselSlide[]>>({});
 
-  // Stato modale confronto Diff AI
+  // Dropdown per esportazioni (ZIP, PNG corrente, PNG tutte)
+  const [isExportDropdownOpen, setIsExportDropdownOpen] = useState<boolean>(false);
+  const exportDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Drag & Drop e Inversione/Spostamento slide
+  const [draggedSlideIndex, setDraggedSlideIndex] = useState<number | null>(null);
+  const [dragOverSlideIndex, setDragOverSlideIndex] = useState<number | null>(null);
+  const [showReverseMenu, setShowReverseMenu] = useState<boolean>(false);
+  const reverseMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showReverseMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (reverseMenuRef.current && !reverseMenuRef.current.contains(e.target as Node)) {
+        setShowReverseMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showReverseMenu]);
+
+  // Stato modale anteprima obbligatoria Art Direction (Gemini Flash)
   const [aiDiffState, setAiDiffState] = useState<{
     isOpen: boolean;
     originalSlide: CarouselSlide | null;
     proposedSlide: CarouselSlide | null;
+    proposal: ArtDirectorStyleProposal | null;
     actionName: string;
+    targetSlideIndex: number;
   }>({
     isOpen: false,
     originalSlide: null,
     proposedSlide: null,
+    proposal: null,
     actionName: '',
+    targetSlideIndex: 0,
   });
-
-  // Tracciamento delta del punteggio per visualizzare i miglioramenti (es. 82 → 88)
-  const [scoreDelta, setScoreDelta] = useState<{ from: number; to: number } | null>(null);
-  const prevScoreRef = useRef<number | null>(null);
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const latestCarouselRef = useRef<InstagramCarousel>(carousel);
   latestCarouselRef.current = carousel;
 
-  // Calcolo validazione qualitativa ed editoriale a 360°
+  // Chiudi dropdown esportazione al click esterno
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target as Node)) {
+        setIsExportDropdownOpen(false);
+      }
+    };
+    if (isExportDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isExportDropdownOpen]);
+
+  // Calcolo validazione qualitativa ed editoriale a 360° (utilizzato da export protection)
   const validationReport = useMemo(() => {
     return validateEntireCarousel(carousel);
   }, [carousel]);
 
-  // Tracciamento delta punteggio dopo ogni modifica
-  useEffect(() => {
-    if (prevScoreRef.current !== null && prevScoreRef.current !== validationReport.score) {
-      const from = prevScoreRef.current;
-      const to = validationReport.score;
-      setScoreDelta({ from, to });
-      const timer = setTimeout(() => {
-        setScoreDelta(null);
-      }, 6000);
-      prevScoreRef.current = to;
-      return () => clearTimeout(timer);
-    }
-    prevScoreRef.current = validationReport.score;
-  }, [validationReport.score]);
-
   const slides = carousel.slides || [];
   const safeIndex = Math.min(Math.max(0, selectedSlideIndex), Math.max(0, slides.length - 1));
   const activeSlide = slides.length > 0 ? (slides[safeIndex] || slides[0]) : null;
-  const activePreviousSlide = activeSlide ? previousSlideMap[activeSlide.id] : null;
+  const activePreviousSlide = activeSlide && slideStyleHistory[activeSlide.id]?.length
+    ? slideStyleHistory[activeSlide.id][slideStyleHistory[activeSlide.id].length - 1]
+    : null;
+
 
   // Esecuzione autosave con debounce rigoroso a 800 ms
   const triggerDebouncedAutosave = useCallback(
@@ -232,12 +266,8 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [saveStatus]);
 
-  // Aggiornamento singola slide con conservazione dello storico per il Prima/Dopo
+  // Aggiornamento singola slide
   const handleUpdateSlide = (updatedSlide: CarouselSlide) => {
-    const oldSlide = slides.find((s) => s.id === updatedSlide.id);
-    if (oldSlide) {
-      setPreviousSlideMap((prev) => ({ ...prev, [updatedSlide.id]: oldSlide }));
-    }
 
     const updatedSlides = slides.map((s) => (s.id === updatedSlide.id ? updatedSlide : s));
     const updatedCarousel: InstagramCarousel = {
@@ -310,6 +340,94 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     triggerDebouncedAutosave(updatedCarousel);
     setSelectedSlideIndex(reordered.length - 1);
     showSuccess('CTA spostata in ultima posizione!');
+  };
+
+  // Scambio / Inversione di posizione atomica tra due slide
+  const handleSwapSlides = (indexA: number, indexB: number) => {
+    if (indexA < 0 || indexA >= slides.length || indexB < 0 || indexB >= slides.length || indexA === indexB) return;
+
+    const newSlides = [...slides];
+    const temp = newSlides[indexA];
+    newSlides[indexA] = newSlides[indexB];
+    newSlides[indexB] = temp;
+
+    const reordered = newSlides.map((s, idx) => ({ ...s, order: idx + 1 }));
+    const updatedCarousel = { ...carousel, slides: reordered };
+    setCarousel(updatedCarousel);
+    triggerDebouncedAutosave(updatedCarousel);
+    setSelectedSlideIndex(indexB);
+    showSuccess(`Slide ${indexA + 1} e ${indexB + 1} invertite!`);
+  };
+
+  // Inversione ordine dell'intero carosello o delle sole slide intermedie (mantiene Copertina/CTA)
+  const handleReverseSlides = (mode: 'all' | 'content' = 'all') => {
+    if (slides.length <= 1) return;
+
+    const newSlides = [...slides];
+    if (mode === 'content' && slides.length > 2) {
+      const hasCover = slides[0].type === 'cover';
+      const hasCta = slides[slides.length - 1].type === 'cta';
+      const startIdx = hasCover ? 1 : 0;
+      const endIdx = hasCta ? slides.length - 2 : slides.length - 1;
+
+      if (endIdx > startIdx) {
+        const middle = newSlides.slice(startIdx, endIdx + 1).reverse();
+        newSlides.splice(startIdx, middle.length, ...middle);
+      } else {
+        newSlides.reverse();
+      }
+    } else {
+      newSlides.reverse();
+    }
+
+    const reordered = newSlides.map((s, idx) => ({ ...s, order: idx + 1 }));
+    const updatedCarousel = { ...carousel, slides: reordered };
+    setCarousel(updatedCarousel);
+    triggerDebouncedAutosave(updatedCarousel);
+    setSelectedSlideIndex(0);
+    showSuccess(mode === 'content' ? 'Slide di contenuto invertite!' : 'Ordine di tutte le slide invertito!');
+  };
+
+  // Drag and Drop per riordinare le miniature nella barra laterale
+  const handleSlideDragStart = (index: number, e: React.DragEvent) => {
+    setDraggedSlideIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+  };
+
+  const handleSlideDragOver = (index: number, e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverSlideIndex !== index) {
+      setDragOverSlideIndex(index);
+    }
+  };
+
+  const handleSlideDrop = (targetIndex: number, e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedSlideIndex === null || draggedSlideIndex === targetIndex) {
+      setDraggedSlideIndex(null);
+      setDragOverSlideIndex(null);
+      return;
+    }
+
+    const newSlides = [...slides];
+    const [moved] = newSlides.splice(draggedSlideIndex, 1);
+    newSlides.splice(targetIndex, 0, moved);
+
+    const reordered = newSlides.map((s, idx) => ({ ...s, order: idx + 1 }));
+    const updatedCarousel = { ...carousel, slides: reordered };
+    setCarousel(updatedCarousel);
+    triggerDebouncedAutosave(updatedCarousel);
+    setSelectedSlideIndex(targetIndex);
+    setDraggedSlideIndex(null);
+    setDragOverSlideIndex(null);
+    showSuccess(`Slide spostata in posizione ${targetIndex + 1}!`);
+  };
+
+  const handleSlideDragEnd = () => {
+    setDraggedSlideIndex(null);
+    setDragOverSlideIndex(null);
   };
 
   // Duplicazione slide con rinumerazione automatica
@@ -406,50 +524,189 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
     showSuccess('Struttura carosello rigenerata con AI!');
   };
 
-  // Trigger azione contestuale AI con Gemini 3.8 Flash e apertura diff obbligatorio
-  const handleTriggerAIOperation = async (action: CarouselAIOperationType = 'improve_all') => {
-    if (!activeSlide) return;
+  // Trigger Art Direction con Gemini Flash e apertura anteprima obbligatoria prima/dopo
+  const handleTriggerArtDirection = async (
+    slideIndex: number,
+    options: { focus: ArtDirectionFocus[]; intensity: ArtDirectionIntensity }
+  ) => {
+    const targetSlide = slides[slideIndex];
+    if (!targetSlide) return;
     setIsGeminiOptimizing(true);
     try {
-      const actionOption = CAROUSEL_AI_OPERATIONS.find((o) => o.id === action);
-      const actionLabel = actionOption?.label || 'Miglioramento Slide';
-      const optimized = await optimizeSlideWithGemini(activeSlide, content, safeIndex, slides.length, action);
+      const result = await generateArtDirectionForSlide(
+        targetSlide,
+        content,
+        slideIndex,
+        slides.length,
+        {
+          focus: options.focus,
+          intensity: options.intensity,
+          brandKit: carousel.settings.brandKit,
+          currentTemplateId: carousel.settings.templateId,
+        }
+      );
 
-      // Mostra sempre il diff visivo prima di qualsiasi applicazione
+      // NON applica direttamente! Apre la modale obbligatoria di anteprima prima/dopo
       setAiDiffState({
         isOpen: true,
-        originalSlide: activeSlide,
-        proposedSlide: optimized,
-        actionName: actionLabel,
+        originalSlide: targetSlide,
+        proposedSlide: result.appliedSlide,
+        proposal: result.proposal,
+        actionName: `Art Direction (${options.intensity === 'light' ? 'Leggera' : options.intensity === 'strong' ? 'Decisa' : 'Media'})`,
+        targetSlideIndex: slideIndex,
       });
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : 'Errore durante l\'ottimizzazione';
-      showError('Errore Gemini 3.8 Flash', errMsg);
+      const errMsg = err instanceof Error ? err.message : 'Errore durante l\'elaborazione grafica';
+      showError('Errore Art Director Gemini', errMsg);
     } finally {
       setIsGeminiOptimizing(false);
     }
   };
 
-  // Applicazione esplicita delle modifiche proposte da Gemini
-  const handleApplyAIDiff = (appliedSlide: CarouselSlide) => {
+  // Applicazione esplicita dello stile alla SINGOLA slide (salva nello storico fino a 10 stati)
+  const handleApplyAIDiffToSlide = (appliedSlide: CarouselSlide) => {
+    const slideId = appliedSlide.id;
+    const currentSlide = slides.find((s) => s.id === slideId);
+
+    // Salva nello storico della slide per l'annullamento (max 10 stati)
+    if (currentSlide) {
+      setSlideStyleHistory((prev) => {
+        const stack = prev[slideId] || [];
+        return {
+          ...prev,
+          [slideId]: [...stack.slice(-9), { ...currentSlide }],
+        };
+      });
+    }
+
     handleUpdateSlide(appliedSlide);
-    setAiDiffState({ isOpen: false, originalSlide: null, proposedSlide: null, actionName: '' });
-    showSuccess('✨ Modifiche AI applicate!', `Slide ${safeIndex + 1} aggiornata.`);
+    setAiDiffState({
+      isOpen: false,
+      originalSlide: null,
+      proposedSlide: null,
+      proposal: null,
+      actionName: '',
+      targetSlideIndex: 0,
+    });
+    showSuccess('✨ Stile grafico applicato alla slide!', `Slide ${safeIndex + 1} aggiornata (testo intatto al 100%).`);
   };
 
-  // Ottimizzazione intero carosello con Gemini 3.8 Flash
-  const handleGeminiOptimizeAll = async () => {
-    setIsGeminiOptimizing(true);
+  // Applicazione dello stile a TUTTE le slide del carosello
+  const handleApplyAIDiffToAllSlides = (proposal: ArtDirectorStyleProposal) => {
+    // Salva lo stato corrente di tutte le slide nei rispettivi storici
+    setSlideStyleHistory((prev) => {
+      const updated = { ...prev };
+      for (const s of slides) {
+        const stack = updated[s.id] || [];
+        updated[s.id] = [...stack.slice(-9), { ...s }];
+      }
+      return updated;
+    });
+
+    const updatedCarousel = propagateArtDirectorStyleToCarousel(carousel, proposal);
+    setCarousel(updatedCarousel);
+    triggerDebouncedAutosave(updatedCarousel);
+    setAiDiffState({
+      isOpen: false,
+      originalSlide: null,
+      proposedSlide: null,
+      proposal: null,
+      actionName: '',
+      targetSlideIndex: 0,
+    });
+    showSuccess('🚀 Stile Art Director applicato a tutte le slide!', `Tutte le ${slides.length} slide sono state armonizzate graficamente.`);
+  };
+
+  // Annulla ultimo stile grafico (Undo dallo storico a 10 livelli) preservando il testo
+  const handleUndoStyle = (slideId?: string) => {
+    if (!slideId) return;
+    const history = slideStyleHistory[slideId];
+    if (!history || history.length === 0) return;
+
+    const previousState = history[history.length - 1];
+    const newHistory = history.slice(0, -1);
+    const current = slides.find((s) => s.id === slideId);
+    if (!current || !previousState) return;
+
+    // Ripristina parametri grafici preservando qualsiasi testo inserito dall'utente
+    const revertedSlide: CarouselSlide = {
+      ...previousState,
+      headline: current.headline,
+      headlineHighlight: current.headlineHighlight,
+      subheadline: current.subheadline,
+      bodyText: current.bodyText,
+      wrongText: current.wrongText,
+      correctText: current.correctText,
+      bulletPoints: current.bulletPoints,
+      diagramStep1: current.diagramStep1,
+      diagramStep2: current.diagramStep2,
+      diagramHighlightResult: current.diagramHighlightResult,
+      ctaBoxTitle: current.ctaBoxTitle,
+      takeawayTag: current.takeawayTag,
+    };
+
+    setSlideStyleHistory((prev) => ({
+      ...prev,
+      [slideId]: newHistory,
+    }));
+
+    handleUpdateSlide(revertedSlide);
+    showSuccess('Stile grafico precedente ripristinato (testo intatto al 100%)!');
+  };
+
+  // Esportazione singola slide corrente in formato PNG
+  const handleExportCurrentSlidePng = async () => {
+    const currentSlide = slides[safeIndex];
+    if (!currentSlide) return;
+    setIsExportDropdownOpen(false);
+    setIsExportingZip(true);
+    setExportProgress(`Rendering slide ${safeIndex + 1} (PNG 1080×1350)...`);
     try {
-      const optimized = await optimizeEntireCarouselWithGemini(carousel, content);
-      setCarousel(optimized);
-      triggerDebouncedAutosave(optimized);
-      showSuccess('🚀 Carosello Perfezionato con Gemini 3.8 Flash!', 'Tutte le slide sono state ottimizzate.');
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : 'Errore durante l\'ottimizzazione';
-      showError('Errore Gemini 3.8 Flash', errMsg);
+      await exportSingleSlideAsPng(currentSlide, carousel);
+      showSuccess(`Slide ${safeIndex + 1} esportata in PNG!`);
+    } catch (err) {
+      showError('Errore esportazione PNG', err instanceof Error ? err.message : 'Errore durante l\'esportazione');
     } finally {
-      setIsGeminiOptimizing(false);
+      setIsExportingZip(false);
+      setExportProgress('');
+    }
+  };
+
+  // Esportazione di tutte le slide in file PNG individuali
+  const handleExportAllSlidesPng = async () => {
+    if (slides.length === 0) return;
+    setIsExportDropdownOpen(false);
+    setIsExportingZip(true);
+    setExportProgress('Rendering di tutte le slide in PNG...');
+    try {
+      await exportAllSlidesAsPng(carousel, (current, total) => {
+        setExportProgress(`Download slide ${current} di ${total} (PNG)...`);
+      });
+      showSuccess(`Tutte le ${slides.length} slide sono state esportate in PNG!`);
+    } catch (err) {
+      showError('Errore esportazione PNG', err instanceof Error ? err.message : 'Errore durante l\'esportazione');
+    } finally {
+      setIsExportingZip(false);
+      setExportProgress('');
+    }
+  };
+
+  // Esportazione in PDF Vettoriale multipagina modificabile direttamente con Canva
+  const handleExportVectorPdf = async () => {
+    if (slides.length === 0) return;
+    setIsExportDropdownOpen(false);
+    setIsExportingZip(true);
+    setExportProgress('Generazione PDF Vettoriale per Canva in corso...');
+    try {
+      await exportCarouselAsVectorPdf(carousel, (msg) => {
+        setExportProgress(msg);
+      }, content.title);
+      showSuccess('PDF Vettoriale per Canva scaricato! Trascinalo su Canva per modificare testi e grafica.');
+    } catch (err) {
+      showError('Errore esportazione PDF Vettoriale', err instanceof Error ? err.message : 'Errore durante la creazione del PDF');
+    } finally {
+      setIsExportingZip(false);
+      setExportProgress('');
     }
   };
 
@@ -591,49 +848,18 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-bold">▼</span>
           </div>
 
-          {/* Pill Quality Score Formato: 91/100 · 1 warning · 0 blocchi */}
-          {slides.length === 0 ? (
-            <div
-              className="px-3 py-1.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-400 text-xs font-mono font-bold flex items-center gap-2 shadow-sm"
-              title="Carosello non ancora inizializzato"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-slate-500" />
-              <span>Non iniziato</span>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setIsQualityModalOpen(true)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold flex items-center gap-2 transition cursor-pointer shadow-sm ${
-                validationReport.blockedCount > 0
-                  ? 'bg-rose-500/15 border-rose-500/40 text-rose-300 hover:bg-rose-500/25'
-                  : validationReport.warningCount > 0
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
-                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
-              }`}
-              title={`Checklist Qualità: ${validationReport.score}/100\n${validationReport.warningCount} warning · ${validationReport.blockedCount} blocchi\n\nMotivazione:\n${validationReport.qualityReason}`}
-            >
-              <ShieldCheck className={`w-3.5 h-3.5 ${
-                validationReport.blockedCount > 0 ? 'text-rose-400' : validationReport.warningCount > 0 ? 'text-amber-400' : 'text-emerald-400'
-              }`} />
-              {scoreDelta && scoreDelta.from !== scoreDelta.to ? (
-                <span className="flex items-center gap-1 font-mono">
-                  <span className="text-slate-500 line-through text-[10px]">{scoreDelta.from}</span>
-                  <span className="text-emerald-300 font-black animate-pulse">
-                    {scoreDelta.from} → {scoreDelta.to} {scoreDelta.to > scoreDelta.from ? `(+${scoreDelta.to - scoreDelta.from})` : `(${scoreDelta.to - scoreDelta.from})`}
-                  </span>
-                </span>
-              ) : (
-                <span className="font-black text-white">{validationReport.score}/100</span>
-              )}
-              <span className="text-slate-500">·</span>
-              <span className="text-amber-300">{validationReport.warningCount} warning</span>
-              <span className="text-slate-500">·</span>
-              <span className={validationReport.blockedCount > 0 ? 'text-rose-400 font-black' : 'text-slate-400'}>
-                {validationReport.blockedCount} blocchi
-              </span>
-            </button>
-          )}
+          {/* Indicatore Neutro di Stato Progetto */}
+          <div
+            className="px-3.5 py-1.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-300 text-xs font-mono font-bold flex items-center gap-2 shadow-sm"
+            title="Progetto Carosello Instagram 1080×1350"
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="text-slate-300 font-sans font-bold">Progetto Carosello</span>
+            <span className="text-slate-600 font-mono">•</span>
+            <span className="text-amber-300">{slides.length} {slides.length === 1 ? 'slide' : 'slide'}</span>
+            <span className="text-slate-600 font-mono">•</span>
+            <span className="text-slate-400 font-medium">1080×1350 (4:5)</span>
+          </div>
         </div>
 
         {/* DESTRA: RAGGRUPPAMENTO TOOL (FOCUS, BRAND KIT, AI) + EXPORT & SALVA */}
@@ -690,55 +916,117 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
               <span className="hidden lg:inline">Brand Kit</span>
             </button>
 
-            {/* Toggle Numeri Slide Rapido */}
+            {/* Video Animato */}
             <button
               type="button"
-              onClick={handleToggleSlideCounter}
-              className={`px-2.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                carousel.settings.showSlideCounter !== false
-                  ? 'bg-amber-500/20 text-amber-300'
-                  : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900'
-              }`}
-              title={
-                carousel.settings.showSlideCounter !== false
-                  ? 'Rimuovi numerini dalle slide (es. 2/2)'
-                  : 'Mostra numerini sulle slide (es. 2/2)'
-              }
+              onClick={() => setIsVideoModalOpen(true)}
+              disabled={slides.length === 0}
+              className="px-2.5 py-1.5 rounded-xl text-amber-300 hover:text-white hover:bg-slate-900 border border-amber-500/20 hover:border-amber-500/40 font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40 disabled:pointer-events-none shadow-sm"
+              title="Crea ed esporta video animato 4:5 per Instagram Post"
             >
-              <Hash className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden lg:inline">{carousel.settings.showSlideCounter !== false ? 'Numeri On' : 'Numeri Off'}</span>
+              <Film className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden lg:inline">Video Animato</span>
             </button>
 
-            {/* Ottimizza Tutto con Gemini 3.8 Flash */}
-            <button
-              type="button"
-              onClick={handleGeminiOptimizeAll}
-              disabled={isGeminiOptimizing || slides.length === 0}
-              className="px-2.5 py-1.5 rounded-xl text-amber-300 hover:text-white hover:bg-slate-900 font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
-              title="Ottimizza intero carosello con Gemini 3.8 Flash"
-            >
-              <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isGeminiOptimizing ? 'animate-spin' : ''}`} />
-              <span className="hidden lg:inline">{isGeminiOptimizing ? 'Ottimizzazione...' : 'Gemini AI'}</span>
-            </button>
           </div>
 
-          {/* Scarica ZIP protetto da verifica preventiva */}
-          <button
-            type="button"
-            onClick={handleOpenExportModal}
-            disabled={isExportingZip || slides.length === 0}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition cursor-pointer disabled:opacity-50 ${
-              slides.length === 0
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                : validationReport.blockedCount > 0
-                ? 'bg-gradient-to-r from-rose-600 to-rose-700 text-white hover:from-rose-500 hover:to-rose-600 ring-1 ring-rose-400/30'
-                : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950'
-            }`}
-            title={slides.length === 0 ? 'Nessuna slide da esportare' : validationReport.blockedCount > 0 ? 'Esportazione bloccata: sono presenti errori critici' : 'Scarica pacchetto ZIP carosello'}
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isExportingZip ? 'Esporto...' : 'Scarica ZIP'}</span>
-          </button>
+          {/* Dropdown Esportazione: Scarica ZIP / Slide PNG / Tutte PNG / Video Animato */}
+          <div className="relative" ref={exportDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsExportDropdownOpen((prev) => !prev)}
+              disabled={isExportingZip || slides.length === 0}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition cursor-pointer disabled:opacity-50 ${
+                slides.length === 0
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                  : validationReport.blockedCount > 0
+                  ? 'bg-gradient-to-r from-rose-600 to-rose-700 text-white hover:from-rose-500 hover:to-rose-600 ring-1 ring-rose-400/30'
+                  : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950'
+              }`}
+              title="Menu esportazione carosello"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{isExportingZip ? 'Esporto...' : 'Scarica / Esporta'}</span>
+              <ChevronDown className="w-3 h-3 ml-0.5 opacity-80" />
+            </button>
+
+            {isExportDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-64 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 p-1.5 space-y-1 animate-in fade-in slide-in-from-top-1">
+                {/* VOCE 1: VIDEO ANIMATO 4:5 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsExportDropdownOpen(false);
+                    setIsVideoModalOpen(true);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-amber-300 hover:bg-slate-800 hover:text-white transition flex items-center gap-2 cursor-pointer border-b border-slate-800/80 pb-2 mb-1"
+                >
+                  <Film className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="block flex items-center gap-1.5">
+                      <span>Video Animato (4:5)</span>
+                      <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-300 text-[9px] font-mono rounded-md border border-amber-500/30">1080×1350</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal block">Post video animato per Instagram</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsExportDropdownOpen(false);
+                    handleOpenExportModal();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-amber-300 hover:bg-slate-800 hover:text-white transition flex items-center gap-2 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="block">Scarica ZIP</span>
+                    <span className="text-[10px] text-slate-400 font-normal block">Tutte le slide + didascalia txt</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportCurrentSlidePng}
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:bg-slate-800 hover:text-white transition flex items-center gap-2 cursor-pointer"
+                >
+                  <FileImage className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <div>
+                    <span className="block">Esporta slide corrente (PNG)</span>
+                    <span className="text-[10px] text-slate-400 font-normal block">Slide {safeIndex + 1} a 1080×1350</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportAllSlidesPng}
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:bg-slate-800 hover:text-white transition flex items-center gap-2 cursor-pointer"
+                >
+                  <Layers className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="block">Esporta tutte (PNG)</span>
+                    <span className="text-[10px] text-slate-400 font-normal block">{slides.length} file PNG individuali</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportVectorPdf}
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-purple-300 hover:bg-purple-950/50 hover:text-purple-200 transition flex items-center gap-2 cursor-pointer border-t border-slate-800/80"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  <div>
+                    <span className="block flex items-center gap-1.5">
+                      <span>Esporta PDF per Canva</span>
+                      <span className="px-1.5 py-0.2 bg-purple-500/20 text-purple-300 text-[9px] font-mono rounded-md border border-purple-500/30">Vettoriale</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal block">Testi 100% modificabili su Canva</span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Salva Sempre Raggiungibile */}
           <button
@@ -769,13 +1057,64 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
             mobileTab === 'preview' ? 'hidden xl:flex' : 'flex'
           }`}>
             
-            {/* Header Miniature con + Nuova Slide e Rigenera */}
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 shrink-0">
-              <span className="text-xs font-bold text-slate-200 font-mono">
+            {/* Header Miniature con + Nuova Slide, Inverti e Contatore */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 shrink-0 gap-1">
+              <span className="text-xs font-bold text-slate-200 font-mono shrink-0">
                 {slides.length} / 10 slide
               </span>
 
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5 relative" ref={reverseMenuRef}>
+                {slides.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowReverseMenu((prev) => !prev)}
+                      title="Inverti l'ordine delle slide"
+                      className="px-2 py-1 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer shadow-sm"
+                    >
+                      <ArrowUpDown className="w-3 h-3" />
+                      <span>Inverti</span>
+                    </button>
+
+                    {showReverseMenu && (
+                      <div className="absolute right-0 top-full mt-1.5 w-60 bg-slate-900 border border-slate-700/90 rounded-2xl shadow-2xl p-2 z-50 space-y-1.5 text-xs backdrop-blur-md animate-in fade-in zoom-in-95">
+                        {slides.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleReverseSlides('content');
+                              setShowReverseMenu(false);
+                            }}
+                            className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-purple-500/20 text-slate-200 hover:text-purple-200 flex flex-col gap-0.5 transition cursor-pointer"
+                          >
+                            <span className="font-bold flex items-center gap-1.5 text-purple-300">
+                              <Repeat className="w-3.5 h-3.5" /> Inverti contenuti (2-{slides.length})
+                            </span>
+                            <span className="text-[10px] text-slate-400 leading-tight">
+                              Mantiene intatta la Copertina come slide #1
+                            </span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleReverseSlides('all');
+                            setShowReverseMenu(false);
+                          }}
+                          className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-purple-500/20 text-slate-200 hover:text-purple-200 flex flex-col gap-0.5 transition cursor-pointer"
+                        >
+                          <span className="font-bold flex items-center gap-1.5 text-white">
+                            <ArrowUpDown className="w-3.5 h-3.5" /> Inverti tutte (1-{slides.length})
+                          </span>
+                          <span className="text-[10px] text-slate-400 leading-tight">
+                            Capovolge completamente l'ordine di tutte le slide
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+
                 <button
                   type="button"
                   onClick={handleAddNewSlide}
@@ -783,18 +1122,10 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                 >
                   <Plus className="w-3 h-3" /> Aggiungi
                 </button>
-                <button
-                  type="button"
-                  onClick={handleRegenerateAll}
-                  title="Rigenera struttura con AI"
-                  className="p-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 transition cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                </button>
               </div>
             </div>
 
-            {/* LISTA VERTICALE DELLE SCHEDE SLIDE: TIPO, STATO E WARNING SEPARATI */}
+            {/* LISTA VERTICALE DELLE SCHEDE SLIDE: TIPO, STATO, DRAG & DROP E SPOSTAMENTO */}
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2 pr-1">
               {slides.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 text-xs">
@@ -810,6 +1141,8 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                   };
                   const isFirst = idx === 0;
                   const isLast = idx === slides.length - 1;
+                  const isDraggingThis = draggedSlideIndex === idx;
+                  const isDragOverThis = dragOverSlideIndex === idx && !isDraggingThis;
 
                   // Separazione semantica rigorosa:
                   // PRONTA = esportabile
@@ -818,7 +1151,6 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                   const isBlocked = sr.status === 'blocked';
                   const isWarning = sr.status === 'warning';
                   const isDraft = sr.status === 'draft';
-                  const isHookImprovable = sr.editorialStatus === 'hook_improvable';
 
                   const statusBadgeStyle = isBlocked
                     ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
@@ -852,16 +1184,24 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                     ? 'Esempio'
                     : 'Slide';
 
-                  const mainWarning =
-                    sr.issues.find((i) => i.severity === 'critical') ||
-                    sr.issues.find((i) => i.severity === 'warning');
-
                   return (
                     <div
                       key={s.id}
+                      draggable={true}
+                      onDragStart={(e) => handleSlideDragStart(idx, e)}
+                      onDragOver={(e) => handleSlideDragOver(idx, e)}
+                      onDragLeave={() => {
+                        if (dragOverSlideIndex === idx) setDragOverSlideIndex(null);
+                      }}
+                      onDrop={(e) => handleSlideDrop(idx, e)}
+                      onDragEnd={handleSlideDragEnd}
                       onClick={() => setSelectedSlideIndex(idx)}
-                      className={`p-2.5 rounded-2xl border transition-all cursor-pointer space-y-1.5 relative ${
-                        isSelected
+                      className={`p-2.5 rounded-2xl border transition-all cursor-pointer space-y-1.5 relative group ${
+                        isDraggingThis
+                          ? 'opacity-40 scale-[0.98] border-dashed border-amber-500/80 bg-amber-500/5'
+                          : isDragOverThis
+                          ? 'ring-2 ring-amber-400 border-amber-400 bg-amber-500/15 scale-[1.01]'
+                          : isSelected
                           ? 'bg-amber-500/15 border-amber-500/80 text-amber-200 shadow-lg ring-1 ring-amber-500/40'
                           : isFirst
                           ? 'bg-slate-950/90 border-amber-500/30 hover:border-amber-500/60'
@@ -870,12 +1210,15 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                           : 'bg-slate-950/80 border-slate-800/90 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                       }`}
                     >
-                      {/* RIGA 1: NUMERO, TITOLO COMPLETO (SENZA TRONCAMENTI FORZATI) E TIPO */}
+                      {/* RIGA 1: DRAG GRIP, NUMERO, TITOLO E TIPO */}
                       <div className="flex items-start justify-between gap-1.5">
                         <div className="flex items-start gap-1.5 min-w-0 flex-1">
-                          <span className="w-5 h-5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">
-                            {String(idx + 1).padStart(2, '0')}
-                          </span>
+                          <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+                            <GripVertical className="w-3 h-3 text-slate-600 group-hover:text-slate-400 cursor-grab active:cursor-grabbing" />
+                            <span className="w-5 h-5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono font-bold flex items-center justify-center">
+                              {String(idx + 1).padStart(2, '0')}
+                            </span>
+                          </div>
                           <p className="text-xs font-bold text-white leading-snug break-words line-clamp-2">
                             {s.headline || `Slide ${idx + 1}`}
                           </p>
@@ -886,35 +1229,66 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                         </span>
                       </div>
 
-                      {/* RIGA 2: STATO SEPARATO, EVENTUALE HOOK MIGLIORABILE E PAROLE */}
-                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full border ${statusBadgeStyle}`}>
-                          {statusLabel}
-                        </span>
-
-                        {isHookImprovable && (
-                          <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                            Hook migliorabile
+                      {/* RIGA 2: STATO, CONTEGGIO PAROLE E CONTROLLI SPOSTA / INVERTI */}
+                      <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full border ${statusBadgeStyle}`}>
+                            {statusLabel}
                           </span>
-                        )}
 
-                        <span className="text-[9px] font-mono text-slate-500 ml-auto">
-                          {sr.wordCount} parole
-                        </span>
-                      </div>
-
-                      {/* RIGA 3: WARNING SEPARATO E VISIBILE (SE PRESENTE) */}
-                      {mainWarning && (
-                        <div
-                          className={`text-[10px] px-2 py-1 rounded-lg border leading-tight ${
-                            mainWarning.severity === 'critical'
-                              ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                              : 'bg-amber-500/10 border-amber-500/25 text-amber-300'
-                          }`}
-                        >
-                          <span className="line-clamp-2">⚠️ {mainWarning.title}</span>
+                          <span className="text-[9px] font-mono text-slate-500 truncate">
+                            {sr.wordCount} p.
+                          </span>
                         </div>
-                      )}
+
+                        {/* PULSANTI SPOSTA E INVERTI RAPIDI */}
+                        <div
+                          className="flex items-center gap-0.5 shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {idx > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveSlide(idx, 'up');
+                              }}
+                              title="Sposta prima (Su)"
+                              className="p-1 rounded bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800/80 transition cursor-pointer"
+                            >
+                              <ChevronUp className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          {idx < slides.length - 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMoveSlide(idx, 'down');
+                              }}
+                              title="Sposta dopo (Giù)"
+                              className="p-1 rounded bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800/80 transition cursor-pointer"
+                            >
+                              <ChevronDown className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          {idx < slides.length - 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSwapSlides(idx, idx + 1);
+                              }}
+                              title={`Inverti con Slide ${idx + 2}`}
+                              className="p-1 rounded bg-slate-900/80 hover:bg-amber-500/20 text-slate-400 hover:text-amber-300 border border-slate-800/80 transition cursor-pointer"
+                            >
+                              <ArrowUpDown className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   );
                 })
@@ -922,7 +1296,7 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
             </div>
 
             <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-500 text-center font-mono">
-              💡 ◄ / ► per scorrere
+              💡 Trascina o usa ▲ ▼ ⇄ per spostare o invertire
             </div>
           </div>
         )}
@@ -947,11 +1321,32 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
               onChange={handleUpdateSlide}
               onMoveUp={() => handleMoveSlide(safeIndex, 'up')}
               onMoveDown={() => handleMoveSlide(safeIndex, 'down')}
+              onSwapWithNext={() => handleSwapSlides(safeIndex, safeIndex + 1)}
               onDuplicate={() => handleDuplicateSlide(safeIndex)}
               onDelete={() => handleDeleteSlide(safeIndex)}
               onRegenerate={() => handleRegenerateSlide(safeIndex)}
-              onGeminiOptimize={() => handleTriggerAIOperation('improve_all')}
-              onTriggerAIOperation={handleTriggerAIOperation}
+              onGeminiOptimize={() =>
+                handleTriggerArtDirection(safeIndex, {
+                  focus: ['typography_hierarchy', 'palette_contrast', 'positioning_layout'],
+                  intensity: 'medium',
+                })
+              }
+              onTriggerArtDirection={(opts) => handleTriggerArtDirection(safeIndex, opts)}
+              previousSlide={activePreviousSlide}
+              canUndoStyle={Boolean(activePreviousSlide)}
+              onUndoStyle={() => handleUndoStyle(activeSlide?.id)}
+              onOpenDiffModal={() => {
+                if (activeSlide && activePreviousSlide) {
+                  setAiDiffState({
+                    isOpen: true,
+                    originalSlide: activePreviousSlide,
+                    proposedSlide: activeSlide,
+                    proposal: null,
+                    actionName: 'Confronto Stile Precedente vs Attuale',
+                    targetSlideIndex: safeIndex,
+                  });
+                }
+              }}
               onNavigatePrev={() => setSelectedSlideIndex((prev) => Math.max(0, prev - 1))}
               onNavigateNext={() => setSelectedSlideIndex((prev) => Math.min(slides.length - 1, prev + 1))}
               onMoveToEnd={() => handleMoveSlideToEnd(safeIndex)}
@@ -1047,14 +1442,27 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                   <span>Qualità: {validationReport.score}/100 · {validationReport.warningCount} warning · {validationReport.blockedCount} blocchi</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => exportCarouselAsPdfPreview(carousel)}
-                  className="text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>Anteprima PDF</span>
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleExportVectorPdf}
+                    className="text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
+                    title="Scarica PDF multipagina vettoriale modificabile direttamente in Canva"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>PDF per Canva</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => exportCarouselAsPdfPreview(carousel)}
+                    className="text-slate-400 hover:text-slate-200 font-bold flex items-center gap-1 cursor-pointer"
+                    title="Anteprima e stampa rapida PDF"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Stampa</span>
+                  </button>
+                </div>
               </>
             ) : (
               <span className="text-slate-600 text-[11px] font-mono mx-auto">Nessuna slide presente</span>
@@ -1065,17 +1473,29 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
 
       {/* ─── 3. MODALI INTEGRATE (DIFF AI, CHECKLIST QUALITÀ, BRAND KIT, PROTEZIONE EXPORT) ─── */}
 
-      {/* MODALE CONFRONTO DIFF AI GEMINI 3.8 FLASH */}
+      {/* MODALE ANTEPRIMA ART DIRECTION OBBLIGATORIA (GEMINI FLASH) */}
       {aiDiffState.isOpen && aiDiffState.originalSlide && aiDiffState.proposedSlide && (
         <CarouselAIDiffModal
           isOpen={aiDiffState.isOpen}
-          onClose={() => setAiDiffState({ isOpen: false, originalSlide: null, proposedSlide: null, actionName: '' })}
+          onClose={() =>
+            setAiDiffState({
+              isOpen: false,
+              originalSlide: null,
+              proposedSlide: null,
+              proposal: null,
+              actionName: '',
+              targetSlideIndex: 0,
+            })
+          }
           originalSlide={aiDiffState.originalSlide}
           proposedSlide={aiDiffState.proposedSlide}
+          proposal={aiDiffState.proposal || undefined}
           actionName={aiDiffState.actionName}
-          slideIndex={safeIndex}
+          slideIndex={aiDiffState.targetSlideIndex}
           totalSlides={slides.length}
-          onApply={handleApplyAIDiff}
+          settings={carousel.settings}
+          onApplyToSlide={handleApplyAIDiffToSlide}
+          onApplyToAllSlides={handleApplyAIDiffToAllSlides}
         />
       )}
 
@@ -1086,7 +1506,12 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
           onClose={() => setIsQualityModalOpen(false)}
           carousel={carousel}
           onSelectSlide={(idx) => setSelectedSlideIndex(idx)}
-          onOptimizeSlide={(_idx) => handleTriggerAIOperation('improve_all')}
+          onOptimizeSlide={(idx) =>
+            handleTriggerArtDirection(idx, {
+              focus: ['typography_hierarchy', 'palette_contrast', 'positioning_layout'],
+              intensity: 'medium',
+            })
+          }
         />
       )}
 
@@ -1126,6 +1551,15 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
             setCarousel(updatedCarousel);
             triggerDebouncedAutosave(updatedCarousel);
           }}
+        />
+      )}
+
+      {/* MODALE CAROSELLO VIDEO ANIMATO (4:5 1080x1350) */}
+      {isVideoModalOpen && (
+        <CarouselVideoModal
+          isOpen={isVideoModalOpen}
+          onClose={() => setIsVideoModalOpen(false)}
+          carousel={carousel}
         />
       )}
     </div>

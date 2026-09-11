@@ -602,3 +602,165 @@ export const generateCarouselProposalFromIdea = (
   return slides;
 };
 
+/**
+ * Converte una bozza testuale / script (con separatori --- o "Slide X") in una sequenza strutturata di slide per Carosello
+ */
+export const parseScriptToCarouselSlides = (
+  script: string,
+  fallbackTitle: string = 'Nuovo Carosello'
+): CarouselSlide[] => {
+  if (!script || !script.trim()) return [];
+
+  const cleanScript = script.replace(/\r\n/g, '\n');
+
+  // Rileva se ci sono delimitatori espliciti ---
+  let rawBlocks: string[] = [];
+  if (cleanScript.includes('---')) {
+    rawBlocks = cleanScript.split(/\n\s*---\s*\n/).map((b) => b.trim()).filter(Boolean);
+  } else {
+    // Altrimenti splitta per pattern Slide X o Scena X
+    const lines = cleanScript.split('\n');
+    let currentBlock: string[] = [];
+    for (const line of lines) {
+      if (/^(?:Slide|Scena|Punto)\s*\d+/i.test(line.trim()) && currentBlock.length > 0) {
+        rawBlocks.push(currentBlock.join('\n'));
+        currentBlock = [line];
+      } else {
+        currentBlock.push(line);
+      }
+    }
+    if (currentBlock.length > 0) {
+      rawBlocks.push(currentBlock.join('\n'));
+    }
+  }
+
+  if (rawBlocks.length === 0) return [];
+
+  const isHeadlineCandidate = (line: string): boolean => {
+    if (!line) return false;
+    const trimmed = line.trim();
+    if (trimmed.length === 0) return false;
+    if (trimmed.length <= 70) return true;
+    const letters = trimmed.replace(/[^a-zA-Z]/g, '');
+    const upper = trimmed.replace(/[^A-Z]/g, '');
+    if (letters.length > 5 && upper.length / letters.length > 0.8) return true;
+    return false;
+  };
+
+  const middleLayouts: SlideLayoutId[] = [
+    'connected_icon_list',
+    'numbered_list',
+    'step_by_step',
+    'error_vs_correct',
+    'diagram_flow',
+  ];
+
+  return rawBlocks.map((block, idx) => {
+    const lines = block.split('\n').map((l) => l.trim()).filter((l) => Boolean(l) && l !== '---');
+    if (lines.length === 0) {
+      return {
+        id: generateSlideId(),
+        order: idx + 1,
+        type: idx === 0 ? 'cover' : 'practical_guide',
+        layout: idx === 0 ? 'dual_tone_cover' : 'numbered_list',
+        headline: idx === 0 ? fallbackTitle : `Slide ${idx + 1}`,
+        bodyText: '',
+      } as CarouselSlide;
+    }
+
+    let headline = '';
+    let bodyLines: string[] = [];
+
+    const firstLine = lines[0];
+    const headerMatch = firstLine.match(/^(?:Slide|Scena|Punto)\s*\d+[\s:\-–—]*(.*)/i);
+
+    if (headerMatch) {
+      const remainder = headerMatch[1]?.trim();
+      if (remainder) {
+        headline = remainder;
+        bodyLines = lines.slice(1);
+      } else if (lines.length > 1) {
+        if (isHeadlineCandidate(lines[1])) {
+          headline = lines[1];
+          bodyLines = lines.slice(2);
+        } else {
+          headline = idx === 0 ? fallbackTitle : `Slide ${idx + 1}`;
+          bodyLines = lines.slice(1);
+        }
+      } else {
+        headline = idx === 0 ? fallbackTitle : `Slide ${idx + 1}`;
+      }
+    } else {
+      if (isHeadlineCandidate(firstLine)) {
+        headline = firstLine.replace(/^\d+[\.\)]\s*/, '');
+        bodyLines = lines.slice(1);
+      } else {
+        headline = idx === 0 ? fallbackTitle : `Slide ${idx + 1}`;
+        bodyLines = lines;
+      }
+    }
+
+    const bullets = bodyLines
+      .filter((b) => /^[-•*]\s*/.test(b))
+      .map((b) => b.replace(/^[-•*]\s*/, ''));
+
+    const nonBullets = bodyLines
+      .filter((b) => !/^[-•*]\s*/.test(b))
+      .join('\n');
+
+    const isFirst = idx === 0;
+    const isLast = idx === rawBlocks.length - 1 && rawBlocks.length > 1;
+
+    const type: SlideType = isFirst ? 'cover' : isLast ? 'cta' : 'practical_guide';
+    const layout: SlideLayoutId = isFirst
+      ? 'dual_tone_cover'
+      : isLast
+      ? 'final_cta'
+      : middleLayouts[(idx - 1) % middleLayouts.length];
+
+    return {
+      id: generateSlideId(),
+      order: idx + 1,
+      type,
+      layout,
+      headline: headline || (isFirst ? fallbackTitle : `Punto ${idx + 1}`),
+      headlineHighlight: isFirst ? 'GUIDA PRATICA' : undefined,
+      subheadline: isFirst ? "Scorri per leggere l'analisi completa ➔" : undefined,
+      bodyText: nonBullets || '',
+      bulletPoints: bullets.length > 0 ? bullets : undefined,
+      visualCue: isFirst ? 'Copertina ad alto contrasto' : undefined,
+      takeawayTag: isLast ? 'SALVA IL POST' : undefined,
+      imageUrl: null,
+      imageOpacity: 0.5,
+      textAlign: isFirst || isLast ? 'center' : 'left',
+      isAiSuggested: false,
+    };
+  });
+};
+
+/**
+ * Esporta le slide del carosello in una bozza testuale pulita con formato standard (Slide X / ---)
+ */
+export const exportSlidesToScript = (slides: CarouselSlide[]): string => {
+  if (!slides || slides.length === 0) return '';
+  return slides
+    .map((slide, idx) => {
+      const parts: string[] = [`Slide ${idx + 1}`];
+      if (slide.headline && slide.headline.trim()) {
+        parts.push(slide.headline.trim());
+      }
+      if (slide.subheadline && slide.subheadline.trim()) {
+        parts.push(slide.subheadline.trim());
+      }
+      if (slide.bodyText && slide.bodyText.trim()) {
+        parts.push(slide.bodyText.trim());
+      }
+      if (slide.bulletPoints && slide.bulletPoints.length > 0) {
+        parts.push(slide.bulletPoints.map((b) => `• ${b}`).join('\n'));
+      }
+      return parts.join('\n');
+    })
+    .join('\n\n---\n\n');
+};
+
+

@@ -11,8 +11,33 @@ function pwaVersioningPlugin(): Plugin {
   return {
     name: 'pwa-versioning-plugin',
     configureServer(server) {
-      // In modalità dev, serve sw.js con la versione corrente
+      // In modalità dev, gestisce endpoint diagnostico per test sessioni reali
       server.middlewares.use((req, res, next) => {
+        if (req.url === '/api/save-diagnosis' && req.method === 'POST') {
+          console.log('[VITE] /api/save-diagnosis POST received');
+          let body = '';
+          req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              const parsed = JSON.parse(body);
+              const outDir = path.resolve(__dirname, 'scratch');
+              if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+              fs.writeFileSync(path.resolve(outDir, 'real_session_diagnosis.json'), body, 'utf-8');
+              fs.appendFileSync(path.resolve(outDir, 'diagnosis_events.jsonl'), JSON.stringify({ time: new Date().toISOString(), ...parsed }) + '\n', 'utf-8');
+              if (parsed.step) {
+                fs.writeFileSync(path.resolve(outDir, `step_${parsed.step}.json`), body, 'utf-8');
+              }
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true }));
+            } catch (err: unknown) {
+              console.error('[VITE] /api/save-diagnosis write error:', err);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(err) }));
+            }
+          });
+          return;
+        }
+
         if (req.url === '/sw.js') {
           const swPath = path.resolve(__dirname, 'public/sw.js');
           if (fs.existsSync(swPath)) {

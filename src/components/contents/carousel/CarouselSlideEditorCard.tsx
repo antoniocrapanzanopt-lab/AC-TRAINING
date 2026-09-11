@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import {
   CarouselSlide,
   SlideType,
@@ -7,24 +7,20 @@ import {
   BodyFontFamily,
   SubtitleFontFamily,
   SlideImagePosition,
-  CoverHookAlternative,
-  SlideQualityIssue,
 } from '../../../types/carousel';
 import { SlideImageControlPanel } from '../common/SlideImageControlPanel';
 import {
-  CAROUSEL_AI_OPERATIONS,
-  CarouselAIOperationType,
-  generateCoverHookAlternatives,
-  generateReadyCTASlide,
-  ReadyCTAPlan,
+  ArtDirectionFocus,
+  ArtDirectionIntensity,
+  ART_DIRECTION_FOCUS_OPTIONS,
 } from '../../../services/geminiCarouselOptimizer';
-import { validateSlideQuality } from '../../../services/carouselQualityService';
-import { sanitizeCarouselText } from '../../../services/carouselCanvasRenderer';
+import { sanitizeCarouselText, stripInlineColorTags } from '../../../services/carouselCanvasRenderer';
 import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   ChevronDown,
+  ArrowUpDown,
   Copy,
   Trash2,
   Sparkles,
@@ -46,6 +42,7 @@ import {
   RotateCcw,
   Camera,
   Upload,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface CarouselSlideEditorCardProps {
@@ -57,11 +54,17 @@ interface CarouselSlideEditorCardProps {
   onChange: (updated: CarouselSlide) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onSwapWithNext?: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onRegenerate: () => void;
   onGeminiOptimize?: () => void;
-  onTriggerAIOperation?: (action: CarouselAIOperationType) => void;
+  onTriggerArtDirection?: (options: { focus: ArtDirectionFocus[]; intensity: ArtDirectionIntensity }) => void;
+  previousSlide?: CarouselSlide | null;
+  canUndoStyle?: boolean;
+  onUndoStyle?: () => void;
+  onOpenDiffModal?: () => void;
+  onTriggerAIOperation?: (action: string) => void;
   onNavigatePrev?: () => void;
   onNavigateNext?: () => void;
   onMoveToEnd?: () => void;
@@ -322,28 +325,78 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   onChange,
   onMoveUp,
   onMoveDown,
+  onSwapWithNext,
   onDuplicate,
   onDelete,
   onRegenerate,
   onGeminiOptimize,
-  onTriggerAIOperation,
+  onTriggerArtDirection,
+  previousSlide: _previousSlide,
+  canUndoStyle = false,
+  onUndoStyle,
+  onOpenDiffModal: _onOpenDiffModal,
   onNavigatePrev,
   onNavigateNext,
-  onMoveToEnd,
   isAdvancedOpen = false,
   onToggleAdvanced,
   isOptimizingWithGemini = false,
   autoFocusTitle = false,
   targetField,
-  contentTitle,
-  allSlides = [],
-  captionText,
 }) => {
   const headlineInputRef = useRef<HTMLTextAreaElement | null>(null);
   const subtitleInputRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const aiMenuRef = useRef<HTMLDivElement | null>(null);
   const productPhotoInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Stato inline color toolbar (bodyText)
+  const [inlineColorToolbar, setInlineColorToolbar] = useState<{ selStart: number; selEnd: number } | null>(null);
+  const [inlineColorPick, setInlineColorPick] = useState<string>('#F5C518');
+  const [inlineEditText, setInlineEditText] = useState<string>('');
+  const bodyWrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Inserisce tag [c:#HEX]testo[/c] — sostituisce l'intera selezione raw con tag pulito
+  const applyInlineColor = useCallback((color: string) => {
+    if (!inlineColorToolbar) return;
+    const textToColor = inlineEditText.trim();
+    if (!textToColor) return;
+    const { selStart, selEnd } = inlineColorToolbar;
+    const current = slide.bodyText || '';
+    // Sostituiamo l'intera selezione raw (anche se contiene tag esistenti)
+    // con un tag pulito che contiene solo il testo visibile
+    const tagged = `[c:${color}]${textToColor}[/c]`;
+    const newText = current.slice(0, selStart) + tagged + current.slice(selEnd);
+    onChange({ ...slide, bodyText: newText });
+    setInlineColorToolbar(null);
+    setInlineEditText('');
+  }, [inlineColorToolbar, inlineEditText, slide, onChange]);
+
+  // Mostra toolbar quando l'utente seleziona testo nel bodyText
+  const handleBodySelect = useCallback(() => {
+    const ta = bodyInputRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart ?? 0;
+    const end = ta.selectionEnd ?? 0;
+    if (end <= start) return;
+    const raw = (ta.value || '').slice(start, end);
+    if (!raw.trim()) return;
+    // Mostra il testo PULITO (senza tag [c:...][/c]) nel campo editabile
+    const clean = stripInlineColorTags(raw).trim();
+    if (!clean) return;
+    setInlineEditText(clean);
+    setInlineColorToolbar({ selStart: start, selEnd: end });
+  }, []);
+
+  // Chiudi toolbar se si clicca fuori dall'area bodyText
+  useEffect(() => {
+    if (!inlineColorToolbar) return;
+    const handler = (e: MouseEvent) => {
+      if (bodyWrapRef.current && !bodyWrapRef.current.contains(e.target as Node)) {
+        setInlineColorToolbar(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [inlineColorToolbar]);
 
   const handleProductPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -395,8 +448,6 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   const [internalStyleExpanded, setInternalStyleExpanded] = useState<boolean>(false);
   const isStyleExpanded = onToggleAdvanced !== undefined ? isAdvancedOpen : internalStyleExpanded;
 
-  const [isAIMenuOpen, setIsAIMenuOpen] = useState<boolean>(false);
-
   const toggleStylePanel = () => {
     if (onToggleAdvanced) {
       onToggleAdvanced();
@@ -405,71 +456,25 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
     }
   };
 
-  // Stato per pannello collassabile consigli ("Come migliorare questa slide") - DEFAULT: CHIUSO!
-  const [isAdviceOpen, setIsAdviceOpen] = useState<boolean>(false);
+  // Stato Art Direction (Gemini)
+  const [selectedFocuses, setSelectedFocuses] = useState<ArtDirectionFocus[]>([
+    'typography_hierarchy',
+    'palette_contrast',
+    'positioning_layout',
+  ]);
+  const [selectedIntensity, setSelectedIntensity] = useState<ArtDirectionIntensity>('medium');
 
-  // Stato per 3 alternative hook copertina con Gemini
-  const [hookAlternatives, setHookAlternatives] = useState<CoverHookAlternative[]>([]);
-  const [isLoadingHookAlts, setIsLoadingHookAlts] = useState<boolean>(false);
-  const [showHookAlts, setShowHookAlts] = useState<boolean>(false);
-  const [pendingHookConfirm, setPendingHookConfirm] = useState<CoverHookAlternative | null>(null);
-
-  // Stato per proposta CTA pronta con Gemini
-  const [readyCTAPlan, setReadyCTAPlan] = useState<ReadyCTAPlan | null>(null);
-  const [isLoadingCTA, setIsLoadingCTA] = useState<boolean>(false);
-  const [showCTAPlan, setShowCTAPlan] = useState<boolean>(false);
-  const [pendingCTAConfirm, setPendingCTAConfirm] = useState<boolean>(false);
-
-  // Reset stati alla transizione di slide
-  useEffect(() => {
-    setPendingHookConfirm(null);
-    setShowCTAPlan(false);
-    setPendingCTAConfirm(false);
-    setIsAdviceOpen(false);
-  }, [index, slide.id]);
-
-  const handleGenerateHookAlts = async () => {
-    setIsLoadingHookAlts(true);
-    setShowHookAlts(true);
-    setPendingHookConfirm(null);
-    try {
-      const topic = contentTitle || 'Allenamento e Biomeccanica';
-      const alts = await generateCoverHookAlternatives(slide, topic);
-      setHookAlternatives(alts);
-    } catch {
-      // Fallback
-    } finally {
-      setIsLoadingHookAlts(false);
-    }
+  const toggleFocus = (f: ArtDirectionFocus) => {
+    setSelectedFocuses((prev) =>
+      prev.includes(f)
+        ? prev.length > 1
+          ? prev.filter((item) => item !== f)
+          : prev
+        : [...prev, f]
+    );
   };
 
-  const handleGenerateCTA = async () => {
-    setIsLoadingCTA(true);
-    setShowCTAPlan(true);
-    setPendingCTAConfirm(false);
-    try {
-      const topic = contentTitle || 'Allenamento e Biomeccanica';
-      const plan = await generateReadyCTASlide(slide, topic);
-      setReadyCTAPlan(plan);
-    } catch {
-      // Fallback
-    } finally {
-      setIsLoadingCTA(false);
-    }
-  };
 
-  // Chiudi menu AI se si clicca fuori
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (aiMenuRef.current && !aiMenuRef.current.contains(e.target as Node)) {
-        setIsAIMenuOpen(false);
-      }
-    };
-    if (isAIMenuOpen) {
-      document.addEventListener('mousedown', handleOutsideClick);
-    }
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [isAIMenuOpen]);
 
   // Auto-focus sul titolo o sul corpo della slide attiva in base al targetField
   useEffect(() => {
@@ -483,30 +488,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
     }
   }, [isSelected, targetField, autoFocusTitle, index]);
 
-  // Calcolo qualità della slide con fonte unica di verità (carouselQualityService)
-  const qualityReport = useMemo(() => {
-    return validateSlideQuality(slide, index, totalSlides, allSlides, captionText);
-  }, [slide, index, totalSlides, allSlides, captionText]);
 
-  const criticalIssues = qualityReport.issues.filter((i: SlideQualityIssue) => i.severity === 'critical');
-  const warningIssues = qualityReport.issues.filter((i: SlideQualityIssue) => i.severity === 'warning');
-  const infoIssues = qualityReport.issues.filter((i: SlideQualityIssue) => i.severity === 'info');
-
-  const isHookImprovable = qualityReport.editorialStatus === 'hook_improvable';
-  const hasHookSuggestion = index === 0 && slide.type === 'cover' && isHookImprovable && !criticalIssues.length;
-
-  const blockedCount = criticalIssues.length;
-  const warningCount = warningIssues.length;
-  const suggestionCount = infoIssues.length + (hasHookSuggestion ? 1 : 0);
-
-  const slideScore = useMemo(() => {
-    if (blockedCount > 0) return Math.max(30, 60 - blockedCount * 20);
-    if (warningCount > 0) return Math.max(65, 90 - warningCount * 10);
-    if (hasHookSuggestion) return 92;
-    return 100;
-  }, [blockedCount, warningCount, hasHookSuggestion]);
-
-  const totalIssuesCount = blockedCount + warningCount + suggestionCount;
 
   // Calcolo metriche e lunghezza testo per slide
   const allText = [
@@ -523,6 +505,13 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   const totalChars = allText.length;
   const totalWords = allText ? allText.split(/\s+/).filter(Boolean).length : 0;
   const isOverflowing = totalWords > 50 || totalChars > 340;
+
+  // Suggerimento intensità IA in base alla densità del copy (solo indicatore visivo, mai selezione forzata)
+  const recommendedIntensity: ArtDirectionIntensity | null = useMemo(() => {
+    if (totalWords < 10) return 'strong';
+    if (totalWords > 40) return 'light';
+    return null;
+  }, [totalWords]);
 
   const currentLayout: SlideLayoutId = slide.layout || (index === 0 ? 'dual_tone_cover' : index === totalSlides - 1 ? 'final_cta' : 'numbered_list');
 
@@ -626,10 +615,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
     });
   };
 
-  const executeAIOperation = (actionId: CarouselAIOperationType) => {
-    setIsAIMenuOpen(false);
-    if (onTriggerAIOperation) {
-      onTriggerAIOperation(actionId);
+  const handleArtDirectionAction = () => {
+    if (onTriggerArtDirection) {
+      onTriggerArtDirection({ focus: selectedFocuses, intensity: selectedIntensity });
     } else if (onGeminiOptimize) {
       onGeminiOptimize();
     }
@@ -703,51 +691,17 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             {totalWords} parole
           </span>
 
-          {/* MENU CONTESTUALE AI: "MIGLIORA QUESTA SLIDE" */}
-          <div className="relative" ref={aiMenuRef}>
-            <button
-              type="button"
-              onClick={() => setIsAIMenuOpen((prev) => !prev)}
-              disabled={isOptimizingWithGemini}
-              className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-purple-600/30 via-amber-500/20 to-purple-600/30 hover:from-purple-600/50 hover:to-amber-500/30 text-amber-200 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
-              title="Apri menu azioni AI Gemini 3.8 Flash per questa slide"
-            >
-              <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isOptimizingWithGemini ? 'animate-spin' : ''}`} />
-              <span>{isOptimizingWithGemini ? 'Elaborazione...' : '✨ Migliora questa slide'}</span>
-              <ChevronDown className="w-3 h-3 text-amber-400/80" />
-            </button>
-
-            {/* DROPDOWN DELLE 8 AZIONI CONTESTUALI */}
-            {isAIMenuOpen && (
-              <div className="absolute right-0 mt-1.5 w-64 bg-slate-950 border border-slate-700/90 rounded-2xl shadow-2xl p-1.5 z-40 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
-                <div className="px-2 py-1 text-[10px] font-mono font-bold text-slate-400 border-b border-slate-800 flex items-center justify-between">
-                  <span>Azioni Gemini 3.8 Flash</span>
-                  <span className="text-amber-400 font-normal">Mostra diff prima</span>
-                </div>
-
-                <div className="max-h-72 overflow-y-auto custom-scrollbar space-y-0.5">
-                  {CAROUSEL_AI_OPERATIONS.map((op) => (
-                    <button
-                      key={op.id}
-                      type="button"
-                      onClick={() => executeAIOperation(op.id)}
-                      className="w-full text-left p-2 rounded-xl hover:bg-slate-900 transition flex items-start gap-2 text-xs group cursor-pointer"
-                    >
-                      <span className="text-sm shrink-0 mt-0.5">{op.icon}</span>
-                      <div className="min-w-0">
-                        <span className="font-bold text-white group-hover:text-amber-300 block truncate">
-                          {op.label}
-                        </span>
-                        <span className="text-[10px] text-slate-400 line-clamp-1 block">
-                          {op.desc}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          {/* PULSANTE ART DIRECTOR: "MIGLIORA GRAFICA CON GEMINI" */}
+          <button
+            type="button"
+            onClick={handleArtDirectionAction}
+            disabled={isOptimizingWithGemini}
+            className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-500/20 to-amber-600/30 hover:from-amber-500/30 hover:to-amber-600/40 text-amber-200 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
+            title="Migliora grafica della slide con Gemini Flash (il testo rimane intatto al 100%)"
+          >
+            <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isOptimizingWithGemini ? 'animate-spin' : ''}`} />
+            <span>{isOptimizingWithGemini ? 'Elaborazione grafica...' : '✨ Migliora grafica con Gemini'}</span>
+          </button>
 
           {onRegenerate && (
             <button
@@ -783,6 +737,17 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             </button>
           )}
 
+          {onSwapWithNext && index < totalSlides - 1 && (
+            <button
+              type="button"
+              onClick={onSwapWithNext}
+              title={`Inverti posizione con slide ${index + 2}`}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition cursor-pointer"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           {/* Duplica */}
           <button
             type="button"
@@ -807,404 +772,6 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
         </div>
       </div>
 
-      {/* ─── 1. QUALITY SUMMARY COMPATTO (UNICA RIGA IN CIMA ALL'EDITOR) ─── */}
-      <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-slate-950 border border-slate-800 text-xs shadow-sm">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <span className="font-bold text-amber-400 font-mono">
-            Qualità slide: {slideScore}/100
-          </span>
-          <span className="text-slate-600 font-mono">•</span>
-          <span className={`font-semibold ${blockedCount > 0 ? 'text-rose-400 font-bold' : 'text-slate-500'}`}>
-            {blockedCount} {blockedCount === 1 ? 'blocco' : 'bloccanti'}
-          </span>
-          <span className="text-slate-600 font-mono">•</span>
-          <span className={`font-semibold ${warningCount > 0 ? 'text-amber-400 font-bold' : 'text-slate-500'}`}>
-            {warningCount} warning
-          </span>
-          <span className="text-slate-600 font-mono">•</span>
-          <span className={`font-semibold ${suggestionCount > 0 ? 'text-purple-300' : 'text-slate-500'}`}>
-            {suggestionCount} {suggestionCount === 1 ? 'suggerimento' : 'suggerimenti'}
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setIsAdviceOpen((prev) => !prev)}
-          className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition cursor-pointer px-2.5 py-1 rounded-xl hover:bg-slate-900 border border-transparent hover:border-slate-800 shrink-0 ml-2"
-        >
-          <span>{isAdviceOpen ? 'Nascondi suggerimenti' : 'Mostra suggerimenti'}</span>
-          {isAdviceOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-        </button>
-      </div>
-
-      {/* ─── 2. PANNELLO COLLASSABILE UNICO: "COME MIGLIORARE QUESTA SLIDE" (DEFAULT: CHIUSO) ─── */}
-      {isAdviceOpen && (
-        <div className="p-4 rounded-2xl bg-slate-950/95 border border-slate-800 space-y-3.5 shadow-xl animate-in fade-in">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
-            <div>
-              <h4 className="text-xs font-black text-white uppercase tracking-wider">
-                Come migliorare questa slide
-              </h4>
-              <p className="text-[11px] text-slate-400">
-                {totalIssuesCount === 0
-                  ? 'Nessun problema rilevato. Questa slide rispetta tutti gli standard di pubblicazione!'
-                  : `${totalIssuesCount} ${totalIssuesCount === 1 ? 'elemento da rivedere' : 'elementi da rivedere'}`}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsAdviceOpen(false)}
-              className="text-[10px] font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 transition cursor-pointer"
-            >
-              ✕ Chiudi
-            </button>
-          </div>
-
-          <div className="space-y-2.5 max-h-80 overflow-y-auto custom-scrollbar pr-1">
-            {/* 1. BLOCCANTI (IMPEDISCONO EXPORT - ROSSO) */}
-            {criticalIssues.map((issue: SlideQualityIssue) => (
-              <div
-                key={issue.id}
-                className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-              >
-                <div className="min-w-0 flex-1 space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-rose-500/20 text-rose-300 border border-rose-500/50">
-                      Bloccante
-                    </span>
-                    <span className="text-xs font-bold text-white truncate">
-                      {issue.title}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-rose-200/80">
-                    {issue.message}
-                  </p>
-                </div>
-
-                <div className="shrink-0 flex items-center gap-1.5 self-end sm:self-center">
-                  {issue.id.includes('placeholder') || issue.id.includes('profanity') ? (
-                    <button
-                      type="button"
-                      onClick={() => onChange({ ...slide, headline: '', bodyText: '' })}
-                      className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold transition cursor-pointer shadow"
-                    >
-                      Pulisci Testo
-                    </button>
-                  ) : issue.id.includes('overflow') ? (
-                    <button
-                      type="button"
-                      onClick={() => executeAIOperation('reduce_text')}
-                      className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold transition cursor-pointer flex items-center gap-1 shadow"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      <span>⚡ Riduci con Gemini</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => headlineInputRef.current?.focus()}
-                      className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold border border-slate-700 transition cursor-pointer"
-                    >
-                      Inserisci Titolo
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {/* 2. DA RIVEDERE (WARNING NON BLOCCANTE - GIALLO/AMBRA) */}
-            {warningIssues.map((issue: SlideQualityIssue) => (
-              <div
-                key={issue.id}
-                className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-              >
-                <div className="min-w-0 flex-1 space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                      Da rivedere
-                    </span>
-                    <span className="text-xs font-bold text-white truncate">
-                      {issue.title}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-amber-200/80">
-                    {issue.message}
-                  </p>
-                </div>
-
-                <div className="shrink-0 flex items-center gap-1.5 self-end sm:self-center">
-                  {issue.id.includes('overflow') ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (bodyInputRef.current) {
-                            bodyInputRef.current.focus();
-                            bodyInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          }
-                        }}
-                        className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold border border-slate-700 transition cursor-pointer"
-                      >
-                        Modifica Testo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => executeAIOperation('reduce_text')}
-                        className="px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[10px] font-bold border border-amber-500/40 transition cursor-pointer flex items-center gap-1 shadow-sm"
-                      >
-                        <Sparkles className="w-3 h-3 text-amber-400" />
-                        <span>⚡ Riduci AI</span>
-                      </button>
-                    </>
-                  ) : issue.id.includes('cta') ? (
-                    <button
-                      type="button"
-                      onClick={handleGenerateCTA}
-                      disabled={isLoadingCTA}
-                      className="px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[10px] font-bold border border-amber-500/40 transition cursor-pointer flex items-center gap-1 shadow-sm disabled:opacity-50"
-                    >
-                      <Sparkles className={`w-3 h-3 text-amber-400 ${isLoadingCTA ? 'animate-spin' : ''}`} />
-                      <span>{isLoadingCTA ? 'Generazione...' : '⚡ Proponi CTA'}</span>
-                    </button>
-                  ) : issue.id === 'first_slide_not_cover' ? (
-                    <button
-                      type="button"
-                      onClick={() => onChange({ ...slide, type: 'cover', layout: 'dual_tone_cover' })}
-                      className="px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[10px] font-bold border border-amber-500/40 transition cursor-pointer"
-                    >
-                      Imposta Copertina
-                    </button>
-                  ) : issue.id.includes('misplaced_cta') && onMoveToEnd ? (
-                    <button
-                      type="button"
-                      onClick={onMoveToEnd}
-                      className="px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[10px] font-bold border border-amber-500/40 transition cursor-pointer"
-                    >
-                      Sposta in Fondo
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => headlineInputRef.current?.focus()}
-                      className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold border border-slate-700 transition cursor-pointer"
-                    >
-                      Modifica Campo
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {/* 3. SUGGERIMENTI (MIGLIORAMENTO FACOLTATIVO - VIOLA/BLU) */}
-            {hasHookSuggestion && (
-              <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                <div className="min-w-0 flex-1 space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-purple-500/20 text-purple-300 border border-purple-500/40">
-                      Suggerimento
-                    </span>
-                    <span className="text-xs font-bold text-white truncate">
-                      Hook di copertina migliorabile
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-purple-200/80">
-                    Un hook provocatorio o focalizzato sul beneficio massimizza lo scroll stop dal feed Instagram.
-                  </p>
-                </div>
-
-                <div className="shrink-0 flex items-center gap-1.5 self-end sm:self-center">
-                  <button
-                    type="button"
-                    onClick={handleGenerateHookAlts}
-                    disabled={isLoadingHookAlts}
-                    className="px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 text-[10px] font-bold border border-purple-500/40 transition cursor-pointer flex items-center gap-1 disabled:opacity-50"
-                  >
-                    <Sparkles className="w-3 h-3 text-purple-400" />
-                    <span>⚡ 3 Alternative Hook</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {infoIssues.map((issue: SlideQualityIssue) => (
-              <div
-                key={issue.id}
-                className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-              >
-                <div className="min-w-0 flex-1 space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-slate-800 text-slate-400 border border-slate-700">
-                      Suggerimento
-                    </span>
-                    <span className="text-xs font-bold text-white truncate">
-                      {issue.title}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400">
-                    {issue.message}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* SOTTO-PANNELLO 3 ALTERNATIVE HOOK CON ANTEPRIMA GRAFICA */}
-          {showHookAlts && (
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-purple-500/40 space-y-3 pt-3">
-              <div className="flex items-center justify-between pb-1 border-b border-slate-800">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-purple-400" />
-                  <span className="text-xs font-bold text-white">3 Alternative Hook con Anteprima (Gemini 3.8 Flash)</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowHookAlts(false)}
-                  className="text-slate-400 hover:text-white text-xs font-bold px-2 py-0.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
-                >
-                  ✕ Chiudi
-                </button>
-              </div>
-
-              {isLoadingHookAlts ? (
-                <div className="py-6 text-center text-xs text-purple-300 animate-pulse flex items-center justify-center gap-2">
-                  <Sparkles className="w-4 h-4 animate-spin" />
-                  <span>Elaborazione 3 varianti con Gemini 3.8 Flash...</span>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {hookAlternatives.map((alt) => (
-                    <div
-                      key={alt.id}
-                      className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-purple-500/50 transition space-y-2"
-                    >
-                      <div className="p-2.5 rounded-lg bg-[#0A0B0D] border border-slate-800/80 space-y-0.5">
-                        <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
-                          <span className="text-[8px] font-mono text-slate-500 uppercase">Resa Anteprima</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                            {alt.angleLabel}
-                          </span>
-                        </div>
-                        <p className="text-xs font-black text-white uppercase">{alt.headline}</p>
-                        {alt.headlineHighlight && (
-                          <p className="text-xs font-black text-amber-400 uppercase">{alt.headlineHighlight}</p>
-                        )}
-                        {alt.subheadline && (
-                          <p className="text-[10px] text-slate-400 pt-0.5">{alt.subheadline}</p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-[10px] text-slate-400 italic">💡 {alt.description}</span>
-                        {pendingHookConfirm?.id === alt.id ? (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onChange({
-                                  ...slide,
-                                  headline: alt.headline,
-                                  headlineHighlight: alt.headlineHighlight,
-                                  subheadline: alt.subheadline || slide.subheadline,
-                                });
-                                setPendingHookConfirm(null);
-                                setShowHookAlts(false);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold shadow"
-                            >
-                              ✓ Conferma
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPendingHookConfirm(null)}
-                              className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[10px]"
-                            >
-                              Annulla
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setPendingHookConfirm(alt)}
-                            className="px-2.5 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500 text-purple-300 hover:text-slate-950 text-xs font-bold border border-purple-500/40"
-                          >
-                            Seleziona
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* SOTTO-PANNELLO PROPOSTA CTA CON GEMINI */}
-          {showCTAPlan && readyCTAPlan && (
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-purple-500/40 space-y-3 pt-3">
-              <div className="flex items-center justify-between pb-1 border-b border-slate-800">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-purple-400" />
-                  <span className="text-xs font-bold text-white">Proposta CTA Finale (Gemini 3.8 Flash)</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowCTAPlan(false)}
-                  className="text-slate-400 hover:text-white text-xs font-bold px-2 py-0.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
-                >
-                  ✕ Chiudi
-                </button>
-              </div>
-
-              <div className="p-3 rounded-xl bg-[#0A0B0D] border border-slate-800 space-y-1">
-                <p className="text-xs font-black text-white uppercase">{readyCTAPlan.headline}</p>
-                {readyCTAPlan.headlineHighlight && (
-                  <p className="text-xs font-black text-amber-400 uppercase">{readyCTAPlan.headlineHighlight}</p>
-                )}
-                <p className="text-[11px] text-slate-300 whitespace-pre-line pt-1">{readyCTAPlan.bodyText}</p>
-              </div>
-
-              <div className="flex items-center justify-between pt-1 gap-2 flex-wrap">
-                <span className="text-[10px] text-slate-400 italic">💡 {readyCTAPlan.reason}</span>
-                {pendingCTAConfirm ? (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onChange({
-                          ...slide,
-                          headline: readyCTAPlan.headline,
-                          headlineHighlight: readyCTAPlan.headlineHighlight,
-                          bodyText: readyCTAPlan.bodyText,
-                        });
-                        setPendingCTAConfirm(false);
-                        setShowCTAPlan(false);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold shadow"
-                    >
-                      ✓ Conferma e Applica
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPendingCTAConfirm(false)}
-                      className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[10px]"
-                    >
-                      Annulla
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setPendingCTAConfirm(true)}
-                    className="px-3 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white text-xs font-bold border border-purple-500/50 shadow"
-                  >
-                    Applica CTA
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ─── 2. MODALITÀ SEMPLICE (DEFAULT): I CAMPI FONDAMENTALI ─── */}
       <div className="space-y-3.5">
@@ -1276,9 +843,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             fontFamily={slide.titleFont || 'Inter'}
             onFontChange={(font) => onChange({ ...slide, titleFont: font as TitleFontFamily })}
             fontOptions={TITLE_FONT_OPTIONS}
-            fontSizePx={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
+            fontSizePx={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 82 : slide.titleSize === 'lg' ? 72 : slide.titleSize === 'md' ? 62 : 52)}
             onFontSizeChange={(px) => onChange({ ...slide, titleFontSizePx: px })}
-            quickPxOptions={[36, 44, 52, 64]}
+            quickPxOptions={[52, 64, 76, 88]}
             isBold={slide.titleBold !== false}
             onToggleBold={() => onChange({ ...slide, titleBold: slide.titleBold === false ? true : false })}
             isUnderline={!!slide.titleUnderline}
@@ -1287,9 +854,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             defaultColor="#FFFFFF"
             onColorChange={(color) => {
               const updated = { ...slide };
-              if (color) updated.titleColor = color;
+              if (color !== undefined) updated.titleColor = color;
               else delete updated.titleColor;
-              onChange(updated);
+              onChange({ ...updated, _colorTs: Date.now() } as typeof updated);
             }}
             labelFont="Font Titolo"
           />
@@ -1322,9 +889,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
               fontFamily={slide.highlightFont || slide.titleFont || 'Inter'}
               onFontChange={(font) => onChange({ ...slide, highlightFont: font as TitleFontFamily })}
               fontOptions={TITLE_FONT_OPTIONS}
-              fontSizePx={slide.highlightFontSizePx || slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
+              fontSizePx={slide.highlightFontSizePx || slide.titleFontSizePx || (slide.titleSize === 'xl' ? 82 : slide.titleSize === 'lg' ? 72 : slide.titleSize === 'md' ? 62 : 52)}
               onFontSizeChange={(px) => onChange({ ...slide, highlightFontSizePx: px })}
-              quickPxOptions={[36, 44, 52, 64]}
+              quickPxOptions={[52, 64, 76, 88]}
               isBold={slide.highlightBold !== false}
               onToggleBold={() => onChange({ ...slide, highlightBold: slide.highlightBold === false ? true : false })}
               isUnderline={!!slide.highlightUnderline}
@@ -1333,9 +900,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
               defaultColor="#F5C518"
               onColorChange={(color) => {
                 const updated = { ...slide };
-                if (color) updated.highlightColor = color;
+                if (color !== undefined) updated.highlightColor = color;
                 else delete updated.highlightColor;
-                onChange(updated);
+                onChange({ ...updated, _colorTs: Date.now() } as typeof updated);
               }}
               labelFont="Font Evidenziato"
             />
@@ -1370,9 +937,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             fontFamily={slide.subtitleFont || 'Outfit'}
             onFontChange={(font) => onChange({ ...slide, subtitleFont: font as SubtitleFontFamily })}
             fontOptions={SUBTITLE_FONT_OPTIONS}
-            fontSizePx={slide.subtitleFontSizePx || 28}
+            fontSizePx={slide.subtitleFontSizePx || 38}
             onFontSizeChange={(px) => onChange({ ...slide, subtitleFontSizePx: px })}
-            quickPxOptions={[22, 28, 36, 48]}
+            quickPxOptions={[28, 34, 40, 48]}
             isBold={slide.subtitleBold !== false}
             onToggleBold={() => onChange({ ...slide, subtitleBold: slide.subtitleBold === false ? true : false })}
             isUnderline={!!slide.subtitleUnderline}
@@ -1381,9 +948,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             defaultColor="#E2E8F0"
             onColorChange={(color) => {
               const updated = { ...slide };
-              if (color) updated.subtitleColor = color;
+              if (color !== undefined) updated.subtitleColor = color;
               else delete updated.subtitleColor;
-              onChange(updated);
+              onChange({ ...updated, _colorTs: Date.now() } as typeof updated);
             }}
             labelFont="Font Sottotitolo"
           />
@@ -1418,9 +985,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             fontFamily={slide.bodyFont || 'Inter'}
             onFontChange={(font) => onChange({ ...slide, bodyFont: font as BodyFontFamily })}
             fontOptions={BODY_FONT_OPTIONS}
-            fontSizePx={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
+            fontSizePx={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 40 : slide.bodyFontSize === 'sm' ? 28 : 34)}
             onFontSizeChange={(px) => onChange({ ...slide, bodyFontSizePx: px })}
-            quickPxOptions={[18, 22, 26, 32]}
+            quickPxOptions={[26, 32, 36, 42]}
             isBold={!!slide.bodyBold}
             onToggleBold={() => onChange({ ...slide, bodyBold: !slide.bodyBold })}
             isUnderline={!!slide.bodyUnderline}
@@ -1429,22 +996,82 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             defaultColor="#CBD5E1"
             onColorChange={(color) => {
               const updated = { ...slide };
-              if (color) updated.bodyColor = color;
+              if (color !== undefined) updated.bodyColor = color;
               else delete updated.bodyColor;
-              onChange(updated);
+              onChange({ ...updated, _colorTs: Date.now() } as typeof updated);
             }}
             accentTheme="purple"
             labelFont="Font Corpo"
           />
 
-          <textarea
-            ref={bodyInputRef}
-            rows={3}
-            value={sanitizeCarouselText(slide.bodyText || '')}
-            onChange={(e) => onChange({ ...slide, bodyText: sanitizeCarouselText(e.target.value) })}
-            placeholder="Scrivi qui la spiegazione, le regole da seguire o l'approfondimento..."
-            className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-y min-h-[75px] leading-relaxed"
-          />
+          {/* Body Text con Inline Color Toolbar */}
+          <div ref={bodyWrapRef} className="space-y-1.5">
+            <textarea
+              ref={bodyInputRef}
+              rows={3}
+              value={slide.bodyText || ''}
+              onChange={(e) => onChange({ ...slide, bodyText: e.target.value })}
+              onMouseUp={handleBodySelect}
+              onKeyUp={handleBodySelect}
+              placeholder="Scrivi qui il testo. Seleziona una parola per colorarla!"
+              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-y min-h-[75px] leading-relaxed"
+            />
+
+            {/* Toolbar inline colore — appare SOTTO il textarea quando c'è una selezione */}
+            {inlineColorToolbar && (
+              <div
+                className="flex flex-col gap-2 bg-slate-950 border border-amber-500/50 rounded-xl px-3 py-2.5 shadow-lg"
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                {/* Riga 1: campo testo editabile */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-amber-400 font-bold whitespace-nowrap">✏️ Colora:</span>
+                  <input
+                    type="text"
+                    value={inlineEditText}
+                    onChange={(e) => setInlineEditText(e.target.value)}
+                    className="flex-1 min-w-0 bg-slate-800 border border-slate-600 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-amber-400 font-mono"
+                    placeholder="es. Martedì"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setInlineColorToolbar(null)}
+                    className="shrink-0 text-slate-500 hover:text-white transition text-xs cursor-pointer px-1"
+                  >✕</button>
+                </div>
+                {/* Riga 2: palette colori */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-slate-400 whitespace-nowrap">Colore:</span>
+                  {['#F5C518', '#F59E0B', '#38BDF8', '#10B981', '#F43F5E', '#FF6B6B', '#FFFFFF'].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => applyInlineColor(c)}
+                      disabled={!inlineEditText.trim()}
+                      className="w-5 h-5 rounded-full border-2 border-slate-700 hover:scale-125 hover:border-white transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: c }}
+                      title={inlineEditText.trim() ? `Colora "${inlineEditText.trim()}" in ${c}` : 'Inserisci il testo da colorare'}
+                    />
+                  ))}
+                  <label className="relative w-6 h-5 rounded-md bg-slate-800 border border-slate-600 flex items-center justify-center cursor-pointer hover:border-amber-400 overflow-hidden ml-1" title="Colore personalizzato">
+                    <Palette className="w-3 h-3 text-slate-300 pointer-events-none" />
+                    <input
+                      type="color"
+                      value={inlineColorPick}
+                      onChange={(e) => setInlineColorPick(e.target.value)}
+                      onBlur={(e) => { if (inlineEditText.trim()) applyInlineColor(e.target.value); }}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {(slide.bodyText || '').includes('[c:') && (
+              <p className="text-[10px] text-amber-400/70 pl-1">✨ Colori inline attivi — visibili nell'anteprima canvas</p>
+            )}
+          </div>
         </div>
 
         {/* ─── CAMPI SPECIFICI IN BASE AL LAYOUT ATTIVO ─── */}
@@ -1911,8 +1538,118 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
           </div>
         )}
 
+        {/* CARD: LOGO AC IN BACKGROUND PER COPERTINA */}
+        {(index === 0 || slide.type === 'cover' || ['dual_tone_cover', 'bold_center', 'text_center'].includes(currentLayout)) && (
+          <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950 border border-amber-500/30">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-200 flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={slide.showLogoWatermarkBg ?? false}
+                  onChange={(e) => onChange({ ...slide, showLogoWatermarkBg: e.target.checked })}
+                  className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                />
+                <span>✨ Logo AC in Background (Watermark Copertina)</span>
+              </label>
+              <span className="text-[10px] text-amber-400/90 font-mono font-semibold">
+                {slide.showLogoWatermarkBg ? 'Attivo' : 'Spento'}
+              </span>
+            </div>
+
+            {slide.showLogoWatermarkBg && (
+              <div className="space-y-2.5 pl-3 border-l-2 border-amber-500/30 pt-1">
+                {/* Variante Logo */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold text-slate-400">Stile Logo Sfondo</span>
+                  <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => onChange({ ...slide, logoWatermarkVariant: 'white' })}
+                      className={`px-2.5 py-1 text-[10px] rounded font-bold transition-all cursor-pointer ${
+                        slide.logoWatermarkVariant !== 'blue'
+                          ? 'bg-slate-200 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Bianco (Trasparente)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onChange({ ...slide, logoWatermarkVariant: 'blue' })}
+                      className={`px-2.5 py-1 text-[10px] rounded font-bold transition-all cursor-pointer ${
+                        slide.logoWatermarkVariant === 'blue'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Cerchio Blu
+                    </button>
+                  </div>
+                </div>
+
+                {/* Opacità Sfondo */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Opacità Sfondo</span>
+                    <span className="font-mono text-amber-400 font-bold">
+                      {Math.round((slide.logoWatermarkOpacity ?? (slide.logoWatermarkVariant === 'blue' ? 0.16 : 0.12)) * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="4"
+                    max="45"
+                    step="1"
+                    value={Math.round((slide.logoWatermarkOpacity ?? (slide.logoWatermarkVariant === 'blue' ? 0.16 : 0.12)) * 100)}
+                    onChange={(e) => onChange({ ...slide, logoWatermarkOpacity: Number(e.target.value) / 100 })}
+                    className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  />
+                </div>
+
+                {/* Dimensione Logo */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Dimensione Logo</span>
+                    <span className="font-mono text-amber-400 font-bold">
+                      {slide.logoWatermarkSize || 560}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="350"
+                    max="750"
+                    step="20"
+                    value={slide.logoWatermarkSize || 560}
+                    onChange={(e) => onChange({ ...slide, logoWatermarkSize: Number(e.target.value) })}
+                    className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  />
+                </div>
+
+                {/* Posizione Verticale Offset Y */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Posizione Verticale (Offset Y)</span>
+                    <span className="font-mono text-amber-400 font-bold">
+                      {slide.logoWatermarkOffsetY ? `${slide.logoWatermarkOffsetY > 0 ? '+' : ''}${slide.logoWatermarkOffsetY}px` : '0px (Centrato)'}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-250"
+                    max="250"
+                    step="10"
+                    value={slide.logoWatermarkOffsetY || 0}
+                    onChange={(e) => onChange({ ...slide, logoWatermarkOffsetY: Number(e.target.value) })}
+                    className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {currentLayout === 'final_cta' && (
-          <div className="space-y-2.5 p-3.5 rounded-2xl bg-slate-950 border border-amber-500/30">
+          <div className="space-y-3 p-3.5 rounded-2xl bg-slate-950 border border-amber-500/30">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                 <span>🚀 Box Call to Action Finale</span>
@@ -1940,6 +1677,114 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                 placeholder="es. 💾 SALVA IL POST & COMMENTA (o lascia vuoto)"
                 className="w-full px-2.5 py-1.5 bg-slate-900 border border-amber-500/40 rounded-xl text-xs text-amber-300 font-bold focus:outline-none focus:border-amber-400"
               />
+            </div>
+
+            {/* Background Logo Watermark Controls */}
+            <div className="pt-2.5 border-t border-slate-800/80 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-200 flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={slide.showLogoWatermarkBg ?? true}
+                    onChange={(e) => onChange({ ...slide, showLogoWatermarkBg: e.target.checked })}
+                    className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                  />
+                  <span>Logo AC in Background (Watermark)</span>
+                </label>
+                <span className="text-[10px] text-amber-400/90 font-mono font-semibold">
+                  {(slide.showLogoWatermarkBg ?? true) ? 'Attivo' : 'Spento'}
+                </span>
+              </div>
+
+              {(slide.showLogoWatermarkBg ?? true) && (
+                <div className="space-y-2.5 pl-3 border-l-2 border-amber-500/30">
+                  {/* Variante Logo */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold text-slate-400">Stile Logo Sfondo</span>
+                    <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => onChange({ ...slide, logoWatermarkVariant: 'white' })}
+                        className={`px-2.5 py-1 text-[10px] rounded font-bold transition-all cursor-pointer ${
+                          slide.logoWatermarkVariant !== 'blue'
+                            ? 'bg-slate-200 text-slate-950 shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Bianco (Trasparente)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onChange({ ...slide, logoWatermarkVariant: 'blue' })}
+                        className={`px-2.5 py-1 text-[10px] rounded font-bold transition-all cursor-pointer ${
+                          slide.logoWatermarkVariant === 'blue'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Cerchio Blu
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Opacità Sfondo */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>Opacità Sfondo</span>
+                      <span className="font-mono text-amber-400 font-bold">
+                        {Math.round((slide.logoWatermarkOpacity ?? (slide.logoWatermarkVariant === 'blue' ? 0.16 : 0.12)) * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="4"
+                      max="45"
+                      step="1"
+                      value={Math.round((slide.logoWatermarkOpacity ?? (slide.logoWatermarkVariant === 'blue' ? 0.16 : 0.12)) * 100)}
+                      onChange={(e) => onChange({ ...slide, logoWatermarkOpacity: Number(e.target.value) / 100 })}
+                      className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                    />
+                  </div>
+
+                  {/* Dimensione Logo */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>Dimensione Logo</span>
+                      <span className="font-mono text-amber-400 font-bold">
+                        {slide.logoWatermarkSize || 560}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="350"
+                      max="750"
+                      step="20"
+                      value={slide.logoWatermarkSize || 560}
+                      onChange={(e) => onChange({ ...slide, logoWatermarkSize: Number(e.target.value) })}
+                      className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                    />
+                  </div>
+
+                  {/* Posizione Verticale Offset Y */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>Posizione Verticale (Offset Y)</span>
+                      <span className="font-mono text-amber-400 font-bold">
+                        {slide.logoWatermarkOffsetY ? `${slide.logoWatermarkOffsetY > 0 ? '+' : ''}${slide.logoWatermarkOffsetY}px` : '0px (Centrato)'}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-250"
+                      max="250"
+                      step="10"
+                      value={slide.logoWatermarkOffsetY || 0}
+                      onChange={(e) => onChange({ ...slide, logoWatermarkOffsetY: Number(e.target.value) })}
+                      className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2005,6 +1850,158 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             )}
           </div>
         )}
+
+        {/* ─── NUOVO PANNELLO: ART DIRECTION (GEMINI) NELLA COLONNA CENTRALE ─── */}
+        <div
+          className="p-4 sm:p-5 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 border border-amber-500/40 space-y-4 shadow-xl ring-1 ring-amber-500/20"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Intestazione Pannello & Badge Permanente */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 text-slate-950 font-black flex items-center justify-center shadow-md">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <span>Art Direction (Gemini)</span>
+                  <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 font-bold">
+                    Grafica Pura
+                  </span>
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  Calibrazione estetica, gerarchia visiva, safe area e contrasto per smartphone.
+                </p>
+              </div>
+            </div>
+
+            {/* Badge Permanente: Il testo non verrà mai modificato */}
+            <div className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold flex items-center gap-1.5 shadow-sm shrink-0 self-start sm:self-center">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Il testo non verrà mai modificato</span>
+            </div>
+          </div>
+
+          {/* Selettore Focus Multiplo */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                <span>Seleziona Focus di Design (multiplo)</span>
+              </label>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {selectedFocuses.length} di {ART_DIRECTION_FOCUS_OPTIONS.length} attivi
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+              {ART_DIRECTION_FOCUS_OPTIONS.map((opt) => {
+                const isFocused = selectedFocuses.includes(opt.id);
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => toggleFocus(opt.id)}
+                    className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-start gap-2 ${
+                      isFocused
+                        ? 'bg-amber-500/15 border-amber-500/50 text-white shadow-sm ring-1 ring-amber-500/20'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                    }`}
+                  >
+                    <span className="text-base shrink-0 mt-0.5">{opt.icon}</span>
+                    <div className="min-w-0">
+                      <span className={`text-xs font-bold block truncate ${isFocused ? 'text-amber-300' : 'text-slate-300'}`}>
+                        {opt.label}
+                      </span>
+                      <span className="text-[10px] text-slate-400 line-clamp-1 block leading-tight">
+                        {opt.desc}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Selettore Intensità */}
+          <div className="space-y-2 pt-1">
+            <label className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+              <span>Intensità Intervento Grafico</span>
+              <span className="text-[10px] text-slate-400 font-normal">
+                {selectedIntensity === 'light'
+                  ? 'Leggera: micro-aggiustamenti di contrasto e pixel'
+                  : selectedIntensity === 'medium'
+                  ? 'Media: bilanciamento ideale ingombri e layout'
+                  : 'Decisa: riorganizzazione visiva e palette ad alto impatto'}
+              </span>
+            </label>
+
+            <div className="grid grid-cols-3 gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+              {(['light', 'medium', 'strong'] as ArtDirectionIntensity[]).map((level) => {
+                const isCurrent = selectedIntensity === level;
+                const isRecommended = recommendedIntensity === level;
+                const labels: Record<ArtDirectionIntensity, { title: string; subtitle: string }> = {
+                  light: { title: 'Leggera', subtitle: 'Fine-tuning' },
+                  medium: { title: 'Media', subtitle: 'Equilibrata' },
+                  strong: { title: 'Decisa', subtitle: 'Audace' },
+                };
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setSelectedIntensity(level)}
+                    className={`py-2 px-2 rounded-xl text-center transition cursor-pointer flex flex-col items-center justify-center relative ${
+                      isCurrent
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-black shadow-sm'
+                        : isRecommended
+                        ? 'bg-slate-900/90 text-slate-300 border border-amber-500/30 hover:border-amber-500/50 hover:text-white'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900 font-medium border border-transparent'
+                    }`}
+                  >
+                    <span className="text-xs block">{labels[level].title}</span>
+                    <span className="text-[9px] text-slate-500 block">{labels[level].subtitle}</span>
+                    {isRecommended && (
+                      <span className="text-[8px] font-mono px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 mt-1 font-bold">
+                        Consigliata
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Pulsante Primario + Azione Undo Storico */}
+          <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 border-t border-slate-800/80">
+            <div className="flex items-center gap-2">
+              {onUndoStyle && (
+                <button
+                  type="button"
+                  onClick={onUndoStyle}
+                  disabled={!canUndoStyle}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold transition cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
+                  title={
+                    canUndoStyle
+                      ? "Ripristina l'ultimo stile grafico precedente (il testo resta invariato)"
+                      : 'Nessuno stile precedente da annullare'
+                  }
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Annulla ultimo stile</span>
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleArtDirectionAction}
+              disabled={isOptimizingWithGemini}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-50"
+            >
+              <Sparkles className={`w-4 h-4 ${isOptimizingWithGemini ? 'animate-spin' : ''}`} />
+              <span>{isOptimizingWithGemini ? 'Elaborazione Art Direction...' : 'Migliora grafica con Gemini'}</span>
+            </button>
+          </div>
+        </div>
 
         {/* GESTIONE FOTO COMPLETA (UPLOAD, PRESET, ZOOM, FIT, OVERLAY, SMART LAYOUT) */}
         {currentLayout !== 'product_breakdown' && (
@@ -2154,7 +2151,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                   <div className="flex items-center gap-1.5">
                     <label className="font-bold text-slate-300">Grandezza Titolo</label>
                     <div className="flex items-center gap-1">
-                      {[44, 84, 120, 200].map((sz) => (
+                      {[52, 68, 80, 100].map((sz) => (
                         <button
                           key={sz}
                           type="button"
@@ -2172,7 +2169,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                       type="number"
                       min="20"
                       max="200"
-                      value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
+                      value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 82 : slide.titleSize === 'lg' ? 72 : slide.titleSize === 'md' ? 62 : 52)}
                       onChange={(e) => {
                         const val = parseInt(e.target.value, 10);
                         if (!isNaN(val)) {
@@ -2189,13 +2186,13 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                   min="24"
                   max="200"
                   step="2"
-                  value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 64 : slide.titleSize === 'lg' ? 52 : slide.titleSize === 'md' ? 44 : 36)}
+                  value={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 82 : slide.titleSize === 'lg' ? 72 : slide.titleSize === 'md' ? 62 : 52)}
                   onChange={(e) => onChange({ ...slide, titleFontSizePx: parseInt(e.target.value, 10) })}
                   className="w-full accent-amber-500 cursor-pointer"
                 />
                 <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
-                  <span>24px (Compatto)</span>
-                  <span>100px</span>
+                  <span>24px</span>
+                  <span>72px (Standard Cover)</span>
                   <span>200px (Max Impatto)</span>
                 </div>
               </div>
@@ -2206,7 +2203,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                   <div className="flex items-center gap-1.5">
                     <label className="font-bold text-slate-300">Grandezza Sottotitolo</label>
                     <div className="flex items-center gap-1">
-                      {[22, 28, 36, 48].map((sz) => (
+                      {[28, 34, 42, 52].map((sz) => (
                         <button
                           key={sz}
                           type="button"
@@ -2222,9 +2219,9 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                   <div className="flex items-center gap-1 font-mono">
                     <input
                       type="number"
-                      min="14"
-                      max="72"
-                      value={slide.subtitleFontSizePx || 28}
+                      min="16"
+                      max="80"
+                      value={slide.subtitleFontSizePx || 38}
                       onChange={(e) => {
                         const val = parseInt(e.target.value, 10);
                         if (!isNaN(val)) {
@@ -2238,34 +2235,49 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                 </div>
                 <input
                   type="range"
-                  min="14"
-                  max="72"
+                  min="16"
+                  max="80"
                   step="1"
-                  value={slide.subtitleFontSizePx || 28}
+                  value={slide.subtitleFontSizePx || 38}
                   onChange={(e) => onChange({ ...slide, subtitleFontSizePx: parseInt(e.target.value, 10) })}
                   className="w-full accent-amber-500 cursor-pointer"
                 />
                 <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
-                  <span>14px</span>
-                  <span>28px (Default)</span>
-                  <span>72px (Grande)</span>
+                  <span>16px</span>
+                  <span>38px (Standard Mobile)</span>
+                  <span>80px (Grande)</span>
                 </div>
               </div>
 
               {/* Slider Grandezza Corpo in px */}
               <div className="space-y-1.5 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
                 <div className="flex items-center justify-between text-[11px]">
-                  <label className="font-bold text-slate-300">Grandezza Testo & Liste</label>
+                  <div className="flex items-center gap-1.5">
+                    <label className="font-bold text-slate-300">Grandezza Testo & Liste</label>
+                    <div className="flex items-center gap-1">
+                      {[26, 32, 36, 42].map((sz) => (
+                        <button
+                          key={sz}
+                          type="button"
+                          onClick={() => onChange({ ...slide, bodyFontSizePx: sz })}
+                          className="px-1.5 py-0.2 rounded bg-slate-800 hover:bg-purple-500/20 text-[9px] text-purple-300/80 hover:text-purple-200 border border-slate-700/60 font-mono transition cursor-pointer"
+                          title={`Imposta corpo a ${sz}px`}
+                        >
+                          {sz}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="flex items-center gap-1 font-mono">
                     <input
                       type="number"
                       min="16"
-                      max="48"
-                      value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
+                      max="56"
+                      value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 40 : slide.bodyFontSize === 'sm' ? 28 : 34)}
                       onChange={(e) => {
                         const val = parseInt(e.target.value, 10);
                         if (!isNaN(val)) {
-                          onChange({ ...slide, bodyFontSizePx: Math.max(14, Math.min(50, val)) });
+                          onChange({ ...slide, bodyFontSizePx: Math.max(14, Math.min(56, val)) });
                         }
                       }}
                       className="w-12 px-1.5 py-0.5 bg-slate-950 border border-purple-500/50 rounded text-center text-purple-300 font-bold focus:outline-none focus:border-purple-400"
@@ -2276,16 +2288,16 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                 <input
                   type="range"
                   min="18"
-                  max="40"
+                  max="52"
                   step="1"
-                  value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 30 : slide.bodyFontSize === 'sm' ? 22 : 26)}
+                  value={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 40 : slide.bodyFontSize === 'sm' ? 28 : 34)}
                   onChange={(e) => onChange({ ...slide, bodyFontSizePx: parseInt(e.target.value, 10) })}
                   className="w-full accent-purple-500 cursor-pointer"
                 />
                 <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono">
                   <span>18px (Minimo)</span>
-                  <span>26px</span>
-                  <span>40px (Grande)</span>
+                  <span>34px (Standard Mobile)</span>
+                  <span>52px (Max Leggibilità)</span>
                 </div>
               </div>
 
@@ -2504,6 +2516,76 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
                     {Math.round((slide.imageOpacity ?? 0.6) * 100)}%
                   </span>
                 </div>
+              </div>
+            )}
+
+            {/* LOGO WATERMARK DI SFONDO (PER QUALSIASI ALTRA SLIDE DEL CAROSELLO) */}
+            {!(index === 0 || slide.type === 'cover' || ['dual_tone_cover', 'bold_center', 'text_center', 'final_cta'].includes(currentLayout)) && (
+              <div className="pt-2 border-t border-slate-800 space-y-2.5 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-200 flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={slide.showLogoWatermarkBg ?? false}
+                      onChange={(e) => onChange({ ...slide, showLogoWatermarkBg: e.target.checked })}
+                      className="w-4 h-4 rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                    />
+                    <span>Logo AC in Background (Watermark)</span>
+                  </label>
+                  <span className="text-[10px] text-amber-400 font-mono font-bold">
+                    {slide.showLogoWatermarkBg ? 'Attivo' : 'Disattivato'}
+                  </span>
+                </div>
+
+                {slide.showLogoWatermarkBg && (
+                  <div className="space-y-2.5 pt-1 border-t border-slate-800">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold text-slate-400">Stile Logo Sfondo</span>
+                      <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => onChange({ ...slide, logoWatermarkVariant: 'white' })}
+                          className={`px-2 py-0.5 text-[10px] rounded font-bold transition-all cursor-pointer ${
+                            slide.logoWatermarkVariant !== 'blue'
+                              ? 'bg-slate-200 text-slate-950 shadow-sm'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Bianco
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onChange({ ...slide, logoWatermarkVariant: 'blue' })}
+                          className={`px-2 py-0.5 text-[10px] rounded font-bold transition-all cursor-pointer ${
+                            slide.logoWatermarkVariant === 'blue'
+                              ? 'bg-blue-600 text-white shadow-sm'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Cerchio Blu
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>Opacità Sfondo</span>
+                        <span className="font-mono text-amber-400 font-bold">
+                          {Math.round((slide.logoWatermarkOpacity ?? (slide.logoWatermarkVariant === 'blue' ? 0.16 : 0.12)) * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="4"
+                        max="45"
+                        step="1"
+                        value={Math.round((slide.logoWatermarkOpacity ?? (slide.logoWatermarkVariant === 'blue' ? 0.16 : 0.12)) * 100)}
+                        onChange={(e) => onChange({ ...slide, logoWatermarkOpacity: Number(e.target.value) / 100 })}
+                        className="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

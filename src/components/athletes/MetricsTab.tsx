@@ -4,6 +4,7 @@ import {
   Ruler,
   Dumbbell,
   Plus,
+  Pencil,
   Trash2,
   TrendingUp,
   TrendingDown,
@@ -21,6 +22,7 @@ import {
 import { useMetrics } from '../../context/MetricsContext';
 import { useToast } from '../../context/ToastContext';
 import { MaxLiftsSection } from '../metrics/MaxLiftsSection';
+import { AthleteMetricsTrendChart } from '../metrics/AthleteMetricsTrendChart';
 import { EnergyEstimatorSection } from '../nutrition/EnergyEstimatorSection';
 import {
   CheckFrequency,
@@ -50,6 +52,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
     maxLifts,
     fetchMetricsForAthlete,
     addMetric,
+    updateMetric,
     deleteMetric,
     fetchMaxLiftsForAthlete,
     getAthleteSchedule,
@@ -65,6 +68,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
 
   // Modali State
   const [showMetricModal, setShowMetricModal] = useState(false);
+  const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
 
   // Form Metric State
   const [metricForm, setMetricForm] = useState({
@@ -155,7 +159,83 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
     showSuccess('Configurazione salvata!', `Rituale check aggiornato per ${athleteName}.`);
   };
 
-  // Salvataggio Nuova Metrica
+  // Helper per parsing sicuro di float (supporta virgola o punto)
+  const parseOptionalFloat = (val: string): number | null => {
+    if (!val || val.trim() === '') return null;
+    const num = parseFloat(val.replace(',', '.'));
+    return isNaN(num) ? null : num;
+  };
+
+  const handleOpenAddModal = () => {
+    setEditingMetricId(null);
+    setMetricForm({
+      date: new Date().toISOString().slice(0, 10),
+      weight_kg: '',
+      height_cm: '',
+      body_fat_percentage: '',
+      neck_cm: '',
+      shoulders_cm: '',
+      chest_cm: '',
+      waist_cm: '',
+      hips_cm: '',
+      bicep_right_cm: '',
+      bicep_left_cm: '',
+      thigh_right_cm: '',
+      thigh_left_cm: '',
+      calf_right_cm: '',
+      calf_left_cm: '',
+      notes: '',
+    });
+    setShowMetricModal(true);
+  };
+
+  const handleOpenEditModal = (m: (typeof sortedMetrics)[number]) => {
+    setEditingMetricId(m.id);
+    setMetricForm({
+      date: m.date ? m.date.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      weight_kg: m.weight_kg !== null && m.weight_kg !== undefined ? String(m.weight_kg) : '',
+      height_cm: m.height_cm !== null && m.height_cm !== undefined ? String(m.height_cm) : '',
+      body_fat_percentage: m.body_fat_percentage !== null && m.body_fat_percentage !== undefined ? String(m.body_fat_percentage) : '',
+      neck_cm: m.neck_cm !== null && m.neck_cm !== undefined ? String(m.neck_cm) : '',
+      shoulders_cm: m.shoulders_cm !== null && m.shoulders_cm !== undefined ? String(m.shoulders_cm) : '',
+      chest_cm: m.chest_cm !== null && m.chest_cm !== undefined ? String(m.chest_cm) : '',
+      waist_cm: m.waist_cm !== null && m.waist_cm !== undefined ? String(m.waist_cm) : '',
+      hips_cm: m.hips_cm !== null && m.hips_cm !== undefined ? String(m.hips_cm) : '',
+      bicep_right_cm: m.bicep_right_cm !== null && m.bicep_right_cm !== undefined ? String(m.bicep_right_cm) : '',
+      bicep_left_cm: m.bicep_left_cm !== null && m.bicep_left_cm !== undefined ? String(m.bicep_left_cm) : '',
+      thigh_right_cm: m.thigh_right_cm !== null && m.thigh_right_cm !== undefined ? String(m.thigh_right_cm) : '',
+      thigh_left_cm: m.thigh_left_cm !== null && m.thigh_left_cm !== undefined ? String(m.thigh_left_cm) : '',
+      calf_right_cm: m.calf_right_cm !== null && m.calf_right_cm !== undefined ? String(m.calf_right_cm) : '',
+      calf_left_cm: m.calf_left_cm !== null && m.calf_left_cm !== undefined ? String(m.calf_left_cm) : '',
+      notes: m.notes || '',
+    });
+    setShowMetricModal(true);
+  };
+
+  const handleCloseMetricModal = () => {
+    setShowMetricModal(false);
+    setEditingMetricId(null);
+    setMetricForm({
+      date: new Date().toISOString().slice(0, 10),
+      weight_kg: '',
+      height_cm: '',
+      body_fat_percentage: '',
+      neck_cm: '',
+      shoulders_cm: '',
+      chest_cm: '',
+      waist_cm: '',
+      hips_cm: '',
+      bicep_right_cm: '',
+      bicep_left_cm: '',
+      thigh_right_cm: '',
+      thigh_left_cm: '',
+      calf_right_cm: '',
+      calf_left_cm: '',
+      notes: '',
+    });
+  };
+
+  // Salvataggio Nuova Metrica o Modifica Esistente
   const handleSaveMetric = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!metricForm.weight_kg && !metricForm.waist_cm && !metricForm.body_fat_percentage) {
@@ -163,49 +243,42 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
       return;
     }
 
-    const res = await addMetric({
+    const payload = {
       athlete_id: athleteId,
       date: metricForm.date,
-      weight_kg: metricForm.weight_kg ? parseFloat(metricForm.weight_kg) : null,
-      height_cm: metricForm.height_cm ? parseFloat(metricForm.height_cm) : null,
-      body_fat_percentage: metricForm.body_fat_percentage ? parseFloat(metricForm.body_fat_percentage) : null,
-      neck_cm: metricForm.neck_cm ? parseFloat(metricForm.neck_cm) : null,
-      shoulders_cm: metricForm.shoulders_cm ? parseFloat(metricForm.shoulders_cm) : null,
-      chest_cm: metricForm.chest_cm ? parseFloat(metricForm.chest_cm) : null,
-      waist_cm: metricForm.waist_cm ? parseFloat(metricForm.waist_cm) : null,
-      hips_cm: metricForm.hips_cm ? parseFloat(metricForm.hips_cm) : null,
-      bicep_right_cm: metricForm.bicep_right_cm ? parseFloat(metricForm.bicep_right_cm) : null,
-      bicep_left_cm: metricForm.bicep_left_cm ? parseFloat(metricForm.bicep_left_cm) : null,
-      thigh_right_cm: metricForm.thigh_right_cm ? parseFloat(metricForm.thigh_right_cm) : null,
-      thigh_left_cm: metricForm.thigh_left_cm ? parseFloat(metricForm.thigh_left_cm) : null,
-      calf_right_cm: metricForm.calf_right_cm ? parseFloat(metricForm.calf_right_cm) : null,
-      calf_left_cm: metricForm.calf_left_cm ? parseFloat(metricForm.calf_left_cm) : null,
-      notes: metricForm.notes || null,
-    });
+      weight_kg: parseOptionalFloat(metricForm.weight_kg),
+      height_cm: parseOptionalFloat(metricForm.height_cm),
+      body_fat_percentage: parseOptionalFloat(metricForm.body_fat_percentage),
+      neck_cm: parseOptionalFloat(metricForm.neck_cm),
+      shoulders_cm: parseOptionalFloat(metricForm.shoulders_cm),
+      chest_cm: parseOptionalFloat(metricForm.chest_cm),
+      waist_cm: parseOptionalFloat(metricForm.waist_cm),
+      hips_cm: parseOptionalFloat(metricForm.hips_cm),
+      bicep_right_cm: parseOptionalFloat(metricForm.bicep_right_cm),
+      bicep_left_cm: parseOptionalFloat(metricForm.bicep_left_cm),
+      thigh_right_cm: parseOptionalFloat(metricForm.thigh_right_cm),
+      thigh_left_cm: parseOptionalFloat(metricForm.thigh_left_cm),
+      calf_right_cm: parseOptionalFloat(metricForm.calf_right_cm),
+      calf_left_cm: parseOptionalFloat(metricForm.calf_left_cm),
+      notes: metricForm.notes.trim() || null,
+    };
 
-    if (res.success) {
-      showSuccess('Check misurazioni salvato con successo!');
-      setShowMetricModal(false);
-      setMetricForm({
-        date: new Date().toISOString().slice(0, 10),
-        weight_kg: '',
-        height_cm: '',
-        body_fat_percentage: '',
-        neck_cm: '',
-        shoulders_cm: '',
-        chest_cm: '',
-        waist_cm: '',
-        hips_cm: '',
-        bicep_right_cm: '',
-        bicep_left_cm: '',
-        thigh_right_cm: '',
-        thigh_left_cm: '',
-        calf_right_cm: '',
-        calf_left_cm: '',
-        notes: '',
-      });
+    if (editingMetricId) {
+      const res = await updateMetric(editingMetricId, payload);
+      if (res.success) {
+        showSuccess('Check misurazioni aggiornato con successo!');
+        handleCloseMetricModal();
+      } else {
+        showError(res.error || 'Impossibile aggiornare la misurazione');
+      }
     } else {
-      showError(res.error || 'Impossibile salvare la misurazione');
+      const res = await addMetric(payload);
+      if (res.success) {
+        showSuccess('Check misurazioni salvato con successo!');
+        handleCloseMetricModal();
+      } else {
+        showError(res.error || 'Impossibile salvare la misurazione');
+      }
     }
   };
 
@@ -262,7 +335,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
         <div className="shrink-0">
           {activeSubTab === 'misure' && (
             <button
-              onClick={() => setShowMetricModal(true)}
+              onClick={handleOpenAddModal}
               className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-bold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/10 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -603,6 +676,12 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
             </div>
           </div>
 
+          {/* ─── GRAFICO TREND & EVOLUZIONE CORPOREA ──────────────────────── */}
+          <AthleteMetricsTrendChart
+            metrics={sortedMetrics}
+            onOpenCheckIn={handleOpenAddModal}
+          />
+
           {/* TABELLA STORICO CHECK */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             <div className="p-4 border-b border-slate-800 flex justify-between items-center">
@@ -656,12 +735,24 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
                         </td>
                         <td className="p-3 max-w-[180px] truncate text-slate-400">{m.notes || '—'}</td>
                         <td className="p-3 text-right">
-                          <button
-                            onClick={() => handleDeleteMetric(m.id)}
-                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleOpenEditModal(m)}
+                              title="Modifica misurazione"
+                              aria-label="Modifica misurazione"
+                              className="p-1.5 text-slate-400 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMetric(m.id)}
+                              title="Elimina misurazione"
+                              aria-label="Elimina misurazione"
+                              className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -698,9 +789,11 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
             <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-950">
               <h3 className="font-bold text-sm text-white flex items-center gap-2">
                 <Scale className="w-4 h-4 text-[var(--color-primary)]" />
-                <span>Registra Check Misure - {athleteName}</span>
+                <span>
+                  {editingMetricId ? `Modifica Check Misure - ${athleteName}` : `Registra Check Misure - ${athleteName}`}
+                </span>
               </h3>
-              <button onClick={() => setShowMetricModal(false)} className="text-slate-400 hover:text-white p-1">
+              <button onClick={handleCloseMetricModal} className="text-slate-400 hover:text-white p-1 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -857,6 +950,28 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-white outline-none"
                     />
                   </div>
+                  <div>
+                    <label className="block text-slate-500 mb-1">Polpaccio Dx</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      placeholder="cm"
+                      value={metricForm.calf_right_cm}
+                      onChange={(e) => setMetricForm({ ...metricForm, calf_right_cm: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-white outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 mb-1">Polpaccio Sx</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      placeholder="cm"
+                      value={metricForm.calf_left_cm}
+                      onChange={(e) => setMetricForm({ ...metricForm, calf_left_cm: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-white outline-none"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -874,8 +989,8 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowMetricModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl"
+                  onClick={handleCloseMetricModal}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl cursor-pointer"
                 >
                   Annulla
                 </button>
@@ -883,7 +998,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
                   type="submit"
                   className="px-5 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-bold rounded-xl shadow-lg shadow-[var(--color-primary)]/20 cursor-pointer"
                 >
-                  Salva Check
+                  {editingMetricId ? 'Salva Modifiche' : 'Salva Check'}
                 </button>
               </div>
             </form>

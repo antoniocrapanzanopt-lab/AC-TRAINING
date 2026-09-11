@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { ToastContainer } from './components/common/ToastContainer';
@@ -134,6 +134,47 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ onOpenContentStudio }) =
   const { setSelectedAthleteId } = useAthletes();
   const { activeToast, clearActiveToast } = useNotifications();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Memorizza la scheda precedente per ripristinare il contesto quando si esce da Performance & Copilot
+  const previousTabRef = useRef<NavigationTab>('dashboard');
+
+  useEffect(() => {
+    if (activeTab !== 'analisi_report' && activeTab !== 'report') {
+      previousTabRef.current = activeTab;
+    }
+  }, [activeTab]);
+
+  const isAnalysisFullscreen = activeTab === 'analisi_report' || activeTab === 'report';
+
+  const handleBackToPlatform = () => {
+    setActiveTab(previousTabRef.current || 'dashboard');
+  };
+
+  // ─── SPAZIO FULLSCREEN DEDICATO PER PERFORMANCE & COPILOT ───
+  if (isAnalysisFullscreen) {
+    return (
+      <div className="min-h-screen w-full bg-slate-950 text-[var(--color-text)] flex flex-col font-sans">
+        <AnalysisReportsPage
+          isFullscreen
+          onBackToPlatform={handleBackToPlatform}
+        />
+        <FloatingChatWidget />
+        <ToastContainer />
+        <NotificationToast
+          notification={activeToast}
+          onClose={clearActiveToast}
+          onOpenAction={() => {
+            if (!activeToast) return;
+            const target = resolveNotificationNavigation(activeToast);
+            if (target.athleteId) {
+              setSelectedAthleteId(target.athleteId);
+            }
+            setActiveTab(target.tab);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] flex flex-col font-sans">

@@ -11,6 +11,7 @@ import { AuthScreenState } from '../lib/mfaEngine';
 export interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
+  loading: boolean;
   authScreenState: AuthScreenState;
   mfa: ReturnType<typeof useMFA>;
   canViewFinancials: boolean;
@@ -38,12 +39,29 @@ export interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const AUTH_USER_CACHE_KEY = 'ac_auth_user_cache_v1';
+
+const getCachedAuthUser = (): UserProfile | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(AUTH_USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && parsed.id && parsed.role) {
+      return parsed as UserProfile;
+    }
+  } catch {
+    // fallback
+  }
+  return null;
+};
+
 const getDefaultMembers = (_orgId: string): OrganizationMember[] => {
   return [];
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(() => getCachedAuthUser());
   const [sessionUser, setSessionUser] = useState<User | null>(null);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -54,7 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   });
   const mfa = useMFA();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => !getCachedAuthUser());
   const [ownerProfile] = useState(() => getLocalOwnerProfile());
   const [simulatedRole, setSimulatedRole] = useState<UserRole>('owner');
 
@@ -86,6 +104,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const checkUserRoleAndSet = useCallback(async (sessionUserArg: User | null | undefined) => {
     if (!sessionUserArg) {
+      try {
+        localStorage.removeItem(AUTH_USER_CACHE_KEY);
+      } catch (_) {}
       setUser(null);
       setSessionUser(null);
       setLoading(false);
@@ -95,6 +116,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     const email = sessionUserArg.email;
     if (!email) {
+      try {
+        localStorage.removeItem(AUTH_USER_CACHE_KEY);
+      } catch (_) {}
       setUser(null);
       setLoading(false);
       return;
@@ -108,17 +132,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentEmail = email.toLowerCase().trim();
 
     // Se l'email è quella del proprietario/coach, assegna SEMPRE il ruolo 'owner' (Dashboard Coach)
-    const isOwnerEmail = currentEmail === 'antonio.crapanzanopt@gmail.com' || (ownerEmail && currentEmail === ownerEmail);
+    const isOwnerEmail = currentEmail === 'antonio.crapanzano' || currentEmail === 'antonio.crapanzanopt@gmail.com' || (ownerEmail && currentEmail === ownerEmail);
 
     if (isOwnerEmail) {
-      setUser({
+      const ownerUser: UserProfile = {
         id: sessionUserArg.id,
         name: owner?.fullName || sessionUserArg.user_metadata?.full_name || email.split('@')[0] || 'Coach',
         email: email,
         role: 'owner',
         canViewFinancials: true,
         hasSeenDisclaimer: localSeen || metadataSeen,
-      });
+      };
+      setUser(ownerUser);
+      try {
+        localStorage.setItem(AUTH_USER_CACHE_KEY, JSON.stringify(ownerUser));
+      } catch (_) {}
       setLoading(false);
       return;
     }
@@ -134,7 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (athleteData) {
-        setUser({
+        const athleteUser: UserProfile = {
           id: sessionUserArg.id,
           athleteId: athleteData.id,
           name: `${athleteData.first_name} ${athleteData.last_name}`,
@@ -142,10 +170,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: 'athlete',
           canViewFinancials: false,
           hasSeenDisclaimer: localSeen || metadataSeen,
-        });
+        };
+        setUser(athleteUser);
+        try {
+          localStorage.setItem(AUTH_USER_CACHE_KEY, JSON.stringify(athleteUser));
+        } catch (_) {}
       } else {
         console.warn('Security: utente non autorizzato, logout forzato.', email);
         await supabase.auth.signOut();
+        try {
+          localStorage.removeItem(AUTH_USER_CACHE_KEY);
+        } catch (_) {}
         setUser(null);
         setSessionUser(null);
       }
@@ -177,8 +212,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (event === 'PASSWORD_RECOVERY') {
         setIsPasswordRecovery(true);
       }
-      await checkUserRoleAndSet(session?.user);
-      if (event !== 'SIGNED_OUT') {
+      if (event === 'SIGNED_OUT') {
+        try {
+          localStorage.removeItem(AUTH_USER_CACHE_KEY);
+        } catch (_) {}
+        setUser(null);
+        setSessionUser(null);
+        setLoading(false);
+        return;
+      }
+      if (session?.user) {
+        await checkUserRoleAndSet(session.user);
         await mfa.loadMFAStatus();
       }
     });
@@ -304,6 +348,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    try {
+      localStorage.removeItem(AUTH_USER_CACHE_KEY);
+    } catch (_) {}
+    setUser(null);
+    setSessionUser(null);
     await supabase.auth.signOut();
   };
 
@@ -384,8 +433,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, sessionUser, loading, mfa.mfaState]);
 
 
-  // Non mostrare l'app finché non controlliamo la sessione
-  if (loading) {
+  // Non mostrare l'app finché non controlliamo la sessione (se non c'è già un utente in cache)
+  if (loading && !user) {
     return (
       <div className="h-screen w-screen bg-black flex flex-col items-center justify-center gap-3">
         <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
@@ -401,6 +450,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         isAuthenticated: Boolean(user),
+        loading,
         authScreenState,
         mfa,
         canViewFinancials: activeCanViewFinancials,

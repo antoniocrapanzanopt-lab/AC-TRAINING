@@ -298,101 +298,92 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
 
           {/* ─── TAB: ANAGRAFICA ─── */}
           {activeTab === 'anagrafica' && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               <SectionTitle
                 icon={<User className="w-4 h-4" />}
-                title="Anagrafica"
-                subtitle="Dati identificativi principali dell'atleta"
+                title="Anagrafica & Dati Personali"
+                subtitle="Dati identificativi, fiscali e residenza dell'atleta"
               />
 
-              {/* Campi principali */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="athlete-firstName" className={labelClass}>Nome *</label>
-                  <input
-                    id="athlete-firstName"
-                    value={form.firstName}
-                    onChange={e => set('firstName', e.target.value)}
-                    className={inputClass(errors.firstName)}
-                    placeholder="es. Marco"
-                  />
-                  {errors.firstName && <p className="text-[11px] text-red-400 mt-1">{errors.firstName}</p>}
-                </div>
-                <div>
-                  <label htmlFor="athlete-lastName" className={labelClass}>Cognome *</label>
-                  <input
-                    id="athlete-lastName"
-                    value={form.lastName}
-                    onChange={e => set('lastName', e.target.value)}
-                    className={inputClass(errors.lastName)}
-                    placeholder="es. Bianchi"
-                  />
-                  {errors.lastName && <p className="text-[11px] text-red-400 mt-1">{errors.lastName}</p>}
-                </div>
-                <div>
-                  <label htmlFor="athlete-phone" className={labelClass}>Telefono *</label>
-                  <input
-                    id="athlete-phone"
-                    value={form.phone}
-                    onChange={e => set('phone', e.target.value)}
-                    className={inputClass(errors.phone)}
-                    placeholder="+39 333 0000000"
-                  />
-                  {errors.phone && <p className="text-[11px] text-red-400 mt-1">{errors.phone}</p>}
-                </div>
-                <div>
-                  <label htmlFor="athlete-email" className={labelClass}>Email</label>
-                  <input
-                    id="athlete-email"
-                    type="email"
-                    value={form.email}
-                    onChange={e => set('email', e.target.value)}
-                    className={inputClass(errors.email)}
-                    placeholder="atleta@esempio.com"
-                  />
-                  {errors.email && <p className="text-[11px] text-red-400 mt-1">{errors.email}</p>}
-                </div>
-                <div>
-                  <label htmlFor="athlete-dateOfBirth" className={labelClass}>Data di Nascita</label>
-                  <input
-                    id="athlete-dateOfBirth"
-                    type="date"
-                    value={form.dateOfBirth ?? ''}
-                    onChange={e => set('dateOfBirth', e.target.value)}
-                    className={inputClass()}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="athlete-gender" className={labelClass}>Genere</label>
-                  <select
-                    id="athlete-gender"
-                    value={form.gender ?? ''}
-                    onChange={e => set('gender', e.target.value as AthleteGender || undefined)}
-                    className={selectClass()}
-                  >
-                    <option value="">— Non specificato —</option>
-                    {(Object.keys(genderLabel) as AthleteGender[]).map(g => (
-                      <option key={g} value={g}>{genderLabel[g]}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Separatore campi secondari */}
-              <div className="border-t border-slate-800 pt-4">
-                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-3">Contatti aggiuntivi</p>
+              {/* Dati identificativi principali */}
+              <div className="space-y-3">
+                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">Identità e Dati Personali</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="athlete-telegram" className={labelClass}>Telegram</label>
+                    <label htmlFor="athlete-firstName" className={labelClass}>Nome *</label>
                     <input
-                      id="athlete-telegram"
-                      value={form.telegramUsername ?? ''}
-                      onChange={e => set('telegramUsername', e.target.value)}
-                      className={inputClass()}
-                      placeholder="@username o +393330000000"
+                      id="athlete-firstName"
+                      value={form.firstName}
+                      onChange={e => set('firstName', e.target.value)}
+                      className={inputClass(errors.firstName)}
+                      placeholder="es. Marco"
+                    />
+                    {errors.firstName && <p className="text-[11px] text-red-400 mt-1">{errors.firstName}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="athlete-lastName" className={labelClass}>Cognome *</label>
+                    <input
+                      id="athlete-lastName"
+                      value={form.lastName}
+                      onChange={e => set('lastName', e.target.value)}
+                      className={inputClass(errors.lastName)}
+                      placeholder="es. Bianchi"
+                    />
+                    {errors.lastName && <p className="text-[11px] text-red-400 mt-1">{errors.lastName}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="athlete-fiscalCode" className={labelClass}>Codice Fiscale</label>
+                    <input
+                      id="athlete-fiscalCode"
+                      value={form.fiscalCode ?? ''}
+                      onChange={e => set('fiscalCode', e.target.value.toUpperCase())}
+                      className={`${inputClass()} font-mono tracking-wider`}
+                      placeholder="es. BNCMRC80A01H501U"
+                      maxLength={16}
                     />
                   </div>
                   <div>
+                    <label htmlFor="athlete-dateOfBirth" className={labelClass}>Data di Nascita</label>
+                    <input
+                      id="athlete-dateOfBirth"
+                      type="date"
+                      value={form.dateOfBirth ?? ''}
+                      onChange={e => set('dateOfBirth', e.target.value)}
+                      className={inputClass()}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label htmlFor="athlete-gender" className={labelClass}>Genere</label>
+                    <select
+                      id="athlete-gender"
+                      value={form.gender ?? ''}
+                      onChange={e => set('gender', e.target.value as AthleteGender || undefined)}
+                      className={selectClass()}
+                    >
+                      <option value="">— Non specificato —</option>
+                      {(Object.keys(genderLabel) as AthleteGender[]).map(g => (
+                        <option key={g} value={g}>{genderLabel[g]}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Residenza e Domicilio */}
+              <div className="border-t border-slate-800 pt-5 space-y-3">
+                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">Residenza & Domicilio</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-3">
+                    <label htmlFor="athlete-address" className={labelClass}>Indirizzo di Residenza</label>
+                    <input
+                      id="athlete-address"
+                      value={form.address ?? ''}
+                      onChange={e => set('address', e.target.value)}
+                      className={inputClass()}
+                      placeholder="es. Via Roma 10"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
                     <label htmlFor="athlete-city" className={labelClass}>Città</label>
                     <input
                       id="athlete-city"
@@ -400,6 +391,57 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                       onChange={e => set('city', e.target.value)}
                       className={inputClass()}
                       placeholder="es. Milano"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="athlete-province" className={labelClass}>Provincia (Sigla)</label>
+                    <input
+                      id="athlete-province"
+                      value={form.province ?? ''}
+                      onChange={e => set('province', e.target.value.toUpperCase())}
+                      className={inputClass()}
+                      placeholder="es. MI"
+                      maxLength={2}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Contatti e Recapiti */}
+              <div className="border-t border-slate-800 pt-5 space-y-3">
+                <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">Contatti & Recapiti</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="athlete-phone" className={labelClass}>Telefono *</label>
+                    <input
+                      id="athlete-phone"
+                      value={form.phone}
+                      onChange={e => set('phone', e.target.value)}
+                      className={inputClass(errors.phone)}
+                      placeholder="+39 333 0000000"
+                    />
+                    {errors.phone && <p className="text-[11px] text-red-400 mt-1">{errors.phone}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="athlete-email" className={labelClass}>Email</label>
+                    <input
+                      id="athlete-email"
+                      type="email"
+                      value={form.email}
+                      onChange={e => set('email', e.target.value)}
+                      className={inputClass(errors.email)}
+                      placeholder="atleta@esempio.com"
+                    />
+                    {errors.email && <p className="text-[11px] text-red-400 mt-1">{errors.email}</p>}
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label htmlFor="athlete-telegram" className={labelClass}>Telegram</label>
+                    <input
+                      id="athlete-telegram"
+                      value={form.telegramUsername ?? ''}
+                      onChange={e => set('telegramUsername', e.target.value)}
+                      className={inputClass()}
+                      placeholder="@username o +393330000000"
                     />
                   </div>
                 </div>
@@ -591,9 +633,10 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
                     <input
                       id="athlete-fiscalCode"
                       value={form.fiscalCode ?? ''}
-                      onChange={e => set('fiscalCode', e.target.value)}
-                      className={inputClass()}
+                      onChange={e => set('fiscalCode', e.target.value.toUpperCase())}
+                      className={`${inputClass()} font-mono tracking-wider`}
                       placeholder="es. BNCMRC80A01H501U"
+                      maxLength={16}
                     />
                   </div>
                   <div>

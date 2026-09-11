@@ -142,6 +142,15 @@ export interface CarouselSlide {
   showAuthorBadge?: boolean;    // Mostra card badge autore nel footer
   badgeCoachName?: string;      // Override nome autore nel badge
   badgeCoachTitle?: string;     // Override qualifica nel badge
+
+  // Campi per Logo Watermark di Sfondo (particolarmente per Copertine, Box CTA Finale e branding)
+  showLogoWatermarkBg?: boolean;       // Abilita logo watermark in background
+  logoWatermarkOpacity?: number;       // Opacità watermark (0.04 - 0.40)
+  logoWatermarkSize?: number;          // Dimensione in px (es. 400 - 750px)
+  logoWatermarkOffsetY?: number;       // Offset verticale watermark in px (-300 a +300 px)
+  logoWatermarkVariant?: 'blue' | 'white'; // 'blue' (/ac-logo.png) o 'white' (/ac-logo-transparent.png)
+  logoWatermarkUrl?: string;           // URL custom per logo watermark
+  ctaBoxCentered?: boolean;            // Centratura forzata del box CTA nel canvas
 }
 
 export interface CarouselSettings {

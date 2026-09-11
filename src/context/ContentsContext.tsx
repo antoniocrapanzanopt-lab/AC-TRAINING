@@ -26,10 +26,32 @@ interface ContentsContextType {
 
 const ContentsContext = createContext<ContentsContextType | undefined>(undefined);
 
+const CONTENTS_CACHE_KEY = 'ac_cached_instagram_contents_v1';
+
+function getCachedContents(): InstagramContent[] {
+  try {
+    if (typeof window === 'undefined') return [];
+    const raw = localStorage.getItem(CONTENTS_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as InstagramContent[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function setCachedContents(data: InstagramContent[]): void {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(CONTENTS_CACHE_KEY, JSON.stringify(data));
+    }
+  } catch (err) {
+    console.warn('Impossibile salvare cache contenuti in localStorage:', err);
+  }
+}
+
 export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [contents, setContents] = useState<InstagramContent[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [contents, setContents] = useState<InstagramContent[]>(() => getCachedContents());
+  const [isLoading, setIsLoading] = useState<boolean>(() => getCachedContents().length === 0);
   const { showSuccess, showError } = useToast();
 
   const fetchContents = useCallback(async () => {
@@ -41,16 +63,20 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     try {
-      setIsLoading(true);
+      // Se non abbiamo ancora elementi in cache, segnaliamo il caricamento
+      if (contents.length === 0) {
+        setIsLoading(true);
+      }
       const data = await getInstagramContents();
       setContents(data);
+      setCachedContents(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('Errore caricamento Instagram contents:', msg);
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, contents.length]);
 
   useEffect(() => {
     fetchContents();
@@ -59,7 +85,11 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const createContent = async (payload: Partial<InstagramContent>): Promise<InstagramContent> => {
     try {
       const newContent = await createInstagramContent(payload);
-      setContents((prev) => [newContent, ...prev]);
+      setContents((prev) => {
+        const next = [newContent, ...prev];
+        setCachedContents(next);
+        return next;
+      });
       showSuccess('Nuovo contenuto aggiunto alla Pipeline!');
       return newContent;
     } catch (err: unknown) {
@@ -75,7 +105,11 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ): Promise<InstagramContent> => {
     try {
       const updated = await updateInstagramContent(id, updates);
-      setContents((prev) => prev.map((c) => (c.id === id ? updated : c)));
+      setContents((prev) => {
+        const next = prev.map((c) => (c.id === id ? updated : c));
+        setCachedContents(next);
+        return next;
+      });
       showSuccess('Contenuto aggiornato.');
       return updated;
     } catch (err: unknown) {
@@ -86,10 +120,12 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const moveStatus = async (id: string, newStatus: ContentStatus): Promise<void> => {
-    // Aggiornamento ottimistico
-    setContents((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c))
-    );
+    // Aggiornamento ottimistico immediato sia in memoria che in cache
+    setContents((prev) => {
+      const next = prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c));
+      setCachedContents(next);
+      return next;
+    });
     try {
       await updateContentStatus(id, newStatus);
     } catch (err: unknown) {
@@ -102,7 +138,11 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteContentById = async (id: string): Promise<void> => {
     try {
       await deleteInstagramContent(id);
-      setContents((prev) => prev.filter((c) => c.id !== id));
+      setContents((prev) => {
+        const next = prev.filter((c) => c.id !== id);
+        setCachedContents(next);
+        return next;
+      });
       showSuccess('Contenuto eliminato.');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Errore eliminazione.';

@@ -60,12 +60,24 @@ export const CoverStudioModal: React.FC<CoverStudioModalProps> = ({
   const [zoomScale, setZoomScale] = useState<'fit' | '75' | '100'>('fit');
   const [isExporting, setIsExporting] = useState<boolean>(false);
 
-  // Sincronizza stato se il contenuto esterno cambia
+  const hasInitializedRef = useRef<boolean>(false);
+  const lastContentIdRef = useRef<string | undefined>(undefined);
+
+  // Sincronizza stato SOLO se il modale si apre per un contenuto diverso o viene riaperto
+  // MAI durante la sessione di editing dello stesso contenuto!
   useEffect(() => {
     if (isOpen) {
-      setCover(generateDefaultCoverFromContent(content));
+      const currentId = content.id || 'new_cover';
+      if (!hasInitializedRef.current || lastContentIdRef.current !== currentId) {
+        hasInitializedRef.current = true;
+        lastContentIdRef.current = currentId;
+        setCover(generateDefaultCoverFromContent(content));
+      }
+    } else {
+      hasInitializedRef.current = false;
+      lastContentIdRef.current = undefined;
     }
-  }, [isOpen, content]);
+  }, [isOpen, content.id]);
 
   // Renderizza il canvas live a ogni variazione
   useEffect(() => {
@@ -272,16 +284,54 @@ export const CoverStudioModal: React.FC<CoverStudioModalProps> = ({
 
             {/* BADGE CATEGORIA */}
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-400">
-                Badge Categoria (Superiore)
-              </label>
-              <input
-                type="text"
-                value={cover.categoryBadge || ''}
-                onChange={(e) => setCover((prev) => ({ ...prev, categoryBadge: e.target.value }))}
-                placeholder="es. ■ GUIDA BIOMECCANICA"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-300 font-bold focus:outline-none focus:border-amber-500"
-              />
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-slate-400">
+                  Badge Categoria (Superiore)
+                </label>
+                {cover.categoryBadge && cover.categoryBadge.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => setCover((prev) => ({ ...prev, categoryBadge: '' }))}
+                    className="text-[10px] font-bold text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Rimuovi il badge per una copertina pulita e minimale"
+                  >
+                    <span>Rimuovi Badge</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCover((prev) => ({
+                        ...prev,
+                        categoryBadge: '■ GUIDA BIOMECCANICA',
+                      }))
+                    }
+                    className="text-[10px] font-bold text-amber-400 hover:text-amber-300 hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Aggiungi il badge categoria sopra al titolo"
+                  >
+                    <span>+ Aggiungi Badge</span>
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={cover.categoryBadge || ''}
+                  onChange={(e) => setCover((prev) => ({ ...prev, categoryBadge: e.target.value }))}
+                  placeholder="Nessun badge (lascia vuoto per rimuoverlo)"
+                  className="w-full px-3 py-2 pr-8 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-300 font-bold focus:outline-none focus:border-amber-500 placeholder-slate-600"
+                />
+                {cover.categoryBadge && cover.categoryBadge.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => setCover((prev) => ({ ...prev, categoryBadge: '' }))}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 p-0.5 cursor-pointer"
+                    title="Cancella testo badge"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             {/* TITOLO RIGA 1 (BIANCO) */}
@@ -346,6 +396,114 @@ export const CoverStudioModal: React.FC<CoverStudioModalProps> = ({
             cover={cover}
             onChangeCover={setCover}
           />
+
+          {/* CARD: LOGO AC IN BACKGROUND (WATERMARK) */}
+          <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-3">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+              <label className="text-xs font-black text-white flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={cover.showLogoWatermark ?? false}
+                  onChange={(e) => setCover((prev) => ({ ...prev, showLogoWatermark: e.target.checked }))}
+                  className="w-4 h-4 rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                />
+                <span>Logo AC in Background (Watermark)</span>
+              </label>
+              <span className="text-[10px] text-amber-400 font-mono font-bold">
+                {cover.showLogoWatermark ? 'Attivo' : 'Disattivato'}
+              </span>
+            </div>
+
+            {cover.showLogoWatermark && (
+              <div className="space-y-3 pt-1">
+                {/* Variante */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400">Stile Logo</span>
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setCover((prev) => ({ ...prev, logoWatermarkVariant: 'white' }))}
+                      className={`px-2.5 py-1 text-[10px] rounded-lg font-bold transition cursor-pointer ${
+                        cover.logoWatermarkVariant !== 'blue'
+                          ? 'bg-slate-200 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Bianco (Trasparente)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCover((prev) => ({ ...prev, logoWatermarkVariant: 'blue' }))}
+                      className={`px-2.5 py-1 text-[10px] rounded-lg font-bold transition cursor-pointer ${
+                        cover.logoWatermarkVariant === 'blue'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Cerchio Blu
+                    </button>
+                  </div>
+                </div>
+
+                {/* Opacità */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[11px] text-slate-400">
+                    <span>Opacità Sfondo</span>
+                    <span className="font-mono text-amber-400 font-bold">
+                      {Math.round((cover.logoWatermarkOpacity ?? (cover.logoWatermarkVariant === 'blue' ? 0.16 : 0.12)) * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="4"
+                    max="45"
+                    step="1"
+                    value={Math.round((cover.logoWatermarkOpacity ?? (cover.logoWatermarkVariant === 'blue' ? 0.16 : 0.12)) * 100)}
+                    onChange={(e) => setCover((prev) => ({ ...prev, logoWatermarkOpacity: Number(e.target.value) / 100 }))}
+                    className="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  />
+                </div>
+
+                {/* Dimensione */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[11px] text-slate-400">
+                    <span>Dimensione Logo</span>
+                    <span className="font-mono text-amber-400 font-bold">
+                      {cover.logoWatermarkSize || 540}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="350"
+                    max="800"
+                    step="20"
+                    value={cover.logoWatermarkSize || 540}
+                    onChange={(e) => setCover((prev) => ({ ...prev, logoWatermarkSize: Number(e.target.value) }))}
+                    className="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  />
+                </div>
+
+                {/* Offset Y */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[11px] text-slate-400">
+                    <span>Posizione Verticale (Offset Y)</span>
+                    <span className="font-mono text-amber-400 font-bold">
+                      {cover.logoWatermarkOffsetY ? `${cover.logoWatermarkOffsetY > 0 ? '+' : ''}${cover.logoWatermarkOffsetY}px` : '0px'}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-300"
+                    max="300"
+                    step="10"
+                    value={cover.logoWatermarkOffsetY || 0}
+                    onChange={(e) => setCover((prev) => ({ ...prev, logoWatermarkOffsetY: Number(e.target.value) }))}
+                    className="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* CARD 2: IMMAGINE FOTOGRAFICA & LIVELLI */}
           <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-3">

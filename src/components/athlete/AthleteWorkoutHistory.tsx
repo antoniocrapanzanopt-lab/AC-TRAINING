@@ -44,6 +44,7 @@ export interface SessionRow {
   skip_notes?: string | null;
   coach_justified?: boolean | null;
   coach_feedback?: string | null;
+  workout_id?: string | null;
   workouts?: { title?: string; total_weeks?: number } | null;
 }
 
@@ -60,7 +61,71 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
   activeWorkoutTitle,
   initialSessions,
 }) => {
-  const [pastSessions, setPastSessions] = useState<PastSession[]>([]);
+  const mapSessions = React.useCallback((sessionList: SessionRow[]): PastSession[] => {
+    return sessionList
+      .slice()
+      .sort((a, b) => {
+        const timeA = new Date(a.end_time || a.start_time || 0).getTime();
+        const timeB = new Date(b.end_time || b.start_time || 0).getTime();
+        return timeB - timeA;
+      })
+      .map((session) => {
+        const start = new Date(String(session.start_time || ''));
+        const end = new Date(String(session.end_time || ''));
+        const diffMs = end.getTime() - start.getTime();
+        const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
+
+        const rawTitle = session.workouts?.title;
+        const isPlaceholder =
+          !rawTitle ||
+          rawTitle.trim() === '' ||
+          rawTitle.toLowerCase() === 'aaaa' ||
+          rawTitle.toLowerCase() === 'allenamento' ||
+          rawTitle.toLowerCase() === 'allenamento svolto';
+        const finalTitle = isPlaceholder ? (activeWorkoutTitle || 'Scheda Personalizzata') : rawTitle;
+
+        const dateStr = session.end_time ? String(session.end_time).slice(0, 10) : new Date().toISOString().slice(0, 10);
+        const rawW = Number(session.week_number) || 1;
+        const totalW = session.workouts?.total_weeks;
+        const safeW = totalW && totalW > 0 && rawW > totalW ? totalW : rawW;
+
+        const statusVal = session.status === 'skipped' ? 'skipped' : 'completed';
+
+        return {
+          id: String(session.id),
+          workoutTitle: finalTitle,
+          weekNumber: safeW,
+          dayName: String(session.day_name || 'Giorno 1'),
+          date: dateStr,
+          durationMinutes: session.status === 'skipped' ? 0 : durationMinutes,
+          rpe: Number(session.rpe) || 0,
+          notes: session.notes ? String(session.notes) : undefined,
+          status: statusVal,
+          skipReason: session.skip_reason ? String(session.skip_reason) : undefined,
+          skipNotes: session.skip_notes ? String(session.skip_notes) : undefined,
+          coachJustified: session.coach_justified,
+          coachFeedback: session.coach_feedback ? String(session.coach_feedback) : undefined,
+        };
+      });
+  }, [activeWorkoutTitle]);
+
+  const [pastSessions, setPastSessions] = useState<PastSession[]>(() => {
+    if (initialSessions && initialSessions.length > 0) {
+      return mapSessions(initialSessions);
+    }
+    if (typeof window !== 'undefined' && athleteId) {
+      try {
+        const cached = localStorage.getItem(`ac_cached_sessions_${athleteId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return mapSessions(parsed as SessionRow[]);
+          }
+        }
+      } catch {}
+    }
+    return [];
+  });
   const [loadingSessions, setLoadingSessions] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
@@ -72,47 +137,6 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
   const targetAthleteIds = React.useMemo(() => {
     return Array.from(new Set([athleteId, ...(athleteIds || [])].filter(Boolean)));
   }, [athleteId, idsKey]);
-
-  const mapSessions = React.useCallback((sessionList: SessionRow[]): PastSession[] => {
-    return sessionList.map((session) => {
-      const start = new Date(String(session.start_time || ''));
-      const end = new Date(String(session.end_time || ''));
-      const diffMs = end.getTime() - start.getTime();
-      const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
-
-      const rawTitle = session.workouts?.title;
-      const isPlaceholder =
-        !rawTitle ||
-        rawTitle.trim() === '' ||
-        rawTitle.toLowerCase() === 'aaaa' ||
-        rawTitle.toLowerCase() === 'allenamento' ||
-        rawTitle.toLowerCase() === 'allenamento svolto';
-      const finalTitle = isPlaceholder ? (activeWorkoutTitle || 'Scheda Personalizzata') : rawTitle;
-
-      const dateStr = session.end_time ? String(session.end_time).slice(0, 10) : new Date().toISOString().slice(0, 10);
-      const rawW = Number(session.week_number) || 1;
-      const totalW = session.workouts?.total_weeks;
-      const safeW = totalW && totalW > 0 && rawW > totalW ? totalW : rawW;
-
-      const statusVal = session.status === 'skipped' ? 'skipped' : 'completed';
-
-      return {
-        id: String(session.id),
-        workoutTitle: finalTitle,
-        weekNumber: safeW,
-        dayName: String(session.day_name || 'Giorno 1'),
-        date: dateStr,
-        durationMinutes: session.status === 'skipped' ? 0 : durationMinutes,
-        rpe: Number(session.rpe) || 0,
-        notes: session.notes ? String(session.notes) : undefined,
-        status: statusVal,
-        skipReason: session.skip_reason ? String(session.skip_reason) : undefined,
-        skipNotes: session.skip_notes ? String(session.skip_notes) : undefined,
-        coachJustified: session.coach_justified,
-        coachFeedback: session.coach_feedback ? String(session.coach_feedback) : undefined,
-      };
-    });
-  }, [activeWorkoutTitle]);
 
   const fetchPastSessions = React.useCallback(async () => {
     if (targetAthleteIds.length === 0) {
@@ -261,7 +285,9 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
   };
 
   useEffect(() => {
-    fetchPastSessions();
+    if (pastSessions.length === 0 && (!initialSessions || initialSessions.length === 0)) {
+      fetchPastSessions();
+    }
 
     const handleWorkoutCompleted = () => {
       setTimeout(() => fetchPastSessions(), 500);
@@ -274,7 +300,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
       window.removeEventListener('athlete_workout_completed', handleWorkoutCompleted);
       window.removeEventListener('athlete_workout_skipped', handleWorkoutCompleted);
     };
-  }, [fetchPastSessions]);
+  }, [fetchPastSessions, initialSessions, pastSessions.length]);
 
   if (pastSessions.length === 0 && !loadingSessions) {
     return null;

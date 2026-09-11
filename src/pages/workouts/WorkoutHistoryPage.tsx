@@ -10,7 +10,9 @@ import {
   ChevronUp,
   RotateCcw,
   MessageSquare,
-  ChevronRight
+  ChevronRight,
+  Info,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAthletes } from '../../context/AthletesContext';
 import { useApp } from '../../context/AppContext';
@@ -52,6 +54,14 @@ export interface CoachWorkoutSessionFeedItem {
   painDetails?: string;
   isHighRpe: boolean;
   exercises: ExerciseGroupDetail[];
+  hasExplicitLoads: boolean;
+  scheduledExercises?: Array<{
+    name: string;
+    sets: number;
+    reps_target?: string;
+    target_weight?: number;
+    day_name?: string;
+  }>;
 }
 
 export const WorkoutHistoryPage: React.FC = () => {
@@ -77,7 +87,7 @@ export const WorkoutHistoryPage: React.FC = () => {
     try {
       const athleteMap = new Map(athletes.map((a) => [a.id, a]));
 
-      // 1. Recupero sessioni allenamento completate con join relazionale completa su exercise_logs e workout_exercises
+      // 1. Recupero sessioni allenamento completate
       const { data: sessionsData, error: sessError } = await supabase
         .from('workout_sessions')
         .select(`
@@ -88,17 +98,10 @@ export const WorkoutHistoryPage: React.FC = () => {
           end_time,
           rpe,
           notes,
-          workouts ( id, title, total_weeks ),
-          exercise_logs (
-            id,
-            session_id,
-            exercise_id,
-            set_number,
-            reps_completed,
-            weight_kg,
-            notes,
-            workout_exercises ( id, name, day_name, week_number )
-          )
+          week_number,
+          day_name,
+          status,
+          workouts ( id, title, total_weeks )
         `)
         .not('end_time', 'is', null)
         .order('start_time', { ascending: false })
@@ -109,26 +112,93 @@ export const WorkoutHistoryPage: React.FC = () => {
       }
 
       const sessionsRaw = sessionsData || [];
-      const logsBySession = new Map<string, any[]>();
-      const exercisesById = new Map<string, { name: string; day_name?: string; week_number?: number; workout_id?: string }>();
+      const sessionIds = sessionsRaw.map((s: any) => s.id).filter(Boolean);
+      const workoutIds = Array.from(new Set(sessionsRaw.map((s: any) => s.workout_id).filter(Boolean))) as string[];
 
-      // Popolamento dei log nidificati dalla query principale
-      sessionsRaw.forEach((s: any) => {
-        if (s.exercise_logs && Array.isArray(s.exercise_logs) && s.exercise_logs.length > 0) {
-          logsBySession.set(s.id, s.exercise_logs);
-          s.exercise_logs.forEach((log: any) => {
-            if (log.workout_exercises && log.exercise_id) {
-              exercisesById.set(log.exercise_id, {
-                name: log.workout_exercises.name,
-                day_name: log.workout_exercises.day_name,
-                week_number: log.workout_exercises.week_number,
-              });
+      // 2. Mappa esercizi della scheda e template programmato
+      const exercisesById = new Map<string, { name: string; day_name?: string; week_number?: number; workout_id?: string; sets?: number; reps_target?: string; target_weight?: number }>();
+      const scheduledExercisesByWorkout = new Map<string, Array<{ name: string; day_name?: string; week_number?: number; sets: number; reps_target?: string; target_weight?: number }>>();
+
+      if (workoutIds.length > 0) {
+        const { data: weData, error: weErr } = await supabase
+          .from('workout_exercises')
+          .select('id, workout_id, name, day_name, week_number, sets, reps_target, target_weight, order_index')
+          .in('workout_id', workoutIds)
+          .order('order_index', { ascending: true });
+
+        if (weErr) {
+          console.warn('Avviso recupero workout_exercises:', weErr);
+        }
+
+        if (weData) {
+          weData.forEach((we: any) => {
+            const item = {
+              name: we.name,
+              day_name: we.day_name,
+              week_number: we.week_number,
+              workout_id: we.workout_id,
+              sets: we.sets || 3,
+              reps_target: we.reps_target,
+              target_weight: we.target_weight,
+            };
+            exercisesById.set(we.id, item);
+
+            if (we.workout_id) {
+              if (!scheduledExercisesByWorkout.has(we.workout_id)) {
+                scheduledExercisesByWorkout.set(we.workout_id, []);
+              }
+              scheduledExercisesByWorkout.get(we.workout_id)!.push(item);
             }
           });
         }
-      });
+      }
 
-      // Unione con backup locale istantaneo se presente sul client
+      // 3. Recupero set ed esecuzioni da exercise_logs
+      const logsBySession = new Map<string, any[]>();
+      if (sessionIds.length > 0) {
+        const { data: logsData, error: logsErr } = await supabase
+          .from('exercise_logs')
+          .select('id, session_id, exercise_id, set_number, reps_completed, weight_kg, notes')
+          .in('session_id', sessionIds)
+          .order('set_number', { ascending: true });
+
+        if (logsErr) {
+          console.warn('Avviso recupero exercise_logs:', logsErr);
+        }
+
+        if (logsData && logsData.length > 0) {
+          const missingIds = Array.from(
+            new Set(logsData.map((l: any) => l.exercise_id).filter((id: string) => id && !exercisesById.has(id)))
+          );
+
+          if (missingIds.length > 0) {
+            const { data: extraWe } = await supabase
+              .from('workout_exercises')
+              .select('id, workout_id, name, day_name, week_number')
+              .in('id', missingIds);
+
+            if (extraWe) {
+              extraWe.forEach((we: any) => {
+                exercisesById.set(we.id, {
+                  name: we.name,
+                  day_name: we.day_name,
+                  week_number: we.week_number,
+                  workout_id: we.workout_id,
+                });
+              });
+            }
+          }
+
+          logsData.forEach((l: any) => {
+            if (!logsBySession.has(l.session_id)) {
+              logsBySession.set(l.session_id, []);
+            }
+            logsBySession.get(l.session_id)!.push(l);
+          });
+        }
+      }
+
+      // 4. Unione con backup locale istantaneo se presente sul client
       try {
         const localCompletedLogs = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}');
         sessionsRaw.forEach((s: any) => {
@@ -138,24 +208,22 @@ export const WorkoutHistoryPage: React.FC = () => {
         });
       } catch (_) {}
 
+      // 5. Mappatura completa degli item per il feed
       const feedItems: CoachWorkoutSessionFeedItem[] = sessionsRaw.map((s: any) => {
-        // Risoluzione atleta sia da athlete.id che da auth_user_id
         const athFromMap = s.athlete_id
           ? athleteMap.get(s.athlete_id) || athletes.find((a) => a.auth_user_id === s.athlete_id || a.id === s.athlete_id)
           : null;
         const safeName = athFromMap?.fullName || 'Atleta';
 
-        // Calcolo orari e durata
         const endObj = new Date(s.end_time || s.start_time || new Date().toISOString());
         const startObj = new Date(s.start_time || s.end_time || new Date().toISOString());
         const diffMs = Math.max(0, endObj.getTime() - startObj.getTime());
         const durationMin = Math.max(1, Math.round(diffMs / 60000));
 
-        // Raggruppamento esercizi e carichi
         const exMap = new Map<string, { sets: ExerciseSetDetail[]; notesSet: Set<string> }>();
         const logs = logsBySession.get(s.id) || [];
-        let detectedDay = 'Sessione Allenamento';
-        let detectedWeek: number | undefined = undefined;
+        let detectedDay = s.day_name || 'Sessione Allenamento';
+        let detectedWeek: number | undefined = s.week_number || undefined;
         let sessionVolume = 0;
         let hasPainInLogs = false;
         const painNotesList: string[] = [];
@@ -172,7 +240,6 @@ export const WorkoutHistoryPage: React.FC = () => {
             detectedWeek = week;
           }
 
-          // Recupero nome reale esercizio con fallback robusto
           const exName = log.workout_exercises?.name || weFromMap?.name || 'Esercizio';
           if (!exMap.has(exName)) {
             exMap.set(exName, { sets: [], notesSet: new Set<string>() });
@@ -183,7 +250,6 @@ export const WorkoutHistoryPage: React.FC = () => {
           const weight = Number(log.weight_kg) || 0;
           sessionVolume += reps * weight;
 
-          // Estrazione RPE se salvato nelle note (es. "RPE: 8.5")
           let extractedRpe: string | undefined = undefined;
           if (log.notes && log.notes.includes('RPE:')) {
             const match = log.notes.match(/RPE:\s*([\d.]+)/i);
@@ -218,7 +284,16 @@ export const WorkoutHistoryPage: React.FC = () => {
           }
         );
 
-        // Controllo alert questionario finale
+        // Fallback su esercizi programmati della scheda
+        const scheduled = s.workout_id ? scheduledExercisesByWorkout.get(s.workout_id) || [] : [];
+        const filteredScheduled = scheduled.filter((sc) => {
+          if (detectedDay && detectedDay !== 'Sessione Allenamento' && sc.day_name) {
+            return sc.day_name.toLowerCase().trim() === detectedDay.toLowerCase().trim();
+          }
+          return true;
+        });
+        const fallbackScheduled = filteredScheduled.length > 0 ? filteredScheduled : scheduled;
+
         const hasPainInQuestionnaire = isPainText(s.notes || '');
         if (hasPainInQuestionnaire && s.notes) {
           painNotesList.push(`Questionario: "${s.notes}"`);
@@ -244,10 +319,10 @@ export const WorkoutHistoryPage: React.FC = () => {
             month: 'short',
             year: 'numeric',
           }),
-            timeFormatted: endObj.toLocaleTimeString('it-IT', {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
+          timeFormatted: endObj.toLocaleTimeString('it-IT', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
           durationMinutes: durationMin,
           rpe: rpeVal,
           notes: s.notes || undefined,
@@ -256,6 +331,8 @@ export const WorkoutHistoryPage: React.FC = () => {
           painDetails: painNotesList.length > 0 ? painNotesList.join(' • ') : undefined,
           isHighRpe,
           exercises,
+          hasExplicitLoads: exercises.length > 0,
+          scheduledExercises: fallbackScheduled,
         };
       });
 
@@ -676,18 +753,19 @@ export const WorkoutHistoryPage: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-2">
                           <Dumbbell className="w-4 h-4 text-amber-400" />
-                          Esercizi Eseguiti & Carichi Utilizzati ({session.exercises.length}):
+                          {session.hasExplicitLoads
+                            ? `Esercizi Eseguiti & Carichi Utilizzati (${session.exercises.length}):`
+                            : `Esercizi Scheda Prescritta (${session.scheduledExercises?.length || 0}):`}
                         </span>
+
+                        {!session.hasExplicitLoads && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            Registrazione Rapida (Durata & RPE)
+                          </span>
+                        )}
                       </div>
 
-                      {session.exercises.length === 0 ? (
-                        <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-dashed border-slate-800 text-xs text-slate-400 space-y-1">
-                          <p className="font-bold text-slate-300">Nessun carico/set registrato singolarmente in questa sessione.</p>
-                          <p className="text-[11px] text-slate-500">
-                            I dati del questionario, durata e RPE sono stati salvati correttamente. I prossimi allenamenti registrati con il Workout Player salveranno e mostreranno automaticamente tutti i carichi (kg), le serie e i feedback in questa griglia!
-                          </p>
-                        </div>
-                      ) : (
+                      {session.hasExplicitLoads ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                           {session.exercises.map((ex, exIdx) => (
                             <div
@@ -750,6 +828,49 @@ export const WorkoutHistoryPage: React.FC = () => {
                               )}
                             </div>
                           ))}
+                        </div>
+                      ) : session.scheduledExercises && session.scheduledExercises.length > 0 ? (
+                        <div className="space-y-3">
+                          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2.5 text-xs text-amber-300">
+                            <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                            <div className="leading-relaxed">
+                              <span className="font-bold block">Sessione completata a livello di scheda & questionario.</span>
+                              <span className="text-slate-300 text-[11px]">
+                                L'atleta ha registrato la durata ({session.durationMinutes} min), l'RPE ({session.rpe !== undefined ? `${session.rpe}/10` : 'N/D'}) e il questionario finale. I carichi specifici non sono stati modificati manualmente rispetto ai target prescritti sotto:
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {session.scheduledExercises.map((sc, scIdx) => (
+                              <div
+                                key={scIdx}
+                                className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-2.5 shadow-sm"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span className="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center text-xs text-amber-400 font-mono shrink-0">
+                                    {scIdx + 1}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <h6 className="text-xs font-black text-white truncate">{sc.name}</h6>
+                                    <span className="text-[11px] text-slate-400 font-medium">
+                                      {sc.sets} serie {sc.reps_target ? `× ${sc.reps_target}` : ''}{sc.target_weight ? ` @ ${sc.target_weight} kg` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20 shrink-0">
+                                  <CheckCircle2 className="w-3 h-3" /> Eseguito
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-dashed border-slate-800 text-xs text-slate-400 space-y-1">
+                          <p className="font-bold text-slate-300">Nessun dettaglio serie registrato singolarmente per questa sessione.</p>
+                          <p className="text-[11px] text-slate-500">
+                            I dati generali di durata ({session.durationMinutes} min), RPE ({session.rpe || 'N/D'}) e questionario sono conservati con successo.
+                          </p>
                         </div>
                       )}
                     </div>
