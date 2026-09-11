@@ -402,6 +402,12 @@ export const renderSlideToCanvas = async (
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+    try {
+      await document.fonts.ready;
+    } catch {}
+  }
+
   const originalFillText = ctx.fillText.bind(ctx);
   if (options.skipText || options.onRecordText) {
     ctx.fillText = function (text: string | number, x: number, y: number) {
@@ -479,19 +485,19 @@ export const renderSlideToCanvas = async (
     : (slide.bodyFontSize === 'lg' ? 38 : slide.bodyFontSize === 'sm' ? 26 : 32);
   const bodyFontSize = slide.bodyFontSizePx || defaultBodySize;
 
-  // Sfondo & Colori personalizzati per template
-  let bgColor = slide.bgColor || brandKit.primaryColor || '#070A10';
-  let accentColor = slide.accentColor || brandKit.accentColor || '#F59E0B';
-
-  if (templateId === 'hypertrophy_science') {
-    bgColor = slide.bgColor || '#0C081A';
-    accentColor = slide.accentColor || '#C084FC';
-  } else if (templateId === 'bold_impact') {
-    bgColor = slide.bgColor || '#060709';
-    accentColor = slide.accentColor || '#F59E0B';
-  } else if (templateId === 'coach_framework') {
-    bgColor = slide.bgColor || '#0B1120';
-  }
+  // Sfondo & Colori: priorità a slide specifica, poi Brand Kit ufficiale, poi default template
+  const templateDefaults: Record<string, { bg: string; accent: string }> = {
+    editorial_dark: { bg: '#070A10', accent: '#F59E0B' },
+    hypertrophy_science: { bg: '#0C081A', accent: '#C084FC' },
+    bold_impact: { bg: '#060709', accent: '#F59E0B' },
+    coach_framework: { bg: '#0B1120', accent: '#38BDF8' },
+    error_correction: { bg: '#070A10', accent: '#F43F5E' },
+    personal_story: { bg: '#0A0E17', accent: '#F59E0B' },
+    exercise_breakdown: { bg: '#070A10', accent: '#10B981' },
+  };
+  const tDef = templateDefaults[templateId] || templateDefaults.editorial_dark;
+  let bgColor = slide.bgColor || brandKit.primaryColor || tDef.bg;
+  let accentColor = slide.accentColor || brandKit.accentColor || tDef.accent;
 
   const primaryTextColor = '#FFFFFF';
   const secondaryTextColor = templateId === 'personal_story' ? '#E2E8F0' : '#94A3B8';
@@ -2133,25 +2139,24 @@ export const renderSlideToCanvas = async (
 
   // ─── LAYOUT DEFAULT: TEXT LEFT ───
   } else {
-    const fontSize = titleFontSize;
-    const titleLineStep = fontSize + Math.max(8, Math.round(fontSize * 0.08));
-    ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-    ctx.fillStyle = primaryTextColor;
-    ctx.textBaseline = 'top';
-    const headlineLines = wrapText(ctx, slide.headline, contentWidth);
-    for (const line of headlineLines) {
-      ctx.fillText(line, marginX, startY);
-      startY += titleLineStep;
-    }
+    startY = drawTitleLine(ctx, slide.headline, marginX, startY, contentWidth, {
+      fontFamily: titleFont,
+      fontSize: titleFontSize,
+      color: titleColor,
+      isBold: isTitleBold,
+      isUnderline: isTitleUnderline,
+      maxBottomY: bottomSafeY - 100,
+    });
 
     if (slide.headlineHighlight) {
-      ctx.font = `900 ${fontSize}px ${titleFont}, system-ui, sans-serif`;
-      ctx.fillStyle = accentColor;
-      const hlLines = wrapText(ctx, slide.headlineHighlight, contentWidth);
-      for (const hl of hlLines) {
-        ctx.fillText(hl, marginX, startY);
-        startY += titleLineStep;
-      }
+      startY = drawTitleLine(ctx, slide.headlineHighlight, marginX, startY, contentWidth, {
+        fontFamily: highlightFont,
+        fontSize: highlightFontSize,
+        color: highlightColor,
+        isBold: isHighlightBold,
+        isUnderline: isHighlightUnderline,
+        maxBottomY: bottomSafeY - 100,
+      });
     }
 
     if (slide.subheadline) {

@@ -16,6 +16,7 @@ import { WorkoutTemplate, WorkoutExercise, AthleteAssignedWorkout } from '../../
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useAthletes } from '../../context/AthletesContext';
 import { supabase } from '../../lib/supabase';
 import {
   getActiveWorkoutDraft,
@@ -383,8 +384,18 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   const { myAssignedWorkouts, getExercisesForWorkout, loading } = useWorkouts();
   const { showSuccess, showError } = useToast();
   const { user } = useAuth();
+  const { athletes } = useAthletes();
 
-  const athleteId = user?.athleteId || user?.id || 'ath-local';
+  const currentAthlete = useMemo(() => {
+    if (!user) return null;
+    return athletes.find(
+      (a) =>
+        (a.email && a.email.toLowerCase() === user.email?.toLowerCase()) ||
+        (user.id && a.auth_user_id === user.id)
+    );
+  }, [athletes, user]);
+
+  const athleteId = user?.athleteId || currentAthlete?.id || (user?.role === 'athlete' ? user?.id : null) || 'ath-local';
   const athleteFirstName = useMemo(() => {
     if (user?.name && user.name.trim().length > 0) {
       const parts = user.name.trim().split(' ');
@@ -838,7 +849,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     if (!force && now - lastSyncTimestampRef.current < 6000) return;
 
     const athIds = Array.from(
-      new Set([currentFirstAssigned.athlete_id, user?.athleteId, user?.id].filter(Boolean) as string[])
+      new Set([currentFirstAssigned.athlete_id, user?.athleteId, currentAthlete?.id, user?.id].filter(Boolean) as string[])
     );
     if (athIds.length === 0) return;
 
@@ -850,9 +861,16 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       ? currentFirstAssigned.workout.total_weeks
       : 1;
 
+    const allWorkoutIds = myAssignedWorkouts.flatMap((aw) => [
+      aw.workout_id,
+      aw.workout?.id,
+      aw.workout?.parent_template_id,
+    ].filter(Boolean) as string[]);
+
     const relatedWorkoutIds = resolveRelatedWorkoutIds({
       assignedWorkoutId: currentFirstAssigned.workout_id,
       parentTemplateId: currentFirstAssigned.workout?.parent_template_id,
+      relatedWorkoutIds: allWorkoutIds,
     });
 
     try {

@@ -69,14 +69,23 @@ const LIST_SELECT = 'id,coach_id,title,type,pillar,status,hook,call_to_action,in
  * Include metadati e dati grafici (carousel_data/cover_data/story_data).
  */
 export async function getInstagramContents(): Promise<InstagramContent[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('instagram_contents')
     .select(LIST_SELECT)
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('Errore recupero instagram_contents:', error);
-    throw new Error(`Impossibile caricare i contenuti: ${error.message}`);
+    console.warn('Errore select LIST_SELECT su instagram_contents, tentativo con select(*):', error.message);
+    const retry = await supabase
+      .from('instagram_contents')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (retry.error) {
+      console.error('Errore recupero instagram_contents anche in retry:', retry.error);
+      throw new Error(`Impossibile caricare i contenuti: ${retry.error.message}`);
+    }
+    data = retry.data;
   }
 
   const rows = (data || []) as InstagramContent[];

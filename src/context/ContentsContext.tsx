@@ -49,14 +49,23 @@ function setCachedContents(data: InstagramContent[]): void {
 }
 
 export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [contents, setContents] = useState<InstagramContent[]>(() => getCachedContents());
   const [isLoading, setIsLoading] = useState<boolean>(() => getCachedContents().length === 0);
   const { showSuccess, showError } = useToast();
 
   const fetchContents = useCallback(async () => {
-    // Gli atleti o utenti non loggati non gestiscono i contenuti social del coach: bypass istantaneo a costo 0
-    if (!user || user.role === 'athlete') {
+    // Non cancellare la cache se l'autenticazione è ancora in fase di risoluzione
+    if (authLoading) return;
+
+    // Gli atleti non gestiscono i contenuti social del coach: bypass istantaneo a costo 0
+    if (user?.role === 'athlete') {
+      setContents([]);
+      setIsLoading(false);
+      return;
+    }
+
+    if (!user) {
       setContents([]);
       setIsLoading(false);
       return;
@@ -76,7 +85,7 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } finally {
       setIsLoading(false);
     }
-  }, [user, contents.length]);
+  }, [user?.id, user?.role, authLoading]);
 
   useEffect(() => {
     fetchContents();

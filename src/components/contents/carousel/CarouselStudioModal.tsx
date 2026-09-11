@@ -16,6 +16,7 @@ import {
 import {
   validateEntireCarousel,
 } from '../../../services/carouselQualityService';
+import { loadBrandKit } from '../../../services/brandKitService';
 import {
   exportFullCarouselZip,
   exportCarouselAsPdfPreview,
@@ -116,10 +117,22 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
       raw = createEmptyCarousel(content.id || '');
     }
 
+    const defaultKit = loadBrandKit();
+    const kit = raw.settings?.brandKit || defaultKit;
+
     return {
       ...raw,
+      settings: {
+        ...raw.settings,
+        brandKit: kit,
+        accentColor: raw.settings?.accentColor || kit.accentColor,
+        darkBgColor: raw.settings?.darkBgColor || kit.primaryColor,
+        authorHandle: raw.settings?.authorHandle || kit.authorHandle,
+        brandWatermark: raw.settings?.brandWatermark || kit.brandName,
+      },
       slides: (raw.slides || []).map((s) => ({
         ...s,
+        id: s.id || generateSlideId(),
         categoryTag: s.categoryTag && /tecnica\s*&\s*biomeccanica/i.test(s.categoryTag) ? undefined : s.categoryTag,
         takeawayTag: s.takeawayTag && (/tecnica\s*&\s*biomeccanica/i.test(s.takeawayTag) || /^step\s*\d+/i.test(s.takeawayTag.trim())) ? undefined : s.takeawayTag,
       })),
@@ -1309,7 +1322,9 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
         }`}>
           {activeSlide ? (
             <CarouselSlideEditorCard
+              key={activeSlide.id}
               slide={activeSlide}
+              brandKit={carousel.settings?.brandKit || loadBrandKit()}
               index={safeIndex}
               totalSlides={slides.length}
               isSelected={true}
@@ -1534,9 +1549,10 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
         <BrandKitModal
           isOpen={isBrandKitOpen}
           onClose={() => setIsBrandKitOpen(false)}
-          brandKit={carousel.settings.brandKit}
+          brandKit={carousel.settings?.brandKit || loadBrandKit()}
           onSave={(updatedKit) => {
-            const updatedCarousel = {
+            const oldAccent = carousel.settings?.brandKit?.accentColor;
+            const updatedCarousel: InstagramCarousel = {
               ...carousel,
               settings: {
                 ...carousel.settings,
@@ -1547,6 +1563,13 @@ export const CarouselStudioModal: React.FC<CarouselStudioModalProps> = ({
                 accentColor: updatedKit.accentColor,
                 darkBgColor: updatedKit.primaryColor,
               },
+              // Propaga il nuovo accento alle slide che usavano l'accento precedente o standard di default
+              slides: carousel.slides.map((s) => {
+                if (!s.accentColor || s.accentColor === oldAccent || s.accentColor === '#F59E0B' || s.accentColor === '#EAB308') {
+                  return { ...s, accentColor: updatedKit.accentColor };
+                }
+                return s;
+              }),
             };
             setCarousel(updatedCarousel);
             triggerDebouncedAutosave(updatedCarousel);

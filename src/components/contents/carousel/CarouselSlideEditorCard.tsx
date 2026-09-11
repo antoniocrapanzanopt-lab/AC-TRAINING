@@ -7,6 +7,7 @@ import {
   BodyFontFamily,
   SubtitleFontFamily,
   SlideImagePosition,
+  BrandKit,
 } from '../../../types/carousel';
 import { SlideImageControlPanel } from '../common/SlideImageControlPanel';
 import {
@@ -76,6 +77,7 @@ interface CarouselSlideEditorCardProps {
   contentTitle?: string;
   allSlides?: CarouselSlide[];
   captionText?: string;
+  brandKit?: BrandKit;
 }
 
 const SLIDE_TYPES: { value: SlideType; label: string }[] = [
@@ -342,11 +344,36 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
   isOptimizingWithGemini = false,
   autoFocusTitle = false,
   targetField,
+  brandKit,
 }) => {
   const headlineInputRef = useRef<HTMLTextAreaElement | null>(null);
   const subtitleInputRef = useRef<HTMLTextAreaElement | null>(null);
   const bodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const productPhotoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const brandAccent = brandKit?.accentColor || '#F59E0B';
+  const brandTitleFont = brandKit?.titleFont || 'Inter';
+  const brandBodyFont = brandKit?.bodyFont || 'Inter';
+
+  const colorSwatches = useMemo(() => {
+    const list = [
+      { label: 'Bianco Puro', value: '#FFFFFF', bg: '#FFFFFF' },
+      { label: 'Brand Accento', value: brandAccent, bg: brandAccent },
+      { label: 'Giallo Oro', value: '#F5C518', bg: '#F5C518' },
+      { label: 'Ambra', value: '#F59E0B', bg: '#F59E0B' },
+      { label: 'Cyan', value: '#38BDF8', bg: '#38BDF8' },
+      { label: 'Smeraldo', value: '#10B981', bg: '#10B981' },
+      { label: 'Rosa / Rosso', value: '#F43F5E', bg: '#F43F5E' },
+      { label: 'Slate Chiaro', value: '#CBD5E1', bg: '#CBD5E1' },
+    ];
+    const seen = new Set<string>();
+    return list.filter((item) => {
+      const key = item.value.toUpperCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [brandAccent]);
 
   // Stato inline color toolbar (bodyText)
   const [inlineColorToolbar, setInlineColorToolbar] = useState<{ selStart: number; selEnd: number } | null>(null);
@@ -421,25 +448,21 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
     e.target.value = '';
   };
 
-  // Auto-riparazione: sanitizza testi da eventuali tag residui (<color:...>, </color>, <u>, </u>, **)
+  // Auto-riparazione sicura: sanitizza testi SOLO se contengono markup residuo vietato (<color:...>, </color>, <u>, </u>, **)
   useEffect(() => {
-    const cleanHeadline = sanitizeCarouselText(slide.headline);
-    const cleanHl = sanitizeCarouselText(slide.headlineHighlight);
-    const cleanSub = sanitizeCarouselText(slide.subheadline);
-    const cleanBody = sanitizeCarouselText(slide.bodyText);
-
+    const hasForbidden = (t?: string | null) => Boolean(t && (/<\/?(?:color|u)[^>]*>/i.test(t) || t.includes('**')));
     if (
-      cleanHeadline !== slide.headline ||
-      (slide.headlineHighlight && cleanHl !== slide.headlineHighlight) ||
-      (slide.subheadline && cleanSub !== slide.subheadline) ||
-      cleanBody !== slide.bodyText
+      hasForbidden(slide.headline) ||
+      hasForbidden(slide.headlineHighlight) ||
+      hasForbidden(slide.subheadline) ||
+      hasForbidden(slide.bodyText)
     ) {
       onChange({
         ...slide,
-        headline: cleanHeadline,
-        headlineHighlight: slide.headlineHighlight ? cleanHl : undefined,
-        subheadline: slide.subheadline ? cleanSub : undefined,
-        bodyText: cleanBody,
+        headline: sanitizeCarouselText(slide.headline) || slide.headline,
+        headlineHighlight: slide.headlineHighlight ? sanitizeCarouselText(slide.headlineHighlight) : slide.headlineHighlight,
+        subheadline: slide.subheadline ? sanitizeCarouselText(slide.subheadline) : slide.subheadline,
+        bodyText: slide.bodyText ? sanitizeCarouselText(slide.bodyText) : slide.bodyText,
       });
     }
   }, [slide.id]);
@@ -840,7 +863,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
           </div>
 
           <TextCustomizerBar
-            fontFamily={slide.titleFont || 'Inter'}
+            fontFamily={slide.titleFont || brandTitleFont}
             onFontChange={(font) => onChange({ ...slide, titleFont: font as TitleFontFamily })}
             fontOptions={TITLE_FONT_OPTIONS}
             fontSizePx={slide.titleFontSizePx || (slide.titleSize === 'xl' ? 82 : slide.titleSize === 'lg' ? 72 : slide.titleSize === 'md' ? 62 : 52)}
@@ -858,16 +881,23 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
               else delete updated.titleColor;
               onChange({ ...updated, _colorTs: Date.now() } as typeof updated);
             }}
+            colorSwatches={colorSwatches}
             labelFont="Font Titolo"
           />
 
           <textarea
             ref={headlineInputRef}
-            rows={2}
-            value={sanitizeCarouselText(slide.headline)}
-            onChange={(e) => onChange({ ...slide, headline: sanitizeCarouselText(e.target.value) })}
+            rows={3}
+            value={slide.headline ?? ''}
+            onChange={(e) => onChange({ ...slide, headline: e.target.value })}
+            onBlur={(e) => {
+              const clean = sanitizeCarouselText(e.target.value);
+              if (clean !== e.target.value) {
+                onChange({ ...slide, headline: clean });
+              }
+            }}
             placeholder="es. CEDIMENTO TECNICO (premi Invio per spezzare le righe a piacere)"
-            className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-bold resize-y min-h-[56px] leading-relaxed"
+            className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-white placeholder-slate-500 font-bold resize-y min-h-[64px] leading-relaxed focus:outline-none focus:border-amber-500"
           />
 
           <div className="space-y-1.5 pt-1">
@@ -886,7 +916,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             </div>
 
             <TextCustomizerBar
-              fontFamily={slide.highlightFont || slide.titleFont || 'Inter'}
+              fontFamily={slide.highlightFont || slide.titleFont || brandTitleFont}
               onFontChange={(font) => onChange({ ...slide, highlightFont: font as TitleFontFamily })}
               fontOptions={TITLE_FONT_OPTIONS}
               fontSizePx={slide.highlightFontSizePx || slide.titleFontSizePx || (slide.titleSize === 'xl' ? 82 : slide.titleSize === 'lg' ? 72 : slide.titleSize === 'md' ? 62 : 52)}
@@ -897,22 +927,29 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
               isUnderline={!!slide.highlightUnderline}
               onToggleUnderline={() => onChange({ ...slide, highlightUnderline: !slide.highlightUnderline })}
               currentColor={slide.highlightColor}
-              defaultColor="#F5C518"
+              defaultColor={brandAccent}
               onColorChange={(color) => {
                 const updated = { ...slide };
                 if (color !== undefined) updated.highlightColor = color;
                 else delete updated.highlightColor;
                 onChange({ ...updated, _colorTs: Date.now() } as typeof updated);
               }}
+              colorSwatches={colorSwatches}
               labelFont="Font Evidenziato"
             />
 
             <textarea
-              rows={1}
-              value={sanitizeCarouselText(slide.headlineHighlight || '')}
-              onChange={(e) => onChange({ ...slide, headlineHighlight: sanitizeCarouselText(e.target.value) })}
+              rows={2}
+              value={slide.headlineHighlight ?? ''}
+              onChange={(e) => onChange({ ...slide, headlineHighlight: e.target.value })}
+              onBlur={(e) => {
+                const clean = sanitizeCarouselText(e.target.value);
+                if (clean !== e.target.value) {
+                  onChange({ ...slide, headlineHighlight: clean });
+                }
+              }}
               placeholder="es. O MUSCOLARE? (premi Invio per andare a capo)"
-              className="w-full px-3.5 py-1.5 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-amber-300 placeholder-amber-500/40 focus:outline-none focus:border-amber-400 font-bold resize-y min-h-[42px] leading-relaxed"
+              className="w-full px-3.5 py-2 bg-slate-950 border border-amber-500/40 rounded-xl text-xs text-amber-300 placeholder-amber-500/40 focus:outline-none focus:border-amber-400 font-bold resize-y min-h-[46px] leading-relaxed"
             />
           </div>
         </div>
@@ -934,7 +971,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
           </div>
 
           <TextCustomizerBar
-            fontFamily={slide.subtitleFont || 'Outfit'}
+            fontFamily={slide.subtitleFont || brandTitleFont || 'Outfit'}
             onFontChange={(font) => onChange({ ...slide, subtitleFont: font as SubtitleFontFamily })}
             fontOptions={SUBTITLE_FONT_OPTIONS}
             fontSizePx={slide.subtitleFontSizePx || 38}
@@ -952,14 +989,21 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
               else delete updated.subtitleColor;
               onChange({ ...updated, _colorTs: Date.now() } as typeof updated);
             }}
+            colorSwatches={colorSwatches}
             labelFont="Font Sottotitolo"
           />
 
           <textarea
             ref={subtitleInputRef}
             rows={2}
-            value={sanitizeCarouselText(slide.subheadline || '')}
-            onChange={(e) => onChange({ ...slide, subheadline: sanitizeCarouselText(e.target.value) })}
+            value={slide.subheadline ?? ''}
+            onChange={(e) => onChange({ ...slide, subheadline: e.target.value })}
+            onBlur={(e) => {
+              const clean = sanitizeCarouselText(e.target.value);
+              if (clean !== e.target.value) {
+                onChange({ ...slide, subheadline: clean });
+              }
+            }}
             placeholder="es. VEDIAMO COSA MOSTRANO DAVVERO I DATI! (premi Invio per andare a capo)"
             className="w-full px-3.5 py-2 bg-slate-900 border border-slate-700/80 rounded-2xl text-xs text-amber-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-y min-h-[50px] leading-relaxed"
           />
@@ -982,7 +1026,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
           </div>
 
           <TextCustomizerBar
-            fontFamily={slide.bodyFont || 'Inter'}
+            fontFamily={slide.bodyFont || brandBodyFont}
             onFontChange={(font) => onChange({ ...slide, bodyFont: font as BodyFontFamily })}
             fontOptions={BODY_FONT_OPTIONS}
             fontSizePx={slide.bodyFontSizePx || (slide.bodyFontSize === 'lg' ? 40 : slide.bodyFontSize === 'sm' ? 28 : 34)}
@@ -1000,6 +1044,7 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
               else delete updated.bodyColor;
               onChange({ ...updated, _colorTs: Date.now() } as typeof updated);
             }}
+            colorSwatches={colorSwatches}
             accentTheme="purple"
             labelFont="Font Corpo"
           />
@@ -1021,7 +1066,11 @@ export const CarouselSlideEditorCard: React.FC<CarouselSlideEditorCardProps> = (
             {inlineColorToolbar && (
               <div
                 className="flex flex-col gap-2 bg-slate-950 border border-amber-500/50 rounded-xl px-3 py-2.5 shadow-lg"
-                onMouseDown={(e) => e.preventDefault()}
+                onMouseDown={(e) => {
+                  if ((e.target as HTMLElement).tagName !== 'INPUT') {
+                    e.preventDefault();
+                  }
+                }}
               >
                 {/* Riga 1: campo testo editabile */}
                 <div className="flex items-center gap-2">

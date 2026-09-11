@@ -41,6 +41,7 @@ interface ExerciseExecutionModalProps {
   onNavigatePrev?: () => void;
   hasNext: boolean;
   hasPrev: boolean;
+  onFinishWorkout?: () => void;
 }
 
 export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
@@ -64,6 +65,7 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
   onNavigatePrev,
   hasNext,
   hasPrev,
+  onFinishWorkout,
 }) => {
   const [showAnatomyModal, setShowAnatomyModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -547,9 +549,14 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
           ) : (
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                onClose();
+                if (onFinishWorkout) {
+                  onFinishWorkout();
+                }
+              }}
               className="min-w-[44px] min-h-[44px] px-5 sm:px-7 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs sm:text-sm font-black flex items-center gap-2 transition-all active:scale-95 shadow-xl shadow-emerald-500/25 cursor-pointer shrink-0"
-              title="Completa questo esercizio"
+              title="Completa questo allenamento"
             >
               <Check className="w-5 h-5 stroke-[3.5]" />
               <span>Completa</span>

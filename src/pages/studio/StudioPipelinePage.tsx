@@ -12,13 +12,18 @@ import {
   ChevronRight,
   ExternalLink,
   Trash2,
+  Inbox,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import { useContents } from '../../context/ContentsContext';
+import { useInbox } from '../../context/InboxContext';
 import { useToast } from '../../context/ToastContext';
 import {
   InstagramContent,
   ContentType,
   ContentStatus,
+  InboxEntry,
 } from '../../types/inboxAndContent';
 import {
   StudioFormatFilter,
@@ -39,11 +44,39 @@ export const StudioPipelinePage: React.FC<StudioPipelinePageProps> = ({
   onNavigateToStudio,
   onQuickNewContent,
 }) => {
-  const { contents, moveStatus, deleteContentById } = useContents();
+  const { contents, moveStatus, deleteContentById, refreshContents } = useContents();
+  const { entries: inboxEntries, convertToContentAction } = useInbox();
   const { showSuccess, showError } = useToast();
 
   const [formatFilter, setFormatFilter] = useState<StudioFormatFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [convertingId, setConvertingId] = useState<string | null>(null);
+
+  // Spunti e idee ancora non convertiti in contenuti
+  const activeInboxIdeas = useMemo(() => {
+    return inboxEntries.filter((e) => e.status === 'raw' || e.status === 'processed');
+  }, [inboxEntries]);
+
+  // Conversione 1-Click direttamente dalla colonna Idee
+  const handleConvertInboxIdea = async (idea: InboxEntry) => {
+    try {
+      setConvertingId(idea.id);
+      const suggestedType = idea.ai_content_opportunity?.suggestedType || 'reel';
+      await convertToContentAction(idea, {
+        type: suggestedType,
+        pillar: idea.ai_content_opportunity?.pillar || 'technique_execution',
+        hook: idea.ai_content_opportunity?.hook || '',
+        script_body: idea.ai_content_opportunity?.scriptOutline || idea.raw_content,
+      });
+      await refreshContents();
+      showSuccess(`Idea convertita in ${suggestedType.toUpperCase()} e inserita nella Pipeline!`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Errore durante la conversione';
+      showError(msg);
+    } finally {
+      setConvertingId(null);
+    }
+  };
 
   // Precarica i moduli editor pesanti in background dopo il primo render
   useEffect(() => {
@@ -244,7 +277,7 @@ export const StudioPipelinePage: React.FC<StudioPipelinePageProps> = ({
                 : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300'
             }`}
           >
-            Tutti ({contents.length})
+            Tutti ({contents.length + activeInboxIdeas.length})
           </button>
 
           <button
@@ -317,6 +350,8 @@ export const StudioPipelinePage: React.FC<StudioPipelinePageProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 overflow-x-auto pb-6">
         {STUDIO_PIPELINE_COLUMNS.map((column, colIdx) => {
           const colItems = columnsData[column.id];
+          const isIdeaCol = column.id === 'idea';
+          const totalColCount = isIdeaCol ? colItems.length + activeInboxIdeas.length : colItems.length;
 
           return (
             <div
@@ -330,7 +365,7 @@ export const StudioPipelinePage: React.FC<StudioPipelinePageProps> = ({
                     {column.label}
                   </h3>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${column.badgeColor}`}>
-                    {colItems.length}
+                    {totalColCount}
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 line-clamp-1">
@@ -340,7 +375,81 @@ export const StudioPipelinePage: React.FC<StudioPipelinePageProps> = ({
 
               {/* CARDS CONTAINER */}
               <div className="flex-1 p-2.5 space-y-3 overflow-y-auto max-h-[calc(100vh-320px)] custom-scrollbar">
-                {colItems.length === 0 ? (
+                {/* SEZIONE INBOX IDEE ATTIVE DA LAVORARE */}
+                {isIdeaCol && activeInboxIdeas.length > 0 && (
+                  <div className="space-y-2 mb-3 pb-3 border-b border-amber-500/25">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[11px] font-black text-amber-300 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        Dalla Inbox ({activeInboxIdeas.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToStudio('inbox')}
+                        className="text-[10px] text-amber-400 hover:text-amber-300 hover:underline font-bold cursor-pointer flex items-center gap-0.5"
+                      >
+                        <span>Apri Inbox</span>
+                        <ArrowRight className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+
+                    {activeInboxIdeas.map((idea) => {
+                      const suggestedType = idea.ai_content_opportunity?.suggestedType || 'reel';
+                      const isConverting = convertingId === idea.id;
+                      return (
+                        <div
+                          key={idea.id}
+                          className="p-3 rounded-xl bg-gradient-to-br from-amber-500/10 to-amber-950/20 border border-amber-500/35 hover:border-amber-400/60 transition-all shadow-sm space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                              <Inbox className="w-2.5 h-2.5" />
+                              Spunto Inbox
+                            </span>
+                            <span className="text-[9px] text-amber-300/80 uppercase font-mono font-bold">
+                              {suggestedType}
+                            </span>
+                          </div>
+
+                          <h4
+                            onClick={() => onNavigateToStudio('inbox')}
+                            className="text-xs font-bold text-white hover:text-amber-300 cursor-pointer transition-colors line-clamp-2"
+                          >
+                            {idea.ai_title || idea.raw_content}
+                          </h4>
+
+                          {idea.ai_summary && (
+                            <p className="text-[10px] text-slate-400 line-clamp-2 italic bg-slate-950/50 p-1.5 rounded border border-amber-500/10">
+                              "{idea.ai_summary}"
+                            </p>
+                          )}
+
+                          <div className="pt-1.5 border-t border-amber-500/20 flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onNavigateToStudio('inbox')}
+                              className="text-[10px] font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            >
+                              Dettagli
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isConverting}
+                              onClick={() => handleConvertInboxIdea(idea)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-slate-950 text-[10px] font-black flex items-center gap-1 transition cursor-pointer shadow-sm active:scale-95"
+                              title="Converti e sposta nella Pipeline"
+                            >
+                              <Plus className="w-3 h-3 stroke-[3]" />
+                              <span>{isConverting ? 'Conversione...' : 'Avvia in Pipeline'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {colItems.length === 0 && (!isIdeaCol || activeInboxIdeas.length === 0) ? (
                   <div className="p-6 rounded-xl border border-dashed border-slate-800/80 text-center">
                     <p className="text-[11px] text-slate-500">Nessun contenuto in questa fase</p>
                     <button

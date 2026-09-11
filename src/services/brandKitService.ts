@@ -27,7 +27,20 @@ export const loadBrandKit = (): BrandKit => {
     const saved = localStorage.getItem(BRAND_KIT_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      return { ...DEFAULT_BRAND_KIT, ...parsed };
+      return {
+        ...DEFAULT_BRAND_KIT,
+        ...parsed,
+        primaryColor: parsed.primaryColor || DEFAULT_BRAND_KIT.primaryColor,
+        secondaryColor: parsed.secondaryColor || DEFAULT_BRAND_KIT.secondaryColor,
+        accentColor: parsed.accentColor || DEFAULT_BRAND_KIT.accentColor,
+        ctaColor: parsed.ctaColor || parsed.accentColor || DEFAULT_BRAND_KIT.ctaColor,
+        titleFont: parsed.titleFont || DEFAULT_BRAND_KIT.titleFont,
+        bodyFont: parsed.bodyFont || DEFAULT_BRAND_KIT.bodyFont,
+        brandName: parsed.brandName ?? DEFAULT_BRAND_KIT.brandName,
+        authorHandle: parsed.authorHandle ?? DEFAULT_BRAND_KIT.authorHandle,
+        authorSignature: parsed.authorSignature ?? DEFAULT_BRAND_KIT.authorSignature,
+        watermarkText: parsed.watermarkText ?? DEFAULT_BRAND_KIT.watermarkText,
+      };
     }
   } catch {
     // Fallback al default se parsing fallisce

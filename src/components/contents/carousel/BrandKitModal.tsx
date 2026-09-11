@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { BrandKit, LogoPosition, ImageStyle } from '../../../types/carousel';
-import { saveBrandKit } from '../../../services/brandKitService';
+import { saveBrandKit, loadBrandKit, DEFAULT_BRAND_KIT } from '../../../services/brandKitService';
 import { useToast } from '../../../context/ToastContext';
 import {
   X,
@@ -47,9 +47,23 @@ export const BrandKitModal: React.FC<BrandKitModalProps> = ({
   onSave,
 }) => {
   const { showSuccess } = useToast();
-  const [formData, setFormData] = useState<BrandKit>({ ...brandKit });
+  const [formData, setFormData] = useState<BrandKit>(() => ({
+    ...DEFAULT_BRAND_KIT,
+    ...loadBrandKit(),
+    ...(brandKit || {}),
+  }));
   const [previewTab, setPreviewTab] = useState<'cover' | 'cta'>('cover');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({
+        ...DEFAULT_BRAND_KIT,
+        ...loadBrandKit(),
+        ...(brandKit || {}),
+      });
+    }
+  }, [isOpen, brandKit]);
 
   if (!isOpen) return null;
 
@@ -66,7 +80,7 @@ export const BrandKitModal: React.FC<BrandKitModalProps> = ({
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
-          setFormData((prev) => ({
+          setFormData((prev: BrandKit) => ({
             ...prev,
             logoUrl: event.target?.result as string,
           }));
@@ -77,22 +91,7 @@ export const BrandKitModal: React.FC<BrandKitModalProps> = ({
   };
 
   const handleResetDefault = () => {
-    const defaultKit: BrandKit = {
-      logoUrl: null,
-      brandName: 'AC COACHING',
-      authorHandle: '@antoniocrapanzano_coach',
-      authorSignature: 'Antonio Crapanzano • Performance & Biomechanics Coach',
-      primaryColor: '#070A10',
-      secondaryColor: '#1E293B',
-      accentColor: '#F59E0B',
-      ctaColor: '#F59E0B',
-      titleFont: 'Inter',
-      bodyFont: 'Inter',
-      logoPosition: 'top_left',
-      watermarkText: '• AC COACHING •',
-      imageStyle: 'dark_gradient',
-    };
-    setFormData(defaultKit);
+    setFormData({ ...DEFAULT_BRAND_KIT });
   };
 
   // Font family mapping per la preview

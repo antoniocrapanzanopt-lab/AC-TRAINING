@@ -153,19 +153,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       // Check if the user is an athlete
-      await supabase.rpc('link_athlete_account');
+      try {
+        await supabase.rpc('link_athlete_account');
+      } catch (linkErr) {
+        console.warn('[AuthContext] link_athlete_account notice:', linkErr);
+      }
 
       const { data: athleteData } = await supabase
         .from('athletes')
         .select('id, first_name, last_name, auth_user_id')
-        .ilike('email', email.trim())
+        .or(`auth_user_id.eq.${sessionUserArg.id},email.ilike.${email.trim()}`)
         .maybeSingle();
 
       if (athleteData) {
         const athleteUser: UserProfile = {
           id: sessionUserArg.id,
           athleteId: athleteData.id,
-          name: `${athleteData.first_name} ${athleteData.last_name}`,
+          name: `${athleteData.first_name || ''} ${athleteData.last_name || ''}`.trim() || 'Atleta',
           email: email,
           role: 'athlete',
           canViewFinancials: false,
