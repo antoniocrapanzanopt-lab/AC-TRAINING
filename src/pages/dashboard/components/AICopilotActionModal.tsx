@@ -30,6 +30,8 @@ import {
   getActiveGeminiApiKey,
   saveGeminiApiKey,
 } from '../../../lib/ai/biomechanicsGeminiAssistant';
+import { supabase } from '../../../lib/supabase';
+import { isPainFeedback } from '../../../utils/painAnalysis';
 
 export interface CopilotAlertContext {
   athleteId: string;
@@ -41,6 +43,7 @@ export interface CopilotAlertContext {
   noteText?: string;
   suggestion?: string;
   type: 'critical_note' | 'plateau' | 'inactivity' | 'progression' | 'missing_weights';
+  sessionId?: string;
 }
 
 interface AICopilotActionModalProps {
@@ -277,8 +280,8 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     setCurrentStep('no_changes');
   };
 
-  // Helper per archiviare l'alert nei gestiti/dismissed
-  const persistDismissedAlert = () => {
+  // Helper per archiviare l'alert nei gestiti sia su Supabase (persistente) che in local cache
+  const persistDismissedAlert = async () => {
     try {
       const saved = localStorage.getItem('builder_copilot_dismissed_alerts');
       const set = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
@@ -292,6 +295,55 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent('copilot_dismissed_update'));
     } catch (_) {}
+
+    // Persistenza diretta su Supabase: contrassegna la sessione con [RISOLTO DAL COACH]
+    try {
+      if (alertData?.sessionId) {
+        const { data: currentSess } = await supabase
+          .from('workout_sessions')
+          .select('notes')
+          .eq('id', alertData.sessionId)
+          .maybeSingle();
+
+        const existingNotes = currentSess?.notes || '';
+        if (!existingNotes.includes('[RISOLTO DAL COACH')) {
+          const dateTag = new Date().toLocaleDateString('it-IT');
+          const updatedNotes = existingNotes.trim()
+            ? `${existingNotes}\n[RISOLTO DAL COACH — ${dateTag}]`
+            : `[RISOLTO DAL COACH — ${dateTag}]`;
+          await supabase
+            .from('workout_sessions')
+            .update({ notes: updatedNotes })
+            .eq('id', alertData.sessionId);
+        }
+      } else if (alertData?.athleteId && alertData.type === 'critical_note') {
+        // Cerca la sessione più recente con fastidio per questo atleta e marcala
+        const { data: recentSessions } = await supabase
+          .from('workout_sessions')
+          .select('id, notes')
+          .eq('athlete_id', alertData.athleteId)
+          .not('notes', 'is', null)
+          .order('end_time', { ascending: false })
+          .limit(10);
+
+        if (recentSessions && recentSessions.length > 0) {
+          for (const s of recentSessions) {
+            if (s.notes && isPainFeedback(s.notes, { ignoreResolved: true })) {
+              const dateTag = new Date().toLocaleDateString('it-IT');
+              const updatedNotes = `${s.notes.trim()}\n[RISOLTO DAL COACH — ${dateTag}]`;
+              await supabase
+                .from('workout_sessions')
+                .update({ notes: updatedNotes })
+                .eq('id', s.id);
+              break;
+            }
+          }
+        }
+      }
+      window.dispatchEvent(new Event('athlete_workout_completed'));
+    } catch (err) {
+      console.warn('Errore salvataggio risoluzione fastidio su Supabase:', err);
+    }
   };
 
   // Applicazione modifiche alla scheda
@@ -299,7 +351,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     if (!alertData) return;
     setIsProcessing(true);
     setOutcomeType('applied');
-    persistDismissedAlert();
+    await persistDismissedAlert();
 
     try {
       addTimelineEvent(
@@ -331,7 +383,7 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     if (!alertData) return;
     setIsProcessing(true);
     setOutcomeType('no_changes');
-    persistDismissedAlert();
+    await persistDismissedAlert();
 
     try {
       addTimelineEvent(
@@ -363,8 +415,8 @@ export const AICopilotActionModal: React.FC<AICopilotActionModalProps> = ({
     onClose();
   };
 
-  const handleImmediateFinish = () => {
-    persistDismissedAlert();
+  const handleImmediateFinish = async () => {
+    await persistDismissedAlert();
     if (alertData) {
       onApplied?.(alertData.athleteId);
     }

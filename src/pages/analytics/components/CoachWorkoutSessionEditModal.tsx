@@ -233,9 +233,16 @@ export const CoachWorkoutSessionEditModal: React.FC<CoachWorkoutSessionEditModal
         const localLogs = JSON.parse(localStorage.getItem('builder_local_logs_backup') || '[]');
         const updatedLocal = localLogs.filter((l: { session_id?: string }) => l.session_id !== session.id);
         localStorage.setItem('builder_local_logs_backup', JSON.stringify(updatedLocal));
+
+        const completedMap = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}');
+        if (completedMap[session.id]) {
+          delete completedMap[session.id];
+          localStorage.setItem('builder_completed_session_logs', JSON.stringify(completedMap));
+        }
       } catch (_) {}
 
       showSuccess('Seduta e carichi aggiornati con successo!');
+      window.dispatchEvent(new Event('athlete_workout_completed'));
       await onSessionSaved();
       onClose();
     } catch (err: unknown) {
@@ -262,11 +269,22 @@ export const CoachWorkoutSessionEditModal: React.FC<CoachWorkoutSessionEditModal
       // Pulisci local storage
       try {
         const localSessions = JSON.parse(localStorage.getItem('builder_local_sessions_backup') || '[]');
-        const filtered = localSessions.filter((s: { id?: string }) => s.id !== session.id);
-        localStorage.setItem('builder_local_sessions_backup', JSON.stringify(filtered));
+        const filteredSessions = localSessions.filter((s: { id?: string }) => s.id !== session.id);
+        localStorage.setItem('builder_local_sessions_backup', JSON.stringify(filteredSessions));
+
+        const localLogs = JSON.parse(localStorage.getItem('builder_local_logs_backup') || '[]');
+        const filteredLogs = localLogs.filter((l: { session_id?: string }) => l.session_id !== session.id);
+        localStorage.setItem('builder_local_logs_backup', JSON.stringify(filteredLogs));
+
+        const completedMap = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}');
+        if (completedMap[session.id]) {
+          delete completedMap[session.id];
+          localStorage.setItem('builder_completed_session_logs', JSON.stringify(completedMap));
+        }
       } catch (_) {}
 
       showSuccess('Seduta eliminata con successo dalla cronologia.');
+      window.dispatchEvent(new Event('athlete_workout_completed'));
       await onSessionSaved();
       onClose();
     } catch (err: unknown) {

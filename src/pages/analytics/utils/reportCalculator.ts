@@ -12,7 +12,7 @@ import {
 } from '../../../types';
 import { isPainFeedback } from '../../../utils/painAnalysis';
 
-interface RawSession {
+export interface RawSession {
   id: string;
   athlete_id: string;
   workout_id: string;
@@ -20,10 +20,12 @@ interface RawSession {
   end_time?: string;
   notes?: string;
   rpe?: number;
+  week_number?: number;
+  day_name?: string;
   workouts?: { title?: string; total_weeks?: number };
 }
 
-interface RawExerciseLog {
+export interface RawExerciseLog {
   id: string;
   session_id: string;
   exercise_id?: string;
@@ -34,14 +36,9 @@ interface RawExerciseLog {
   exercise_name?: string;
 }
 
-interface RawAssignment {
-  athlete_id: string;
-  workout_id: string;
-  assigned_date?: string;
-  start_date?: string;
-  workout?: { title?: string; total_weeks?: number };
-  workout_title?: string;
-}
+import { TimelineWorkoutAssignment } from './timelineCalculator';
+
+export type RawAssignment = TimelineWorkoutAssignment;
 
 export function getTimeframeDays(timeframe: TimeframeOption): number {
   switch (timeframe) {
@@ -118,8 +115,60 @@ export function classifyMuscleGroup(exerciseName: string): string {
 }
 
 const isPainNote = (text?: string): boolean => {
-  return isPainFeedback(text);
+  return isPainFeedback(text, { ignoreResolved: true });
 };
+
+/**
+ * Seleziona l'assegnazione corretta per un atleta:
+ * 1. Preferisce quella con is_active === true
+ * 2. Fallback alla più recente per data (assigned_date o created_at)
+ * 3. Ultimo fallback: la prima trovata
+ */
+export function findActiveAssignment(assignments: RawAssignment[], athleteId: string): RawAssignment | undefined {
+  const athleteAssignments = assignments.filter((a) => a.athlete_id === athleteId);
+  if (athleteAssignments.length === 0) return undefined;
+
+  // 1. Ordina SEMPRE prima per data decrescente (la più recente in cima)
+  const sorted = [...athleteAssignments].sort((a, b) => {
+    const dateA = new Date(a.assigned_date || a.start_date || a.created_at || 0).getTime();
+    const dateB = new Date(b.assigned_date || b.start_date || b.created_at || 0).getTime();
+    return dateB - dateA;
+  });
+
+  // 2. Cerca quella esplicitamente attiva tra le più recenti
+  const active = sorted.find((a) => a.is_active === true);
+  if (active) return active;
+
+  // 3. Fallback alla più recente
+  return sorted[0];
+}
+
+/**
+ * Cerca i giorni allenamento in workoutDaysMap in cascata:
+ * workout_id diretto → workout.id → parent_template_id
+ */
+export function resolveWorkoutDays(
+  assignment: RawAssignment | undefined,
+  workoutDaysMap: Record<string, string[]> | undefined
+): string[] {
+  if (!assignment || !workoutDaysMap) return [];
+  const ids = [
+    assignment.workout_id,
+    assignment.workout?.id,
+    assignment.workout?.parent_template_id,
+  ].filter((id): id is string => Boolean(id));
+
+  // Raccogli in modo univoco tutti i giorni da figlio e genitore (stessa logica dell'AthleteDashboard)
+  const uniqueDays = new Set<string>();
+  for (const id of ids) {
+    const days = workoutDaysMap[id];
+    if (days && days.length > 0) {
+      days.forEach(d => uniqueDays.add(d));
+    }
+  }
+  
+  return Array.from(uniqueDays);
+}
 
 export function buildAthleteReport(
   athlete: Athlete,
@@ -128,7 +177,9 @@ export function buildAthleteReport(
   logs: RawExerciseLog[],
   assignments: RawAssignment[],
   exerciseNamesMap: Map<string, string>,
-  dismissedAlerts?: Set<string>
+  dismissedAlerts?: Set<string>,
+  workoutDaysMap?: Record<string, string[]>,
+  progressMap?: Map<string, { daysPerWeek?: number; orderedDays?: string[]; plannedSessions?: number; progressPercentage?: number; totalWeeks?: number }>
 ): AthleteReportSummary {
   const days = getTimeframeDays(timeframe);
   const now = Date.now();
@@ -171,15 +222,48 @@ export function buildAthleteReport(
   const currentLogs = logs.filter((l) => sessionIdsCurrent.has(l.session_id));
   const previousLogs = logs.filter((l) => sessionIdsPrevious.has(l.session_id));
 
-  // Scheda Assegnata
-  const assignment = assignments.find((a) => a.athlete_id === athlete.id);
+  // Scheda Assegnata — usa l'assegnazione attiva (is_active=true) o la più recente
+  const assignment = findActiveAssignment(assignments, athlete.id);
   const hasAssignment = Boolean(assignment && (assignment.workout_id || assignment.workout?.title || assignment.workout_title));
   const workoutTitle = assignment?.workout?.title || assignment?.workout_title || 'Nessuna Scheda Assegnata';
-  const totalWeeks = assignment?.workout?.total_weeks || 5;
+  const prog = progressMap?.get(athlete.id);
+  const totalWeeks = assignment?.workout?.total_weeks || assignment?.total_weeks || prog?.totalWeeks || 5;
 
   const totalCompletedInHistory = currentSessions.length + previousSessions.length;
-  const targetSessionsPerWeek = 3;
-  const totalPlannedInBlock = Math.max(1, totalWeeks * targetSessionsPerWeek);
+  // Cerca giorni in cascata: workout_id → workout.id → parent_template_id
+  const resolvedDays = resolveWorkoutDays(assignment, workoutDaysMap);
+
+  // Rileva giorni unici e ritmo effettivo settimanale direttamente dalle sessioni dell'atleta
+  const sessionDays = new Set<string>();
+  const sessionsByWeek = new Map<number, number>();
+  athleteSessions.forEach((s) => {
+    const d = (s.day_name || '').trim();
+    if (d) sessionDays.add(d);
+    const w = (s as unknown as { week_number?: number }).week_number || 1;
+    if (w > 0) sessionsByWeek.set(w, (sessionsByWeek.get(w) || 0) + 1);
+  });
+
+  let maxSessionsInAWeek = 0;
+  sessionsByWeek.forEach((count) => {
+    if (count > maxSessionsInAWeek) maxSessionsInAWeek = count;
+  });
+
+  // Risolvi il numero di giorni/sedute a settimana reali (supporta 2, 3, 4, 5, ecc.):
+  const progDaysPerWeek = prog?.daysPerWeek || (prog?.orderedDays && prog.orderedDays.length > 0 ? prog.orderedDays.length : undefined);
+
+  let plannedDaysCount = progDaysPerWeek || resolvedDays.length;
+  if (plannedDaysCount === 0 && sessionDays.size > 0 && sessionDays.size <= 7) {
+    plannedDaysCount = sessionDays.size;
+  }
+  if (maxSessionsInAWeek > plannedDaysCount && maxSessionsInAWeek <= 7) {
+    plannedDaysCount = maxSessionsInAWeek;
+  }
+  if (plannedDaysCount === 0) {
+    plannedDaysCount = 3;
+  }
+
+  const targetSessionsPerWeek = Math.max(1, Math.min(7, plannedDaysCount));
+  const totalPlannedInBlock = prog?.plannedSessions || Math.max(1, totalWeeks * targetSessionsPerWeek);
 
   let currentWeek = 1;
   let blockProgressPercent = 0;
@@ -191,7 +275,9 @@ export function buildAthleteReport(
       blockProgressPercent = 0;
     } else {
       currentWeek = Math.min(totalWeeks, Math.max(1, Math.ceil(totalCompletedInHistory / targetSessionsPerWeek)));
-      blockProgressPercent = Math.min(100, Math.max(5, Math.round((totalCompletedInHistory / totalPlannedInBlock) * 100)));
+      blockProgressPercent = prog?.progressPercentage !== undefined
+        ? prog.progressPercentage
+        : Math.min(100, Math.max(5, Math.round((totalCompletedInHistory / totalPlannedInBlock) * 100)));
     }
   }
 
@@ -272,40 +358,53 @@ export function buildAthleteReport(
 
   // Estrai dettagli specifici di dolori/fastidi (esercizi coinvolti e zone anatomiche)
   let painDetailsSummary = '';
+  let latestPainSessionId: string | undefined = undefined;
+  let latestPainSessionDate: string | undefined = undefined;
+
   if (currentPainCount > 0) {
     const painSummaries: string[] = [];
 
     // A. Cerca nelle note sessione (questionario post-workout)
-    currentSessions
-      .filter((s) => isPainNote(s.notes))
-      .forEach((s) => {
-        const text = s.notes || '';
-        if (text.includes('Fastidi:')) {
-          const fastidiPart = text.split('Fastidi:')[1]?.trim() || '';
-          const matches = [...fastidiPart.matchAll(/Esercizio:\s*([^—\];]+)(?:—\s*Zona:\s*([^\];]+))?/gi)];
-          if (matches.length > 0) {
-            matches.forEach((m) => {
-              const ex = m[1]?.trim();
-              const zone = m[2]?.trim();
-              if (ex && ex !== 'Non specificato') {
-                painSummaries.push(zone && zone !== 'Non specificata' ? `${ex} (${zone})` : ex);
-              } else if (zone && zone !== 'Non specificata') {
-                painSummaries.push(`Zona ${zone}`);
-              }
-            });
-          } else {
-            const cleanText = fastidiPart.replace(/[\[\]#0-9]/g, '').trim();
-            if (cleanText) painSummaries.push(cleanText);
-          }
-        } else if (isPainFeedback(text) && !text.toLowerCase().startsWith('questionario:')) {
-          painSummaries.push(text.length > 60 ? `${text.slice(0, 57)}...` : text);
+    const sessionsWithPain = currentSessions.filter((s) => isPainNote(s.notes));
+    if (sessionsWithPain.length > 0) {
+      const mostRecentPainSession = [...sessionsWithPain].sort(
+        (a, b) => new Date(b.end_time || b.start_time).getTime() - new Date(a.end_time || a.start_time).getTime()
+      )[0];
+      latestPainSessionId = mostRecentPainSession?.id;
+      latestPainSessionDate = mostRecentPainSession?.end_time || mostRecentPainSession?.start_time;
+    }
+
+    sessionsWithPain.forEach((s) => {
+      const text = s.notes || '';
+      if (text.includes('Fastidi:')) {
+        const fastidiPart = text.split('Fastidi:')[1]?.trim() || '';
+        const matches = [...fastidiPart.matchAll(/Esercizio:\s*([^—\];]+)(?:—\s*Zona:\s*([^\];]+))?/gi)];
+        if (matches.length > 0) {
+          matches.forEach((m) => {
+            const ex = m[1]?.trim();
+            const zone = m[2]?.trim();
+            if (ex && ex !== 'Non specificato') {
+              painSummaries.push(zone && zone !== 'Non specificata' ? `${ex} (${zone})` : ex);
+            } else if (zone && zone !== 'Non specificata') {
+              painSummaries.push(`Zona ${zone}`);
+            }
+          });
+        } else {
+          const cleanText = fastidiPart.replace(/[\[\]#0-9]/g, '').trim();
+          if (cleanText) painSummaries.push(cleanText);
         }
-      });
+      } else if (isPainFeedback(text, { ignoreResolved: true }) && !text.toLowerCase().startsWith('questionario:')) {
+        painSummaries.push(text.length > 60 ? `${text.slice(0, 57)}...` : text);
+      }
+    });
 
     // B. Cerca nelle note dei singoli log esercizio
     currentLogs
-      .filter((l) => isPainFeedback(l.notes))
+      .filter((l) => isPainFeedback(l.notes, { ignoreResolved: true }))
       .forEach((l) => {
+        if (!latestPainSessionId && l.session_id) {
+          latestPainSessionId = l.session_id;
+        }
         const exName = l.exercise_name || (l.exercise_id && exerciseNamesMap.get(l.exercise_id)) || 'Esercizio';
         painSummaries.push(`${exName}: "${l.notes}"`);
       });
@@ -582,6 +681,8 @@ export function buildAthleteReport(
     athleteEmail: athlete.email,
     avatarUrl: athlete.avatarUrl,
     workoutTitle,
+    workoutId: assignment?.workout_id || assignment?.workout?.id,
+    daysPerWeek: targetSessionsPerWeek,
     currentWeek,
     totalWeeks,
     blockProgressPercent,
@@ -600,6 +701,8 @@ export function buildAthleteReport(
     avgRpe,
     painReportsCount,
     painDetailsSummary,
+    latestPainSessionId,
+    latestPainSessionDate,
     totalVolumeKg,
     keyExercises,
     muscleGroups,
@@ -619,7 +722,9 @@ export function buildTeamOverviewReport(
   sessions: RawSession[],
   logs: RawExerciseLog[],
   assignments: RawAssignment[],
-  exerciseNamesMap: Map<string, string>
+  exerciseNamesMap: Map<string, string>,
+  workoutDaysMap?: Record<string, string[]>,
+  progressMap?: Map<string, { daysPerWeek?: number; orderedDays?: string[]; plannedSessions?: number; progressPercentage?: number; totalWeeks?: number }>
 ): TeamOverviewReportData {
   const days = getTimeframeDays(timeframe);
   const now = new Date();
@@ -640,7 +745,7 @@ export function buildTeamOverviewReport(
   })();
 
   const athletesReports = athletes.map((ath) =>
-    buildAthleteReport(ath, timeframe, sessions, logs, assignments, exerciseNamesMap, dismissedAlerts)
+    buildAthleteReport(ath, timeframe, sessions, logs, assignments, exerciseNamesMap, dismissedAlerts, workoutDaysMap, progressMap)
   );
 
   const eligibleReports = athletesReports.filter((a) => a.programStatus !== 'unassigned');
@@ -667,31 +772,32 @@ export function buildTeamOverviewReport(
 
   const todayPriorities: DecisionPriorityItem[] = [];
 
-  // 1. Dolori articolari segnalati (Priorità Alta)
+  // 1. Dolori articolari segnalati (TUTTE le segnalazioni attive degli atleti, senza tetto limitante)
   const painAthletes = eligibleReports.filter(
     (a) => a.painReportsCount.current > 0 && !dismissedAlerts.has(a.athleteId) && !dismissedAlerts.has(`prio-pain-${a.athleteId}`)
   );
   painAthletes.forEach((pa) => {
-    if (todayPriorities.length < 3) {
-      const painTitle = pa.painDetailsSummary
-        ? `Fastidio su ${pa.painDetailsSummary}`
-        : `Verifica fastidio articolare per ${pa.athleteName}`;
-      const painRationale = pa.painDetailsSummary
-        ? `Segnalato fastidio articolare su: ${pa.painDetailsSummary}.`
-        : `${pa.painReportsCount.current} segnalazione/i di fastidio registrate nelle ultime sessioni.`;
+    const painTitle = pa.painDetailsSummary
+      ? `Fastidio su ${pa.painDetailsSummary}`
+      : `Verifica fastidio articolare per ${pa.athleteName}`;
+    const painRationale = pa.painDetailsSummary
+      ? `Segnalato fastidio articolare su: ${pa.painDetailsSummary}.`
+      : `${pa.painReportsCount.current} segnalazione/i di fastidio registrate nelle ultime sessioni.`;
 
-      todayPriorities.push({
-        id: `prio-pain-${pa.athleteId}`,
-        athleteId: pa.athleteId,
-        athleteName: pa.athleteName,
-        title: painTitle,
-        rationale: painRationale,
-        type: 'pain',
-        urgency: 'high',
-        ctaLabel: 'Apri Decisione',
-        targetAction: 'copilot',
-      });
-    }
+    todayPriorities.push({
+      id: `prio-pain-${pa.athleteId}`,
+      athleteId: pa.athleteId,
+      athleteName: pa.athleteName,
+      sessionId: pa.latestPainSessionId,
+      sessionDate: pa.latestPainSessionDate,
+      exerciseName: pa.painDetailsSummary,
+      title: painTitle,
+      rationale: painRationale,
+      type: 'pain',
+      urgency: 'high',
+      ctaLabel: 'Apri Decisione',
+      targetAction: 'copilot',
+    });
   });
 
   // 2. Atleti in Penultima Settimana (Priorità Media/Alta)
@@ -699,26 +805,24 @@ export function buildTeamOverviewReport(
     (pa) => !dismissedAlerts.has(pa.athleteId) && !dismissedAlerts.has(`prio-penult-${pa.athleteId}`)
   );
   pendingPenultimateReports.forEach((pa) => {
-    if (todayPriorities.length < 3) {
-      todayPriorities.push({
-        id: `prio-penult-${pa.athleteId}`,
-        athleteId: pa.athleteId,
-        athleteName: pa.athleteName,
-        title: `Prepara prossimo blocco per ${pa.athleteName}`,
-        rationale: `L'atleta è alla settimana ${pa.currentWeek} di ${pa.totalWeeks}. Pianifica la nuova scheda per dare continuità.`,
-        type: 'penultimate_week',
-        urgency: 'medium',
-        ctaLabel: 'Prepara Prossimo Blocco',
-        targetAction: 'renew',
-      });
-    }
+    todayPriorities.push({
+      id: `prio-penult-${pa.athleteId}`,
+      athleteId: pa.athleteId,
+      athleteName: pa.athleteName,
+      title: `Prepara prossimo blocco per ${pa.athleteName}`,
+      rationale: `L'atleta è alla settimana ${pa.currentWeek} di ${pa.totalWeeks}. Pianifica la nuova scheda per dare continuità.`,
+      type: 'penultimate_week',
+      urgency: 'medium',
+      ctaLabel: 'Prepara Prossimo Blocco',
+      targetAction: 'renew',
+    });
   });
 
   // 3. Atleti Da Avviare / Senza Programma
   const pendingUnassignedReports = unassignedReports.filter(
     (a) => !dismissedAlerts.has(a.athleteId) && !dismissedAlerts.has(`prio-unassigned-${a.athleteId}`)
   );
-  if (pendingUnassignedReports.length > 0 && todayPriorities.length < 3) {
+  if (pendingUnassignedReports.length > 0) {
     const firstUnassigned = pendingUnassignedReports[0];
     todayPriorities.push({
       id: `prio-unassigned-${firstUnassigned.athleteId}`,

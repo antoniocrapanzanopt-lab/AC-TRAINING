@@ -11,6 +11,7 @@ import {
   AlertCircle,
   XCircle,
   Clock,
+  Play,
 } from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise, AthleteAssignedWorkout } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
@@ -37,6 +38,7 @@ import { Sparkles } from 'lucide-react';
 import {
   isCompletedSession,
   normalizeDayName,
+  matchDayNames,
   resolveRelatedWorkoutIds,
   calculateCurrentActiveWeek,
 } from '../../services/workoutProgressService';
@@ -54,6 +56,9 @@ interface WorkoutDayListProps {
   sessionDetailsMap: Record<string, { status?: string; skip_reason?: string; coach_justified?: boolean | null; skip_notes?: string }>;
   days: string[];
   isLoadingDays?: boolean;
+  /** Numero sessioni completate per settimana (numero settimana → conteggio).  
+   *  Usato come fallback in calculateCurrentActiveWeek quando i nomi giorni non corrispondono. */
+  completedSessionsPerWeek?: Record<number, number>;
 }
 
 const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
@@ -64,6 +69,7 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   sessionDetailsMap,
   days,
   isLoadingDays = false,
+  completedSessionsPerWeek,
 }) => {
   const totalWeeks = assigned.workout?.total_weeks && assigned.workout.total_weeks > 0 ? assigned.workout.total_weeks : 1;
   const normDay = (str: string) => (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -74,8 +80,9 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
       totalWeeks,
       days,
       completedMap,
+      completedSessionsPerWeek,
     });
-  }, [totalWeeks, days, completedMap]);
+  }, [totalWeeks, days, completedMap, completedSessionsPerWeek]);
 
   const [selectedWeek, setSelectedWeek] = useState<number>(currentActiveWeek);
 
@@ -144,7 +151,7 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
         </div>
 
         {/* Barra Pillole Compatta con Scroll Orizzontale Fluido */}
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 -mx-1 px-1 touch-pan-x scroll-smooth">
+        <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar py-1 -mx-1 px-1 touch-pan-x scroll-smooth">
           {Array.from({ length: totalWeeks }, (_, idx) => {
             const wNum = idx + 1;
             const isSelected = selectedWeek === wNum;
@@ -156,21 +163,21 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
                 key={wNum}
                 type="button"
                 onClick={() => setSelectedWeek(wNum)}
-                className={`px-3.5 sm:px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 cursor-pointer select-none active:scale-95 shadow-sm whitespace-nowrap ${
+                className={`min-h-[44px] px-4 sm:px-5 py-2.5 rounded-2xl text-sm sm:text-base font-black transition-all flex items-center gap-2 shrink-0 cursor-pointer select-none active:scale-95 shadow-sm whitespace-nowrap ${
                   isSelected
-                    ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20 ring-1 ring-[var(--color-primary)]'
+                    ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20 ring-2 ring-[var(--color-primary)]'
                     : isWeekDone
-                    ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/25'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30'
                     : isCurrent
-                    ? 'bg-[var(--color-panel)] text-[var(--color-text)] border border-[var(--color-primary)]/50'
-                    : 'bg-[var(--color-panel)] text-[var(--color-text-muted)] border border-[var(--color-panel-border)] hover:text-[var(--color-text)]'
+                    ? 'bg-[var(--color-panel)] text-white border-2 border-[var(--color-primary)]/70'
+                    : 'bg-[var(--color-panel)] text-slate-300 border border-[var(--color-panel-border)] hover:text-white hover:border-slate-600'
                 }`}
               >
                 <span>Sett. {wNum}</span>
                 {isWeekDone ? (
-                  <span className="text-emerald-500 font-black text-xs">✓</span>
+                  <span className="text-emerald-400 font-black text-sm">✓</span>
                 ) : isCurrent && !isSelected ? (
-                  <span className="text-[10px] text-amber-500 font-bold">• Attiva</span>
+                  <span className="text-xs text-amber-400 font-black bg-amber-500/20 px-2 py-0.5 rounded-md">• Attiva</span>
                 ) : null}
               </button>
             );
@@ -179,7 +186,7 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
       </div>
 
       {/* ─── LISTA LINEARE DELLE SEDUTE (GIORNO PER GIORNO) ─── */}
-      <div className="space-y-2.5 pt-1">
+      <div className="space-y-3 pt-1">
         {days.map((dayName, dayIndex) => {
           const key = `${selectedWeek}-${dayName}`;
           const isDone = Boolean(completedMap[key] || completedMap[`${selectedWeek}-${normDay(dayName)}`]);
@@ -213,92 +220,92 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
                 console.log('[WorkoutDayList] Clicked Day Card:', { dayName, selectedWeek, isDone, isSkipped, isNextUpcoming });
                 onStart(assigned, selectedWeek, dayName);
               }}
-              className={`p-4 sm:p-5 rounded-2xl border transition-all flex items-center justify-between gap-3 shadow-sm cursor-pointer select-none group active:scale-[0.99] relative z-10 touch-manipulation ${
+              className={`p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 transition-all flex items-center justify-between gap-3 sm:gap-4 shadow-md cursor-pointer select-none group active:scale-[0.99] relative z-10 touch-manipulation ${
                 isSkipped
-                  ? 'bg-amber-950/10 border-amber-500/30 hover:border-amber-500/50'
+                  ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-500/60'
                   : isDone
-                  ? 'bg-[var(--color-panel)]/60 border-[var(--color-panel-border)] hover:border-[var(--color-border)]'
+                  ? 'bg-[var(--color-panel)]/80 border-slate-700/60 hover:border-slate-600'
                   : isDraftForThisDay
-                  ? 'bg-amber-500/10 border-[var(--color-primary)] shadow-md shadow-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/40'
+                  ? 'bg-amber-500/15 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/15 ring-2 ring-[var(--color-primary)]/40'
                   : isNextUpcoming
-                  ? 'bg-[var(--color-panel)] border-[var(--color-primary)]/60 hover:border-[var(--color-primary)] shadow-md'
-                  : 'bg-[var(--color-panel)] border-[var(--color-panel-border)] hover:border-[var(--color-primary)]/40'
+                  ? 'bg-[var(--color-panel)] border-[var(--color-primary)] hover:border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/30'
+                  : 'bg-[var(--color-panel)] border-[var(--color-panel-border)] hover:border-[var(--color-primary)]/50'
               }`}
             >
               {/* Stato a Sinistra + Nome Giorno */}
-              <div className="flex items-center gap-3.5 min-w-0 flex-1">
+              <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
                 <div
-                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 transition-transform group-hover:scale-105 ${
+                  className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl flex items-center justify-center font-black text-base sm:text-lg shrink-0 transition-transform group-hover:scale-105 shadow-sm ${
                     isSkipped
                       ? detail?.coach_justified === true
-                        ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                         : detail?.coach_justified === false
-                        ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                        : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                        : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
                       : isDone
-                      ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                       : isDraftForThisDay
-                      ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/30 animate-pulse'
+                      ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/30 animate-pulse font-black'
                       : isNextUpcoming
-                      ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40'
-                      : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] border border-[var(--color-border)]'
+                      ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] border-2 border-[var(--color-primary)]/60 font-black'
+                      : 'bg-[var(--color-surface-strong)] text-slate-300 border border-slate-700 font-bold'
                   }`}
                 >
                   {isSkipped ? (
                     detail?.coach_justified === true ? (
-                      <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                      <ShieldCheck className="w-6 h-6 text-emerald-400" />
                     ) : detail?.coach_justified === false ? (
-                      <XCircle className="w-5 h-5 text-rose-400" />
+                      <XCircle className="w-6 h-6 text-rose-400" />
                     ) : (
-                      <AlertCircle className="w-5 h-5 text-amber-400" />
+                      <AlertCircle className="w-6 h-6 text-amber-400" />
                     )
                   ) : isDone ? (
-                    <CheckCircle2 className="w-5 h-5" />
+                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
                   ) : isDraftForThisDay ? (
-                    <RotateCcw className="w-5 h-5" />
+                    <RotateCcw className="w-6 h-6" />
                   ) : (
                     dayIndex + 1
                   )}
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="text-base sm:text-lg font-black text-[var(--color-text)] group-hover:text-[var(--color-primary)] transition-colors truncate">
+                  <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+                    <h4 className="text-base sm:text-xl font-black text-white group-hover:text-[var(--color-primary)] transition-colors truncate">
                       {dayName}
                     </h4>
                     {isSkipped ? (
                       detail?.coach_justified === true ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-[10px] font-black border border-emerald-500/30 shrink-0 flex items-center gap-1">
-                          <ShieldCheck className="w-3 h-3" /> Giustificato dal Coach
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-black border border-emerald-500/40 shrink-0 flex items-center gap-1">
+                          <ShieldCheck className="w-3.5 h-3.5" /> Giustificato
                         </span>
                       ) : detail?.coach_justified === false ? (
-                        <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 text-[10px] font-black border border-rose-500/30 shrink-0 flex items-center gap-1">
-                          <XCircle className="w-3 h-3" /> Non Giustificato
+                        <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 text-xs font-black border border-rose-500/40 shrink-0 flex items-center gap-1">
+                          <XCircle className="w-3.5 h-3.5" /> Non Giustificato
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-black border border-amber-500/30 shrink-0 flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> In attesa di valutazione
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-black border border-amber-500/40 shrink-0 flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5" /> In attesa
                         </span>
                       )
                     ) : isDone ? (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-[10px] font-black border border-emerald-500/30 shrink-0">
-                        Completato
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-black border border-emerald-500/40 shrink-0">
+                        ✓ Completato
                       </span>
                     ) : isDraftForThisDay ? (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 text-[10px] font-black border border-amber-500/40 shrink-0">
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/25 text-amber-300 text-xs font-black border border-amber-500/50 shrink-0">
                         In corso
                       </span>
                     ) : isNextUpcoming ? (
-                      <span className="px-2 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[10px] font-black border border-[var(--color-primary)]/30 shrink-0">
-                        Oggi
+                      <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/25 text-[var(--color-primary)] text-xs font-black border border-[var(--color-primary)]/40 shrink-0">
+                        ★ Prossimo
                       </span>
                     ) : null}
                   </div>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
+                  <p className="text-sm font-medium text-slate-300 mt-1 truncate">
                     {isSkipped
                       ? `Saltato: ${detail?.skip_reason || 'Motivi personali'}`
                       : isDone
-                      ? 'Seduta già registrata col coach'
+                      ? 'Seduta già registrata'
                       : isDraftForThisDay
                       ? 'Sessione salvata in sospeso'
                       : isNextUpcoming
@@ -317,7 +324,7 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
                       e.stopPropagation();
                       onStart(assigned, selectedWeek, dayName);
                     }}
-                    className="px-3.5 py-2 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border border-[var(--color-border)] text-xs font-bold transition-all cursor-pointer"
+                    className="min-h-[44px] px-4 sm:px-5 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-slate-200 hover:text-white border border-slate-700 text-xs sm:text-sm font-black transition-all cursor-pointer shadow-sm"
                   >
                     Rivedi
                   </button>
@@ -328,13 +335,25 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
                       e.stopPropagation();
                       onStart(assigned, selectedWeek, dayName);
                     }}
-                    className="px-4 py-2 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md flex items-center gap-1.5 active:scale-95"
+                    className="min-h-[44px] px-5 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-sm sm:text-base transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 flex items-center gap-2 active:scale-95"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
+                    <RotateCcw className="w-4 h-4 stroke-[2.5]" />
                     <span>Riprendi</span>
                   </button>
+                ) : isNextUpcoming ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStart(assigned, selectedWeek, dayName);
+                    }}
+                    className="min-h-[44px] px-5 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-sm sm:text-base transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/25 flex items-center gap-2 active:scale-95"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                    <span>Inizia</span>
+                  </button>
                 ) : (
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[var(--color-surface-strong)] group-hover:bg-[var(--color-primary)] text-[var(--color-text-muted)] group-hover:text-slate-950 border border-[var(--color-border)] group-hover:border-[var(--color-primary)] flex items-center justify-center transition-all shadow-sm">
+                  <div className="w-10 h-10 rounded-xl sm:rounded-2xl flex items-center justify-center bg-[var(--color-surface-strong)] text-slate-400 group-hover:text-[var(--color-primary)] border border-slate-700/60 group-hover:border-[var(--color-primary)]/50 transition-all">
                     <ChevronRight className="w-5 h-5 transition-transform group-hover:translate-x-0.5" />
                   </div>
                 )}
@@ -651,8 +670,19 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     }
   };
 
-  // Identifica la prima scheda attiva e il prossimo allenamento di oggi
-  const firstAssigned = myAssignedWorkouts[0];
+  // Identifica la scheda attiva: ordina SEMPRE per data decrescente, poi cerca is_active=true
+  // CRITICO: garantisce che se ci sono più schede attive o storiche venga scelta quella più recente
+  const firstAssigned = useMemo(() => {
+    if (myAssignedWorkouts.length === 0) return undefined;
+    const sorted = [...myAssignedWorkouts].sort((a, b) => {
+      const dA = new Date(a.assigned_date || a.start_date || 0).getTime();
+      const dB = new Date(b.assigned_date || b.start_date || 0).getTime();
+      return dB - dA;
+    });
+    const active = sorted.find((a) => a.is_active === true);
+    if (active) return active;
+    return sorted[0];
+  }, [myAssignedWorkouts]);
 
   const memoizedAthleteIds = useMemo(() => {
     return Array.from(new Set([firstAssigned?.athlete_id, user?.athleteId, user?.id].filter(Boolean) as string[]));
@@ -706,6 +736,9 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     }
     return {};
   });
+
+  // Conteggio sessioni completate per settimana (fallback count-based per calculateCurrentActiveWeek)
+  const [globalSessionsPerWeek, setGlobalSessionsPerWeek] = useState<Record<number, number>>({});
 
   // Idratazione reattiva rapida della cache se i parametri atleta si stabilizzano post-render
   useEffect(() => {
@@ -802,7 +835,10 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
             const targetWIds = workoutToTargetIdsMap.get(wId) || [wId];
             const matchingRows = data.filter((e) => targetWIds.includes(e.workout_id));
             const rawDays = matchingRows.map((e) => (e.day_name || '').trim()).filter(Boolean);
-            const unique = Array.from(new Set(rawDays)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            const unique: string[] = [];
+            rawDays.forEach((d) => {
+              if (d && !unique.includes(d)) unique.push(d);
+            });
             const daysToSet = unique.length > 0 ? unique : ['Giorno 1'];
             newWorkoutDaysMap[wId] = daysToSet;
             try {
@@ -836,6 +872,8 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   firstAssignedRef.current = firstAssigned;
   const workoutDaysMapRef = React.useRef(workoutDaysMap);
   workoutDaysMapRef.current = workoutDaysMap;
+  const myAssignedWorkoutsRef = React.useRef(myAssignedWorkouts);
+  myAssignedWorkoutsRef.current = myAssignedWorkouts;
   const isSyncingRef = React.useRef(false);
   const lastSyncTimestampRef = React.useRef(0);
 
@@ -845,8 +883,11 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     if (!currentFirstAssigned || isSyncingRef.current) return;
 
     // Cooldown per evitare query ripetute a cascata sui render iniziali
+    // NOTA: il primo sync (lastSyncTimestampRef.current === 0) bypassa sempre il cooldown
+    // per non restare bloccati sulla cache localStorage stale all'avvio.
     const now = Date.now();
-    if (!force && now - lastSyncTimestampRef.current < 6000) return;
+    const isFirstSync = lastSyncTimestampRef.current === 0;
+    if (!force && !isFirstSync && now - lastSyncTimestampRef.current < 6000) return;
 
     const athIds = Array.from(
       new Set([currentFirstAssigned.athlete_id, user?.athleteId, currentAthlete?.id, user?.id].filter(Boolean) as string[])
@@ -861,7 +902,8 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       ? currentFirstAssigned.workout.total_weeks
       : 1;
 
-    const allWorkoutIds = myAssignedWorkouts.flatMap((aw) => [
+    // Usa la ref per evitare closure stale su myAssignedWorkouts
+    const allWorkoutIds = myAssignedWorkoutsRef.current.flatMap((aw) => [
       aw.workout_id,
       aw.workout?.id,
       aw.workout?.parent_template_id,
@@ -902,6 +944,10 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       const currentMap: Record<string, boolean> = {};
       const detailsMap: Record<string, { status?: string; skip_reason?: string; coach_justified?: boolean | null; skip_notes?: string }> = {};
 
+      // Usa la ref per evitare closure stale (workoutDaysMap potrebbe non essere ancora popolata
+      // al momento della creazione della callback, ma la ref ha sempre il valore aggiornato)
+      const currentDays = workoutDaysMapRef.current[currentFirstAssigned.workout_id] || [];
+
       rawSessions.forEach((s) => {
         const rawWeek = Number(s.week_number);
         const rawD = (s.day_name || '').trim();
@@ -918,7 +964,11 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
         if (isCurrentWorkout && rawWeek > 0 && normD) {
           const wNum = totalWeeksCount > 0 ? Math.min(totalWeeksCount, rawWeek) : rawWeek;
-          [rawD, normD].filter(Boolean).forEach((key) => {
+          const matchedPlannedDay = currentDays.find((d) => matchDayNames(d, rawD));
+          const canonicalDay = matchedPlannedDay || rawD;
+          const normCanonical = normalizeDayName(canonicalDay);
+
+          [rawD, normD, canonicalDay, normCanonical].filter(Boolean).forEach((key) => {
             if (isDone) {
               currentMap[`${wNum}-${key}`] = true;
             }
@@ -934,8 +984,38 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         }
       });
 
+      // Riconciliazione avanzamento: se le sessioni completate in una settimana coprono il numero di giorni previsti
+      // CRITICO: filtra per il workout corrente (non tutte le sessioni dell'atleta)
+      const currentWorkoutSessions = rawSessions.filter((s) =>
+        isCompletedSession(s) &&
+        relatedWorkoutIds.length > 0 &&
+        s.workout_id != null &&
+        relatedWorkoutIds.includes(s.workout_id)
+      );
+      const completedSessionsByWeek = new Map<number, number>();
+      currentWorkoutSessions.forEach((s) => {
+        const w = Number(s.week_number);
+        if (w > 0) completedSessionsByWeek.set(w, (completedSessionsByWeek.get(w) || 0) + 1);
+      });
+
+      if (currentDays.length > 0) {
+        completedSessionsByWeek.forEach((count, w) => {
+          if (count >= currentDays.length) {
+            currentDays.forEach((d) => {
+              const norm = normalizeDayName(d);
+              currentMap[`${w}-${d}`] = true;
+              currentMap[`${w}-${norm}`] = true;
+            });
+          }
+        });
+      }
+
       setGlobalProgressMap(currentMap);
       setGlobalSessionDetailsMap(detailsMap);
+      // Salva il conteggio sessioni per settimana per il fallback count-based di calculateCurrentActiveWeek
+      const sessionsPerWeekRecord: Record<number, number> = {};
+      completedSessionsByWeek.forEach((count, w) => { sessionsPerWeekRecord[w] = count; });
+      setGlobalSessionsPerWeek(sessionsPerWeekRecord);
       setCachedSessionsForHistory(rawSessions);
 
       // Aggiorna anche localStorage come cache
@@ -968,6 +1048,17 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       window.removeEventListener('athlete_workout_skipped', handleWorkoutDone);
     };
   }, [syncProgressFromDb, firstAssigned?.workout_id]);
+
+  // Quando workoutDaysMap si popola per la prima volta, forza un nuovo sync
+  // così la riconciliazione settimanale può usare i giorni reali della scheda
+  const prevDaysMapKeyCountRef = React.useRef(0);
+  useEffect(() => {
+    const currentKeyCount = Object.keys(workoutDaysMap).length;
+    if (currentKeyCount > 0 && prevDaysMapKeyCountRef.current === 0) {
+      syncProgressFromDb(true);
+    }
+    prevDaysMapKeyCountRef.current = currentKeyCount;
+  }, [workoutDaysMap, syncProgressFromDb]);
 
   if (isOnboardingModalOpen) {
     return (
@@ -1096,6 +1187,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
               sessionDetailsMap={globalSessionDetailsMap}
               days={workoutDaysMap[assigned.workout_id] || []}
               isLoadingDays={Boolean(loadingDaysMap[assigned.workout_id])}
+              completedSessionsPerWeek={globalSessionsPerWeek}
             />
           ))}
         </div>

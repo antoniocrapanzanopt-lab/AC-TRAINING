@@ -395,6 +395,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     const [moved] = newDays.splice(fromIndex, 1);
     newDays.splice(toIndex, 0, moved);
     setDaysList(newDays);
+    setExercises(prev => syncOrderIndices(prev, newDays));
     showSuccess('Ordine Giorni Aggiornato', `"${moved}" spostato in posizione ${toIndex + 1}.`);
   };
 
@@ -412,6 +413,29 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     if (idx >= 0 && idx < daysList.length - 1) {
       moveDay(idx, idx + 1);
     }
+  };
+
+  // Sincronizza coerentemente order_index ((dayIdx * 1000) + posInDay) per ciascun giorno/settimana rispettando l'ordine di daysList
+  const syncOrderIndices = (
+    exs: Partial<WorkoutExercise>[],
+    currentDaysList: string[] = daysList
+  ): Partial<WorkoutExercise>[] => {
+    const getIdx = (dayName?: string) => {
+      if (!dayName) return 0;
+      const clean = dayName.trim().toLowerCase();
+      const idx = currentDaysList.findIndex(d => d.trim().toLowerCase() === clean);
+      return idx >= 0 ? idx : 999;
+    };
+    const dayCounters = new Map<string, number>();
+    return exs.map(ex => {
+      const dayKey = `${ex.week_number || 1}__${(ex.day_name || 'Giorno A').trim().toLowerCase()}`;
+      const posInDay = dayCounters.get(dayKey) || 0;
+      dayCounters.set(dayKey, posInDay + 1);
+      const dayIdx = getIdx(ex.day_name);
+      const targetOrder = (dayIdx * 1000) + posInDay;
+      if (ex.order_index === targetOrder) return ex;
+      return { ...ex, order_index: targetOrder };
+    });
   };
 
   // Drag and Drop & Riordinamento Esercizi
@@ -445,7 +469,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       const next = [...prev];
       const [moved] = next.splice(draggedExerciseGlobalIndex, 1);
       next.splice(targetGlobalIdx, 0, moved);
-      return next;
+      return syncOrderIndices(next);
     });
 
     showSuccess('Esercizio Spostato', `"${sourceEx?.name || 'Esercizio'}" riposizionato con successo.`);
@@ -463,12 +487,15 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     if (!currentEx) return;
 
     const currentWeek = currentEx.week_number || 1;
-    const currentDayName = currentEx.day_name || 'Giorno A';
+    const currentDayName = (currentEx.day_name || 'Giorno A').trim().toLowerCase();
 
     // Indici degli esercizi nel giorno attivo
     const dayIndices: number[] = [];
     exercises.forEach((ex, idx) => {
-      if ((ex.week_number || 1) === currentWeek && (ex.day_name || 'Giorno A') === currentDayName) {
+      if (
+        (ex.week_number || 1) === currentWeek && 
+        (ex.day_name || 'Giorno A').trim().toLowerCase() === currentDayName
+      ) {
         dayIndices.push(idx);
       }
     });
@@ -486,7 +513,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       const temp = next[globalIndex];
       next[globalIndex] = next[targetGlobalIndex];
       next[targetGlobalIndex] = temp;
-      return next;
+      return syncOrderIndices(next);
     });
 
     showSuccess(
@@ -517,7 +544,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       dayIndices.forEach((targetIdx, i) => {
         next[targetIdx] = reversed[i];
       });
-      return next;
+      return syncOrderIndices(next);
     });
 
     showSuccess('Ordine Invertito', `Invertita la sequenza dei ${dayIndices.length} esercizi in "${activeDay}".`);
@@ -810,8 +837,14 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
             };
           });
 
-          // Estrai giorni unici
-          const uniqueDays = Array.from(new Set(mapped.map(e => e.day_name || 'Giorno A'))).filter(Boolean);
+          // Estrai giorni unici preservando l'ordine naturale garantito da order_index
+          const uniqueDays: string[] = [];
+          mapped.forEach((ex) => {
+            const d = (ex.day_name || 'Giorno A').trim();
+            if (d && !uniqueDays.includes(d)) {
+              uniqueDays.push(d);
+            }
+          });
           const finalDays = uniqueDays.length > 0 ? uniqueDays : ['Giorno A', 'Giorno B'];
           
           // Estrai max settimane
@@ -1062,6 +1095,7 @@ ${result.regole_adattamento || '-'}
 
   const addExercise = () => {
     const newEx: Partial<WorkoutExercise> = {
+      id: `temp-new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: '',
       sets: 3,
       reps_target: '10',
@@ -1071,10 +1105,10 @@ ${result.regole_adattamento || '-'}
       is_time_based: false,
       notes: '',
     };
-    setExercises([...exercises, newEx]);
+    setExercises(prev => syncOrderIndices([...prev, newEx]));
   };
 
-  const updateExercise = (globalIndex: number, field: keyof WorkoutExercise, value: any) => {
+  const updateExercise = <K extends keyof WorkoutExercise>(globalIndex: number, field: K, value: WorkoutExercise[K]) => {
     setExercises(prev => {
       const copy = [...prev];
       const targetEx = copy[globalIndex];
@@ -1084,16 +1118,16 @@ ${result.regole_adattamento || '-'}
 
       if (autoPropagateToFutureWeeks && totalWeeks > 1) {
         const targetWeek = targetEx.week_number || 1;
-        const targetDay = targetEx.day_name || 'Giorno A';
+        const targetDayClean = (targetEx.day_name || 'Giorno A').trim().toLowerCase();
         if (targetWeek < totalWeeks) {
           const dayExercises = prev.filter(
-            ex => (ex.week_number || 1) === targetWeek && (ex.day_name || 'Giorno A') === targetDay
+            ex => (ex.week_number || 1) === targetWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === targetDayClean
           );
           const posInDay = dayExercises.indexOf(targetEx);
 
           for (let w = targetWeek + 1; w <= totalWeeks; w++) {
             const futureDayExercises = copy.filter(
-              ex => (ex.week_number || 1) === w && (ex.day_name || 'Giorno A') === targetDay
+              ex => (ex.week_number || 1) === w && (ex.day_name || 'Giorno A').trim().toLowerCase() === targetDayClean
             );
             const matchingEx = (posInDay >= 0 && posInDay < futureDayExercises.length)
               ? futureDayExercises[posInDay]
@@ -1187,16 +1221,16 @@ ${result.regole_adattamento || '-'}
 
       if (autoPropagateToFutureWeeks && totalWeeks > 1) {
         const targetWeek = exToUpdate.week_number || 1;
-        const targetDay = exToUpdate.day_name || 'Giorno A';
+        const targetDayClean = (exToUpdate.day_name || 'Giorno A').trim().toLowerCase();
         if (targetWeek < totalWeeks) {
           const dayExercises = prev.filter(
-            ex => (ex.week_number || 1) === targetWeek && (ex.day_name || 'Giorno A') === targetDay
+            ex => (ex.week_number || 1) === targetWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === targetDayClean
           );
           const posInDay = dayExercises.indexOf(exToUpdate);
 
           for (let w = targetWeek + 1; w <= totalWeeks; w++) {
             const futureDayExercises = copy.filter(
-              ex => (ex.week_number || 1) === w && (ex.day_name || 'Giorno A') === targetDay
+              ex => (ex.week_number || 1) === w && (ex.day_name || 'Giorno A').trim().toLowerCase() === targetDayClean
             );
             const matchingEx = (posInDay >= 0 && posInDay < futureDayExercises.length)
               ? futureDayExercises[posInDay]
@@ -1222,6 +1256,7 @@ ${result.regole_adattamento || '-'}
     if (!targetEx) return;
     const targetWeek = targetEx.week_number || 1;
     const targetDay = targetEx.day_name || 'Giorno A';
+    const targetDayClean = targetDay.trim().toLowerCase();
 
     if (totalWeeks <= 1 || targetWeek >= totalWeeks) {
       showInfo('Nessuna settimana successiva', 'Questa è già l\'ultima settimana del programma.');
@@ -1229,7 +1264,7 @@ ${result.regole_adattamento || '-'}
     }
 
     const dayExercises = exercises.filter(
-      ex => (ex.week_number || 1) === targetWeek && (ex.day_name || 'Giorno A') === targetDay
+      ex => (ex.week_number || 1) === targetWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === targetDayClean
     );
     const posInDay = dayExercises.indexOf(targetEx);
 
@@ -1238,7 +1273,7 @@ ${result.regole_adattamento || '-'}
 
       for (let w = targetWeek + 1; w <= totalWeeks; w++) {
         const futureDayExercises = next.filter(
-          ex => (ex.week_number || 1) === w && (ex.day_name || 'Giorno A') === targetDay
+          ex => (ex.week_number || 1) === w && (ex.day_name || 'Giorno A').trim().toLowerCase() === targetDayClean
         );
 
         const matchingEx = (posInDay >= 0 && posInDay < futureDayExercises.length)
@@ -1277,7 +1312,7 @@ ${result.regole_adattamento || '-'}
         }
       }
 
-      return next;
+      return syncOrderIndices(next);
     });
 
     showSuccess(
@@ -1293,8 +1328,9 @@ ${result.regole_adattamento || '-'}
       return;
     }
 
+    const cleanDayName = dayName.trim().toLowerCase();
     const currentDayExercises = exercises.filter(
-      ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A') === dayName
+      ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === cleanDayName
     );
 
     if (currentDayExercises.length === 0) {
@@ -1303,8 +1339,16 @@ ${result.regole_adattamento || '-'}
     }
 
     setExercises(prev => {
+      // Registra gli esercizi sovrascritti per la corretta cancellazione nel database
+      const replaced = prev.filter(
+        ex => (ex.week_number || 1) > activeWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === cleanDayName
+      );
+      replaced.forEach(ex => {
+        if (ex.id) explicitlyDeletedExerciseIdsRef.current.add(ex.id);
+      });
+
       const filtered = prev.filter(
-        ex => !((ex.week_number || 1) > activeWeek && (ex.day_name || 'Giorno A') === dayName)
+        ex => !((ex.week_number || 1) > activeWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === cleanDayName)
       );
 
       const clonedFutureExercises: Partial<WorkoutExercise>[] = [];
@@ -1320,7 +1364,7 @@ ${result.regole_adattamento || '-'}
         });
       }
 
-      return [...filtered, ...clonedFutureExercises];
+      return syncOrderIndices([...filtered, ...clonedFutureExercises]);
     });
 
     showSuccess(
@@ -1343,6 +1387,12 @@ ${result.regole_adattamento || '-'}
     }
 
     setExercises(prev => {
+      // Registra gli esercizi sovrascritti per la corretta cancellazione nel database
+      const replaced = prev.filter(ex => (ex.week_number || 1) > sourceWeek);
+      replaced.forEach(ex => {
+        if (ex.id) explicitlyDeletedExerciseIdsRef.current.add(ex.id);
+      });
+
       const filtered = prev.filter(ex => (ex.week_number || 1) <= sourceWeek);
       const clonedFutureExercises: Partial<WorkoutExercise>[] = [];
 
@@ -1356,7 +1406,7 @@ ${result.regole_adattamento || '-'}
         });
       }
 
-      return [...filtered, ...clonedFutureExercises];
+      return syncOrderIndices([...filtered, ...clonedFutureExercises]);
     });
 
     showSuccess(
@@ -1433,8 +1483,9 @@ ${result.regole_adattamento || '-'}
   const removeExercise = (globalIndex: number) => {
     const exToRemove = exercises[globalIndex];
     if (exToRemove) {
+      const targetDayClean = (exToRemove.day_name || 'Giorno A').trim().toLowerCase();
       const exercisesInSameDay = exercises.filter(
-        (e) => (e.day_name || 'Giorno A') === (exToRemove.day_name || 'Giorno A')
+        (e) => (e.day_name || 'Giorno A').trim().toLowerCase() === targetDayClean
       );
       if (exercisesInSameDay.length === 1) {
         const confirmDelete = window.confirm(
@@ -1447,7 +1498,7 @@ ${result.regole_adattamento || '-'}
       }
     }
     const newEx = exercises.filter((_, i) => i !== globalIndex);
-    setExercises(newEx);
+    setExercises(syncOrderIndices(newEx));
   };
 
   const addDay = () => {
@@ -1598,7 +1649,7 @@ ${result.regole_adattamento || '-'}
     });
 
     setTotalWeeks(newWeekNum);
-    setExercises(prev => [...prev, ...cloned]);
+    setExercises(prev => syncOrderIndices([...prev, ...cloned]));
     setActiveWeek(newWeekNum);
     showSuccess(
       'Settimana Duplicata',
@@ -1626,6 +1677,12 @@ ${result.regole_adattamento || '-'}
       showError('La settimana copiata non contiene esercizi.');
       return;
     }
+
+    // Registra gli esercizi della settimana target per l'eliminazione dal database
+    const replaced = exercises.filter(ex => (ex.week_number || 1) === targetWeekNum);
+    replaced.forEach(ex => {
+      if (ex.id) explicitlyDeletedExerciseIdsRef.current.add(ex.id);
+    });
 
     const otherExercises = exercises.filter(ex => (ex.week_number || 1) !== targetWeekNum);
     const pasted = sourceExercises.map((ex, idx) => {
@@ -1665,7 +1722,7 @@ ${result.regole_adattamento || '-'}
       };
     });
 
-    setExercises([...otherExercises, ...pasted]);
+    setExercises(syncOrderIndices([...otherExercises, ...pasted]));
     showSuccess('Settimana Incollata', `Contenuto della Settimana ${copiedWeekNumber} incollato nella Settimana ${targetWeekNum} con progressione applicata.`);
   };
 
@@ -1760,8 +1817,9 @@ ${result.regole_adattamento || '-'}
 
   // --- GESTIONE E DUPLICAZIONE GIORNI ---
   const duplicateDay = (sourceDayName: string) => {
+    const cleanSource = sourceDayName.trim().toLowerCase();
     const sourceExercises = exercises.filter(
-      ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A') === sourceDayName
+      ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === cleanSource
     );
 
     // Trova la prossima lettera disponibile per il giorno
@@ -1788,14 +1846,15 @@ ${result.regole_adattamento || '-'}
     }));
 
     setDaysList(prev => [...prev, newDayName]);
-    setExercises(prev => [...prev, ...cloned]);
+    setExercises(prev => syncOrderIndices([...prev, ...cloned]));
     setActiveDay(newDayName);
     showSuccess('Giorno Duplicato', `Creato "${newDayName}" con ${sourceExercises.length} esercizi duplicati da "${sourceDayName}".`);
   };
 
   const copyDay = (sourceDayName: string) => {
+    const cleanSource = sourceDayName.trim().toLowerCase();
     const sourceExercises = exercises.filter(
-      ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A') === sourceDayName
+      ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === cleanSource
     );
     if (sourceExercises.length === 0) {
       showError(`"${sourceDayName}" non contiene esercizi da copiare.`);
@@ -1811,8 +1870,18 @@ ${result.regole_adattamento || '-'}
       return;
     }
 
+    const targetClean = targetDayName.trim().toLowerCase();
+
+    // Registra gli esercizi sovrascritti del giorno per la corretta cancellazione nel database
+    const replaced = exercises.filter(
+      ex => (ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === targetClean
+    );
+    replaced.forEach(ex => {
+      if (ex.id) explicitlyDeletedExerciseIdsRef.current.add(ex.id);
+    });
+
     const otherExercises = exercises.filter(
-      ex => !((ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A') === targetDayName)
+      ex => !((ex.week_number || 1) === activeWeek && (ex.day_name || 'Giorno A').trim().toLowerCase() === targetClean)
     );
 
     const pasted = copiedDayData.exercises.map((ex, idx) => ({
@@ -1822,7 +1891,7 @@ ${result.regole_adattamento || '-'}
       week_number: activeWeek,
     }));
 
-    setExercises([...otherExercises, ...pasted]);
+    setExercises(syncOrderIndices([...otherExercises, ...pasted]));
     showSuccess('Giorno Incollato', `Esercizi incollati in "${targetDayName}".`);
   };
 
@@ -2034,13 +2103,13 @@ ${result.regole_adattamento || '-'}
 
     const cloned: Partial<WorkoutExercise> = {
       ...target,
-      id: `cloned-single-ex-${Date.now()}`,
+      id: `cloned-single-ex-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: `${target.name || 'Esercizio'} (Copia)`,
     };
 
     const next = [...exercises];
     next.splice(globalIndex + 1, 0, cloned);
-    setExercises(next);
+    setExercises(syncOrderIndices(next));
     showSuccess('Esercizio Duplicato', `"${cloned.name}" aggiunto alla seduta.`);
   };
 
@@ -2182,25 +2251,32 @@ ${result.regole_adattamento || '-'}
       }
     });
 
-    // Ordinamento stabile e coerente per settimana, giorno e ordine interno
+    // Raggruppamento e ordinamento stabile per settimana e giorno, preservando TASSATIVAMENTE l'ordine della UI
+    const getDayIndex = (dayName?: string) => {
+      if (!dayName) return 0;
+      const clean = dayName.trim().toLowerCase();
+      const idx = daysList.findIndex(d => d.trim().toLowerCase() === clean);
+      return idx >= 0 ? idx : 999;
+    };
+
     const sortedExercises = [...validExercises].sort((a, b) => {
       const weekDiff = (a.week_number || 1) - (b.week_number || 1);
       if (weekDiff !== 0) return weekDiff;
-      const dayIndexA = daysList.indexOf(a.day_name || 'Giorno A');
-      const dayIndexB = daysList.indexOf(b.day_name || 'Giorno A');
-      const safeA = dayIndexA >= 0 ? dayIndexA : 999;
-      const safeB = dayIndexB >= 0 ? dayIndexB : 999;
-      if (safeA !== safeB) return safeA - safeB;
-      const orderA = typeof a.order_index === 'number' ? a.order_index : 0;
-      const orderB = typeof b.order_index === 'number' ? b.order_index : 0;
-      return orderA - orderB;
+      const dayIndexA = getDayIndex(a.day_name);
+      const dayIndexB = getDayIndex(b.day_name);
+      if (dayIndexA !== dayIndexB) return dayIndexA - dayIndexB;
+      // Per lo stesso giorno e settimana: preserva l'ordine visuale reale dell'array validExercises!
+      return validExercises.indexOf(a) - validExercises.indexOf(b);
     });
 
     const dayCounters = new Map<string, number>();
     const exercisesToSave: Partial<WorkoutExercise>[] = sortedExercises.map((ex) => {
-      const key = `${ex.week_number || 1}__${ex.day_name || 'Giorno A'}`;
-      const currentIdx = dayCounters.get(key) || 0;
-      dayCounters.set(key, currentIdx + 1);
+      const dayKey = `${ex.week_number || 1}__${(ex.day_name || 'Giorno A').trim().toLowerCase()}`;
+      const posInDay = dayCounters.get(dayKey) || 0;
+      dayCounters.set(dayKey, posInDay + 1);
+
+      const dayIdx = getDayIndex(ex.day_name);
+      const calculatedOrderIndex = (dayIdx * 1000) + posInDay;
 
       return {
         id: ex.id,
@@ -2209,7 +2285,7 @@ ${result.regole_adattamento || '-'}
         sets: Number(ex.sets) || 1,
         reps_target: ex.reps_target ? String(ex.reps_target) : '10',
         rest_seconds: Number(ex.rest_seconds) || 60,
-        order_index: currentIdx,
+        order_index: calculatedOrderIndex,
         notes: encodeGroupTagInNotes(ex.notes, ex.group_tag) || undefined,
         day_name: ex.day_name || 'Giorno A',
         week_number: Number(ex.week_number) || 1,
@@ -2258,6 +2334,16 @@ ${result.regole_adattamento || '-'}
           if (!forkRes.success) throw new Error(forkRes.error || 'Errore durante la duplicazione della scheda atleta');
           showSuccess('Copia locale creata e assegnata all\'atleta con successo!');
         } else {
+          // Raccogli tutti gli ID originali non più presenti nella scheda salvata
+          const nextSavedIds = new Set(exercisesToSave.map(e => e.id).filter(Boolean) as string[]);
+          const allMissingOriginalIds = (originalSnapshotRef.current?.exerciseIds || []).filter(
+            id => !nextSavedIds.has(id)
+          );
+          const combinedDeletedIds = Array.from(new Set([
+            ...allMissingOriginalIds,
+            ...Array.from(explicitlyDeletedExerciseIdsRef.current)
+          ]));
+
           // Modifica in-place sicura e diretta!
           const updateRes = await updateWorkoutTemplate(
             initialWorkout.id,
@@ -2272,7 +2358,7 @@ ${result.regole_adattamento || '-'}
             exercisesToSave,
             { 
               confirmedDestructive: isExplicitEmptyConfirmed,
-              deletedExerciseIds: Array.from(explicitlyDeletedExerciseIdsRef.current),
+              deletedExerciseIds: combinedDeletedIds,
             }
           );
           if (!updateRes.success) throw new Error(updateRes.error || 'Errore durante l\'aggiornamento della scheda');
@@ -2448,6 +2534,97 @@ ${result.regole_adattamento || '-'}
           </div>
         </div>
 
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* SUB-HEADER: SEGMENTED NAVIGATION BAR PRINCIPALE A 4 MODULI        */}
+        {/* Fissa, non scorrevole, previene qualsiasi sovrapposizione         */}
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        <div className="px-4 sm:px-6 py-2.5 border-b border-slate-800 bg-slate-950/95 flex items-center justify-between gap-3 shrink-0 z-20">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            <button
+              type="button"
+              onClick={() => setActiveBuilderTab('exercises')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
+                activeBuilderTab === 'exercises'
+                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Dumbbell className="w-4 h-4" />
+              <span>Esercizi & Scheda</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
+                {exercises.filter(e => (e.name || '').trim()).length} es.
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveBuilderTab('volume')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
+                activeBuilderTab === 'volume'
+                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Activity className="w-4 h-4" />
+              <span>Analisi Volume</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
+                {volumeData.totalSetsAllMuscles} set
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveBuilderTab('ai_coach')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
+                activeBuilderTab === 'ai_coach'
+                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>AI Volume Coach</span>
+              {aiAnalysis.criticalCount > 0 ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-rose-500 text-white font-black animate-pulse">
+                  {aiAnalysis.criticalCount} criticità
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
+                  {aiAnalysis.overallScore}/100
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveBuilderTab('info')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
+                activeBuilderTab === 'info'
+                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Dati & Note</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
+                {totalWeeks} sett.
+              </span>
+            </button>
+          </div>
+
+          <div className="hidden md:flex items-center gap-2.5 shrink-0">
+            <span className="text-xs font-bold text-slate-300 max-w-[200px] lg:max-w-[300px] truncate" title={title || 'Programma Senza Titolo'}>
+              {title || 'Programma Senza Titolo'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveBuilderTab('info')}
+              className="text-[11px] font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer shrink-0"
+            >
+              Modifica
+            </button>
+          </div>
+        </div>
+
         {/* Scrollable Body (Senza Barre di Scorrimento Visibili) */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 no-scrollbar">
           
@@ -2573,80 +2750,7 @@ ${result.regole_adattamento || '-'}
             </div>
           )}
           
-          {/* ══════════════════════════════════════════════════════════════════ */}
-          {/* SEGMENTED NAVIGATION BAR PRINCIPALE A 4 MODULI                     */}
-          {/* ══════════════════════════════════════════════════════════════════ */}
-          <div className="flex items-center gap-1.5 p-1.5 bg-slate-950/90 rounded-2xl border border-slate-800 shadow-xl overflow-x-auto no-scrollbar shrink-0 sticky top-0 z-30 backdrop-blur-md">
-            <button
-              type="button"
-              onClick={() => setActiveBuilderTab('exercises')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
-                activeBuilderTab === 'exercises'
-                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
-              }`}
-            >
-              <Dumbbell className="w-4 h-4" />
-              <span>Esercizi & Scheda</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
-                {exercises.filter(e => (e.name || '').trim()).length} es.
-              </span>
-            </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveBuilderTab('volume')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
-                activeBuilderTab === 'volume'
-                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
-              }`}
-            >
-              <Activity className="w-4 h-4" />
-              <span>Analisi Volume</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
-                {volumeData.totalSetsAllMuscles} set
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveBuilderTab('ai_coach')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
-                activeBuilderTab === 'ai_coach'
-                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>AI Volume Coach</span>
-              {aiAnalysis.criticalCount > 0 ? (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-rose-500 text-white font-black animate-pulse">
-                  {aiAnalysis.criticalCount} criticità
-                </span>
-              ) : (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
-                  {aiAnalysis.overallScore}/100
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveBuilderTab('info')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shrink-0 cursor-pointer ${
-                activeBuilderTab === 'info'
-                  ? 'bg-[var(--color-primary)] text-black shadow-lg font-black'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>Dati & Note</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/20 font-bold">
-                {totalWeeks} sett.
-              </span>
-            </button>
-          </div>
 
           {/* ══════════════════════════════════════════════════════════════════ */}
           {/* TAB 4: DATI GENERALI, CARTELLA & NOTE PROGRAMMA                    */}
@@ -2805,25 +2909,6 @@ ${result.regole_adattamento || '-'}
           {/* ══════════════════════════════════════════════════════════════════ */}
           {activeBuilderTab === 'exercises' && (
             <div className="space-y-5 animate-in fade-in duration-150">
-              {/* Header Rapido Scheda */}
-              <div className="flex items-center justify-between gap-3 px-1">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm font-black text-white truncate">
-                    {title || 'Programma Senza Titolo'}
-                  </span>
-                  <span className="text-xs text-slate-400 font-semibold shrink-0">
-                    • {totalWeeks} sett.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveBuilderTab('info')}
-                  className="text-xs font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer shrink-0"
-                >
-                  Modifica Dati & Note
-                </button>
-              </div>
-
           {/* BARRA SETTIMANE */}
           <div className="p-3.5 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -3485,7 +3570,7 @@ ${result.regole_adattamento || '-'}
                         : 'seconds';
 
                       return (
-                        <React.Fragment key={globalIdx}>
+                        <React.Fragment key={ex.id || `row-${ex.week_number || 1}-${ex.day_name || 'A'}-${globalIdx}`}>
                           {/* BANNER RAGGRUPPAMENTO SUPER SERIE / CIRCUITO (MOSTRATO SOPRA IL PRIMO ELEMENTO DEL BLOCCO) */}
                           {groupInfo.isFirstInGroup && groupInfo.isGrouped && (
                             <div className={`flex items-center justify-between px-3.5 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider shadow-sm mt-3 mb-1 ${
@@ -4193,7 +4278,9 @@ ${result.regole_adattamento || '-'}
                 <button
                   type="button"
                   onClick={() => {
-                    setDaysList((prev) => [...prev].reverse());
+                    const reversed = [...daysList].reverse();
+                    setDaysList(reversed);
+                    setExercises(prev => syncOrderIndices(prev, reversed));
                     showSuccess('Sequenza Giorni Invertita', 'L\'ordine di tutti i giorni è stato invertito.');
                   }}
                   className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0"

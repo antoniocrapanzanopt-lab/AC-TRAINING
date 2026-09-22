@@ -282,10 +282,11 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
     }
   };
 
-  const handleDeleteMetric = async (id: string) => {
-    if (window.confirm('Sei sicuro di voler eliminare questa misurazione?')) {
-      const res = await deleteMetric(id);
-      if (res.success) showSuccess('Misurazione eliminata');
+  const handleDeleteMetric = async (m: (typeof sortedMetrics)[number]) => {
+    const formattedDate = m.date ? new Date(m.date).toLocaleDateString('it-IT') : '';
+    if (window.confirm(`Sei sicuro di voler eliminare la misurazione del ${formattedDate}?`)) {
+      const res = await deleteMetric(m.id, { athleteId: m.athlete_id, date: m.date?.slice(0, 10) });
+      if (res.success) showSuccess('Misurazione eliminata con successo');
       else showError(res.error || 'Errore durante l\'eliminazione');
     }
   };
@@ -745,7 +746,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
                               <Pencil className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleDeleteMetric(m.id)}
+                              onClick={() => handleDeleteMetric(m)}
                               title="Elimina misurazione"
                               aria-label="Elimina misurazione"
                               className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"

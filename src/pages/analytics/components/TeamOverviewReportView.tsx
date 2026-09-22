@@ -24,6 +24,8 @@ import {
   RotateCcw,
   X,
   Table,
+  ShieldAlert,
+  UserCheck,
 } from 'lucide-react';
 import {
   TimeframeOption,
@@ -56,6 +58,7 @@ interface TeamOverviewReportViewProps {
   onSelectAthlete: (athleteId: string) => void;
   onAssignProgram?: (athleteId: string) => void;
   onOpenCopilot?: (athleteId: string, customAlert?: unknown) => void;
+  onResolvePriority?: (prio: DecisionPriorityItem) => Promise<void>;
   onAssignMultiplePrograms?: (athleteIds: string[]) => void;
   activeViewMode?: TeamViewMode;
   onViewModeChange?: (mode: TeamViewMode) => void;
@@ -99,11 +102,14 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
   onSelectAthlete,
   onAssignProgram,
   onOpenCopilot,
+  onResolvePriority,
   onAssignMultiplePrograms,
   activeViewMode,
   onViewModeChange,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [resolvingPrioId, setResolvingPrioId] = useState<string | null>(null);
+  const [priorityCategoryFilter, setPriorityCategoryFilter] = useState<'all' | 'pain' | 'penultimate_week' | 'unassigned'>('all');
   // Default: 'attention' (Richiedono attenzione prioritari)
   const [mainFilter, setMainFilter] = useState<MainFilter>('attention');
   const [secondaryFilters, setSecondaryFilters] = useState<SecondaryFilters>(defaultSecondaryFilters);
@@ -552,94 +558,181 @@ export const TeamOverviewReportView: React.FC<TeamOverviewReportViewProps> = ({
         </div>
       </div>
 
-      {/* ─── 2. PRIORITÀ DI OGGI (MAX 3 AZIONI IMMEDIATE) ─── */}
-      <div id="performance-copilot-priorities" className="p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-2xl space-y-3 relative overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Brain className="w-3.5 h-3.5" />
+      {/* ─── 2. SEGNALAZIONI ATLETI & CENTRO DECISIONALE (TUTTE LE SEGNALAZIONI) ─── */}
+      <div id="performance-copilot-priorities" className="p-5 rounded-3xl bg-slate-950/90 border border-slate-800/90 shadow-2xl space-y-4 relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Brain className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-white flex items-center gap-2">
-                Priorità di Oggi • Decisioni Rapide
+              <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                Segnalazioni Atleti & Decisioni Rapide
               </h3>
+              <p className="text-[11px] text-slate-400 font-medium">
+                Tutti i feedback, fastidi articolari e avvisi rilevati sulle schede attive
+              </p>
             </div>
           </div>
-          <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-800">
-            {reportData.todayPriorities.length} in evidenza
-          </span>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="text-[11px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/20">
+              {reportData.todayPriorities.length} {reportData.todayPriorities.length === 1 ? 'segnalazione attiva' : 'segnalazioni attive'}
+            </span>
+          </div>
         </div>
+
+        {/* Filtri rapidi per categoria di segnalazione */}
+        {reportData.todayPriorities.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pb-1">
+            <button
+              type="button"
+              onClick={() => setPriorityCategoryFilter('all')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                priorityCategoryFilter === 'all'
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              Tutte ({reportData.todayPriorities.length})
+            </button>
+            {reportData.todayPriorities.filter((p) => p.type === 'pain').length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPriorityCategoryFilter('pain')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  priorityCategoryFilter === 'pain'
+                    ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
+                    : 'bg-slate-900 text-slate-400 hover:text-rose-400 border border-slate-800'
+                }`}
+              >
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>Fastidi Articolari ({reportData.todayPriorities.filter((p) => p.type === 'pain').length})</span>
+              </button>
+            )}
+            {reportData.todayPriorities.filter((p) => p.type === 'penultimate_week').length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPriorityCategoryFilter('penultimate_week')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  priorityCategoryFilter === 'penultimate_week'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'bg-slate-900 text-slate-400 hover:text-amber-400 border border-slate-800'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Penultima Settimana ({reportData.todayPriorities.filter((p) => p.type === 'penultimate_week').length})</span>
+              </button>
+            )}
+            {reportData.todayPriorities.filter((p) => p.type === 'unassigned').length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPriorityCategoryFilter('unassigned')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  priorityCategoryFilter === 'unassigned'
+                    ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+                    : 'bg-slate-900 text-slate-400 hover:text-indigo-400 border border-slate-800'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Da Avviare ({reportData.todayPriorities.filter((p) => p.type === 'unassigned').length})</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {reportData.todayPriorities.length === 0 ? (
           <div className="py-6 px-4 rounded-2xl bg-slate-900/40 border border-slate-800/60 text-center flex flex-col items-center justify-center space-y-1">
             <CheckCircle2 className="w-5 h-5 text-emerald-400 mb-1" />
             <p className="text-xs font-bold text-slate-200">Tutti i programmi procedono regolarmente!</p>
-            <p className="text-[11px] text-slate-400">Nessun dolore, stallo critico o blocco in scadenza da gestire oggi. ✨</p>
+            <p className="text-[11px] text-slate-400">Nessun dolore, stallo critico o blocco in scadenza da gestire. ✨</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {reportData.todayPriorities.map((prio) => {
-              const isHigh = prio.urgency === 'high';
-              const isPenultimate = prio.type === 'penultimate_week';
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {reportData.todayPriorities
+              .filter((p) => priorityCategoryFilter === 'all' || p.type === priorityCategoryFilter)
+              .map((prio) => {
+                const isHigh = prio.urgency === 'high';
+                const isPenultimate = prio.type === 'penultimate_week';
+                const isResolving = resolvingPrioId === prio.id;
 
-              return (
-                <div
-                  key={prio.id}
-                  className={`p-3.5 rounded-2xl border flex flex-col justify-between transition-all group ${
-                    isHigh
-                      ? 'bg-rose-950/20 border-rose-500/30 hover:border-rose-500/60'
-                      : isPenultimate
-                      ? 'bg-amber-950/20 border-amber-500/30 hover:border-amber-500/60'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded-md border ${
-                          isHigh
-                            ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                            : isPenultimate
-                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                            : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
-                        }`}
-                      >
-                        {isHigh ? 'Urgente' : isPenultimate ? 'Penultima Settimana' : 'Da Avviare'}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-400 truncate max-w-[120px]">
-                        {prio.athleteName}
-                      </span>
+                return (
+                  <div
+                    key={prio.id}
+                    className={`p-4 rounded-2xl border flex flex-col justify-between transition-all group ${
+                      isHigh
+                        ? 'bg-rose-950/20 border-rose-500/30 hover:border-rose-500/60 shadow-lg shadow-rose-950/20'
+                        : isPenultimate
+                        ? 'bg-amber-950/20 border-amber-500/30 hover:border-amber-500/60 shadow-lg shadow-amber-950/20'
+                        : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded-md border ${
+                            isHigh
+                              ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                              : isPenultimate
+                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                          }`}
+                        >
+                          {isHigh ? 'Urgente • Fastidio' : isPenultimate ? 'Penultima Settimana' : 'Da Avviare'}
+                        </span>
+                        <span className="text-[11px] font-black text-slate-300 truncate max-w-[130px]">
+                          {prio.athleteName}
+                        </span>
+                      </div>
+
+                      <h4 className="text-xs sm:text-sm font-black text-white leading-snug group-hover:text-[var(--color-primary)] transition-colors">
+                        {prio.title}
+                      </h4>
+
+                      <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-3">
+                        {prio.rationale}
+                      </p>
                     </div>
 
-                    <h4 className="text-xs font-black text-white leading-snug line-clamp-1 group-hover:text-[var(--color-primary)] transition-colors">
-                      {prio.title}
-                    </h4>
+                    <div className="pt-3 border-t border-slate-800/60 mt-3 flex items-center justify-between gap-2">
+                      {prio.type === 'pain' && onResolvePriority && (
+                        <button
+                          type="button"
+                          disabled={isResolving}
+                          onClick={async () => {
+                            setResolvingPrioId(prio.id);
+                            try {
+                              await onResolvePriority(prio);
+                            } finally {
+                              setResolvingPrioId(null);
+                            }
+                          }}
+                          className="text-[10px] font-bold text-slate-400 hover:text-emerald-400 bg-slate-900 hover:bg-emerald-500/10 border border-slate-800 hover:border-emerald-500/30 px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          title="Segna come risolto permanentemente"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>{isResolving ? 'Salvataggio...' : 'Segna Risolto'}</span>
+                        </button>
+                      )}
 
-                    <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">
-                      {prio.rationale}
-                    </p>
+                      <button
+                        type="button"
+                        onClick={() => handlePriorityClick(prio)}
+                        className={`text-xs font-black px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 cursor-pointer ml-auto shadow-sm ${
+                          isHigh
+                            ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500 hover:text-white'
+                            : isPenultimate
+                            ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500 hover:text-slate-950'
+                            : 'bg-[var(--color-primary)] text-slate-950 hover:bg-[var(--color-primary-hover)]'
+                        }`}
+                      >
+                        <span>{prio.ctaLabel}</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
-
-                  <div className="pt-3 border-t border-slate-800/60 mt-3 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-400">Azione consigliata</span>
-                    <button
-                      type="button"
-                      onClick={() => handlePriorityClick(prio)}
-                      className={`text-xs font-black px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                        isHigh
-                          ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500 hover:text-white'
-                          : isPenultimate
-                          ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500 hover:text-slate-950'
-                          : 'bg-[var(--color-primary)] text-slate-950 hover:bg-[var(--color-primary-hover)]'
-                      }`}
-                    >
-                      <span>{prio.ctaLabel}</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         )}
       </div>

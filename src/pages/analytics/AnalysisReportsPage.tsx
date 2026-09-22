@@ -18,20 +18,24 @@ import { supabase } from '../../lib/supabase';
 import {
   TimeframeOption,
   TeamOverviewReportData,
+  DecisionPriorityItem,
 } from '../../types';
-import { buildTeamOverviewReport } from './utils/reportCalculator';
+import { isPainFeedback } from '../../utils/painAnalysis';
+import { buildTeamOverviewReport, RawAssignment, findActiveAssignment } from './utils/reportCalculator';
+import { useAthletesWorkoutProgress } from '../workouts/hooks/useAthletesWorkoutProgress';
 import { TeamOverviewReportView, TeamViewMode } from './components/TeamOverviewReportView';
 import { AthleteDetailReportView } from './components/AthleteDetailReportView';
 import { TeamOverviewSkeleton, AthleteDetailSkeleton } from './components/AnalyticsSkeletons';
 import { AICopilotActionModal, CopilotAlertContext } from '../dashboard/components/AICopilotActionModal';
+import { RawWorkoutSession, RawExerciseLogItem } from './components/AthleteWorkoutHistorySection';
 
 // ─── CACHE GLOBALE IN MEMORIA (2 MINUTI TTL) ─────────────────────────────────
 interface AnalysisDataCache {
-  sessions: any[];
-  logs: any[];
-  assignments: any[];
+  sessions: RawWorkoutSession[];
+  logs: RawExerciseLogItem[];
+  assignments: RawAssignment[];
   exerciseNamesMap: Map<string, string>;
-  exerciseMetaMap: Map<string, { name: string; day_name?: string; week_number?: number }>;
+  exerciseMetaMap: Map<string, { name: string; day_name?: string; week_number?: number; workout_id?: string }>;
   workoutDaysMap?: Record<string, string[]>;
   athleteIdsKey: string;
   timestamp: number;
@@ -53,6 +57,7 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
   const { allAssignedWorkouts } = useWorkouts();
   const { setActiveTab, ownerProfile } = useApp();
   const { user } = useAuth();
+  const { progressMap } = useAthletesWorkoutProgress(athletes, allAssignedWorkouts);
 
   const mountTimeRef = useRef<number>(Date.now());
   const athleteIdsKey = useMemo(() => (athletes || []).map((a) => a.id).sort().join(','), [athletes]);
@@ -118,11 +123,11 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
   }, []);
 
   // Dati Reali (Inizializzati subito da cache se disponibili per First Meaningful Paint istantaneo a 0ms)
-  const [sessions, setSessions] = useState<any[]>(() => hasValidCache ? globalAnalysisCache!.sessions : []);
-  const [logs, setLogs] = useState<any[]>(() => hasValidCache ? globalAnalysisCache!.logs : []);
-  const [assignments, setAssignments] = useState<any[]>(() => hasValidCache ? globalAnalysisCache!.assignments : []);
+  const [sessions, setSessions] = useState<RawWorkoutSession[]>(() => hasValidCache ? globalAnalysisCache!.sessions : []);
+  const [logs, setLogs] = useState<RawExerciseLogItem[]>(() => hasValidCache ? globalAnalysisCache!.logs : []);
+  const [assignments, setAssignments] = useState<RawAssignment[]>(() => hasValidCache ? globalAnalysisCache!.assignments : []);
   const [exerciseNamesMap, setExerciseNamesMap] = useState<Map<string, string>>(() => hasValidCache ? globalAnalysisCache!.exerciseNamesMap : new Map());
-  const [exerciseMetaMap, setExerciseMetaMap] = useState<Map<string, { name: string; day_name?: string; week_number?: number }>>(() => hasValidCache ? globalAnalysisCache!.exerciseMetaMap : new Map());
+  const [exerciseMetaMap, setExerciseMetaMap] = useState<Map<string, { name: string; day_name?: string; week_number?: number; workout_id?: string }>>(() => hasValidCache ? globalAnalysisCache!.exerciseMetaMap : new Map());
   const [workoutDaysMap, setWorkoutDaysMap] = useState<Record<string, string[]>>(() => (hasValidCache && globalAnalysisCache!.workoutDaysMap) ? globalAnalysisCache!.workoutDaysMap : {});
 
   // Stato caricamento: false se abbiamo la cache, true solo al primo caricamento a freddo
@@ -167,7 +172,8 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
             is_active,
             workout:workouts(id, title, total_weeks, parent_template_id)
           `)
-          .in('athlete_id', athleteIds),
+          .in('athlete_id', athleteIds)
+          .order('assigned_date', { ascending: false }),
         supabase
           .from('workout_sessions')
           .select(`
@@ -193,16 +199,61 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
           .limit(600),
       ]);
 
-      const mergedAssignments: any[] = assignRes.data || [];
-      allAssignedWorkouts.forEach((localAssign: any) => {
-        if (!mergedAssignments.some((a) => a.athlete_id === localAssign.athlete_id)) {
+      const mergedAssignments: RawAssignment[] = (assignRes.data || []).map((a) => {
+        const rawW = (a as { workout?: unknown }).workout;
+        const wObj = rawW as { id?: string; title?: string; total_weeks?: number; parent_template_id?: string | null } | undefined;
+        const item = a as {
+          id?: string;
+          athlete_id: string;
+          workout_id?: string;
+          workout_title?: string;
+          total_weeks?: number;
+          is_active?: boolean;
+          assigned_date?: string;
+          created_at?: string;
+        };
+        return {
+          id: item.id,
+          athlete_id: item.athlete_id,
+          workout_id: item.workout_id,
+          workout_title: wObj?.title || item.workout_title,
+          total_weeks: wObj?.total_weeks || item.total_weeks,
+          is_active: item.is_active,
+          assigned_date: item.assigned_date,
+          created_at: item.created_at,
+          workout: wObj ? {
+            id: wObj.id || item.workout_id || '',
+            title: wObj.title,
+            total_weeks: wObj.total_weeks,
+            parent_template_id: wObj.parent_template_id,
+          } : (item.workout_id ? {
+            id: item.workout_id,
+            title: item.workout_title || 'Scheda Attiva',
+            total_weeks: item.total_weeks || 5,
+          } : undefined),
+        };
+      });
+
+      // Sincronizza con allAssignedWorkouts (fonte di verità di WorkoutsContext)
+      allAssignedWorkouts.forEach((localAssign) => {
+        const existingIdx = mergedAssignments.findIndex(
+          (a) => a.id === localAssign.id || (a.athlete_id === localAssign.athlete_id && a.workout_id === localAssign.workout_id)
+        );
+        if (existingIdx >= 0) {
+          if (localAssign.is_active) {
+            mergedAssignments[existingIdx].is_active = true;
+          }
+        } else {
           mergedAssignments.push({
+            id: localAssign.id,
             athlete_id: localAssign.athlete_id,
             workout_id: localAssign.workout_id,
-            assigned_date: localAssign.assigned_date || localAssign.created_at,
-            workout_title: localAssign.workout?.title || localAssign.workout_title || 'Scheda Attiva',
+            assigned_date: localAssign.assigned_date || (localAssign as { created_at?: string }).created_at,
+            workout_title: localAssign.workout?.title || (localAssign as { workout_title?: string }).workout_title || 'Scheda Attiva',
+            is_active: localAssign.is_active,
             workout: {
-              title: localAssign.workout?.title || localAssign.workout_title || 'Scheda Attiva',
+              id: localAssign.workout?.id || localAssign.workout_id || '',
+              title: localAssign.workout?.title || (localAssign as { workout_title?: string }).workout_title || 'Scheda Attiva',
               total_weeks: localAssign.workout?.total_weeks || 5,
               parent_template_id: localAssign.workout?.parent_template_id || null,
             },
@@ -214,7 +265,8 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
       const targetWIds = Array.from(
         new Set(
           mergedAssignments
-            .flatMap((a: any) => [a.workout_id, a.workout?.id, a.workout?.parent_template_id])
+            .flatMap((a) => [a.workout_id, a.workout?.id, a.workout?.parent_template_id])
+            .concat(allAssignedWorkouts.flatMap((a) => [a.workout_id, a.workout?.id, a.workout?.parent_template_id]))
             .filter(Boolean) as string[]
         )
       );
@@ -242,18 +294,86 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
           }
         } catch (_) {}
       }
-      setWorkoutDaysMap(wDaysMap);
+
+      // Propaga giorni dal parent template alla copia del workout assegnata se non già popolata
+      mergedAssignments.forEach((a) => {
+        const childId = a.workout_id || a.workout?.id;
+        const parentId = a.workout?.parent_template_id;
+        if (childId && parentId && wDaysMap[parentId] && (!wDaysMap[childId] || wDaysMap[childId].length < wDaysMap[parentId].length)) {
+          wDaysMap[childId] = [...wDaysMap[parentId]];
+        }
+      });
+
+      // Integra giorni da progressMap (fonte di verità consolidata da useAthletesWorkoutProgress)
+      progressMap.forEach((prog, athId) => {
+        if (prog.orderedDays && prog.orderedDays.length > 0) {
+          if (prog.workoutId) wDaysMap[prog.workoutId] = prog.orderedDays;
+          const athAssign = mergedAssignments.find((a) => a.athlete_id === athId && a.is_active);
+          if (athAssign) {
+            if (athAssign.workout_id) wDaysMap[athAssign.workout_id] = prog.orderedDays;
+            if (athAssign.workout?.id) wDaysMap[athAssign.workout.id] = prog.orderedDays;
+            if (athAssign.workout?.parent_template_id) wDaysMap[athAssign.workout.parent_template_id] = prog.orderedDays;
+          }
+        }
+      });
+
+      setWorkoutDaysMap({ ...wDaysMap });
 
       // Carica sessioni da backup locale se presenti
-      let localSessionList: any[] = [];
+      let localSessionList: Array<{ id: string; end_time?: string | null; [key: string]: unknown }> = [];
       try {
         localSessionList = JSON.parse(localStorage.getItem('builder_local_sessions_backup') || '[]');
       } catch (_) {}
 
       const completedLocalSessions = localSessionList.filter((ls) => ls && ls.end_time);
-      const allSessions = (sessionRes.data || []).concat(
-        completedLocalSessions.filter((ls) => !(sessionRes.data || []).some((sd: any) => sd.id === ls.id))
-      );
+      const dbSessions = sessionRes.data || [];
+      const dbSessionIds = new Set(dbSessions.map((s) => s.id));
+      const extraLocalSessions = completedLocalSessions.filter((ls) => !dbSessionIds.has(ls.id));
+      const rawSessionRows: Array<Record<string, unknown>> = [...dbSessions, ...extraLocalSessions];
+      const allSessions: RawWorkoutSession[] = rawSessionRows.map((s) => {
+        const rawW = (s as { workouts?: unknown }).workouts;
+        const wObj = Array.isArray(rawW) ? (rawW[0] as { id?: string; title?: string; total_weeks?: number } | undefined) : (rawW as { id?: string; title?: string; total_weeks?: number } | undefined);
+        const sess = s as {
+          id: string;
+          athlete_id: string;
+          workout_id?: string;
+          start_time: string;
+          end_time?: string | null;
+          notes?: string | null;
+          rpe?: number | string | null;
+          week_number?: number | string | null;
+          day_name?: string | null;
+        };
+        return {
+          id: sess.id,
+          athlete_id: sess.athlete_id,
+          workout_id: sess.workout_id || wObj?.id || '',
+          start_time: sess.start_time,
+          end_time: sess.end_time || undefined,
+          notes: sess.notes || undefined,
+          rpe: sess.rpe != null ? Number(sess.rpe) : undefined,
+          week_number: sess.week_number != null ? Number(sess.week_number) : undefined,
+          day_name: sess.day_name || undefined,
+          workouts: wObj ? {
+            id: wObj.id,
+            title: wObj.title,
+            total_weeks: wObj.total_weeks,
+          } : undefined,
+        };
+      });
+
+      // Integra in wDaysMap solo se il workout non ha ancora giorni mappati da workout_exercises o parent_template
+      allSessions.forEach((s) => {
+        const wId = s.workout_id;
+        const dName = (s.day_name || '').trim();
+        if (wId && dName && (!wDaysMap[wId] || wDaysMap[wId].length === 0)) {
+          if (!wDaysMap[wId]) wDaysMap[wId] = [];
+          if (!wDaysMap[wId].includes(dName)) {
+            wDaysMap[wId].push(dName);
+          }
+        }
+      });
+      setWorkoutDaysMap({ ...wDaysMap });
 
       // Aggiorna subito Stage 1: la panoramica e le priorità possono già iniziare a renderizzare!
       setAssignments(mergedAssignments);
@@ -264,28 +384,94 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
       console.log(`[Performance & Copilot] Stage 1 completato in ${stage1Time}ms (Overview & Decisioni pronte)`);
 
       // ─── STAGE 2 (PRIORITÀ SECONDARIA): Log Esercizi & Metadati ───
-      const sessionIds = allSessions.map((s) => s.id);
-      let allLogs: any[] = [];
+      const sessionIds = Array.from(new Set(allSessions.map((s) => s.id).filter(Boolean)));
+      let allLogs: RawExerciseLogItem[] = [];
       if (sessionIds.length > 0) {
-        const { data: logData } = await supabase
-          .from('exercise_logs')
-          .select(`
-            id,
-            session_id,
-            exercise_id,
-            set_number,
-            reps_completed,
-            weight_kg,
-            notes
-          `)
-          .in('session_id', sessionIds.slice(0, 120));
-        allLogs = logData || [];
+        // Carica tutti i log a blocchi da 100 sessioni per non incorrere nel limite URL/IN di Supabase
+        const CHUNK_SIZE = 100;
+        const logChunksPromises: Promise<{ data: Array<{
+          id: string;
+          session_id: string;
+          exercise_id: string;
+          set_number: number;
+          reps_completed?: number | null;
+          weight_kg?: number | null;
+          notes?: string | null;
+        }> | null }>[] = [];
+        for (let i = 0; i < sessionIds.length; i += CHUNK_SIZE) {
+          const chunk = sessionIds.slice(i, i + CHUNK_SIZE);
+          logChunksPromises.push(
+            Promise.resolve(
+              supabase
+                .from('exercise_logs')
+                .select(`
+                  id,
+                  session_id,
+                  exercise_id,
+                  set_number,
+                  reps_completed,
+                  weight_kg,
+                  notes
+                `)
+                .in('session_id', chunk)
+            )
+          );
+        }
+        const chunkResults = await Promise.all(logChunksPromises);
+        chunkResults.forEach((res) => {
+          if (res.data && res.data.length > 0) {
+            const mapped: RawExerciseLogItem[] = res.data.map((l) => ({
+              id: l.id,
+              session_id: l.session_id,
+              exercise_id: l.exercise_id,
+              set_number: l.set_number,
+              reps_completed: l.reps_completed ?? 0,
+              weight_kg: l.weight_kg ?? 0,
+              notes: l.notes || undefined,
+            }));
+            allLogs = allLogs.concat(mapped);
+          }
+        });
       }
 
-      // Unisci log da backup locale
+      // Unisci log da backup locale istantaneo client ('builder_completed_session_logs' e 'builder_local_logs_backup')
       try {
-        const localLogs = JSON.parse(localStorage.getItem('builder_local_logs_backup') || '[]');
-        localLogs.forEach((ll: any) => {
+        const localCompletedLogs = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}') as Record<string, Array<{
+          id?: string;
+          exercise_id?: string;
+          set_number?: number;
+          reps_completed?: number;
+          weight_kg?: number;
+          notes?: string;
+        }>>;
+        Object.entries(localCompletedLogs).forEach(([sessId, sLogs]) => {
+          // REGOLA RESILIENZA: Se per questa sessione abbiamo già log ufficiali da Supabase,
+          // il database è la fonte di verità assoluta ed evitiamo iniezioni o zombi locali.
+          const sessionAlreadyHasDbLogs = allLogs.some((al) => al.session_id === sessId);
+          if (sessionAlreadyHasDbLogs) return;
+
+          if (Array.isArray(sLogs)) {
+            sLogs.forEach((sl, sIdx: number) => {
+              const syntheticId = sl.id || `local-${sessId}-${sIdx}`;
+              if (!allLogs.some((al) => al.session_id === sessId && (al.id === syntheticId || (al.exercise_id === sl.exercise_id && al.set_number === sl.set_number)))) {
+                allLogs.push({
+                  id: syntheticId,
+                  session_id: sessId,
+                  exercise_id: sl.exercise_id || '',
+                  set_number: sl.set_number || sIdx + 1,
+                  reps_completed: sl.reps_completed ?? 0,
+                  weight_kg: sl.weight_kg ?? 0,
+                  notes: sl.notes,
+                });
+              }
+            });
+          }
+        });
+      } catch (_) {}
+
+      try {
+        const localLogs = JSON.parse(localStorage.getItem('builder_local_logs_backup') || '[]') as RawExerciseLogItem[];
+        localLogs.forEach((ll) => {
           if (!allLogs.some((al) => al.id === ll.id)) {
             allLogs.push(ll);
           }
@@ -293,29 +479,64 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
       } catch (_) {}
       setLogs(allLogs);
 
-      // Dizionario Nomi & Metadati Esercizi
-      const uniqueExIds = Array.from(new Set(allLogs.map((l) => l.exercise_id).filter(Boolean)));
+      // Dizionario Nomi & Metadati Esercizi: unisci sia gli ID presenti nei log sia gli ID delle schede target
+      const logExIds = allLogs.map((l) => l.exercise_id).filter(Boolean);
+      const uniqueExIds = Array.from(new Set(logExIds));
       let namesMap = new Map<string, string>();
-      let metaMap = new Map<string, { name: string; day_name?: string; week_number?: number }>();
+      let metaMap = new Map<string, { name: string; day_name?: string; week_number?: number; workout_id?: string }>();
 
+      interface WorkoutExerciseMetaRow {
+        id: string;
+        name: string;
+        day_name?: string;
+        week_number?: number;
+        workout_id?: string;
+      }
+
+      // Carica metadati da workout_exercises sia per targetWIds che per uniqueExIds
+      const weQueries: Promise<{ data: WorkoutExerciseMetaRow[] | null }>[] = [];
       if (uniqueExIds.length > 0) {
-        const { data: exData } = await supabase
-          .from('workout_exercises')
-          .select('id, name, day_name, week_number')
-          .in('id', uniqueExIds);
-
-        if (exData) {
-          exData.forEach((e) => {
-            namesMap.set(e.id, e.name);
-            metaMap.set(e.id, {
-              name: e.name,
-              day_name: e.day_name,
-              week_number: e.week_number,
-            });
-          });
-          setExerciseNamesMap(namesMap);
-          setExerciseMetaMap(metaMap);
+        // A blocchi da 100 per ID
+        for (let i = 0; i < uniqueExIds.length; i += 100) {
+          const chunk = uniqueExIds.slice(i, i + 100);
+          weQueries.push(
+            Promise.resolve(
+              supabase
+                .from('workout_exercises')
+                .select('id, name, day_name, week_number, workout_id')
+                .in('id', chunk)
+            ) as Promise<{ data: WorkoutExerciseMetaRow[] | null }>
+          );
         }
+      }
+      if (targetWIds.length > 0) {
+        weQueries.push(
+          Promise.resolve(
+            supabase
+              .from('workout_exercises')
+              .select('id, name, day_name, week_number, workout_id')
+              .in('workout_id', targetWIds)
+          ) as Promise<{ data: WorkoutExerciseMetaRow[] | null }>
+        );
+      }
+
+      if (weQueries.length > 0) {
+        const weResults = await Promise.all(weQueries);
+        weResults.forEach((res) => {
+          if (res.data) {
+            res.data.forEach((e: WorkoutExerciseMetaRow) => {
+              namesMap.set(e.id, e.name);
+              metaMap.set(e.id, {
+                name: e.name,
+                day_name: e.day_name,
+                week_number: e.week_number,
+                workout_id: e.workout_id,
+              });
+            });
+          }
+        });
+        setExerciseNamesMap(namesMap);
+        setExerciseMetaMap(metaMap);
       }
 
       // Salva nella Cache Globale
@@ -347,15 +568,30 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
 
   // Calcolo Report Globale Squadra e Atleti (Memoizzato)
   const teamReportData: TeamOverviewReportData = useMemo(() => {
+    const mergedWDaysMap = { ...workoutDaysMap };
+    progressMap.forEach((prog, athId) => {
+      if (prog.orderedDays && prog.orderedDays.length > 0) {
+        if (prog.workoutId) mergedWDaysMap[prog.workoutId] = prog.orderedDays;
+        const athAssign = assignments.find((a) => a.athlete_id === athId && a.is_active);
+        if (athAssign) {
+          if (athAssign.workout_id) mergedWDaysMap[athAssign.workout_id] = prog.orderedDays;
+          if (athAssign.workout?.id) mergedWDaysMap[athAssign.workout.id] = prog.orderedDays;
+          if (athAssign.workout?.parent_template_id) mergedWDaysMap[athAssign.workout.parent_template_id] = prog.orderedDays;
+        }
+      }
+    });
+
     return buildTeamOverviewReport(
       timeframe,
       athletes,
       sessions,
       logs,
       assignments,
-      exerciseNamesMap
+      exerciseNamesMap,
+      mergedWDaysMap,
+      progressMap
     );
-  }, [timeframe, athletes, sessions, logs, assignments, exerciseNamesMap, dismissedVersion]);
+  }, [timeframe, athletes, sessions, logs, assignments, exerciseNamesMap, workoutDaysMap, progressMap, dismissedVersion]);
 
   // Report Atleta Selezionato
   const selectedAthleteReport = useMemo(() => {
@@ -415,9 +651,25 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
     setActiveTab('schede');
   };
 
-  const handleOpenCopilotModal = (athleteId: string, customAlert?: any) => {
+  interface CustomCopilotAlert {
+    athleteId?: string;
+    athleteName?: string;
+    workoutTitle?: string;
+    category?: string;
+    type?: string;
+    summary?: string;
+    rationale?: string;
+    noteText?: string;
+    exerciseName?: string;
+    sessionId?: string;
+    sessionDate?: string;
+  }
+
+  const handleOpenCopilotModal = (athleteId: string, alertParam?: unknown) => {
+    const customAlert = alertParam as CustomCopilotAlert | undefined;
     const athlete = athletes.find((a) => a.id === athleteId);
-    const assign = assignments.find((a) => a.athlete_id === athleteId);
+    // Usa l'assegnazione attiva (is_active=true) o la più recente — mai la prima casuale
+    const assign = findActiveAssignment(assignments, athleteId);
     const athReport = teamReportData.athletesReports.find((a) => a.athleteId === athleteId);
 
     let type: CopilotAlertContext['type'] = 'progression';
@@ -428,6 +680,7 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
 
     const exerciseName = customAlert?.exerciseName || athReport?.painDetailsSummary || '';
     const noteText = customAlert?.rationale || customAlert?.noteText || athReport?.painDetailsSummary || customAlert?.summary || '';
+    const sessionId = customAlert?.sessionId || athReport?.latestPainSessionId;
 
     setCopilotContext({
       athleteId,
@@ -437,8 +690,66 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
       exerciseName,
       suggestion: customAlert?.summary || athReport?.singleDecisionTitle,
       noteText,
+      sessionId,
     });
     setIsCopilotOpen(true);
+  };
+
+  const handleResolvePriority = async (prio: DecisionPriorityItem) => {
+    try {
+      const todayFormatted = new Date().toLocaleDateString('it-IT');
+      const resolvedTag = `[RISOLTO DAL COACH — ${todayFormatted}]`;
+
+      // 1. Individua la sessione di riferimento (o prio.sessionId o sessione recente dell'atleta con fastidio)
+      let targetSessionId = prio.sessionId;
+      let existingNotes = '';
+
+      if (!targetSessionId) {
+        const targetSession = sessions.find((s) => s.athlete_id === prio.athleteId && isPainFeedback(s.notes, { ignoreResolved: true }));
+        if (targetSession) {
+          targetSessionId = targetSession.id;
+          existingNotes = targetSession.notes || '';
+        }
+      } else {
+        const found = sessions.find((s) => s.id === targetSessionId);
+        if (found) existingNotes = found.notes || '';
+      }
+
+      // 2. Se abbiamo una sessione valida, persistiamo su Supabase (fonte di verità assoluta)
+      if (targetSessionId) {
+        const updatedNotes = existingNotes
+          ? `${existingNotes}\n${resolvedTag}`
+          : resolvedTag;
+
+        await supabase
+          .from('workout_sessions')
+          .update({ notes: updatedNotes })
+          .eq('id', targetSessionId);
+
+        // Aggiorna lo stato locale sessions per ricalcolo immediato
+        setSessions((prev) =>
+          prev.map((s) => (s.id === targetSessionId ? { ...s, notes: updatedNotes } : s))
+        );
+      }
+
+      // 3. Salva anche in localStorage per dismissione immediata e sincrona tra tab
+      try {
+        const saved = localStorage.getItem('builder_copilot_dismissed_alerts');
+        const set = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+        set.add(prio.id);
+        set.add(prio.athleteId);
+        set.add(`prio-${prio.category || prio.type}-${prio.athleteId}`);
+        localStorage.setItem('builder_copilot_dismissed_alerts', JSON.stringify(Array.from(set)));
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new CustomEvent('copilot_dismissed_update'));
+      } catch (_) {}
+
+      // 4. Invalida la cache globale per ricaricamenti futuri coerenti
+      globalAnalysisCache = null;
+      setDismissedVersion((v) => v + 1);
+    } catch (err) {
+      console.error('[AnalysisReportsPage] Errore risoluzione priorità:', err);
+    }
   };
 
   const handleAssignMultiple = (athleteIds: string[]) => {
@@ -720,7 +1031,14 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
               if (athReport?.singleDecisionType === 'pain') category = 'pain';
               else if (athReport?.singleDecisionType === 'inactivity' || athReport?.completedSessions.current === 0 || athReport?.programStatus === 'pending_start') category = 'inactivity';
               else if (athReport?.singleDecisionType === 'plateau') category = 'stagnation';
-              handleOpenCopilotModal(athleteId, { athleteId, athleteName, workoutTitle, category, summary: athReport?.singleDecisionTitle });
+              handleOpenCopilotModal(athleteId, {
+                athleteId,
+                athleteName,
+                workoutTitle,
+                category,
+                summary: athReport?.singleDecisionTitle,
+                sessionId: athReport?.latestPainSessionId,
+              });
             }}
           />
         ) : (
@@ -737,6 +1055,7 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
             onSelectAthlete={handleSelectAthlete}
             onAssignProgram={handleNavigateToWorkouts}
             onOpenCopilot={handleOpenCopilotModal}
+            onResolvePriority={handleResolvePriority}
             onAssignMultiplePrograms={handleAssignMultiple}
             activeViewMode={teamViewMode}
             onViewModeChange={setTeamViewMode}
@@ -765,6 +1084,17 @@ export const AnalysisReportsPage: React.FC<AnalysisReportsPageProps> = ({
               window.dispatchEvent(new Event('storage'));
               window.dispatchEvent(new CustomEvent('copilot_dismissed_update'));
             } catch (_) {}
+            if (copilotContext?.sessionId) {
+              const resolvedTag = `[RISOLTO DAL COACH — ${new Date().toLocaleDateString('it-IT')}]`;
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id === copilotContext.sessionId
+                    ? { ...s, notes: s.notes ? `${s.notes}\n${resolvedTag}` : resolvedTag }
+                    : s
+                )
+              );
+            }
+            globalAnalysisCache = null;
             setDismissedVersion((v) => v + 1);
             setIsCopilotOpen(false);
             setCopilotContext(null);

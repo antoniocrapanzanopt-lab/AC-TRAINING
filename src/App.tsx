@@ -33,17 +33,10 @@ import { ContentStudioLayout } from './components/studio/ContentStudioLayout';
 import { WelcomeDisclaimerModal } from './components/common/WelcomeDisclaimerModal';
 import { RequireAAL2 } from './components/auth/RequireAAL2';
 import { Loader2 } from 'lucide-react';
-import { runDevDiagnosis } from './utils/devSessionDiagnose';
 
 const AppContent: React.FC = () => {
   const { isLoading: isAppLoading } = useApp();
   const { isAuthenticated, user, loading: isAuthLoading, markDisclaimerAsSeen, isPasswordRecovery } = useAuth();
-
-  React.useEffect(() => {
-    if (import.meta.env.DEV) {
-      runDevDiagnosis();
-    }
-  }, [isAuthenticated, user]);
 
   const [activeApp, setActiveApp] = React.useState<'coaching' | 'content_studio'>(() => {
     const params = new URLSearchParams(window.location.search);

@@ -77,16 +77,16 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
       <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
         
         {/* Sinistra: SVG Progress Ring + Cifre Grandi */}
-        <div className="flex items-center gap-3">
-          <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="relative w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center shrink-0">
             {/* SVG Ring di sfondo */}
             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 52 52">
               <circle
                 cx="26"
                 cy="26"
                 r={radius}
-                className="stroke-[var(--color-border)]"
-                strokeWidth="4"
+                className="stroke-slate-800"
+                strokeWidth="4.5"
                 fill="transparent"
               />
               <circle
@@ -94,7 +94,7 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
                 cy="26"
                 r={radius}
                 className="stroke-[var(--color-primary)] transition-all duration-1000 ease-linear"
-                strokeWidth="4"
+                strokeWidth="4.5"
                 strokeDasharray={circumference}
                 strokeDashoffset={strokeDashoffset}
                 strokeLinecap="round"
@@ -103,64 +103,64 @@ export const InteractiveRestTimer: React.FC<InteractiveRestTimerProps> = ({
             </svg>
             
             {/* Icona o Pulsazione Centrale */}
-            <span className="absolute text-[10px] font-black font-mono text-[var(--color-primary)]">
+            <span className="absolute text-xs sm:text-sm font-black font-mono text-[var(--color-primary)]">
               {remainingSeconds > 99 ? `${Math.ceil(remainingSeconds / 60)}m` : `${remainingSeconds}s`}
             </span>
           </div>
 
           <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-primary)] block">
+            <div className="flex items-center gap-2">
+              <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-amber-400 block">
                 Recupero Attivo
               </span>
               <button
                 type="button"
                 onClick={toggleAudio}
-                className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] p-0.5 rounded cursor-pointer transition-colors"
+                className="text-slate-400 hover:text-white p-1 rounded cursor-pointer transition-colors"
                 title={isAudioEnabled ? 'Audio countdown attivo' : 'Audio disattivato'}
               >
                 {isAudioEnabled ? (
-                  <Volume2 className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                  <Volume2 className="w-4 h-4 text-amber-400" />
                 ) : (
-                  <VolumeX className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
+                  <VolumeX className="w-4 h-4 text-slate-400" />
                 )}
               </button>
             </div>
-            <p className="text-xl sm:text-2xl font-black font-mono text-[var(--color-text)] tracking-tight leading-tight">
+            <p className="text-2xl sm:text-3xl font-black font-mono text-white tracking-tight leading-tight">
               {formatTime(remainingSeconds)}
             </p>
           </div>
         </div>
 
         {/* Destra: Controlli Rapidi (+30s / -15s / Salta) */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <button
             type="button"
             onClick={() => onAddTime(-15)}
             disabled={remainingSeconds <= 15}
-            className="px-2.5 py-1.5 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] text-[var(--color-text)] text-xs font-bold border border-[var(--color-border)] transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer flex items-center gap-0.5 active:scale-95 shadow-sm"
+            className="min-h-[40px] px-3 sm:px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-black border border-slate-700 transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer flex items-center gap-1 active:scale-95 shadow-sm"
             title="Riduci di 15 secondi"
           >
-            <Minus className="w-3 h-3" />
+            <Minus className="w-3.5 h-3.5" />
             <span>15s</span>
           </button>
 
           <button
             type="button"
             onClick={() => onAddTime(30)}
-            className="px-2.5 py-1.5 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] text-[var(--color-primary)] text-xs font-bold border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 transition-all cursor-pointer flex items-center gap-0.5 active:scale-95 shadow-sm"
+            className="min-h-[40px] px-3 sm:px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs sm:text-sm font-black border border-amber-500/40 hover:border-amber-400 transition-all cursor-pointer flex items-center gap-1 active:scale-95 shadow-sm"
             title="Aggiungi 30 secondi"
           >
-            <Plus className="w-3 h-3" />
+            <Plus className="w-3.5 h-3.5" />
             <span>30s</span>
           </button>
 
           <button
             type="button"
             onClick={onSkip}
-            className="px-3.5 py-1.5 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-md shadow-[var(--color-primary)]/20"
+            className="min-h-[40px] px-4 sm:px-5 py-2 rounded-xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-xs sm:text-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md shadow-[var(--color-primary)]/20"
           >
-            <FastForward className="w-3.5 h-3.5 fill-slate-950" />
+            <FastForward className="w-4 h-4 fill-slate-950" />
             <span>Salta</span>
           </button>
         </div>

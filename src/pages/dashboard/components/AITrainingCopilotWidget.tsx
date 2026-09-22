@@ -166,7 +166,7 @@ export const AITrainingCopilotWidget: React.FC = () => {
           workout_id,
           assigned_date,
           is_active,
-          workout:workouts(id, title, total_weeks)
+          workout:workouts(id, title, total_weeks, parent_template_id)
         `)
         .in('athlete_id', athleteIds)
         .eq('is_active', true);
@@ -176,11 +176,14 @@ export const AITrainingCopilotWidget: React.FC = () => {
       const allUniqueWorkoutIds = Array.from(
         new Set(
           assignmentsList
-            .map((a) => {
-              const wObj = Array.isArray(a.workout) ? a.workout[0] : a.workout;
-              return a.workout_id || wObj?.id;
+            .flatMap((a) => {
+              const wObj = Array.isArray(a.workout) ? a.workout[0] : a.workout as any;
+              return [a.workout_id, wObj?.id, wObj?.parent_template_id];
             })
-            .concat(allAssignedWorkouts.map((a) => a.workout_id))
+            .concat(allAssignedWorkouts.flatMap((a) => {
+              const wObj = Array.isArray(a.workout) ? a.workout[0] : a.workout as any;
+              return [a.workout_id, wObj?.id, wObj?.parent_template_id];
+            }))
             .filter((id): id is string => Boolean(id))
         )
       );
@@ -208,33 +211,55 @@ export const AITrainingCopilotWidget: React.FC = () => {
         }
       }
 
-      if (assignmentsList.length > 0) {
-        assignmentsList.forEach((assign) => {
-          const wObj = Array.isArray(assign.workout) ? assign.workout[0] : assign.workout;
-          const wId = assign.workout_id || wObj?.id;
-          const calculatedDays = (wId && daysPerWorkoutMap.get(wId)) || 3;
-          if (assign.athlete_id) {
-            activeWorkoutByAthlete.set(assign.athlete_id, {
-              workoutId: wId,
-              title: wObj?.title || 'Scheda Attiva',
-              durationWeeks: Number(wObj?.total_weeks) || 5,
-              daysPerWeek: calculatedDays,
-              startDate: assign.assigned_date || undefined,
-            });
-          }
-        });
-      }
+      // Ordina assegnazioni per data decrescente (la più recente prima)
+      const sortedAssignments = [...assignmentsList].sort((a, b) => {
+        const dateA = new Date(a.assigned_date || 0).getTime();
+        const dateB = new Date(b.assigned_date || 0).getTime();
+        return dateB - dateA;
+      });
 
-      allAssignedWorkouts.forEach((assign: { athlete_id: string; workout_id?: string; workout?: { title?: string }; workout_title?: string; assigned_date?: string; created_at?: string }) => {
-        if (!activeWorkoutByAthlete.has(assign.athlete_id)) {
-          const calculatedDays = (assign.workout_id && daysPerWorkoutMap.get(assign.workout_id)) || 3;
+      // Mappa la scheda attiva per ciascun atleta
+      sortedAssignments.forEach((assign) => {
+        if (!assign.athlete_id) return;
+        const current = activeWorkoutByAthlete.get(assign.athlete_id);
+        // Se abbiamo già memorizzato una scheda attiva (is_active === true), non sovrascriverla con una disattivata
+        if (current && (current as any).isActive && !assign.is_active) return;
+
+        const wObj = (Array.isArray(assign.workout) ? assign.workout[0] : assign.workout) as any;
+        const wId = assign.workout_id || wObj?.id;
+        
+        // Combina giorni da template figlio e genitore
+        const childDaysCount = (wId && daysPerWorkoutMap.get(wId)) || 0;
+        const parentDaysCount = (wObj?.parent_template_id && daysPerWorkoutMap.get(wObj.parent_template_id)) || 0;
+        const calculatedDays = Math.max(childDaysCount, parentDaysCount) || 3;
+        
+        activeWorkoutByAthlete.set(assign.athlete_id, {
+          workoutId: wId,
+          title: wObj?.title || 'Scheda Attiva',
+          durationWeeks: Number(wObj?.total_weeks) || 5,
+          daysPerWeek: calculatedDays,
+          startDate: assign.assigned_date || undefined,
+          isActive: Boolean(assign.is_active),
+        } as any);
+      });
+
+      // Integra da allAssignedWorkouts (fonte da WorkoutsContext): se un atleta ha una scheda attiva in context, sovrascrivi
+      allAssignedWorkouts.forEach((assign: any) => {
+        const current = activeWorkoutByAthlete.get(assign.athlete_id);
+        const shouldApply = !current || (!((current as any)?.isActive) && assign.is_active);
+        if (shouldApply) {
+          const childDaysCount = (assign.workout_id && daysPerWorkoutMap.get(assign.workout_id)) || 0;
+          const parentDaysCount = (assign.workout?.parent_template_id && daysPerWorkoutMap.get(assign.workout.parent_template_id)) || 0;
+          const calculatedDays = Math.max(childDaysCount, parentDaysCount) || 3;
+          
           activeWorkoutByAthlete.set(assign.athlete_id, {
             workoutId: assign.workout_id,
             title: assign.workout?.title || assign.workout_title || 'Scheda Attiva',
-            durationWeeks: 5,
+            durationWeeks: assign.workout?.total_weeks || 5,
             daysPerWeek: calculatedDays,
             startDate: assign.assigned_date || assign.created_at,
-          });
+            isActive: Boolean(assign.is_active),
+          } as any);
         }
       });
 

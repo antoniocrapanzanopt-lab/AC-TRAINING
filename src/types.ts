@@ -871,6 +871,11 @@ export interface DecisionPriorityItem {
   id: string;
   athleteId: string;
   athleteName: string;
+  sessionId?: string;
+  sessionDate?: string;
+  exerciseName?: string;
+  isResolved?: boolean;
+  category?: string;
   title: string;
   rationale: string;
   type: 'pain' | 'plateau' | 'penultimate_week' | 'unassigned' | 'inactivity' | 'missing_weights';
@@ -885,6 +890,8 @@ export interface AthleteReportSummary {
   athleteEmail?: string;
   avatarUrl?: string;
   workoutTitle: string;
+  workoutId?: string;
+  daysPerWeek?: number;
   currentWeek: number;
   totalWeeks: number;
   blockProgressPercent: number;
@@ -907,6 +914,8 @@ export interface AthleteReportSummary {
   avgRpe: ComparisonMetricDelta; // RPE 1-10
   painReportsCount: ComparisonMetricDelta; // numero segnalazioni
   painDetailsSummary?: string; // Dettaglio esercizi e zone di fastidio estratte dalle note/questionari
+  latestPainSessionId?: string;
+  latestPainSessionDate?: string;
   totalVolumeKg: ComparisonMetricDelta; // kg sollevati
   
   // Dettagli Esercizi & Distretti Muscolari

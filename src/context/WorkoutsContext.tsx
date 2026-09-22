@@ -447,18 +447,22 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       // A) Aggiornamento record esistenti tramite ID (nessun record ricreato, foreign keys e log intatti!)
-      for (const item of exercisesToUpdate) {
-        const updatePayload = await sanitizeExerciseRecord(item.payload, item.order);
-        const { error: updateErr } = await supabase
-          .from('workout_exercises')
-          .update(updatePayload)
-          .eq('id', item.id)
-          .eq('workout_id', workoutId);
+      if (exercisesToUpdate.length > 0) {
+        await Promise.all(
+          exercisesToUpdate.map(async (item) => {
+            const updatePayload = await sanitizeExerciseRecord(item.payload, item.order);
+            const { error: updateErr } = await supabase
+              .from('workout_exercises')
+              .update(updatePayload)
+              .eq('id', item.id)
+              .eq('workout_id', workoutId);
 
-        if (updateErr) {
-          technicalLogger.error('workouts', 'UPDATE_EXERCISE_ERROR', updateErr.message, { id: item.id });
-          throw updateErr;
-        }
+            if (updateErr) {
+              technicalLogger.error('workouts', 'UPDATE_EXERCISE_ERROR', updateErr.message, { id: item.id });
+              throw updateErr;
+            }
+          })
+        );
       }
 
       // B) Inserimento solo nuovi esercizi
@@ -1402,13 +1406,6 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           weight_kg: parsedWeight.weightKg,
           notes: combinedNotes,
         };
-      });
-
-      console.log('[saveExerciseLogs] Invio a Supabase:', {
-        tabella: 'exercise_logs',
-        righe_da_inserire: sanitizedLogs.length,
-        session_id: sanitizedLogs[0]?.session_id,
-        payload: sanitizedLogs,
       });
 
       const { data: insertedRows, error } = await supabase

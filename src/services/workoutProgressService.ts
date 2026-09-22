@@ -74,6 +74,34 @@ export function normalizeDayName(dayName: string | null | undefined): string {
 }
 
 /**
+ * Estrae l'identificatore del giorno (es. "giorno 1", "giorno a", "day 1", "seduta 1")
+ * per consentire il matching anche se il coach ha aggiunto o modificato il sottotitolo.
+ */
+export function extractDayIdentifier(dayName: string | null | undefined): string {
+  if (!dayName) return '';
+  const clean = normalizeDayName(dayName);
+  const match = clean.match(/^(giorno\s+[0-9a-z]+|day\s+[0-9a-z]+|seduta\s+[0-9a-z]+)/i);
+  if (match) return match[1].replace(/\s+/g, ' ');
+  return clean;
+}
+
+/**
+ * Verifica se due nomi giorno si riferiscono allo stesso giorno programmato.
+ */
+export function matchDayNames(dayA: string | null | undefined, dayB: string | null | undefined): boolean {
+  if (!dayA || !dayB) return false;
+  const normA = normalizeDayName(dayA);
+  const normB = normalizeDayName(dayB);
+  if (normA === normB) return true;
+
+  const idA = extractDayIdentifier(dayA);
+  const idB = extractDayIdentifier(dayB);
+  if (idA && idB && idA === idB) return true;
+
+  return false;
+}
+
+/**
  * Regola uniforme per stabilire se una sessione è completata.
  */
 export function isCompletedSession(session: {
@@ -123,20 +151,33 @@ export function calculateCurrentActiveWeek(params: {
   totalWeeks: number;
   days: string[];
   completedMap: Record<string, boolean>;
+  /** Conteggio sessioni completate per settimana (opzionale, usato come fallback
+   *  quando i nomi dei giorni sono cambiati dopo che l'atleta ha completato le settimane) */
+  completedSessionsPerWeek?: Record<number, number>;
 }): number {
-  const { totalWeeks, days, completedMap } = params;
+  const { totalWeeks, days, completedMap, completedSessionsPerWeek } = params;
   if (!days || days.length === 0 || totalWeeks <= 1) return 1;
 
   const norm = (str: string) => (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
   // Trova la prima settimana non completamente conclusa (naturale percorso sequenziale)
   for (let w = 1; w <= totalWeeks; w++) {
-    const isWeekFullyDone = days.every(
+    // Strategia 1: corrispondenza per nome (nome giorno nel completedMap)
+    const isWeekFullyDoneByName = days.every(
       (d) => completedMap[`${w}-${d}`] || completedMap[`${w}-${norm(d)}`]
     );
-    if (!isWeekFullyDone) {
-      return w;
+    if (isWeekFullyDoneByName) continue;
+
+    // Strategia 2 (fallback): corrispondenza per conteggio sessioni.
+    // Usato quando il coach ha rinominato i giorni dopo che l'atleta ha completato le settimane.
+    // Se il numero di sessioni completate in questa settimana >= numero di giorni, la settimana è fatta.
+    if (completedSessionsPerWeek) {
+      const sessionCount = completedSessionsPerWeek[w] ?? 0;
+      if (sessionCount >= days.length) continue; // settimana completata per conteggio
     }
+
+    // Settimana non completata con nessuna strategia → questa è quella attiva
+    return w;
   }
 
   return totalWeeks;
@@ -296,24 +337,101 @@ export async function getAthleteWorkoutProgress(
       const normDay = normalizeDayName(rawDay);
 
       if (w > 0 && normDay) {
-        const key = `${w}-${normDay}`;
-        if (!sessionDetailsByKey.has(key)) {
-          sessionDetailsByKey.set(key, s);
-          completedMap[key] = true;
-          // Conserva anche con il nome originale per compatibilità
-          completedMap[`${w}-${rawDay}`] = true;
+        // Cerca se esiste un giorno corrispondente in orderedDays tramite matchDayNames
+        const matchedPlannedDay = orderedDays.find((d) => matchDayNames(d, rawDay));
+        const canonicalDay = matchedPlannedDay || rawDay;
+        const normCanonical = normalizeDayName(canonicalDay);
+
+        const canonicalKey = `${w}-${normCanonical}`;
+        if (!sessionDetailsByKey.has(canonicalKey)) {
+          sessionDetailsByKey.set(canonicalKey, s);
         }
+        completedMap[canonicalKey] = true;
+        completedMap[`${w}-${canonicalDay}`] = true;
+        // Conserva anche con il nome originale per retrocompatibilità completa
+        completedMap[`${w}-${rawDay}`] = true;
+        completedMap[`${w}-${normDay}`] = true;
       }
       // REGOLA: le sessioni senza week_number o day_name (phantom) NON contano come avanzamento.
       // Non usare fallback `session-${s.id}` nel conteggio avanzamento.
     }
 
-    const uniqueCompletedKeys = Array.from(sessionDetailsByKey.keys());
-    // Solo le chiavi con week+day validi contano come avanzamento reale
-    const legitimateCompletedKeys = uniqueCompletedKeys.filter(
-      (k) => !k.startsWith('session-')
-    );
-    const completedCount = legitimateCompletedKeys.length;
+    // Riconciliazione avanzamento settimanale:
+    // Se l'atleta ha completato N sessioni nella settimana W, e la settimana ha N giorni programmati,
+    // tutti i giorni della settimana W sono considerati completati anche se rinominati o riordinati dal coach.
+    const completedSessionsByWeek = new Map<number, RawSessionRow[]>();
+    for (const s of sortedSessions) {
+      if (!isCompletedSession(s)) continue;
+      const w = Number(s.week_number);
+      if (w > 0) {
+        const list = completedSessionsByWeek.get(w) || [];
+        list.push(s);
+        completedSessionsByWeek.set(w, list);
+      }
+    }
+
+    const daysCountInWeek = orderedDays.length > 0 ? orderedDays.length : 3;
+    for (let w = 1; w <= safeTotalWeeks; w++) {
+      const weekSessions = completedSessionsByWeek.get(w) || [];
+      if (weekSessions.length >= daysCountInWeek) {
+        orderedDays.forEach((d, idx) => {
+          const normD = normalizeDayName(d);
+          completedMap[`${w}-${d}`] = true;
+          completedMap[`${w}-${normD}`] = true;
+          if (!sessionDetailsByKey.has(`${w}-${normD}`)) {
+            sessionDetailsByKey.set(`${w}-${normD}`, weekSessions[idx] || weekSessions[0]);
+          }
+        });
+      } else if (weekSessions.length > 0) {
+        let alreadyCovered = 0;
+        for (const d of orderedDays) {
+          const normD = normalizeDayName(d);
+          if (completedMap[`${w}-${d}`] || completedMap[`${w}-${normD}`]) {
+            alreadyCovered++;
+          }
+        }
+        let neededToCredit = weekSessions.length - alreadyCovered;
+        if (neededToCredit > 0) {
+          for (let i = 0; i < orderedDays.length && neededToCredit > 0; i++) {
+            const d = orderedDays[i];
+            const normD = normalizeDayName(d);
+            if (!completedMap[`${w}-${d}`] && !completedMap[`${w}-${normD}`]) {
+              completedMap[`${w}-${d}`] = true;
+              completedMap[`${w}-${normD}`] = true;
+              if (!sessionDetailsByKey.has(`${w}-${normD}`)) {
+                sessionDetailsByKey.set(`${w}-${normD}`, weekSessions[alreadyCovered] || weekSessions[0]);
+              }
+              neededToCredit--;
+              alreadyCovered++;
+            }
+          }
+        }
+      }
+    }
+
+    // Calcolo rigido dell'avanzamento basato sui giorni programmati effettivamente completati
+    // Evita discrepanze tra i checkmark mostrati sui giorni e il conteggio sessioni complessivo
+    let plannedCompletedCount = 0;
+    const uniqueCompletedKeys: string[] = [];
+
+    if (orderedDays.length > 0 && safeTotalWeeks > 0) {
+      for (let w = 1; w <= safeTotalWeeks; w++) {
+        for (const d of orderedDays) {
+          const normD = normalizeDayName(d);
+          if (completedMap[`${w}-${d}`] || completedMap[`${w}-${normD}`]) {
+            plannedCompletedCount++;
+            uniqueCompletedKeys.push(`${w}-${normD}`);
+          }
+        }
+      }
+    } else {
+      uniqueCompletedKeys.push(...Array.from(sessionDetailsByKey.keys()).filter((k) => !k.startsWith('session-')));
+    }
+
+    const completedCount =
+      orderedDays.length > 0 && safeTotalWeeks > 0
+        ? plannedCompletedCount
+        : Math.min(plannedSessions, uniqueCompletedKeys.length);
 
     // REGOLA: non mostrare 100% se completedCount < plannedSessions
     const progressPercent: number = (() => {
@@ -358,7 +476,7 @@ export async function getAthleteWorkoutProgress(
       lastSessionRpe = lastSession.rpe || null;
     }
 
-    // 5. Calcolo prossima sessione prevista
+    // 5. Calcolo prossima sessione prevista (allineata perfettamente con completedMap)
     let nextSessionLabel = 'Non definita';
     let nextSessionWeek: number | null = null;
     let nextSessionDay: string | null = null;
@@ -370,8 +488,8 @@ export async function getAthleteWorkoutProgress(
       for (let w = 1; w <= safeTotalWeeks; w++) {
         for (const d of orderedDays) {
           const normD = normalizeDayName(d);
-          const key = `${w}-${normD}`;
-          if (!sessionDetailsByKey.has(key)) {
+          const isDone = Boolean(completedMap[`${w}-${d}`] || completedMap[`${w}-${normD}`]);
+          if (!isDone) {
             nextSessionWeek = w;
             nextSessionDay = d;
             nextSessionLabel = `Settimana ${w} · ${d}`;
@@ -400,10 +518,14 @@ export async function getAthleteWorkoutProgress(
     }
 
     // Allinea currentWeek all'effettiva settimana attiva calcolata
+    // Usa anche il fallback count-based nel caso i nomi giorni siano cambiati
+    const sessionsPerWeekForFallback: Record<number, number> = {};
+    completedSessionsByWeek.forEach((list, w) => { sessionsPerWeekForFallback[w] = list.length; });
     currentWeek = calculateCurrentActiveWeek({
       totalWeeks: safeTotalWeeks,
       days: orderedDays,
       completedMap,
+      completedSessionsPerWeek: sessionsPerWeekForFallback,
     });
 
     // Controllo disallineamento se l'atleta ha registrato sessioni con workout_id non presente in resolvedWorkoutIds

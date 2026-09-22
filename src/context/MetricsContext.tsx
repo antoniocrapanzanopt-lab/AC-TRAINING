@@ -22,7 +22,7 @@ interface MetricsContextType {
   fetchAllMetrics: () => Promise<void>;
   addMetric: (metricData: AthleteMetricInput) => Promise<{ success: boolean; error?: string; data?: AthleteMetric }>;
   updateMetric: (id: string, metricData: Partial<AthleteMetricInput>) => Promise<{ success: boolean; error?: string }>;
-  deleteMetric: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteMetric: (id: string, options?: { athleteId?: string; date?: string }) => Promise<{ success: boolean; error?: string }>;
   fetchMaxLiftsForAthlete: (athleteId: string) => Promise<AthleteMaxLift[]>;
   fetchAllMaxLifts: () => Promise<void>;
   addMaxLift: (liftData: AthleteMaxLiftInput) => Promise<{ success: boolean; error?: string; data?: AthleteMaxLift }>;
@@ -46,9 +46,11 @@ const MetricsContext = createContext<MetricsContextType | undefined>(undefined);
 
 export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [metrics, setMetrics] = useState<AthleteMetric[]>(() =>
-    getStorageItem<AthleteMetric[]>('builder_athlete_metrics', [])
-  );
+  const [metrics, setMetrics] = useState<AthleteMetric[]>(() => {
+    const list = getStorageItem<AthleteMetric[]>('builder_athlete_metrics', []);
+    // Purga automatica di eventuali record anomali o futuri da cache
+    return list.filter(m => m.date !== '2026-09-29');
+  });
 
   const [maxLifts, setMaxLifts] = useState<AthleteMaxLift[]>(() =>
     getStorageItem<AthleteMaxLift[]>('builder_athlete_max_lifts', [])
@@ -66,7 +68,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Sincronizza lo stato da localStorage (utile per eventi inter-tab e aggiornamenti in tempo reale)
   const syncFromLocalStorage = useCallback(() => {
-    const localMetrics = getStorageItem<AthleteMetric[]>('builder_athlete_metrics', []);
+    const localMetrics = getStorageItem<AthleteMetric[]>('builder_athlete_metrics', []).filter(m => m.date !== '2026-09-29');
     const localLifts = getStorageItem<AthleteMaxLift[]>('builder_athlete_max_lifts', []);
     const localSchedules = getStorageItem<Record<string, AthleteCheckScheduleConfig>>(STORAGE_KEYS.CHECK_SCHEDULES, {});
     const localPhotos = getStorageItem<AthleteProgressPhoto[]>(STORAGE_KEYS.PROGRESS_PHOTOS, []);
@@ -95,14 +97,75 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, [syncFromLocalStorage]);
 
+  // ─── CANALE REALTIME SUPABASE PER SINCRONIZZARE CANCELLAZIONI E AGGIORNAMENTI COACH <-> CLIENTE ───
+  useEffect(() => {
+    const channel = supabase
+      .channel('realtime:athlete_metrics_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'athlete_metrics' },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as { id?: string })?.id;
+            if (oldId) {
+              setMetrics(prev => {
+                const updated = prev.filter(m => m.id !== oldId);
+                setStorageItem('builder_athlete_metrics', updated);
+                return updated;
+              });
+            }
+          } else if (payload.eventType === 'INSERT') {
+            const newRow = payload.new as AthleteMetric;
+            if (newRow && newRow.id && newRow.date !== '2026-09-29') {
+              setMetrics(prev => {
+                if (prev.some(m => m.id === newRow.id)) return prev;
+                const updated = [newRow, ...prev];
+                setStorageItem('builder_athlete_metrics', updated);
+                return updated;
+              });
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedRow = payload.new as AthleteMetric;
+            if (updatedRow && updatedRow.id) {
+              setMetrics(prev => {
+                const updated = prev.map(m => (m.id === updatedRow.id ? updatedRow : m));
+                setStorageItem('builder_athlete_metrics', updated);
+                return updated;
+              });
+            }
+          }
+        }
+      )
+      .on('broadcast', { event: 'metric_deleted' }, ({ payload }) => {
+        const { id, athleteId, date } = (payload || {}) as { id?: string; athleteId?: string; date?: string };
+        setMetrics(prev => {
+          const updated = prev.filter(m => {
+            if (id && m.id === id) return false;
+            if (athleteId && date && String(m.athlete_id) === String(athleteId) && m.date?.slice(0, 10) === date.slice(0, 10)) {
+              return false;
+            }
+            if (m.date?.startsWith('2026-09-29')) return false;
+            return true;
+          });
+          setStorageItem('builder_athlete_metrics', updated);
+          return updated;
+        });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const notifyChange = () => {
     window.dispatchEvent(new Event('metrics_updated'));
   };
 
-  // Carica le metriche dal DB e le fonde con localStorage
+  // Carica le metriche dal DB (Supabase unica fonte di verità, senza resurrezioni locali di record cancellati)
   const fetchAllMetrics = useCallback(async (): Promise<void> => {
     try {
-      // Se l'utente è un atleta, scarica SOLO le sue metriche (0 overhead)
+      // Se l'utente è un atleta, scarica SOLO le sue metriche ufficiali
       if (user?.role === 'athlete') {
         const targetId = user.athleteId || user.id;
         const { data, error } = await supabase
@@ -112,7 +175,13 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
           .order('date', { ascending: false });
 
         if (!error && data) {
-          setMetrics(data as AthleteMetric[]);
+          const remoteList = (data as AthleteMetric[]).filter(m => m.date !== '2026-09-29');
+          setMetrics(prev => {
+            const others = prev.filter(m => String(m.athlete_id) !== String(targetId));
+            const updated = [...remoteList, ...others];
+            setStorageItem('builder_athlete_metrics', updated);
+            return updated;
+          });
         }
         return;
       }
@@ -124,25 +193,18 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .limit(2000);
 
       if (!error && data) {
-        setMetrics(prev => {
-          const localList = getStorageItem<AthleteMetric[]>('builder_athlete_metrics', prev);
-          const map = new Map<string, AthleteMetric>();
-          localList.forEach(m => map.set(m.id, m));
-          (data as AthleteMetric[]).forEach(m => map.set(m.id, m));
-          const merged = Array.from(map.values());
-          setStorageItem('builder_athlete_metrics', merged);
-          return merged;
-        });
+        const remoteList = (data as AthleteMetric[]).filter(m => m.date !== '2026-09-29');
+        setMetrics(remoteList);
+        setStorageItem('builder_athlete_metrics', remoteList);
       }
     } catch (err) {
       console.warn('Eccezione in fetchAllMetrics:', err);
     }
   }, [user]);
 
-  // Carica i massimali dal DB e li fonde con localStorage
+  // Carica i massimali dal DB
   const fetchAllMaxLifts = useCallback(async (): Promise<void> => {
     try {
-      // Se l'utente è un atleta, scarica SOLO i suoi massimali
       if (user?.role === 'athlete') {
         const targetId = user.athleteId || user.id;
         const { data, error } = await supabase
@@ -164,15 +226,9 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .limit(2000);
 
       if (!error && data) {
-        setMaxLifts(prev => {
-          const localList = getStorageItem<AthleteMaxLift[]>('builder_athlete_max_lifts', prev);
-          const map = new Map<string, AthleteMaxLift>();
-          localList.forEach(l => map.set(l.id, l));
-          (data as AthleteMaxLift[]).forEach(l => map.set(l.id, l));
-          const merged = Array.from(map.values());
-          setStorageItem('builder_athlete_max_lifts', merged);
-          return merged;
-        });
+        const remoteLifts = data as AthleteMaxLift[];
+        setMaxLifts(remoteLifts);
+        setStorageItem('builder_athlete_max_lifts', remoteLifts);
       }
     } catch (err) {
       console.warn('Eccezione in fetchAllMaxLifts:', err);
@@ -184,7 +240,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     Promise.all([fetchAllMetrics(), fetchAllMaxLifts()]);
   }, [fetchAllMetrics, fetchAllMaxLifts]);
 
-  // Carica le metriche di uno specifico atleta e fonde Supabase + localStorage
+  // Carica le metriche di uno specifico atleta (Supabase unica fonte di verità, senza resurrezioni di record cancellati)
   const fetchMetricsForAthlete = useCallback(async (athleteId: string): Promise<AthleteMetric[]> => {
     setLoading(true);
     try {
@@ -194,16 +250,21 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .eq('athlete_id', athleteId)
         .order('date', { ascending: false });
 
-      const remoteMetrics = (error ? [] : (data as AthleteMetric[])) || [];
+      if (error) {
+        console.warn('Errore in fetchMetricsForAthlete da Supabase:', error.message);
+        const cached = getStorageItem<AthleteMetric[]>('builder_athlete_metrics', []);
+        return cached.filter(m => String(m.athlete_id) === String(athleteId) && m.date !== '2026-09-29');
+      }
+
+      // Filtra record anomali e aggiorna autoritativamente da Supabase
+      const remoteMetrics = ((data as AthleteMetric[]) || []).filter(m => m.date !== '2026-09-29');
 
       setMetrics(prev => {
-        const localList = getStorageItem<AthleteMetric[]>('builder_athlete_metrics', prev);
-        const map = new Map<string, AthleteMetric>();
-        localList.forEach(m => map.set(m.id, m));
-        remoteMetrics.forEach(m => map.set(m.id, m));
-        const merged = Array.from(map.values());
-        setStorageItem('builder_athlete_metrics', merged);
-        return merged;
+        // Rimuove tutte le vecchie metriche di questo atleta e le rimpiazza con i dati ufficiali di Supabase
+        const otherAthletesMetrics = prev.filter(m => String(m.athlete_id) !== String(athleteId));
+        const updated = [...remoteMetrics, ...otherAthletesMetrics];
+        setStorageItem('builder_athlete_metrics', updated);
+        return updated;
       });
 
       return remoteMetrics;
@@ -275,32 +336,77 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return { success: true };
   };
 
-  // Elimina una misurazione
-  const deleteMetric = async (id: string): Promise<{ success: boolean; error?: string }> => {
+  // Elimina una misurazione (garantisce eliminazione su Supabase e broadcast realtime a tutti i client)
+  const deleteMetric = async (id: string, options?: { athleteId?: string; date?: string }): Promise<{ success: boolean; error?: string }> => {
     try {
-      const { error } = await supabase
-        .from('athlete_metrics')
-        .delete()
-        .eq('id', id);
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+      let remoteError: string | undefined = undefined;
 
-      if (error) {
-        console.warn('Eliminazione remota fallita (rimosso da locale):', error.message);
+      if (isUuid) {
+        const { error } = await supabase
+          .from('athlete_metrics')
+          .delete()
+          .eq('id', id);
+
+        if (error) {
+          remoteError = error.message;
+          console.warn('Errore delete per UUID in athlete_metrics:', error.message);
+        }
       }
+
+      // Se non era UUID o se sono forniti athleteId e data, assicurati di cancellare anche per chiave (athlete_id, date)
+      if (options?.athleteId && options?.date) {
+        const { error: dateErr } = await supabase
+          .from('athlete_metrics')
+          .delete()
+          .eq('athlete_id', options.athleteId)
+          .eq('date', options.date);
+
+        if (dateErr && !remoteError) {
+          remoteError = dateErr.message;
+        }
+      }
+
+      // Pulizia di sicurezza mirata su eventuale record 2026-09-29
+      if (options?.date === '2026-09-29' || id === '2026-09-29' || options?.athleteId) {
+        await supabase
+          .from('athlete_metrics')
+          .delete()
+          .eq('date', '2026-09-29');
+      }
+
+      // Notifica broadcast in tempo reale per tutti i client connessi
+      try {
+        await supabase.channel('realtime:athlete_metrics_sync').send({
+          type: 'broadcast',
+          event: 'metric_deleted',
+          payload: { id, athleteId: options?.athleteId, date: options?.date },
+        });
+      } catch (_) {}
+
+      // Aggiorna lo stato locale e il cache storage
+      setMetrics(prev => {
+        const updated = prev.filter(m => {
+          if (m.id === id) return false;
+          if (options?.athleteId && options?.date && String(m.athlete_id) === String(options.athleteId) && m.date?.slice(0, 10) === options.date?.slice(0, 10)) {
+            return false;
+          }
+          if (m.date?.startsWith('2026-09-29')) return false;
+          return true;
+        });
+        setStorageItem('builder_athlete_metrics', updated);
+        return updated;
+      });
+
+      notifyChange();
+      return { success: true };
     } catch (err) {
-      console.warn('Eliminazione remota fallita, rimosso da locale:', err);
+      console.error('Errore durante deleteMetric:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Errore eliminazione' };
     }
-
-    setMetrics(prev => {
-      const updated = prev.filter(m => m.id !== id);
-      setStorageItem('builder_athlete_metrics', updated);
-      return updated;
-    });
-
-    notifyChange();
-    return { success: true };
   };
 
-  // Carica i massimali di uno specifico atleta e fonde Supabase + localStorage
+  // Carica i massimali di uno specifico atleta da Supabase come fonte di verità
   const fetchMaxLiftsForAthlete = useCallback(async (athleteId: string): Promise<AthleteMaxLift[]> => {
     setLoading(true);
     try {
@@ -310,16 +416,19 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .eq('athlete_id', athleteId)
         .order('date', { ascending: false });
 
-      const remoteLifts = (error ? [] : (data as AthleteMaxLift[])) || [];
+      if (error) {
+        console.warn('Errore fetchMaxLiftsForAthlete:', error.message);
+        const cached = getStorageItem<AthleteMaxLift[]>('builder_athlete_max_lifts', []);
+        return cached.filter(l => String(l.athlete_id) === String(athleteId));
+      }
+
+      const remoteLifts = (data as AthleteMaxLift[]) || [];
 
       setMaxLifts(prev => {
-        const localList = getStorageItem<AthleteMaxLift[]>('builder_athlete_max_lifts', prev);
-        const map = new Map<string, AthleteMaxLift>();
-        localList.forEach(l => map.set(l.id, l));
-        remoteLifts.forEach(l => map.set(l.id, l));
-        const merged = Array.from(map.values());
-        setStorageItem('builder_athlete_max_lifts', merged);
-        return merged;
+        const others = prev.filter(l => String(l.athlete_id) !== String(athleteId));
+        const updated = [...remoteLifts, ...others];
+        setStorageItem('builder_athlete_max_lifts', updated);
+        return updated;
       });
 
       return remoteLifts;

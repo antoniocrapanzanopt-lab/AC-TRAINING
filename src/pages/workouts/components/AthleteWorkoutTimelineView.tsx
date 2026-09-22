@@ -183,16 +183,17 @@ export const AthleteWorkoutTimelineView: React.FC<AthleteWorkoutTimelineViewProp
                 const totalWeeks = item.activeWorkout?.total_weeks || 4;
 
                 // Testo principale di avanzamento
-                let progressText = `${completedSessions} allenamenti completati · ${progressPercentage}%`;
+                const ratioLabel = plannedSessions > 0 ? `${completedSessions} / ${plannedSessions}` : `${completedSessions}`;
+                let progressText = `${ratioLabel} completati · ${progressPercentage}%`;
                 if (!hasActive) {
                   progressText = 'Nessuna scheda attiva';
                 } else if (completedSessions === 0) {
-                  progressText = '0 allenamenti completati · Non iniziato';
+                  progressText = `${ratioLabel} completati · Non iniziato`;
                 } else if (progress?.programStatus === 'completed') {
                   // 'completed' SOLO quando completedSessions === plannedSessions
-                  progressText = `${completedSessions} allenamenti completati · Programma completato`;
+                  progressText = `${ratioLabel} completati · Programma completato`;
                 } else if (progress?.programStatus === 'data_error') {
-                  progressText = `${completedSessions} allenamenti completati · Dati da verificare`;
+                  progressText = `${ratioLabel} completati · Dati da verificare`;
                 }
 
                 // Colore barra — basato su programStatus, NON su progressPercentage >= 100

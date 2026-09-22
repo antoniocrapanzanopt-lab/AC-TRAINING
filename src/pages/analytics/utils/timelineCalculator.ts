@@ -1,5 +1,5 @@
 import { Athlete } from '../../../types';
-import { isCompletedSession, normalizeDayName, resolveRelatedWorkoutIds } from '../../../services/workoutProgressService';
+import { isCompletedSession, normalizeDayName, matchDayNames, resolveRelatedWorkoutIds } from '../../../services/workoutProgressService';
 
 export type TimelineCategory = 'today' | 'late' | 'in_progress' | 'end_of_block' | 'no_activity';
 
@@ -65,6 +65,7 @@ export interface TimelineWorkoutAssignment {
   total_weeks?: number;
   is_active?: boolean;
   assigned_date?: string;
+  start_date?: string;
   created_at?: string;
   workout?: {
     id: string;
@@ -156,14 +157,30 @@ export function buildAthleteTimelineItems(
       const rawD = (s.day_name || '').trim();
       const normD = normalizeDayName(rawD);
       if (w > 0 && normD) {
-        // Solo sessioni con week+day validi contano come avanzamento reale
-        uniqueCompletedKeys.add(`${w}-${normD}`);
+        const matchedPlannedDay = daysList.find((d) => matchDayNames(d, rawD));
+        const canonicalDay = matchedPlannedDay || rawD;
+        const normCanonical = normalizeDayName(canonicalDay);
+        uniqueCompletedKeys.add(`${w}-${normCanonical}`);
       }
       // Phantom sessions (senza week/day) vengono ignorate nel conteggio
     });
 
-    const completedCount = uniqueCompletedKeys.size;
+    let plannedCompletedCount = 0;
+    if (daysList.length > 0 && totalWeeks > 0) {
+      for (let w = 1; w <= totalWeeks; w++) {
+        for (const day of daysList) {
+          const normD = normalizeDayName(day);
+          if (uniqueCompletedKeys.has(`${w}-${normD}`)) {
+            plannedCompletedCount++;
+          }
+        }
+      }
+    }
+
     const totalPlanned = totalWeeks > 0 && daysCount > 0 ? totalWeeks * daysCount : (totalWeeks > 0 ? totalWeeks * 3 : 0);
+    const completedCount = daysList.length > 0 && totalWeeks > 0
+      ? plannedCompletedCount
+      : Math.min(totalPlanned, uniqueCompletedKeys.size);
 
     // REGOLA: non mostrare 100% se completedCount < totalPlanned
     const progressPercent: number = (() => {

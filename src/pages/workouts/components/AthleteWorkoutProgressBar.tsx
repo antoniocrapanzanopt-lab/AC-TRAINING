@@ -117,19 +117,23 @@ export const AthleteWorkoutProgressBar: React.FC<AthleteWorkoutProgressBarProps>
     programStatus,
   } = progress;
 
-  // Dicitura principale chiara — basata su programStatus, non su progressPercentage
-  let progressText = `${completedSessions} allenamenti completati · ${progressPercentage}%`;
+  // Dicitura principale chiara — mostra sempre quanti allenamenti mancano o sono completati (es: 3 / 10 completati · 30%)
+  const ratioLabel = plannedSessions > 0 ? `${completedSessions} / ${plannedSessions}` : `${completedSessions}`;
+  let progressText = `${ratioLabel} completati · ${progressPercentage}%`;
   if (completedSessions === 0) {
-    progressText = '0 allenamenti completati · Non iniziato';
+    progressText = `${ratioLabel} completati · Non iniziato`;
   } else if (programStatus === 'completed') {
     // 'completed' viene impostato SOLO quando completedSessions === plannedSessions
-    progressText = `${completedSessions} allenamenti completati · Programma completato`;
+    progressText = `${ratioLabel} completati · Programma completato`;
   } else if (programStatus === 'data_error') {
-    progressText = `${completedSessions} allenamenti completati · Dati da verificare`;
+    progressText = `${ratioLabel} completati · Dati da verificare`;
   }
 
   // Dettaglio secondario/tooltip
-  const detailTooltip = `${completedSessions} allenamenti completati su ${plannedSessions} previsti`;
+  const remainingSessions = Math.max(0, plannedSessions - completedSessions);
+  const detailTooltip = plannedSessions > 0
+    ? `${completedSessions} di ${plannedSessions} completati (${remainingSessions} mancanti)`
+    : `${completedSessions} allenamenti completati`;
 
   // Colore barra — basato su programStatus, NON su progressPercentage >= 100
   let barColor = 'bg-slate-700';

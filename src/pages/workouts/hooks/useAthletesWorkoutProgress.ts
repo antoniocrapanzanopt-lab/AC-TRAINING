@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { Athlete } from '../../../types';
 import { AthleteAssignedWorkout } from '../../../types/workout';
-import { isCompletedSession, normalizeDayName } from '../../../services/workoutProgressService';
+import { isCompletedSession, normalizeDayName, matchDayNames } from '../../../services/workoutProgressService';
 
 export type AthleteProgramStatus =
   | 'completed'
@@ -30,6 +30,8 @@ export interface AthleteProgressDetail {
   daysSinceLastWorkout: number | null;
   programStatus: AthleteProgramStatus;
   programStatusLabel: string;
+  orderedDays?: string[];
+  daysPerWeek?: number;
 }
 
 interface WorkoutExerciseRow {
@@ -304,7 +306,10 @@ export function useAthletesWorkoutProgress(
             const rawD = (s.day_name || '').trim();
             const normD = normalizeDayName(rawD);
             if (w > 0 && normD) {
-              uniqueCompletedKeys.add(`${w}-${normD}`);
+              const matchedPlannedDay = orderedDays.find((d) => matchDayNames(d, rawD));
+              const canonicalDay = matchedPlannedDay || rawD;
+              const normCanonical = normalizeDayName(canonicalDay);
+              uniqueCompletedKeys.add(`${w}-${normCanonical}`);
               matchedCompletedSessions.push(s);
             } else {
               // Sessione phantom: ha end_time ma manca week/day — NON conta per l'avanzamento
@@ -312,11 +317,22 @@ export function useAthletesWorkoutProgress(
             }
           });
 
-          // REGOLA: solo sessioni con week+day validi contano come avanzamento
-          const completedSessions = uniqueCompletedKeys.size;
-          const totalRawCompletedRows = athSessions.filter(s => isCompletedSession(s)).length;
+          // REGOLA: avanzamento basato rigorosamente sulle sessioni pianificate completate
+          let plannedCompletedCount = 0;
+          if (orderedDays.length > 0 && totalWeeks > 0) {
+            for (let w = 1; w <= totalWeeks; w++) {
+              for (const day of orderedDays) {
+                const normD = normalizeDayName(day);
+                if (uniqueCompletedKeys.has(`${w}-${normD}`)) {
+                  plannedCompletedCount++;
+                }
+              }
+            }
+          }
+          const completedSessions = orderedDays.length > 0 && totalWeeks > 0
+            ? plannedCompletedCount
+            : Math.min(plannedSessions, uniqueCompletedKeys.size);
 
-          console.log(`[useAthletesWorkoutProgress] Atleta: ${ath.id} | workoutId: ${workoutId} | parentId: ${parentTemplateId} | rawCompleted: ${totalRawCompletedRows} | uniqueWithWeekDay: ${completedSessions} | phantom: ${phantomSessionIds.size} | plannedDist: ${distinctWeekDayPairs.size} | orderedDays: ${orderedDays.length} | totalWeeks: ${totalWeeks}`);
           // Calcolo percentuale — REGOLA: non mostrare 100% se completedSessions < plannedSessions
           // Un programma è completato SOLO quando completedSessions === plannedSessions.
           const progressPercentage: number = (() => {
@@ -441,6 +457,8 @@ export function useAthletesWorkoutProgress(
             daysSinceLastWorkout,
             programStatus,
             programStatusLabel,
+            orderedDays,
+            daysPerWeek: orderedDays.length || (totalWeeks > 0 ? Math.round(plannedSessions / totalWeeks) : 3),
           });
         });
 

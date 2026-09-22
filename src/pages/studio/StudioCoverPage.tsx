@@ -10,6 +10,7 @@ import { useToast } from '../../context/ToastContext';
 import { InstagramContent } from '../../types/inboxAndContent';
 import { InstagramCoverData } from '../../types/cover';
 import { generateDefaultCoverFromContent } from '../../services/coverGeneratorService';
+import { getContentGraphics } from '../../services/contentsService';
 
 const CoverStudioModal = React.lazy(() =>
   import('../../components/contents/cover/CoverStudioModal').then((m) => ({ default: m.CoverStudioModal }))
@@ -25,7 +26,7 @@ export const StudioCoverPage: React.FC<StudioCoverPageProps> = ({
   const { contents, createContent, updateContent, deleteContentById } = useContents();
   const { showSuccess, showError } = useToast();
 
-  // Contenuti con cover o tipo reel/video
+  // Contenuti con cover o tipo reel/video/post
   const coverEligibleContents = useMemo(() => {
     return contents.filter((c) => Boolean(c.cover_data) || c.type === 'reel' || c.type === 'post');
   }, [contents]);
@@ -35,9 +36,26 @@ export const StudioCoverPage: React.FC<StudioCoverPageProps> = ({
   );
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(Boolean(initialContent));
 
-  const handleOpenEditor = (content: InstagramContent) => {
+  const handleOpenEditor = async (content: InstagramContent) => {
+    if (!content.cover_data && !content.id.startsWith('temp_')) {
+      try {
+        const graphics = await getContentGraphics(content.id);
+        const enriched: InstagramContent = { ...content, ...graphics };
+        setActiveContent(enriched);
+        setIsEditorOpen(true);
+        return;
+      } catch {
+        // Fallback sicuro se offline
+      }
+    }
     setActiveContent(content);
     setIsEditorOpen(true);
+  };
+
+  const handlePrefetchGraphics = (content: InstagramContent) => {
+    if (!content.cover_data && !content.id.startsWith('temp_')) {
+      getContentGraphics(content.id).catch(() => {});
+    }
   };
 
   const handleCreateNewCover = async () => {
@@ -134,6 +152,7 @@ export const StudioCoverPage: React.FC<StudioCoverPageProps> = ({
             return (
               <div
                 key={item.id}
+                onMouseEnter={() => handlePrefetchGraphics(item)}
                 className="group p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 transition-all flex flex-col justify-between shadow-md space-y-3"
               >
                 <div>

@@ -49,10 +49,6 @@ if (typeof window !== 'undefined' && 'caches' in window) {
   }).catch(() => {});
 }
 
-if (import.meta.env.DEV) {
-  import('./utils/devSessionDiagnose').then((m) => m.runDevDiagnosis()).catch(console.error);
-}
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

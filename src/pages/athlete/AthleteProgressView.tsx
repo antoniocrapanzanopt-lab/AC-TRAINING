@@ -10,10 +10,12 @@ import {
   TrendingUp,
   TrendingDown,
   Flame,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useMetrics } from '../../context/MetricsContext';
+import { useToast } from '../../context/ToastContext';
 import { AthleteMaxLift } from '../../types/metrics';
 import { MaxLiftsSection } from '../../components/metrics/MaxLiftsSection';
 import { AthleteMetricsTrendChart } from '../../components/metrics/AthleteMetricsTrendChart';
@@ -28,11 +30,13 @@ interface AthleteProgressViewProps {
 export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ targetAthleteId }) => {
   const { user } = useAuth();
   const { athletes } = useAthletes();
+  const { showSuccess, showError } = useToast();
   const {
     metrics,
     maxLifts,
     fetchMetricsForAthlete,
     fetchMaxLiftsForAthlete,
+    deleteMetric,
     getAthleteSchedule,
     getAthleteScheduleState,
     getAthleteProgressPhotos,
@@ -508,6 +512,27 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
                           </p>
                         )}
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const formattedDate = m.date ? new Date(m.date).toLocaleDateString('it-IT') : '';
+                          if (window.confirm(`Vuoi davvero eliminare la misurazione del ${formattedDate}?`)) {
+                            deleteMetric(m.id, { athleteId: m.athlete_id, date: m.date?.slice(0, 10) }).then((res) => {
+                              if (res.success) {
+                                showSuccess('Misurazione eliminata con successo');
+                              } else {
+                                showError('Errore', res.error || 'Impossibile eliminare la misurazione');
+                              }
+                            });
+                          }
+                        }}
+                        title="Elimina misurazione"
+                        aria-label="Elimina misurazione"
+                        className="p-2 text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer shrink-0 self-end sm:self-center"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   );
                 })}

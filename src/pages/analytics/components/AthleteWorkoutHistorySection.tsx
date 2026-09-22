@@ -27,6 +27,8 @@ export interface RawWorkoutSession {
   end_time?: string;
   notes?: string;
   rpe?: number;
+  week_number?: number;
+  day_name?: string;
   workouts?: { id?: string; title?: string; total_weeks?: number };
 }
 
@@ -44,6 +46,7 @@ export interface ExerciseMeta {
   name: string;
   day_name?: string;
   week_number?: number;
+  workout_id?: string;
 }
 
 interface AthleteWorkoutHistorySectionProps {
@@ -115,7 +118,7 @@ export const AthleteWorkoutHistorySection: React.FC<AthleteWorkoutHistorySection
   const [editingSession, setEditingSession] = useState<EditableWorkoutSession | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
-  // Mappa log per sessionId
+  // Mappa log per sessionId (con supporto prioritario a builder_completed_session_logs di localStorage)
   const logsBySession = useMemo(() => {
     const map = new Map<string, RawExerciseLogItem[]>();
     logs.forEach((log) => {
@@ -124,6 +127,33 @@ export const AthleteWorkoutHistorySection: React.FC<AthleteWorkoutHistorySection
       }
       map.get(log.session_id)!.push(log);
     });
+
+    // Fallback immediato sui log locali completati
+    try {
+      const localCompletedLogs = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}') as Record<string, Array<{
+        id?: string;
+        exercise_id?: string;
+        set_number?: number;
+        reps_completed?: number;
+        weight_kg?: number;
+        notes?: string;
+      }>>;
+      Object.entries(localCompletedLogs).forEach(([sessId, sLogs]) => {
+        if (Array.isArray(sLogs) && (!map.has(sessId) || map.get(sessId)!.length === 0)) {
+          const converted: RawExerciseLogItem[] = sLogs.map((sl, sIdx: number) => ({
+            id: sl.id || `local-${sessId}-${sIdx}`,
+            session_id: sessId,
+            exercise_id: sl.exercise_id || '',
+            set_number: sl.set_number || sIdx + 1,
+            reps_completed: sl.reps_completed ?? 0,
+            weight_kg: sl.weight_kg ?? 0,
+            notes: sl.notes,
+          }));
+          map.set(sessId, converted);
+        }
+      });
+    } catch (_) {}
+
     return map;
   }, [logs]);
 

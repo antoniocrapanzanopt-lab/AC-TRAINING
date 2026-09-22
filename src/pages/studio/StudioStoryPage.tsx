@@ -10,6 +10,7 @@ import { useToast } from '../../context/ToastContext';
 import { InstagramContent } from '../../types/inboxAndContent';
 import { InstagramStorySequence } from '../../types/story';
 import { generateStoriesFromContent } from '../../services/storyGeneratorService';
+import { getContentGraphics } from '../../services/contentsService';
 
 const StoryStudioModal = React.lazy(() =>
   import('../../components/contents/story/StoryStudioModal').then((m) => ({ default: m.StoryStudioModal }))
@@ -48,9 +49,26 @@ export const StudioStoryPage: React.FC<StudioStoryPageProps> = ({
     });
   }, [activeContent]);
 
-  const handleOpenEditor = (content: InstagramContent) => {
+  const handleOpenEditor = async (content: InstagramContent) => {
+    if (!content.story_data && !content.id.startsWith('temp_')) {
+      try {
+        const graphics = await getContentGraphics(content.id);
+        const enriched: InstagramContent = { ...content, ...graphics };
+        setActiveContent(enriched);
+        setIsEditorOpen(true);
+        return;
+      } catch {
+        // Fallback sicuro se offline
+      }
+    }
     setActiveContent(content);
     setIsEditorOpen(true);
+  };
+
+  const handlePrefetchGraphics = (content: InstagramContent) => {
+    if (!content.story_data && !content.id.startsWith('temp_')) {
+      getContentGraphics(content.id).catch(() => {});
+    }
   };
 
   const handleCreateNewStory = async () => {
@@ -151,6 +169,7 @@ export const StudioStoryPage: React.FC<StudioStoryPageProps> = ({
             return (
               <div
                 key={item.id}
+                onMouseEnter={() => handlePrefetchGraphics(item)}
                 className="group p-4 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-rose-500/40 transition-all flex flex-col justify-between shadow-md space-y-3"
               >
                 <div>

@@ -16,14 +16,16 @@ import {
 } from 'lucide-react';
 import { useAthletes } from '../../context/AthletesContext';
 import { useApp } from '../../context/AppContext';
+import { useToast } from '../../context/ToastContext';
 import { supabase } from '../../lib/supabase';
-import { isPainFeedback } from '../../utils/painAnalysis';
+import { isPainFeedback, isPainResolved } from '../../utils/painAnalysis';
 
 export interface ExerciseSetDetail {
   setNumber: number;
   reps: number;
   weightKg: number;
   rpe?: string;
+  notes?: string;
 }
 
 export interface ExerciseGroupDetail {
@@ -51,6 +53,7 @@ export interface CoachWorkoutSessionFeedItem {
   notes?: string;
   totalVolumeKg: number;
   hasPainAlert: boolean;
+  isPainResolved?: boolean;
   painDetails?: string;
   isHighRpe: boolean;
   exercises: ExerciseGroupDetail[];
@@ -64,13 +67,52 @@ export interface CoachWorkoutSessionFeedItem {
   }>;
 }
 
+interface RawWorkoutSessionQueryResult {
+  id: string;
+  athlete_id: string | null;
+  workout_id: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  rpe: number | null;
+  notes: string | null;
+  week_number: number | null;
+  day_name: string | null;
+  status: string | null;
+  workouts: { id: string; title: string; total_weeks: number } | null;
+}
+
+interface RawExerciseLogQueryResult {
+  id: string;
+  session_id: string;
+  exercise_id: string | null;
+  set_number: number;
+  reps_completed: number | null;
+  weight_kg: number | null;
+  notes: string | null;
+  workout_exercises?: { name?: string; day_name?: string; week_number?: number } | null;
+}
+
+interface RawWorkoutExerciseQueryResult {
+  id: string;
+  workout_id: string | null;
+  name: string;
+  day_name: string | null;
+  week_number: number | null;
+  sets?: number | null;
+  reps_target?: string | null;
+  target_weight?: number | null;
+  order_index?: number | null;
+}
+
 export const WorkoutHistoryPage: React.FC = () => {
   const { athletes, setSelectedAthleteId } = useAthletes();
   const { setActiveTab } = useApp();
+  const { showSuccess, showError } = useToast();
 
   const [sessions, setSessions] = useState<CoachWorkoutSessionFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedSessionIds, setExpandedSessionIds] = useState<Record<string, boolean>>({});
+  const [resolvingSessionId, setResolvingSessionId] = useState<string | null>(null);
 
   // Filtri
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,9 +153,9 @@ export const WorkoutHistoryPage: React.FC = () => {
         console.error('Errore query workout_sessions:', sessError);
       }
 
-      const sessionsRaw = sessionsData || [];
-      const sessionIds = sessionsRaw.map((s: any) => s.id).filter(Boolean);
-      const workoutIds = Array.from(new Set(sessionsRaw.map((s: any) => s.workout_id).filter(Boolean))) as string[];
+      const sessionsRaw = (sessionsData || []) as unknown as RawWorkoutSessionQueryResult[];
+      const sessionIds = sessionsRaw.map((s) => s.id).filter(Boolean);
+      const workoutIds = Array.from(new Set(sessionsRaw.map((s) => s.workout_id).filter(Boolean))) as string[];
 
       // 2. Mappa esercizi della scheda e template programmato
       const exercisesById = new Map<string, { name: string; day_name?: string; week_number?: number; workout_id?: string; sets?: number; reps_target?: string; target_weight?: number }>();
@@ -131,15 +173,15 @@ export const WorkoutHistoryPage: React.FC = () => {
         }
 
         if (weData) {
-          weData.forEach((we: any) => {
+          (weData as unknown as RawWorkoutExerciseQueryResult[]).forEach((we) => {
             const item = {
               name: we.name,
-              day_name: we.day_name,
-              week_number: we.week_number,
-              workout_id: we.workout_id,
+              day_name: we.day_name || undefined,
+              week_number: we.week_number || undefined,
+              workout_id: we.workout_id || undefined,
               sets: we.sets || 3,
-              reps_target: we.reps_target,
-              target_weight: we.target_weight,
+              reps_target: we.reps_target || undefined,
+              target_weight: we.target_weight || undefined,
             };
             exercisesById.set(we.id, item);
 
@@ -154,7 +196,7 @@ export const WorkoutHistoryPage: React.FC = () => {
       }
 
       // 3. Recupero set ed esecuzioni da exercise_logs
-      const logsBySession = new Map<string, any[]>();
+      const logsBySession = new Map<string, RawExerciseLogQueryResult[]>();
       if (sessionIds.length > 0) {
         const { data: logsData, error: logsErr } = await supabase
           .from('exercise_logs')
@@ -167,8 +209,9 @@ export const WorkoutHistoryPage: React.FC = () => {
         }
 
         if (logsData && logsData.length > 0) {
+          const typedLogs = logsData as unknown as RawExerciseLogQueryResult[];
           const missingIds = Array.from(
-            new Set(logsData.map((l: any) => l.exercise_id).filter((id: string) => id && !exercisesById.has(id)))
+            new Set(typedLogs.map((l) => l.exercise_id).filter((id): id is string => typeof id === 'string' && id.length > 0 && !exercisesById.has(id)))
           );
 
           if (missingIds.length > 0) {
@@ -178,18 +221,18 @@ export const WorkoutHistoryPage: React.FC = () => {
               .in('id', missingIds);
 
             if (extraWe) {
-              extraWe.forEach((we: any) => {
+              (extraWe as unknown as RawWorkoutExerciseQueryResult[]).forEach((we) => {
                 exercisesById.set(we.id, {
                   name: we.name,
-                  day_name: we.day_name,
-                  week_number: we.week_number,
-                  workout_id: we.workout_id,
+                  day_name: we.day_name || undefined,
+                  week_number: we.week_number || undefined,
+                  workout_id: we.workout_id || undefined,
                 });
               });
             }
           }
 
-          logsData.forEach((l: any) => {
+          typedLogs.forEach((l) => {
             if (!logsBySession.has(l.session_id)) {
               logsBySession.set(l.session_id, []);
             }
@@ -200,8 +243,8 @@ export const WorkoutHistoryPage: React.FC = () => {
 
       // 4. Unione con backup locale istantaneo se presente sul client
       try {
-        const localCompletedLogs = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}');
-        sessionsRaw.forEach((s: any) => {
+        const localCompletedLogs = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}') as Record<string, RawExerciseLogQueryResult[]>;
+        sessionsRaw.forEach((s) => {
           if ((!logsBySession.has(s.id) || logsBySession.get(s.id)!.length === 0) && localCompletedLogs[s.id]) {
             logsBySession.set(s.id, localCompletedLogs[s.id]);
           }
@@ -209,7 +252,7 @@ export const WorkoutHistoryPage: React.FC = () => {
       } catch (_) {}
 
       // 5. Mappatura completa degli item per il feed
-      const feedItems: CoachWorkoutSessionFeedItem[] = sessionsRaw.map((s: any) => {
+      const feedItems: CoachWorkoutSessionFeedItem[] = sessionsRaw.map((s) => {
         const athFromMap = s.athlete_id
           ? athleteMap.get(s.athlete_id) || athletes.find((a) => a.auth_user_id === s.athlete_id || a.id === s.athlete_id)
           : null;
@@ -228,7 +271,7 @@ export const WorkoutHistoryPage: React.FC = () => {
         let hasPainInLogs = false;
         const painNotesList: string[] = [];
 
-        logs.forEach((log: any) => {
+        logs.forEach((log) => {
           const weFromMap = log.exercise_id ? exercisesById.get(log.exercise_id) : null;
           const day = log.workout_exercises?.day_name || weFromMap?.day_name;
           const week = log.workout_exercises?.week_number || weFromMap?.week_number;
@@ -284,22 +327,44 @@ export const WorkoutHistoryPage: React.FC = () => {
           }
         );
 
-        // Fallback su esercizi programmati della scheda
+        // Fallback su esercizi programmati della scheda: filtra ESCLUSIVAMENTE per la settimana e il giorno della seduta svolta
         const scheduled = s.workout_id ? scheduledExercisesByWorkout.get(s.workout_id) || [] : [];
-        const filteredScheduled = scheduled.filter((sc) => {
-          if (detectedDay && detectedDay !== 'Sessione Allenamento' && sc.day_name) {
-            return sc.day_name.toLowerCase().trim() === detectedDay.toLowerCase().trim();
-          }
+        const targetWeek = detectedWeek || s.week_number;
+        const targetDayClean = (detectedDay && detectedDay !== 'Sessione Allenamento' ? detectedDay : s.day_name || '').toLowerCase().trim();
+
+        let filteredScheduled = scheduled.filter((sc) => {
+          const matchWeek = targetWeek ? sc.week_number === targetWeek : true;
+          const matchDay = targetDayClean && sc.day_name ? sc.day_name.toLowerCase().trim() === targetDayClean : true;
+          return matchWeek && matchDay;
+        });
+
+        // Se il match combinato è troppo restrittivo (es. week diversa), tenta per solo giorno
+        if (filteredScheduled.length === 0 && targetDayClean) {
+          filteredScheduled = scheduled.filter((sc) => sc.day_name && sc.day_name.toLowerCase().trim() === targetDayClean);
+        }
+
+        // Se ancora vuoto, prendi solo il primo giorno disponibile per non riversare l'intera scheda di 42 esercizi
+        if (filteredScheduled.length === 0 && scheduled.length > 0) {
+          const firstDay = scheduled[0]?.day_name;
+          filteredScheduled = scheduled.filter((sc) => sc.day_name === firstDay);
+        }
+
+        // Deduplica per nome esercizio se presenti ripetizioni
+        const seenNames = new Set<string>();
+        const fallbackScheduled = filteredScheduled.filter((item) => {
+          const key = item.name.toLowerCase().trim();
+          if (seenNames.has(key)) return false;
+          seenNames.add(key);
           return true;
         });
-        const fallbackScheduled = filteredScheduled.length > 0 ? filteredScheduled : scheduled;
 
-        const hasPainInQuestionnaire = isPainText(s.notes || '');
+        const hasPainInQuestionnaire = isPainFeedback(s.notes || '');
+        const isPainAlreadyResolved = isPainResolved(s.notes || '');
         if (hasPainInQuestionnaire && s.notes) {
           painNotesList.push(`Questionario: "${s.notes}"`);
         }
 
-        const hasPain = hasPainInLogs || hasPainInQuestionnaire;
+        const hasPain = hasPainInLogs || hasPainInQuestionnaire || isPainAlreadyResolved;
         const rpeVal = Number(s.rpe) || undefined;
         const isHighRpe = rpeVal !== undefined && rpeVal >= 8.5;
 
@@ -312,8 +377,8 @@ export const WorkoutHistoryPage: React.FC = () => {
           workoutTitle: s.workouts?.title || 'Scheda Personalizzata',
           dayName: detectedDay,
           weekNumber: detectedWeek,
-          startTime: s.start_time,
-          endTime: s.end_time,
+          startTime: s.start_time || undefined,
+          endTime: s.end_time || undefined,
           dateFormatted: endObj.toLocaleDateString('it-IT', {
             day: '2-digit',
             month: 'short',
@@ -328,7 +393,8 @@ export const WorkoutHistoryPage: React.FC = () => {
           notes: s.notes || undefined,
           totalVolumeKg: sessionVolume,
           hasPainAlert: hasPain,
-          painDetails: painNotesList.length > 0 ? painNotesList.join(' • ') : undefined,
+          isPainResolved: isPainAlreadyResolved,
+          painDetails: painNotesList.join(' | '),
           isHighRpe,
           exercises,
           hasExplicitLoads: exercises.length > 0,
@@ -425,6 +491,75 @@ export const WorkoutHistoryPage: React.FC = () => {
   const handleNavigateToAthlete = (athleteId: string) => {
     setSelectedAthleteId(athleteId);
     setActiveTab('atleti');
+  };
+
+  const handleOpenAthleteWorkout = (athleteId: string) => {
+    setSelectedAthleteId(athleteId);
+    setActiveTab('schede');
+  };
+
+  const handleToggleResolvePain = async (
+    sessionId: string,
+    currentNotes: string = '',
+    isResolved: boolean = false
+  ) => {
+    setResolvingSessionId(sessionId);
+    try {
+      let updatedNotes = currentNotes;
+      if (!isResolved) {
+        const dateTag = new Date().toLocaleDateString('it-IT');
+        if (!updatedNotes.includes('[RISOLTO DAL COACH')) {
+          updatedNotes = updatedNotes.trim()
+            ? `${updatedNotes}\n[RISOLTO DAL COACH — ${dateTag}]`
+            : `[RISOLTO DAL COACH — ${dateTag}]`;
+        }
+      } else {
+        updatedNotes = updatedNotes.replace(/\n?\[RISOLTO DAL COACH[^\]]*\]/gi, '').trim();
+      }
+
+      const { error } = await supabase
+        .from('workout_sessions')
+        .update({ notes: updatedNotes })
+        .eq('id', sessionId);
+
+      if (error) throw error;
+
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== sessionId) return s;
+          const painNotesList: string[] = [];
+          const hasPainInLogs = s.exercises.some((ex) =>
+            (ex.notes && isPainFeedback(ex.notes)) ||
+            ex.sets.some((st) => st.notes && isPainFeedback(st.notes))
+          );
+          const hasPainInQuestionnaire = isPainFeedback(updatedNotes);
+          if (hasPainInQuestionnaire && updatedNotes) {
+            painNotesList.push(`Questionario: "${updatedNotes}"`);
+          }
+          const stillHasPain = hasPainInLogs || hasPainInQuestionnaire;
+          const newlyResolved = isPainResolved(updatedNotes);
+
+          return {
+            ...s,
+            notes: updatedNotes,
+            hasPainAlert: stillHasPain || newlyResolved,
+            isPainResolved: newlyResolved,
+            painDetails: painNotesList.join(' | '),
+          };
+        })
+      );
+
+      showSuccess(
+        !isResolved
+          ? 'Fastidio contrassegnato come risolto con successo!'
+          : 'Segnalazione fastidio riaperta.'
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Impossibile aggiornare la segnalazione.';
+      showError(msg);
+    } finally {
+      setResolvingSessionId(null);
+    }
   };
 
   return (
@@ -633,7 +768,9 @@ export const WorkoutHistoryPage: React.FC = () => {
                 key={session.id}
                 className={`rounded-3xl border transition-all overflow-hidden ${
                   session.hasPainAlert
-                    ? 'bg-slate-950/95 border-rose-500/40 shadow-xl shadow-rose-500/5'
+                    ? session.isPainResolved
+                      ? 'bg-slate-950/95 border-emerald-500/40 shadow-xl shadow-emerald-500/5'
+                      : 'bg-slate-950/95 border-rose-500/40 shadow-xl shadow-rose-500/5'
                     : 'bg-slate-950/90 border-slate-800 hover:border-slate-700 shadow-xl'
                 }`}
               >
@@ -680,9 +817,15 @@ export const WorkoutHistoryPage: React.FC = () => {
                           </span>
 
                           {session.hasPainAlert && (
-                            <span className="text-[10px] font-black text-rose-300 bg-rose-500/20 px-2.5 py-0.5 rounded-full border border-rose-500/40 flex items-center gap-1 animate-pulse">
-                              <ShieldAlert className="w-3 h-3 text-rose-400" /> Fastidio Segnalato
-                            </span>
+                            session.isPainResolved ? (
+                              <span className="text-[10px] font-black text-emerald-300 bg-emerald-500/15 px-2.5 py-0.5 rounded-full border border-emerald-500/40 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Fastidio Risolto ✓
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-black text-rose-300 bg-rose-500/20 px-2.5 py-0.5 rounded-full border border-rose-500/40 flex items-center gap-1 animate-pulse">
+                                <ShieldAlert className="w-3 h-3 text-rose-400" /> Fastidio Segnalato
+                              </span>
+                            )
                           )}
                         </div>
 
@@ -731,19 +874,62 @@ export const WorkoutHistoryPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Note Questionario / Fastidi Generali */}
+                  {/* Note Questionario / Fastidi Generali con Azioni di Risoluzione */}
                   {session.notes && (
                     <div
-                      className={`p-3.5 rounded-2xl border text-xs ${
+                      className={`p-4 rounded-2xl border text-xs space-y-2.5 ${
                         session.hasPainAlert
-                          ? 'bg-rose-950/20 border-rose-500/30 text-rose-200'
+                          ? session.isPainResolved
+                            ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
+                            : 'bg-rose-950/20 border-rose-500/30 text-rose-200'
                           : 'bg-slate-900/80 border-slate-800 text-slate-300'
                       }`}
                     >
-                      <span className="font-black mr-1.5 uppercase text-[10px] tracking-wider text-amber-400 block sm:inline">
-                        Questionario Fine Allenamento:
-                      </span>
-                      "{session.notes}"
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="font-black uppercase text-[10px] tracking-wider text-amber-400 flex items-center gap-1.5">
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          Questionario Fine Allenamento:
+                        </span>
+
+                        {session.hasPainAlert && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={resolvingSessionId === session.id}
+                              onClick={() => handleToggleResolvePain(session.id, session.notes, session.isPainResolved)}
+                              className={`px-3 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                session.isPainResolved
+                                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                                  : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black shadow-md shadow-emerald-500/20 active:scale-95'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{session.isPainResolved ? 'Riapri Segnalazione' : 'Segna come Risolto'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAthleteWorkout(session.athleteId)}
+                              className="px-3 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                              title="Apri scheda dell'atleta per correggere o sostituire esercizi"
+                            >
+                              <Dumbbell className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Modifica Scheda Atleta</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="italic text-slate-200 leading-relaxed pl-1">
+                        "{session.notes.replace(/\n?\[RISOLTO DAL COACH[^\\]]*\]/gi, '').trim()}"
+                      </p>
+
+                      {session.isPainResolved && (
+                        <div className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 pt-1 border-t border-emerald-500/20">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Contrassegnato come risolto dal coach</span>
+                        </div>
+                      )}
                     </div>
                   )}
 

@@ -841,50 +841,50 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             {!isWorkoutStarted ? (
               /* STATO ANTEPRIMA: SOLO GIORNO + SETTIMANA + ICONA OCCHIO */
               <div className="flex items-center gap-2 min-w-0">
-                <h1 className="text-base sm:text-xl font-black text-[var(--color-text)] truncate">
+                <h1 className="text-lg sm:text-2xl font-black text-white truncate">
                   {currentDayName}
                 </h1>
-                <span className="text-xs sm:text-sm text-[var(--color-text-muted)] font-bold shrink-0">
+                <span className="text-sm sm:text-base text-slate-300 font-bold shrink-0">
                   • Settimana {currentWeekNumber}
                 </span>
-                <span className="p-1 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0" title="Anteprima scheda">
-                  <Eye className="w-3.5 h-3.5" />
+                <span className="p-1.5 rounded-lg bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0" title="Anteprima scheda">
+                  <Eye className="w-4 h-4" />
                 </span>
               </div>
             ) : (
               /* STATO WORKOUT AVVIATO: CRONOMETRO & STATO SYNC */
               <div className="flex items-center gap-2.5 flex-wrap min-w-0">
                 {/* Timer Badge Interattivo con Controlli Play / Pausa / Reset */}
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border transition-all shadow-sm ${
+                <div className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border transition-all shadow-sm ${
                   isTimerRunning
-                    ? 'bg-amber-500/15 border-amber-500/35 text-[var(--color-primary)]'
-                    : 'bg-amber-500/10 border-amber-500/25 text-amber-400'
+                    ? 'bg-amber-500/20 border-amber-500/40 text-[var(--color-primary)]'
+                    : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
                 }`}>
-                  <span className="font-mono text-xs sm:text-sm font-black flex items-center gap-1.5">
-                    <Clock className={`w-3.5 h-3.5 ${isTimerRunning ? 'text-[var(--color-primary)] animate-pulse' : 'text-slate-400'}`} />
+                  <span className="font-mono text-sm sm:text-base font-black flex items-center gap-1.5">
+                    <Clock className={`w-4 h-4 ${isTimerRunning ? 'text-[var(--color-primary)] animate-pulse' : 'text-slate-300'}`} />
                     {formatTime(elapsedTime)}
                   </span>
 
                   {/* Divider */}
-                  <div className="w-[1px] h-3.5 bg-slate-700/60 mx-0.5" />
+                  <div className="w-[1.5px] h-4 bg-slate-700 mx-0.5" />
 
                   {/* Pulsante Pausa / Riprendi */}
                   <button
                     type="button"
                     onClick={isTimerRunning ? handlePauseTimer : handleStartOrResumeTimer}
-                    className={`p-1 rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+                    className={`p-1.5 rounded-lg text-xs sm:text-sm font-black transition-all active:scale-95 cursor-pointer min-h-[32px] ${
                       isTimerRunning
                         ? 'text-amber-300 hover:bg-amber-500/20'
-                        : 'text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1 px-1.5'
+                        : 'text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1 px-2'
                     }`}
                     title={isTimerRunning ? 'Metti in pausa il cronometro' : 'Riprendi il cronometro'}
                   >
                     {isTimerRunning ? (
-                      <Pause className="w-3.5 h-3.5 fill-current" />
+                      <Pause className="w-4 h-4 fill-current" />
                     ) : (
                       <>
-                        <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
-                        <span className="text-[10px] font-black uppercase">Riprendi</span>
+                        <Play className="w-4 h-4 fill-current text-emerald-400" />
+                        <span className="text-xs font-black uppercase">Riprendi</span>
                       </>
                     )}
                   </button>
@@ -893,23 +893,23 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                   <button
                     type="button"
                     onClick={handleResetTimer}
-                    className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-all active:scale-95 cursor-pointer"
+                    className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-all active:scale-95 cursor-pointer min-h-[32px]"
                     title="Azzera il cronometro"
                   >
-                    <RotateCcw className="w-3 h-3" />
+                    <RotateCcw className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
                 {/* Badge Stato Salvataggio */}
-                <span className="text-xs text-[var(--color-text-muted)] hidden sm:flex items-center gap-1.5 font-medium">
+                <span className="text-xs sm:text-sm text-slate-300 hidden sm:flex items-center gap-1.5 font-bold">
                   {isOnline ? (
-                    <span className="flex items-center gap-1.5 text-emerald-500 font-bold" title={lastSavedText}>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="flex items-center gap-1.5 text-emerald-400 font-black" title={lastSavedText}>
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                       <span>{lastSavedText}</span>
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1.5 text-amber-500 font-bold">
-                      <WifiOff className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="flex items-center gap-1.5 text-amber-400 font-black">
+                      <WifiOff className="w-4 h-4 text-amber-400" />
                       <span>Offline (Dati al sicuro)</span>
                     </span>
                   )}
@@ -925,9 +925,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                 type="button"
                 onClick={handleOpenFinishFlow}
                 disabled={isSaving}
-                className="min-h-[44px] px-4 sm:px-6 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer"
+                className="min-h-[46px] px-5 sm:px-7 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm sm:text-base flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer"
               >
-                <Check className="w-4 h-4 stroke-[3]" />
+                <Check className="w-5 h-5 stroke-[3.5]" />
                 <span>Completa</span>
               </button>
             )}
@@ -1001,7 +1001,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               <button
                 type="button"
                 onClick={() => setIsSkipModalOpen(true)}
-                className="min-h-[44px] px-4 py-2.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-black transition-all active:scale-95 cursor-pointer shrink-0 self-start sm:self-auto shadow-sm flex items-center gap-1.5"
+                className="min-h-[46px] px-5 py-2.5 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs sm:text-sm font-black transition-all active:scale-95 cursor-pointer shrink-0 self-start sm:self-auto shadow-sm flex items-center gap-2"
               >
                 <span>Comunica Imprevisto</span>
               </button>
@@ -1017,9 +1017,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             <button
               type="button"
               onClick={handleStartOrResumeTimer}
-              className="w-full py-4 px-6 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-base flex items-center justify-center gap-2.5 shadow-xl shadow-[var(--color-primary)]/25 active:scale-[0.98] transition-all cursor-pointer"
+              className="w-full py-4 sm:py-5 px-6 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-base sm:text-lg flex items-center justify-center gap-3 shadow-xl shadow-[var(--color-primary)]/25 active:scale-[0.98] transition-all cursor-pointer"
             >
-              <Play className="w-5 h-5 fill-current" />
+              <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
               <span>Inizia Allenamento</span>
             </button>
           </div>

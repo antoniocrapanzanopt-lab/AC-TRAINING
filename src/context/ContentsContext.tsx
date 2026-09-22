@@ -55,7 +55,7 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { showSuccess, showError } = useToast();
 
   const fetchContents = useCallback(async () => {
-    // Non cancellare la cache se l'autenticazione è ancora in fase di risoluzione
+    // Non azzerare la cache se l'autenticazione è ancora in fase di inizializzazione
     if (authLoading) return;
 
     // Gli atleti non gestiscono i contenuti social del coach: bypass istantaneo a costo 0
@@ -65,27 +65,66 @@ export const ContentsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
 
+    // Se l'utente non è presente (es. micro-interruzione o refresh), non resettare bruscamente la cache locale
     if (!user) {
-      setContents([]);
       setIsLoading(false);
       return;
     }
 
     try {
-      // Se non abbiamo ancora elementi in cache, segnaliamo il caricamento
       if (contents.length === 0) {
         setIsLoading(true);
       }
       const data = await getInstagramContents();
-      setContents(data);
-      setCachedContents(data);
+
+      if (data && data.length > 0) {
+        setContents((prev) => {
+          // Crea una mappa degli elementi locali per preservare dati grafici e bozze temporanee
+          const prevMap = new Map(prev.map((c) => [c.id, c]));
+          const merged = data.map((remote) => {
+            const local = prevMap.get(remote.id);
+            return {
+              ...remote,
+              // Preserva i dati grafici se già presenti in memoria/fallback ma nulli nella query leggera
+              carousel_data: remote.carousel_data ?? local?.carousel_data ?? null,
+              cover_data: remote.cover_data ?? local?.cover_data ?? null,
+              story_data: remote.story_data ?? local?.story_data ?? null,
+            };
+          });
+
+          // Preserva eventuali contenuti temporanei non ancora salvati nel DB remoto (es. id "temp_...")
+          const tempContents = prev.filter((c) => c.id.startsWith('temp_'));
+          const finalContents = [...tempContents, ...merged];
+
+          setCachedContents(finalContents);
+          return finalContents;
+        });
+      } else {
+        // Se Supabase restituisce 0 elementi (es. nessun record remoto o timeout non fatale),
+        // verifichiamo se in cache locale o memoria abbiamo contenuti validi da non perdere
+        const cached = getCachedContents();
+        if (cached.length > 0 && contents.length === 0) {
+          setContents(cached);
+        } else if (contents.length > 0) {
+          // Mantieni i contenuti correnti: non azzerare mai lo stato utente per una risposta vuota
+          setCachedContents(contents);
+        } else {
+          setContents([]);
+          setCachedContents([]);
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('Errore caricamento Instagram contents:', msg);
+      // Ripristino di sicurezza dalla cache locale in caso di errore di connessione
+      const cached = getCachedContents();
+      if (cached.length > 0) {
+        setContents(cached);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, user?.role, authLoading]);
+  }, [user?.id, user?.role, authLoading, contents.length]);
 
   useEffect(() => {
     fetchContents();

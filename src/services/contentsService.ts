@@ -61,60 +61,55 @@ function getContentFallback(id: string): ContentLocalFallback {
   }
 }
 
-// Colonne complete per il listing (include carousel_data, cover_data, story_data)
-const LIST_SELECT = 'id,coach_id,title,type,pillar,status,hook,call_to_action,internal_notes,performance_metrics,origin_inbox_id,created_at,updated_at,scheduled_for,published_at,script_body,caption,carousel_data,cover_data,story_data';
+// Colonne snelle per il listing ultra-veloce (senza caricare megabyte di JSONB grafici)
+const FAST_LIST_SELECT = 'id,coach_id,title,type,pillar,status,hook,call_to_action,internal_notes,performance_metrics,origin_inbox_id,created_at,updated_at,scheduled_for,published_at,script_body,caption';
 
 /**
- * Recupera tutti i contenuti Instagram del coach.
- * Include metadati e dati grafici (carousel_data/cover_data/story_data).
+ * Recupera tutti i contenuti Instagram del coach in modo ultra-rapido (0.1s).
+ * I dati grafici pesanti (carousel_data/cover_data/story_data) vengono caricati on-demand solo all'apertura dell'editor.
  */
 export async function getInstagramContents(): Promise<InstagramContent[]> {
-  let { data, error } = await supabase
-    .from('instagram_contents')
-    .select(LIST_SELECT)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.warn('Errore select LIST_SELECT su instagram_contents, tentativo con select(*):', error.message);
-    const retry = await supabase
+  try {
+    let { data, error } = await supabase
       .from('instagram_contents')
-      .select('*')
+      .select(FAST_LIST_SELECT)
       .order('created_at', { ascending: false });
 
-    if (retry.error) {
-      console.error('Errore recupero instagram_contents anche in retry:', retry.error);
-      throw new Error(`Impossibile caricare i contenuti: ${retry.error.message}`);
+    if (error) {
+      console.warn('Errore select FAST_LIST_SELECT su instagram_contents, tentativo con select(*):', error.message);
+      const retry = await supabase
+        .from('instagram_contents')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (retry.error) {
+        console.error('Errore recupero instagram_contents:', retry.error);
+        return [];
+      }
+      data = retry.data;
     }
-    data = retry.data;
+
+    const rows = (data || []) as InstagramContent[];
+    return rows.map((row) => {
+      // Se già presenti in cache in-memory o fallback locale, li aggancia senza attendere chiamate di rete
+      const cached = graphicsCache.get(row.id);
+      const fallback = getContentFallback(row.id);
+
+      return {
+        ...row,
+        script_body: row.script_body || fallback.script_body || null,
+        caption: row.caption || fallback.caption || null,
+        internal_notes: row.internal_notes || fallback.internal_notes || null,
+        call_to_action: row.call_to_action || fallback.call_to_action || null,
+        carousel_data: row.carousel_data ?? cached?.carousel_data ?? fallback.carousel_data ?? null,
+        cover_data: row.cover_data ?? cached?.cover_data ?? fallback.cover_data ?? null,
+        story_data: row.story_data ?? cached?.story_data ?? fallback.story_data ?? null,
+      };
+    });
+  } catch (err) {
+    console.error('Eccezione durante il recupero dei contenuti:', err);
+    return [];
   }
-
-  const rows = (data || []) as InstagramContent[];
-  return rows.map((row) => {
-    // Aggiorna la cache in-memory per accessi istantanei (0ms) successivi
-    if (row.carousel_data || row.cover_data || row.story_data) {
-      graphicsCache.set(row.id, {
-        carousel_data: row.carousel_data,
-        cover_data: row.cover_data,
-        story_data: row.story_data,
-      });
-    }
-
-    const cached = graphicsCache.get(row.id);
-    // Controlla il localStorage fallback solo se un campo essenziale è mancante
-    const needsFallback = !row.carousel_data && !row.script_body && !row.caption;
-    const fallback = needsFallback ? getContentFallback(row.id) : {};
-
-    return {
-      ...row,
-      script_body: row.script_body || fallback.script_body || null,
-      caption: row.caption || fallback.caption || null,
-      internal_notes: row.internal_notes || fallback.internal_notes || null,
-      call_to_action: row.call_to_action || fallback.call_to_action || null,
-      carousel_data: row.carousel_data ?? cached?.carousel_data ?? fallback.carousel_data ?? null,
-      cover_data: row.cover_data ?? cached?.cover_data ?? fallback.cover_data ?? null,
-      story_data: row.story_data ?? cached?.story_data ?? fallback.story_data ?? null,
-    };
-  });
 }
 
 /**

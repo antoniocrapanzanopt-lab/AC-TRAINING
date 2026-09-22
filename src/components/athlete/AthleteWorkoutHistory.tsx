@@ -314,19 +314,19 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
         className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer select-none group"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-            <Activity className="w-5 h-5" />
+          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+            <Activity className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm sm:text-base font-black text-[var(--color-text)] group-hover:text-[var(--color-primary)] transition-colors">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h3 className="text-base sm:text-lg font-black text-white group-hover:text-[var(--color-primary)] transition-colors">
                 Storico Allenamenti Svolti
               </h3>
-              <span className="text-[11px] font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2.5 py-0.5 rounded-full border border-[var(--color-primary)]/20">
+              <span className="text-xs sm:text-sm font-black text-amber-400 bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/35">
                 {pastSessions.length} completati
               </span>
             </div>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+            <p className="text-xs sm:text-sm text-slate-300 mt-1 font-medium">
               Consulta carichi, serie e note registrate nelle tue sessioni
             </p>
           </div>
@@ -339,10 +339,10 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
             e.stopPropagation();
             setIsHistoryOpen((prev) => !prev);
           }}
-          className={`px-3.5 py-2 rounded-xl border text-xs font-black flex items-center gap-1.5 transition-all shadow-sm shrink-0 cursor-pointer self-start sm:self-center active:scale-95 ${
+          className={`min-h-[42px] px-4 py-2 rounded-xl border text-xs sm:text-sm font-black flex items-center gap-2 transition-all shadow-sm shrink-0 cursor-pointer self-start sm:self-center active:scale-95 ${
             isHistoryOpen
-              ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] border-[var(--color-primary)]/40'
-              : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text)] border-[var(--color-border)]'
+              ? 'bg-[var(--color-primary)]/25 text-[var(--color-primary)] border-[var(--color-primary)]/40'
+              : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-white border-[var(--color-border)]'
           }`}
         >
           <span>{isHistoryOpen ? 'Chiudi' : 'Vedi Storico'}</span>
@@ -356,24 +356,24 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
 
       {/* Anteprima Compatta quando la tendina è chiusa */}
       {!isHistoryOpen && pastSessions.length > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-[var(--color-border)] text-xs">
-          <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
-            <span className="font-bold text-[var(--color-text)]">Ultima sessione:</span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] font-medium text-[var(--color-text)] truncate">
-              <Dumbbell className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[var(--color-border)] text-xs sm:text-sm">
+          <div className="flex items-center gap-2 text-slate-300 flex-wrap">
+            <span className="font-black text-white">Ultima sessione:</span>
+            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] font-bold text-white truncate">
+              <Dumbbell className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
               <span className="truncate">{pastSessions[0].workoutTitle}</span>
-              <span className="text-[var(--color-text-muted)]">•</span>
-              <span className="text-[var(--color-text-muted)]">{new Date(pastSessions[0].date).toLocaleDateString('it-IT')}</span>
+              <span className="text-slate-400">•</span>
+              <span className="text-slate-300">{new Date(pastSessions[0].date).toLocaleDateString('it-IT')}</span>
             </span>
           </div>
 
           <button
             type="button"
             onClick={() => setIsHistoryOpen(true)}
-            className="text-xs font-black text-[var(--color-primary)] hover:underline flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+            className="text-xs sm:text-sm font-black text-amber-400 hover:underline flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
           >
             <span>Mostra tutti i {pastSessions.length} workout</span>
-            <ChevronDown className="w-3.5 h-3.5" />
+            <ChevronDown className="w-4 h-4" />
           </button>
         </div>
       )}
@@ -394,29 +394,29 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
                 return (
                   <div
                     key={session.id}
-                    className="p-4 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] transition-all space-y-3 hover:border-[var(--color-primary)]/40 shadow-sm"
+                    className="p-4 sm:p-5 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] transition-all space-y-3 hover:border-[var(--color-primary)]/40 shadow-sm"
                   >
                     <div
                       onClick={() => handleToggleExpand(session.id)}
                       className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer select-none"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0">
+                        <div className="w-11 h-11 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0">
                           <Dumbbell className="w-5 h-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="text-sm font-bold text-[var(--color-text)]">{session.workoutTitle}</h4>
-                            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
+                            <h4 className="text-base sm:text-lg font-black text-white">{session.workoutTitle}</h4>
+                            <span className="text-xs sm:text-sm font-black px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/35">
                               Settimana {session.weekNumber || 1}
                               {session.dayName ? ` • ${session.dayName}` : ''}
                             </span>
                           </div>
-                          <p className="text-xs text-[var(--color-text-muted)] flex items-center gap-2 mt-0.5">
-                            <Calendar className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
+                          <p className="text-xs sm:text-sm text-slate-300 flex items-center gap-2 mt-1 font-medium">
+                            <Calendar className="w-4 h-4 text-slate-400" />
                             <span>{new Date(session.date).toLocaleDateString('it-IT')}</span>
                             <span>•</span>
-                            <Clock className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
+                            <Clock className="w-4 h-4 text-slate-400" />
                             <span>{session.durationMinutes} min</span>
                           </p>
                         </div>
@@ -424,18 +424,18 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
 
                       <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
                         {session.rpe > 0 && (
-                          <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)]">
+                          <span className="text-xs sm:text-sm font-black px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-white">
                             RPE: {session.rpe}/10
                           </span>
                         )}
                         <button
                           type="button"
-                          className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+                          className="p-1.5 text-slate-300 hover:text-white cursor-pointer"
                         >
                           {isExpanded ? (
-                            <ChevronUp className="w-4 h-4 text-[var(--color-primary)]" />
+                            <ChevronUp className="w-5 h-5 text-[var(--color-primary)]" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-[var(--color-primary)]" />
+                            <ChevronDown className="w-5 h-5 text-[var(--color-primary)]" />
                           )}
                         </button>
                       </div>
@@ -445,18 +445,18 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
                     {isExpanded && (
                       <div className="pt-3 border-t border-[var(--color-border)] space-y-3">
                         {session.notes && (
-                          <div className="p-2.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs text-[var(--color-text)]">
-                            <strong className="text-[var(--color-primary)]">Note Allenamento:</strong> "{session.notes}"
+                          <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-700 text-xs sm:text-sm text-slate-200">
+                            <strong className="text-amber-400">Note Allenamento:</strong> "{session.notes}"
                           </div>
                         )}
 
                         {loadingLogsId === session.id ? (
-                          <div className="py-4 text-center text-[var(--color-text-muted)] text-xs flex items-center justify-center gap-2">
-                            <div className="w-4 h-4 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+                          <div className="py-4 text-center text-slate-300 text-xs sm:text-sm flex items-center justify-center gap-2 font-medium">
+                            <div className="w-5 h-5 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
                             <span>Caricamento dettagli carichi e serie...</span>
                           </div>
                         ) : (sessionLogsMap[session.id] || []).length === 0 ? (
-                          <p className="text-xs text-[var(--color-text-muted)] italic py-2">
+                          <p className="text-xs sm:text-sm text-slate-300 italic py-2">
                             {session.status === 'skipped'
                               ? `Sessione saltata: ${session.skipReason || 'Motivi personali'}`
                               : 'Nessun carico registrato in questa sessione.'}
@@ -466,24 +466,24 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
                             {(sessionLogsMap[session.id] || []).map((ex, i) => (
                               <div
                                 key={i}
-                                className="p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] space-y-2"
+                                className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5"
                               >
-                                <span className="text-xs font-bold text-[var(--color-text)] block">{ex.name}</span>
-                                <div className="flex flex-wrap gap-1.5">
+                                <span className="text-sm sm:text-base font-black text-white block">{ex.name}</span>
+                                <div className="flex flex-wrap gap-2">
                                   {ex.sets.map((set, setIdx) => (
                                     <span
                                       key={setIdx}
-                                      className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-[var(--color-text)]"
+                                      className="text-xs sm:text-sm font-bold px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-white"
                                     >
                                       Set {set.setNumber}:{' '}
-                                      <strong className="text-[var(--color-primary)]">{set.reps} reps</strong> @{' '}
-                                      {set.weightKg}kg
+                                      <strong className="text-amber-400 font-black">{set.reps} reps</strong> @{' '}
+                                      <strong className="text-white font-black">{set.weightKg}kg</strong>
                                     </span>
                                   ))}
                                 </div>
                                 {ex.notes && (
-                                  <div className="mt-1.5 p-2 rounded-lg bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 text-[11px] text-[var(--color-primary)] font-medium leading-relaxed">
-                                    💬 <strong>Feedback:</strong> {ex.notes}
+                                  <div className="mt-2 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/25 text-xs sm:text-sm text-amber-300 font-medium leading-relaxed">
+                                    💬 <strong className="font-bold">Feedback:</strong> {ex.notes}
                                   </div>
                                 )}
                               </div>
@@ -498,20 +498,20 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
 
               {/* Controlli "Mostra altri" / "Riduci" */}
               {pastSessions.length > 3 && (
-                <div className="flex items-center justify-center gap-2 pt-2 flex-wrap">
+                <div className="flex items-center justify-center gap-2.5 pt-3 flex-wrap">
                   {visibleCount < pastSessions.length ? (
                     <>
                       <button
                         type="button"
                         onClick={() => setVisibleCount((prev) => Math.min(pastSessions.length, prev + 5))}
-                        className="px-4 py-2 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-text)] transition-colors cursor-pointer"
+                        className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] border border-[var(--color-border)] text-xs sm:text-sm font-black text-white transition-colors cursor-pointer"
                       >
                         Mostra altri 5 workout
                       </button>
                       <button
                         type="button"
                         onClick={() => setVisibleCount(pastSessions.length)}
-                        className="px-4 py-2 rounded-xl bg-[var(--color-primary)]/15 hover:bg-[var(--color-primary)]/25 text-[var(--color-primary)] border border-[var(--color-primary)]/30 text-xs font-bold transition-colors cursor-pointer"
+                        className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[var(--color-primary)]/20 hover:bg-[var(--color-primary)]/30 text-[var(--color-primary)] border border-[var(--color-primary)]/40 text-xs sm:text-sm font-black transition-colors cursor-pointer"
                       >
                         Mostra tutti ({pastSessions.length})
                       </button>
@@ -520,7 +520,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
                     <button
                       type="button"
                       onClick={() => setVisibleCount(3)}
-                      className="px-4 py-2 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                      className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] border border-[var(--color-border)] text-xs sm:text-sm font-black text-slate-300 hover:text-white transition-colors cursor-pointer"
                     >
                       Riduci lista
                     </button>
