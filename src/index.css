@@ -76,6 +76,51 @@
   select, input, textarea {
     color-scheme: dark;
   }
+
+  /* ─── Light Mode: Correzione colori hardcoded nel portale atleta ─── */
+  /* Tailwind text-white / text-slate-* hardcoded nei componenti atleta
+     diventano invisibili su sfondo chiaro. Li rimappiamo sulle var del tema. */
+  [data-theme="light"] .text-white {
+    color: var(--color-text) !important;
+  }
+  [data-theme="light"] .text-slate-950 {
+    color: #020617 !important; /* rimane scuro: usato su badge gialli */
+  }
+  [data-theme="light"] .text-slate-300 {
+    color: #475569 !important;
+  }
+  [data-theme="light"] .text-slate-200 {
+    color: #475569 !important;
+  }
+  [data-theme="light"] .text-slate-400 {
+    color: #64748b !important;
+  }
+  /* Bordi e sfondi scuri hardcoded nella bottom nav atleta */
+  [data-theme="light"] nav.bg-slate-950\/95 {
+    background-color: rgba(255,255,255,0.95) !important;
+    border-color: #e2e8f0 !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12) !important;
+  }
+  [data-theme="light"] .text-slate-200.font-bold,
+  [data-theme="light"] .text-slate-200.font-black {
+    color: #334155 !important;
+  }
+  /* Badge sfondi scuri hardcoded */
+  [data-theme="light"] .bg-slate-900 {
+    background-color: #f1f5f9 !important;
+  }
+  [data-theme="light"] .border-slate-700 {
+    border-color: #cbd5e1 !important;
+  }
+  [data-theme="light"] .border-slate-800\/90 {
+    border-color: #e2e8f0 !important;
+  }
+  /* input/select/textarea in light mode: schema chiaro */
+  [data-theme="light"] select,
+  [data-theme="light"] input,
+  [data-theme="light"] textarea {
+    color-scheme: light;
+  }
 }
 
 @layer utilities {
