@@ -325,7 +325,7 @@ export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps>
   }, [autoOpenUnread, athleteBroadcasts, athleteId]);
 
   if (athleteBroadcasts.length === 0) {
-    if (hideIfEmpty || popupOnly) return null;
+    if (hideIfEmpty) return null;
     return (
       <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl text-center space-y-2">
         <Sparkles className="w-6 h-6 text-[var(--color-primary)]/50 mx-auto" />
@@ -361,7 +361,6 @@ export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps>
 
   return (
     <div className="space-y-3.5 animate-in fade-in duration-200">
-      {!popupOnly && (<>
       <div className="flex items-center justify-between">
         <h3 className="text-sm sm:text-base font-black text-[var(--color-text)] flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-[var(--color-primary)] animate-pulse" /> Comunicazioni & Avvisi dal Coach
@@ -435,7 +434,6 @@ export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps>
           );
         })}
       </div>
-      </>)}
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* MODAL / FINESTRA DI LETTURA COMUNICAZIONE DEDICATA                 */}
