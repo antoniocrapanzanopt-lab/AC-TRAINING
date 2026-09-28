@@ -11,17 +11,20 @@ import {
   TrendingDown,
   Flame,
   Trash2,
+  X,
+  ZoomIn,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useMetrics } from '../../context/MetricsContext';
 import { useToast } from '../../context/ToastContext';
-import { AthleteMaxLift } from '../../types/metrics';
+import { AthleteMaxLift, AthleteProgressPhoto } from '../../types/metrics';
 import { MaxLiftsSection } from '../../components/metrics/MaxLiftsSection';
 import { AthleteMetricsTrendChart } from '../../components/metrics/AthleteMetricsTrendChart';
 import { GuidedMetricsCheckInModal } from '../../components/metrics/GuidedMetricsCheckInModal';
 import { AthleteNutritionDashboard } from '../../components/athlete/AthleteNutritionDashboard';
 import { AthleteNutritionEstimator } from '../../components/athlete/AthleteNutritionEstimator';
+import { BeforeAfterSection } from '../../components/metrics/BeforeAfterSection';
 
 interface AthleteProgressViewProps {
   targetAthleteId?: string;
@@ -36,16 +39,18 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
     maxLifts,
     fetchMetricsForAthlete,
     fetchMaxLiftsForAthlete,
+    fetchAthleteProgressPhotos,
     deleteMetric,
     getAthleteSchedule,
     getAthleteScheduleState,
     getAthleteProgressPhotos,
   } = useMetrics();
 
-  const [activeTab, setActiveTab] = useState<'checkin' | 'fabbisogno' | 'records'>('checkin');
+  const [activeTab, setActiveTab] = useState<'checkin' | 'fabbisogno' | 'records' | 'foto'>('checkin');
   const [nutritionSubView, setNutritionSubView] = useState<'piano' | 'stima'>('piano');
   const [overrideAthleteId, setOverrideAthleteId] = useState<string>('');
   const [isGuidedModalOpen, setIsGuidedModalOpen] = useState<boolean>(false);
+  const [selectedPreviewPhoto, setSelectedPreviewPhoto] = useState<AthleteProgressPhoto | null>(null);
 
   // Risoluzione ID Atleta
   const athleteId = useMemo(() => {
@@ -69,8 +74,9 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
     if (athleteId) {
       fetchMetricsForAthlete(athleteId);
       fetchMaxLiftsForAthlete(athleteId);
+      fetchAthleteProgressPhotos(athleteId);
     }
-  }, [athleteId, fetchMetricsForAthlete, fetchMaxLiftsForAthlete]);
+  }, [athleteId, fetchMetricsForAthlete, fetchMaxLiftsForAthlete, fetchAthleteProgressPhotos]);
 
   // Storico ordinato misurazioni dell'atleta
   const sortedMetrics = useMemo(() => {
@@ -151,18 +157,18 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
     <div className="space-y-4 sm:space-y-6 pb-32 font-sans">
       {/* Intestazione Pagina */}
       <div className="space-y-1">
-        <h2 className="text-xl sm:text-2xl font-black text-[var(--color-text)] tracking-tight">I Tuoi Progressi & Record</h2>
-        <p className="text-xs text-[var(--color-text-muted)]">
+        <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">I Tuoi Progressi & Record</h2>
+        <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 font-medium">
           Monitora la tua evoluzione fisica, i check periodici, il piano nutrizionale e i record di forza.
         </p>
       </div>
 
       {/* SELETTORE ATLETA PER MODALITÀ COACH O ANTEPRIMA */}
       {(!user?.athleteId || user?.role === 'owner' || user?.role === 'coach') && athletes.length > 0 && !targetAthleteId && (
-        <div className="bg-[var(--color-panel)] border border-[var(--color-primary)]/40 p-3 sm:p-3.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-md">
+        <div className="bg-[var(--color-panel)] border border-[var(--color-primary)]/40 p-3 sm:p-3.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-xs">
           <div className="flex items-center gap-2">
             <User className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
-            <span className="text-xs font-bold text-[var(--color-text)]">Visualizzazione Atleta:</span>
+            <span className="text-xs font-extrabold text-slate-900 dark:text-white">Visualizzazione Atleta:</span>
           </div>
           <select
             value={athleteId || ''}
@@ -181,20 +187,20 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
       {/* RIEPILOGO RAPIDO CARD (KPI) PER SMARTPHONE */}
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
         {/* Peso Attuale */}
-        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-md flex flex-col justify-between">
+        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex justify-between items-center text-[var(--color-text-muted)] text-[11px] font-bold uppercase tracking-wider mb-1">
+            <div className="flex justify-between items-center text-slate-600 dark:text-slate-400 text-[11px] font-extrabold uppercase tracking-wider mb-1">
               <span>Peso Attuale</span>
-              <Scale className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+              <Scale className="w-3.5 h-3.5 text-amber-500 dark:text-[var(--color-primary)]" />
             </div>
             <div className="flex items-baseline gap-1.5 sm:gap-2">
-              <span className="text-xl sm:text-2xl font-black text-[var(--color-text)] font-mono">
+              <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
                 {latestMetric?.weight_kg ? `${latestMetric.weight_kg} kg` : '—'}
               </span>
               {weightDelta !== null && (
                 <span
-                  className={`text-[10px] sm:text-[11px] font-bold flex items-center ${
-                    weightDelta <= 0 ? 'text-emerald-500' : 'text-amber-500'
+                  className={`text-[10px] sm:text-[11px] font-extrabold flex items-center ${
+                    weightDelta <= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'
                   }`}
                 >
                   {weightDelta <= 0 ? <TrendingDown className="w-3 h-3 mr-0.5 inline" /> : <TrendingUp className="w-3 h-3 mr-0.5 inline" />}
@@ -205,14 +211,14 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
           </div>
 
           <div className="mt-2 pt-2 border-t border-[var(--color-border)] flex items-center justify-between">
-            <span className="text-[10px] text-[var(--color-text-muted)] truncate">
+            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 truncate">
               {latestMetric ? formatFriendlyDate(latestMetric.date) : 'Nessuna pesata'}
             </span>
             {!latestMetric && (
               <button
                 type="button"
                 onClick={() => setIsGuidedModalOpen(true)}
-                className="text-[10px] font-black text-[var(--color-primary)] hover:underline cursor-pointer"
+                className="text-[11px] font-black text-amber-600 dark:text-[var(--color-primary)] hover:underline cursor-pointer"
               >
                 + Registra
               </button>
@@ -221,26 +227,26 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
         </div>
 
         {/* Miglior PR */}
-        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-md flex flex-col justify-between">
+        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] p-3.5 sm:p-4 rounded-2xl shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex justify-between items-center text-[var(--color-text-muted)] text-[11px] font-bold uppercase tracking-wider mb-1">
+            <div className="flex justify-between items-center text-slate-600 dark:text-slate-400 text-[11px] font-extrabold uppercase tracking-wider mb-1">
               <span>Miglior 1RM</span>
-              <Award className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+              <Award className="w-3.5 h-3.5 text-amber-500 dark:text-[var(--color-primary)]" />
             </div>
-            <span className="text-xl sm:text-2xl font-black text-[var(--color-primary)] font-mono truncate block">
+            <span className="text-xl sm:text-2xl font-black text-amber-600 dark:text-[var(--color-primary)] font-mono truncate block">
               {topPRs.length > 0 ? `${topPRs[0].calculated_1rm} kg` : '—'}
             </span>
           </div>
 
           <div className="mt-2 pt-2 border-t border-[var(--color-border)] flex items-center justify-between">
-            <span className="text-[10px] text-[var(--color-text-muted)] truncate max-w-[110px] sm:max-w-[140px]">
+            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 truncate max-w-[110px] sm:max-w-[140px]">
               {topPRs.length > 0 ? topPRs[0].exercise_name : 'Nessun record'}
             </span>
             {topPRs.length === 0 && (
               <button
                 type="button"
                 onClick={() => setActiveTab('records')}
-                className="text-[10px] font-black text-[var(--color-primary)] hover:underline cursor-pointer"
+                className="text-[11px] font-black text-amber-600 dark:text-[var(--color-primary)] hover:underline cursor-pointer"
               >
                 + Aggiungi
               </button>
@@ -249,19 +255,19 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
         </div>
       </div>
 
-      {/* SOTTO-NAVIGAZIONE TAB SIMMETRICA & ERGONOMICA A 3 TAB */}
-      <div className="grid grid-cols-3 gap-1.5 bg-[var(--color-surface-strong)] p-1.5 rounded-2xl border border-[var(--color-border)] text-xs font-bold shadow-sm">
+      {/* SOTTO-NAVIGAZIONE TAB SIMMETRICA & ERGONOMICA A 4 TAB */}
+      <div className="grid grid-cols-4 gap-1.5 bg-[var(--color-surface-strong)] p-1.5 rounded-2xl border border-[var(--color-border)] text-xs font-bold shadow-xs">
         <button
           type="button"
           onClick={() => setActiveTab('checkin')}
-          className={`py-2.5 px-2 sm:px-3 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1.5 sm:gap-2 relative ${
+          className={`py-2.5 px-1 sm:px-2 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1 sm:gap-1.5 relative ${
             activeTab === 'checkin'
               ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
-              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-panel)]'
+              : 'text-slate-700 dark:text-slate-300 font-bold hover:text-slate-950 dark:hover:text-white hover:bg-[var(--color-panel)]'
           }`}
         >
-          <Ruler className="w-4 h-4 shrink-0" />
-          <span className="truncate">Check Misure</span>
+          <Ruler className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate text-[11px] sm:text-xs">Misure</span>
           {(scheduleState.isDueToday || scheduleState.isOverdue) && (
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
           )}
@@ -270,27 +276,40 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
         <button
           type="button"
           onClick={() => setActiveTab('fabbisogno')}
-          className={`py-2.5 px-2 sm:px-3 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1.5 sm:gap-2 ${
+          className={`py-2.5 px-1 sm:px-2 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1 sm:gap-1.5 ${
             activeTab === 'fabbisogno'
               ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
-              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-panel)]'
+              : 'text-slate-700 dark:text-slate-300 font-bold hover:text-slate-950 dark:hover:text-white hover:bg-[var(--color-panel)]'
           }`}
         >
-          <Flame className="w-4 h-4 shrink-0 text-amber-500" />
-          <span className="truncate">Fabbisogno & Macro</span>
+          <Flame className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+          <span className="truncate text-[11px] sm:text-xs">Macro</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('records')}
-          className={`py-2.5 px-2 sm:px-3 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1.5 sm:gap-2 ${
+          className={`py-2.5 px-1 sm:px-2 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1 sm:gap-1.5 ${
             activeTab === 'records'
               ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
-              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-panel)]'
+              : 'text-slate-700 dark:text-slate-300 font-bold hover:text-slate-950 dark:hover:text-white hover:bg-[var(--color-panel)]'
           }`}
         >
-          <Award className="w-4 h-4 shrink-0" />
-          <span className="truncate">Massimali ({topPRs.length})</span>
+          <Award className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+          <span className="truncate text-[11px] sm:text-xs">1RM ({topPRs.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('foto')}
+          className={`py-2.5 px-1 sm:px-2 rounded-xl text-center transition-all cursor-pointer select-none flex items-center justify-center gap-1 sm:gap-1.5 ${
+            activeTab === 'foto'
+              ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20'
+              : 'text-slate-700 dark:text-slate-300 font-bold hover:text-slate-950 dark:hover:text-white hover:bg-[var(--color-panel)]'
+          }`}
+        >
+          <Camera className="w-3.5 h-3.5 shrink-0 text-purple-500" />
+          <span className="truncate text-[11px] sm:text-xs">Foto</span>
         </button>
       </div>
 
@@ -299,36 +318,36 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
         <div className="space-y-4 sm:space-y-6">
           
           {/* 1. CARD IN EVIDENZA: STATO DEL RITUALE CHECK MISURE */}
-          <div className={`p-4 sm:p-6 rounded-3xl border shadow-lg space-y-3.5 sm:space-y-4 relative overflow-hidden transition-all ${
+          <div className={`p-4 sm:p-6 rounded-3xl border shadow-xs space-y-3.5 sm:space-y-4 relative overflow-hidden transition-all ${
             scheduleState.isOverdue
-              ? 'bg-rose-500/10 border-rose-500/40'
+              ? 'bg-rose-50/80 dark:bg-rose-950/20 border-rose-200 dark:border-rose-500/40'
               : scheduleState.isDueToday
-              ? 'bg-amber-500/10 border-amber-500/40'
+              ? 'bg-amber-50/80 dark:bg-amber-950/20 border-amber-200 dark:border-amber-500/40'
               : scheduleState.status === 'completed'
-              ? 'bg-emerald-500/10 border-emerald-500/40'
+              ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-500/40'
               : 'bg-[var(--color-panel)] border-[var(--color-panel-border)]'
           }`}>
             
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
                     scheduleState.isOverdue
-                      ? 'bg-rose-500/20 text-rose-500 border-rose-500/40'
+                      ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-500/40'
                       : scheduleState.isDueToday
-                      ? 'bg-amber-500/20 text-amber-600 border-amber-500/40'
+                      ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-500/40'
                       : scheduleState.status === 'completed'
-                      ? 'bg-emerald-500/20 text-emerald-600 border-emerald-500/40'
-                      : 'bg-sky-500/20 text-sky-600 border-sky-500/40'
+                      ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/40'
+                      : 'bg-sky-100 dark:bg-sky-500/20 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-500/40'
                   }`}>
                     {scheduleState.statusLabel}
                   </span>
-                  <span className="text-[10px] text-[var(--color-text-muted)] font-medium">
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400 font-bold">
                     {scheduleConfig?.frequency_days ? `Ogni ${scheduleConfig.frequency_days} giorni` : 'Ogni 7 giorni'}
                   </span>
                 </div>
 
-                <h3 className="text-base sm:text-lg font-black text-[var(--color-text)] tracking-tight">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
                   {scheduleState.isDueToday
                     ? 'Check Misure Programmato per Oggi!'
                     : scheduleState.isOverdue
@@ -338,7 +357,7 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
                     : `Prossimo check: ${scheduleState.nextCheckDate ? new Date(scheduleState.nextCheckDate).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Da definire'} (tra ${scheduleState.daysDiff} giorni)`}
                 </h3>
                 
-                <p className="text-xs text-[var(--color-text-muted)] max-w-xl leading-relaxed">
+                <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 font-medium max-w-xl leading-relaxed">
                   {scheduleState.isDueToday
                     ? 'È il momento di inserire peso, circonferenze e foto per monitorare i progressi con il tuo coach.'
                     : scheduleState.isOverdue
@@ -353,10 +372,10 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
               <button
                 type="button"
                 onClick={() => setIsGuidedModalOpen(true)}
-                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer shrink-0 shadow-lg active:scale-95 ${
+                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 sm:py-3.5 rounded-2xl font-black text-xs sm:text-sm transition-all cursor-pointer shrink-0 shadow-lg active:scale-95 force-text-white ${
                   scheduleState.isOverdue
-                    ? 'bg-rose-500 text-white hover:bg-rose-600 shadow-rose-500/30 animate-pulse'
-                    : 'bg-[var(--color-primary)] text-slate-950 hover:bg-[var(--color-primary-hover)] shadow-[var(--color-primary)]/30'
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/30 animate-pulse'
+                    : 'bg-amber-400 text-slate-950 hover:bg-amber-500 shadow-amber-400/30'
                 }`}
               >
                 <Ruler className="w-4 h-4 stroke-[2.5]" />
@@ -373,24 +392,24 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
             </div>
 
             {/* Dettagli sintetici rituale (3 colonne compatte su mobile) */}
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[var(--color-border)] text-xs">
-              <div className="bg-[var(--color-surface-strong)] p-2 sm:p-2.5 rounded-xl border border-[var(--color-border)] text-center sm:text-left">
-                <span className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] uppercase font-bold block truncate">Ultimo Check</span>
-                <span className="font-bold text-[var(--color-text)] text-[11px] sm:text-xs">
+            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-800/80 text-xs">
+              <div className="bg-white/95 dark:bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-center sm:text-left shadow-xs">
+                <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-extrabold block truncate tracking-wider">Ultimo Check</span>
+                <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">
                   {formatFriendlyDate(latestMetric?.date)}
                 </span>
               </div>
 
-              <div className="bg-[var(--color-surface-strong)] p-2 sm:p-2.5 rounded-xl border border-[var(--color-border)] text-center sm:text-left">
-                <span className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] uppercase font-bold block truncate">Prossimo</span>
-                <span className="font-bold text-[var(--color-text)] text-[11px] sm:text-xs">
+              <div className="bg-white/95 dark:bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-center sm:text-left shadow-xs">
+                <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-extrabold block truncate tracking-wider">Prossimo</span>
+                <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">
                   {formatFriendlyDate(scheduleState.nextCheckDate)}
                 </span>
               </div>
 
-              <div className="bg-[var(--color-surface-strong)] p-2 sm:p-2.5 rounded-xl border border-[var(--color-border)] text-center sm:text-left">
-                <span className="text-[9px] sm:text-[10px] text-[var(--color-text-muted)] uppercase font-bold block truncate">Foto</span>
-                <span className="font-bold text-[var(--color-text)] text-[11px] sm:text-xs truncate block">
+              <div className="bg-white/95 dark:bg-slate-900/70 p-2 sm:p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-center sm:text-left shadow-xs">
+                <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-extrabold block truncate tracking-wider">Foto</span>
+                <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm truncate block">
                   {scheduleConfig?.photo_requirement === 'mandatory'
                     ? 'Richieste'
                     : scheduleConfig?.photo_requirement === 'optional'
@@ -418,23 +437,44 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
                 <span className="text-[10px] text-[var(--color-text-muted)]">Confronto visivo</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {progressPhotos.map((photo) => (
-                  <div key={photo.id} className="relative rounded-2xl overflow-hidden aspect-[3/4] border border-[var(--color-border)] bg-[var(--color-surface-strong)] group">
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => setSelectedPreviewPhoto(photo)}
+                    className="relative rounded-2xl overflow-hidden aspect-[3/4] border border-[var(--color-border)] bg-slate-900 group shadow-sm flex flex-col justify-between cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
                     <img
                       src={photo.image_url}
                       alt={`Foto ${photo.pose}`}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-2 text-white">
-                      <span className="text-[10px] font-black uppercase tracking-wider block text-[var(--color-primary)]">
+                    
+                    {/* Badge Posa in alto */}
+                    <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-black/75 backdrop-blur-md text-amber-400 border border-amber-400/40 shadow-md">
                         {photo.pose === 'front' ? 'Frontale' : photo.pose === 'back' ? 'Posteriore' : 'Laterale'}
                       </span>
-                      <span className="text-[9px] text-slate-300 block">
-                        {new Date(photo.date).toLocaleDateString('it-IT')}
-                      </span>
                     </div>
-                  </div>
+
+                    {/* Icona Zoom a comparsa hover */}
+                    <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="w-7 h-7 rounded-full bg-black/70 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shadow-md">
+                        <ZoomIn className="w-3.5 h-3.5 text-amber-400" />
+                      </div>
+                    </div>
+
+                    {/* Barra inferiore con Data Evidente e Icona Calendario */}
+                    <div className="force-dark absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-3 pt-6 flex items-center justify-between text-white">
+                      <div className="flex items-center gap-1.5 bg-black/60 px-2 py-1 rounded-lg backdrop-blur-sm border border-white/10">
+                        <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span className="text-[11px] font-black tracking-wide text-white">
+                          {new Date(photo.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -597,6 +637,13 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
         <MaxLiftsSection athleteId={athleteId} athleteName={currentAthlete?.fullName || user?.email || 'Atleta'} isCoachView={false} />
       )}
 
+      {/* ─── TAB 4: FOTO PRIMA & DOPO ─────────────────────────────────── */}
+      {activeTab === 'foto' && athleteId && (
+        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-4 sm:p-5 shadow-md">
+          <BeforeAfterSection athleteId={athleteId} isCoachView={false} />
+        </div>
+      )}
+
       {/* MODALE GUIDATA CHECK MISURE */}
       {athleteId && (
         <GuidedMetricsCheckInModal
@@ -607,6 +654,50 @@ export const AthleteProgressView: React.FC<AthleteProgressViewProps> = ({ target
           latestMetric={latestMetric}
           scheduleConfig={scheduleConfig}
         />
+      )}
+
+      {/* ─── LIGHTBOX MODAL INGRANDIMENTO FOTO PROGRESSO ─── */}
+      {selectedPreviewPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
+          onClick={() => setSelectedPreviewPhoto(null)}
+        >
+          <div
+            className="force-dark relative max-w-xl w-full bg-slate-950 border-2 border-amber-400/40 rounded-3xl p-3 sm:p-5 shadow-2xl flex flex-col items-center gap-3 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header con Info e Pulsante Chiudi */}
+            <div className="w-full flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-400 text-slate-950">
+                  {selectedPreviewPhoto.pose === 'front' ? 'Frontale' : selectedPreviewPhoto.pose === 'back' ? 'Posteriore' : 'Laterale'}
+                </span>
+                <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                  {new Date(selectedPreviewPhoto.date).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedPreviewPhoto(null)}
+                className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700 transition-colors cursor-pointer"
+                title="Chiudi foto"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Immagine ingrandita */}
+            <div className="w-full max-h-[75vh] overflow-hidden rounded-2xl bg-black flex items-center justify-center">
+              <img
+                src={selectedPreviewPhoto.image_url}
+                alt={`Foto ${selectedPreviewPhoto.pose}`}
+                className="w-full h-auto max-h-[75vh] object-contain rounded-xl"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

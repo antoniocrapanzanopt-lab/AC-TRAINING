@@ -212,26 +212,26 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
         </div>
 
         <div className="space-y-2">
-          <h3 className="text-xl sm:text-2xl font-black text-white">
+          <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
             Questionario Anamnesi Completato!
           </h3>
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
             Grazie per aver compilato accuratamente la scheda iniziale. I parametri biometrici, gli obiettivi e il safety check sono stati registrati e sono ora a disposizione del coach per la programmazione.
           </p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-left space-y-2 text-xs">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-left space-y-2 text-xs shadow-xs">
+          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 font-medium">
             <span>Obiettivo Primario:</span>
-            <strong className="text-[var(--color-primary)] capitalize">{formData.primaryGoal}</strong>
+            <strong className="text-amber-600 dark:text-[var(--color-primary)] font-extrabold capitalize">{formData.primaryGoal}</strong>
           </div>
-          <div className="flex items-center justify-between text-slate-400">
+          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 font-medium">
             <span>Disponibilità:</span>
-            <strong className="text-white">{formData.weeklyDaysTarget} giorni / sett. ({formData.sessionDurationMinutes}m)</strong>
+            <strong className="text-slate-900 dark:text-white font-extrabold">{formData.weeklyDaysTarget} giorni / sett. ({formData.sessionDurationMinutes}m)</strong>
           </div>
-          <div className="flex items-center justify-between text-slate-400">
+          <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 font-medium">
             <span>Ambiente:</span>
-            <strong className="text-white capitalize">{formData.trainingLocation}</strong>
+            <strong className="text-slate-900 dark:text-white font-extrabold capitalize">{formData.trainingLocation}</strong>
           </div>
         </div>
 
@@ -251,21 +251,21 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-12">
+    <div className="max-w-3xl mx-auto space-y-6 pb-32 sm:pb-16">
       {/* Testata Wizard & Badge Modalità */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="p-5 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 text-[10px] font-black uppercase">
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-[var(--color-primary)] border border-amber-500/30 text-[10px] font-black uppercase">
               Onboarding Atleta 2.0
             </span>
             {isCoachMode && (
-              <span className="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30 text-[10px] font-black uppercase">
+              <span className="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-400 border border-sky-500/30 text-[10px] font-black uppercase">
                 Modalità Coach
               </span>
             )}
           </div>
-          <h2 className="text-xl font-black text-white mt-1">
+          <h2 className="text-xl font-black text-slate-900 dark:text-white mt-1">
             Questionario Anamnesi {athleteName ? `— ${athleteName}` : ''}
           </h2>
         </div>
@@ -274,7 +274,7 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
           <button
             type="button"
             onClick={onClose}
-            className="p-2.5 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors self-end sm:self-auto cursor-pointer"
+            className="p-2.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700 transition-colors self-end sm:self-auto cursor-pointer"
             title="Chiudi questionario"
           >
             <X className="w-5 h-5" />
@@ -284,9 +284,9 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
 
       {/* Banner Ripresa Bozza se presente */}
       {draftBannerInfo && (
-        <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-800/60 shadow-lg flex items-center justify-between gap-3 text-xs animate-in slide-in-from-top-2">
-          <div className="flex items-center gap-2.5 text-amber-200">
-            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 shadow-sm flex items-center justify-between gap-3 text-xs animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-2.5 text-amber-800 dark:text-amber-200 font-medium">
+            <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span>
               Hai una bozza salvata al <strong>Passo {draftBannerInfo.step}</strong>. Vuoi riprendere da dove avevi interrotto?
             </span>
@@ -294,7 +294,7 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
           <button
             type="button"
             onClick={handleResumeDraft}
-            className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-black font-black text-[11px] hover:bg-amber-400 transition-colors shrink-0 shadow cursor-pointer"
+            className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-black font-black text-[11px] hover:bg-amber-400 transition-colors shrink-0 shadow-xs cursor-pointer"
           >
             Riprendi dal Passo {draftBannerInfo.step}
           </button>
@@ -302,7 +302,7 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
       )}
 
       {/* Barra Avanzamento a 7 Step */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl">
+      <div className="p-5 sm:p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-sm">
         <QuestionnaireProgressBar
           currentStep={currentStep}
           maxReachedStep={maxReachedStep}
@@ -311,7 +311,7 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
       </div>
 
       {/* Pannello Contenuto Step Attivo */}
-      <div className="p-6 sm:p-8 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl min-h-[420px]">
+      <div className="p-6 sm:p-8 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-sm min-h-[420px]">
         {currentStep === 1 && <Step1Biometrics data={formData} onChange={handleFieldChange} />}
         {currentStep === 2 && <Step2GoalsAvailability data={formData} onChange={handleFieldChange} />}
         {currentStep === 3 && <Step3TrainingExperience data={formData} onChange={handleFieldChange} />}
@@ -322,12 +322,12 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
       </div>
 
       {/* Barra Azioni Navigazione */}
-      <div className="p-4 sm:p-5 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl flex items-center justify-between gap-3">
+      <div className="p-4 sm:p-5 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-sm flex items-center justify-between gap-3">
         <button
           type="button"
           disabled={currentStep <= 1 || isSubmitting}
           onClick={handlePrev}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 disabled:opacity-30 disabled:pointer-events-none text-xs font-bold transition-all cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-700 disabled:opacity-30 disabled:pointer-events-none text-xs font-bold transition-all cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" /> Indietro
         </button>

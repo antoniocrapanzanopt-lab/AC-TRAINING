@@ -280,7 +280,7 @@ export const WorkoutCelebrationModal: React.FC<WorkoutCelebrationModalProps> = (
       </div>
 
       {/* ─── CARD HARDCORE AGGRESSIVA ─── */}
-      <div className="bg-slate-950/95 border-2 border-amber-400 rounded-[36px] max-w-md w-full p-6 sm:p-7 shadow-[0_0_100px_rgba(245,158,11,0.4)] space-y-5 text-center relative z-10 animate-in zoom-in-95 duration-200">
+      <div className="force-dark bg-slate-950/95 border-2 border-amber-400 rounded-[36px] max-w-md w-full p-6 sm:p-7 shadow-[0_0_100px_rgba(245,158,11,0.4)] space-y-5 text-center relative z-10 animate-in zoom-in-95 duration-200">
         
         {/* Glow Concentrato Superiore */}
         <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-80 h-80 bg-amber-500/25 rounded-full blur-[110px] pointer-events-none" />
@@ -383,10 +383,10 @@ export const WorkoutCelebrationModal: React.FC<WorkoutCelebrationModalProps> = (
           <button
             type="button"
             onClick={handleShare}
-            className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-850 text-slate-200 hover:text-white border border-slate-700 hover:border-amber-400 text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-lg"
+            className="w-full py-3.5 rounded-2xl !bg-slate-900/90 hover:!bg-slate-800 !text-white border border-slate-700 hover:border-amber-400 text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-lg"
           >
             <Share2 className="w-4 h-4 text-amber-400" />
-            <span>Condividi Risultato</span>
+            <span className="!text-white">Condividi Risultato</span>
           </button>
 
           <button

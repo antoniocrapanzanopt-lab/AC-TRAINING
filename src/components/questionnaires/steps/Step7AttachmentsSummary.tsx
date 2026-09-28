@@ -77,11 +77,11 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Intestazione */}
-      <div className="border-b border-slate-800/80 pb-4">
-        <h3 className="text-lg font-black text-white flex items-center gap-2">
-          <Camera className="w-5 h-5 text-[var(--color-primary)]" /> 7. Foto Check Iniziale & Note Finali
+      <div className="border-b border-slate-200 dark:border-slate-800/80 pb-4">
+        <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+          <Camera className="w-5 h-5 text-amber-500 dark:text-[var(--color-primary)]" /> 7. Foto Check Iniziale & Note Finali
         </h3>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 font-medium mt-1">
           Le foto di partenza permettono al coach di valutare la postura, la struttura ossea e monitorare i cambiamenti reali nel tempo.
         </p>
       </div>
@@ -89,10 +89,10 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
       {/* 1. Box Foto Iniziali (Fronte, Lato, Retro) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-            <Camera className="w-4 h-4 text-[var(--color-primary)]" /> Foto Posturali di Partenza (Fortemente Consigliate)
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Camera className="w-4 h-4 text-amber-500 dark:text-[var(--color-primary)]" /> Foto Posturali di Partenza (Fortemente Consigliate)
           </label>
-          <span className="text-[10px] text-slate-500">Luce naturale frontale, braccia rilassate</span>
+          <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Luce naturale frontale, braccia rilassate</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -105,15 +105,15 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
             return (
               <div
                 key={item.pose}
-                className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 flex flex-col items-center justify-between text-center space-y-3 relative group"
+                className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 flex flex-col items-center justify-between text-center space-y-3 relative group shadow-xs"
               >
                 <div className="space-y-1">
-                  <span className="font-bold text-xs text-white block">{item.label}</span>
-                  <span className="text-[10px] text-slate-500 block">{item.tip}</span>
+                  <span className="font-extrabold text-xs text-slate-900 dark:text-white block">{item.label}</span>
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium block">{item.tip}</span>
                 </div>
 
                 {photo ? (
-                  <div className="relative w-full aspect-[3/4] max-h-48 rounded-xl overflow-hidden border border-slate-800 bg-slate-900 shadow">
+                  <div className="relative w-full aspect-[3/4] max-h-48 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shadow-sm">
                     <img
                       src={photo.url}
                       alt={item.label}
@@ -129,13 +129,13 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
                     </button>
                   </div>
                 ) : (
-                  <label className="w-full aspect-[3/4] max-h-48 rounded-xl border-2 border-dashed border-slate-800 hover:border-[var(--color-primary)] bg-slate-900/40 hover:bg-slate-900/80 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all p-4 text-slate-400 hover:text-white">
+                  <label className="w-full aspect-[3/4] max-h-48 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-amber-500 bg-slate-50 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-900/80 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all p-4 text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white shadow-xs">
                     {isUploading ? (
-                      <Loader2 className="w-6 h-6 animate-spin text-[var(--color-primary)]" />
+                      <Loader2 className="w-6 h-6 animate-spin text-amber-500 dark:text-[var(--color-primary)]" />
                     ) : (
                       <Upload className="w-6 h-6 text-slate-500" />
                     )}
-                    <span className="text-[11px] font-bold text-center">{isUploading ? 'Elaborazione...' : 'Carica Foto'}</span>
+                    <span className="text-xs font-bold text-center">{isUploading ? 'Elaborazione...' : 'Carica Foto'}</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -152,12 +152,12 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
       </div>
 
       {/* 2. Allegati Aggiuntivi (PDF / Schede passate / Esami) */}
-      <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-3">
+      <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 space-y-3 shadow-xs">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-            <FileText className="w-4 h-4 text-slate-400" /> Schede Precedenti o Documenti Medici (Opzionale)
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" /> Schede Precedenti o Documenti Medici (Opzionale)
           </label>
-          <span className="text-[10px] text-slate-500">PDF o Immagini (max 3 file)</span>
+          <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">PDF o Immagini (max 3 file)</span>
         </div>
 
         {/* Lista Documenti caricati */}
@@ -166,16 +166,16 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
             {data.documentAttachments.map((doc) => (
               <div
                 key={doc.id}
-                className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs"
+                className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs shadow-xs"
               >
                 <div className="flex items-center gap-2 truncate">
-                  <FileText className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
-                  <span className="text-slate-200 truncate font-bold">{doc.name}</span>
+                  <FileText className="w-4 h-4 text-amber-500 dark:text-[var(--color-primary)] shrink-0" />
+                  <span className="text-slate-800 dark:text-slate-200 truncate font-bold">{doc.name}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => removeDoc(doc.id)}
-                  className="text-slate-500 hover:text-red-400 p-1 cursor-pointer"
+                  className="text-slate-500 hover:text-red-500 p-1 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -185,9 +185,9 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
         )}
 
         {(data.documentAttachments || []).length < 3 && (
-          <label className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-dashed border-slate-800 hover:border-slate-700 bg-slate-900/30 text-xs text-slate-400 hover:text-white cursor-pointer transition-all">
+          <label className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 hover:border-slate-400 bg-slate-50 dark:bg-slate-900/30 text-xs text-slate-700 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white cursor-pointer transition-all shadow-xs">
             <Upload className="w-4 h-4 text-slate-500" />
-            <span>Aggiungi Scheda / Referto Medico</span>
+            <span className="font-semibold">Aggiungi Scheda / Referto Medico</span>
             <input
               type="file"
               accept=".pdf,image/*"
@@ -200,7 +200,7 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
 
       {/* 3. Note Libere per il Coach */}
       <div className="space-y-1.5">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
+        <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
           Note Libere o Informazioni Aggiuntive per il Coach (Opzionale)
         </label>
         <textarea
@@ -208,12 +208,12 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
           value={data.finalNotesForCoach || ''}
           onChange={(e) => onChange({ finalNotesForCoach: e.target.value })}
           placeholder="Scrivi qui qualsiasi altra cosa che ritieni utile per il coach (orari particolari, preferenze o richieste specifiche)..."
-          className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)] placeholder:text-slate-600"
+          className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-amber-500 placeholder:text-slate-500 dark:placeholder:text-slate-600 shadow-xs"
         />
       </div>
 
       {/* 4. Presa Visione & Consenso */}
-      <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-start gap-3">
+      <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 flex items-start gap-3 shadow-xs">
         <input
           type="checkbox"
           id="privacy-consent-box"
@@ -221,7 +221,7 @@ export const Step7AttachmentsSummary: React.FC<StepProps> = ({ data, onChange })
           onChange={(e) => onChange({ privacyConsent: e.target.checked })}
           className="w-5 h-5 rounded-lg accent-[var(--color-primary)] shrink-0 mt-0.5 cursor-pointer"
         />
-        <label htmlFor="privacy-consent-box" className="text-xs text-slate-300 leading-relaxed cursor-pointer select-none">
+        <label htmlFor="privacy-consent-box" className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed cursor-pointer select-none font-medium">
           Dichiaro che i dati e le informazioni inserite in questo questionario di anamnesi sono veritieri e conformi al mio stato di salute attuale. Autorizzo il coach all'elaborazione dei dati per i programmi di allenamento e nutrizione personalizzati.
         </label>
       </div>

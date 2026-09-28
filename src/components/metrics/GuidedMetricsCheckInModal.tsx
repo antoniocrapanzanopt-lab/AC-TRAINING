@@ -55,7 +55,7 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
   const [notes, setNotes] = useState<string>('');
   
   // Foto Progressi
-  const [photos, setPhotos] = useState<{ pose: 'front' | 'back' | 'side'; url: string }[]>([]);
+  const [photos, setPhotos] = useState<{ pose: 'front' | 'back' | 'side'; url: string; file?: File }[]>([]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Calcolo Delta Peso Istantaneo
@@ -78,7 +78,7 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
       const result = reader.result as string;
       setPhotos(prev => {
         const filtered = prev.filter(p => p.pose !== pose);
-        return [...filtered, { pose, url: result }];
+        return [...filtered, { pose, url: result, file }];
       });
     };
     reader.readAsDataURL(file);
@@ -130,14 +130,17 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
       if (res.success && res.data) {
         // Salva le foto associate
         for (const p of photos) {
-          await addProgressPhoto({
-            athlete_id: athleteId,
-            metric_id: res.data.id,
-            date: date || new Date().toISOString().slice(0, 10),
-            pose: p.pose,
-            image_url: p.url,
-            notes: `Foto ${p.pose} del check-in`,
-          });
+          await addProgressPhoto(
+            {
+              athlete_id: athleteId,
+              metric_id: res.data.id,
+              date: date || new Date().toISOString().slice(0, 10),
+              pose: p.pose,
+              image_url: p.url,
+              notes: `Foto ${p.pose} del check-in`,
+            },
+            p.file
+          );
         }
 
         showSuccess('Check-in Completato!', 'Le tue misurazioni sono state registrate e inviate al coach.');
@@ -152,24 +155,37 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
     }
   };
 
+  const circumferenceFields = [
+    { key: 'waist', label: 'Vita', value: waist, setter: setWaist, required: Boolean(req?.waist), placeholder: 'Es. 78' },
+    { key: 'chest', label: 'Torace', value: chest, setter: setChest, required: Boolean(req?.chest), placeholder: 'Es. 102' },
+    { key: 'hips', label: 'Fianchi', value: hips, setter: setHips, required: Boolean(req?.hips), placeholder: 'Es. 96' },
+    { key: 'bicepRight', label: 'Braccio Dx', value: bicepRight, setter: setBicepRight, required: Boolean(req?.biceps), placeholder: 'Es. 37' },
+    { key: 'bicepLeft', label: 'Braccio Sx', value: bicepLeft, setter: setBicepLeft, required: Boolean(req?.biceps), placeholder: 'Es. 37' },
+    { key: 'thighRight', label: 'Coscia Dx', value: thighRight, setter: setThighRight, required: Boolean(req?.thighs), placeholder: 'Es. 58' },
+    { key: 'thighLeft', label: 'Coscia Sx', value: thighLeft, setter: setThighLeft, required: Boolean(req?.thighs), placeholder: 'Es. 58' },
+    { key: 'shoulders', label: 'Spalle', value: shoulders, setter: setShoulders, required: Boolean(req?.shoulders), placeholder: 'Es. 118' },
+    { key: 'neck', label: 'Collo', value: neck, setter: setNeck, required: Boolean(req?.neck), placeholder: 'Es. 39' },
+    { key: 'calfRight', label: 'Polpaccio', value: calfRight, setter: setCalfRight, required: Boolean(req?.calves), placeholder: 'Es. 38' },
+  ];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-2xl rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
         
         {/* Header Modale */}
-        <div className="p-5 sm:p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
+        <div className="p-5 sm:p-6 border-b border-[var(--color-border)] flex items-center justify-between shrink-0 bg-[var(--color-panel)]">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0 shadow-lg shadow-[var(--color-primary)]/10">
+            <div className="w-11 h-11 rounded-2xl bg-[var(--color-primary-soft)] border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0 shadow-lg shadow-[var(--color-primary)]/10">
               <Ruler className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black text-white">Rituale Check Misure</h2>
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-bold text-[10px] uppercase border border-emerald-500/30">
+                <h2 className="text-base sm:text-lg font-black text-[var(--color-text)]">Rituale Check Misure</h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold text-[10px] uppercase border border-emerald-500/30">
                   {scheduleConfig?.frequency_days ? `Ogni ${scheduleConfig.frequency_days} giorni` : 'Periodico'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
                 Aggiorna le misure corporee di {athleteName} per monitorare l'evoluzione con il tuo coach.
               </p>
             </div>
@@ -178,64 +194,69 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-all cursor-pointer"
+            title="Chiudi"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body Scrollabile */}
-        <form onSubmit={handleSubmit} className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-[var(--color-panel)]">
           
           {/* Data Rilevazione */}
-          <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-4 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] block">
                 Data del Check
               </span>
-              <span className="text-xs text-slate-300">
+              <span className="text-xs text-[var(--color-text)] font-medium">
                 Data in cui hai effettuato le misurazioni
               </span>
             </div>
 
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-slate-500 shrink-0" />
+              <Calendar className="w-4 h-4 text-[var(--color-text-muted)] shrink-0" />
               <input
                 type="date"
                 required
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                className="px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] font-bold text-xs focus:outline-none focus:border-[var(--color-primary)] transition-colors cursor-pointer"
               />
             </div>
           </div>
 
           {/* 1. SEZIONE PESO CORPOREO & BODY FAT */}
           <div className="space-y-3">
-            <h3 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
+            <h3 className="text-xs font-black uppercase tracking-wider text-[var(--color-text)] flex items-center gap-2">
               <Scale className="w-4 h-4 text-[var(--color-primary)]" />
               1. Peso & Composizione Corporea
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* Peso Corporeo */}
-              <div className={`p-4 rounded-2xl border space-y-2 ${
-                req?.weight ? 'bg-slate-900/90 border-[var(--color-primary)]/40 shadow-lg shadow-[var(--color-primary)]/5' : 'bg-slate-900 border-slate-800'
+              <div className={`p-4 rounded-2xl border space-y-2.5 transition-all bg-[var(--color-surface-strong)] ${
+                req?.weight
+                  ? 'border-[var(--color-primary)]/50 shadow-sm shadow-[var(--color-primary)]/10'
+                  : 'border-[var(--color-border)]'
               }`}>
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
-                    Peso Corporeo (kg) {req?.weight && <span className="text-[var(--color-primary)] font-black">*</span>}
+                  <label className="text-xs font-black text-[var(--color-text)] uppercase tracking-wide flex items-center gap-1">
+                    Peso Corporeo {req?.weight && <span className="text-[var(--color-primary)] font-black">*</span>}
                   </label>
                   {liveWeightDelta !== null && (
-                    <span className={`text-[11px] font-black px-2 py-0.5 rounded ${
-                      liveWeightDelta <= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                    <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-lg border ${
+                      liveWeightDelta <= 0
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                        : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
                     }`}>
                       {liveWeightDelta > 0 ? `+${liveWeightDelta}` : liveWeightDelta} kg vs prec.
                     </span>
                   )}
                 </div>
 
-                <div className="relative">
+                <div className="relative flex items-center">
                   <input
                     type="number"
                     step="0.1"
@@ -244,22 +265,30 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
                     placeholder="Es. 74.5"
                     value={weightKg}
                     onChange={(e) => setWeightKg(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-base focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                    className="w-full pl-4 pr-12 py-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] font-black text-lg focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-focus)] transition-all placeholder:text-[var(--color-text-muted)]/40"
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500">kg</span>
+                  <span className="absolute right-3 px-2 py-1 rounded-lg bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-text-muted)] select-none pointer-events-none">
+                    kg
+                  </span>
                 </div>
               </div>
 
               {/* % Grasso Corporeo */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+              <div className={`p-4 rounded-2xl border space-y-2.5 transition-all bg-[var(--color-surface-strong)] ${
+                req?.body_fat
+                  ? 'border-[var(--color-primary)]/50 shadow-sm shadow-[var(--color-primary)]/10'
+                  : 'border-[var(--color-border)]'
+              }`}>
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
-                    Massa Grassa (%) {req?.body_fat && <span className="text-[var(--color-primary)] font-black">*</span>}
+                  <label className="text-xs font-black text-[var(--color-text)] uppercase tracking-wide flex items-center gap-1">
+                    Massa Grassa {req?.body_fat && <span className="text-[var(--color-primary)] font-black">*</span>}
                   </label>
-                  <span className="text-[10px] text-slate-500">Opzionale</span>
+                  <span className="text-[10px] font-bold text-[var(--color-text-muted)] bg-[var(--color-surface)] px-2 py-0.5 rounded-md border border-[var(--color-border)]">
+                    Opzionale
+                  </span>
                 </div>
 
-                <div className="relative">
+                <div className="relative flex items-center">
                   <input
                     type="number"
                     step="0.1"
@@ -268,221 +297,74 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
                     placeholder="Es. 14.2"
                     value={bodyFat}
                     onChange={(e) => setBodyFat(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-black text-base focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                    className="w-full pl-4 pr-12 py-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] font-black text-lg focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-focus)] transition-all placeholder:text-[var(--color-text-muted)]/40"
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500">%</span>
+                  <span className="absolute right-3 px-2.5 py-1 rounded-lg bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-text-muted)] select-none pointer-events-none">
+                    %
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* 2. SEZIONE CIRCONFERENZE */}
-          <div className="space-y-3 pt-2 border-t border-slate-800/80">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
+          <div className="space-y-3 pt-3 border-t border-[var(--color-border)]">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="text-xs font-black uppercase tracking-wider text-[var(--color-text)] flex items-center gap-2">
                 <Ruler className="w-4 h-4 text-sky-400" />
                 2. Circonferenze Corporee (cm)
               </h3>
-              <span className="text-[10px] text-slate-500">Misura nei punti standard al mattino a digiuno</span>
+              <span className="text-[10px] font-medium text-[var(--color-text-muted)]">
+                Misura nei punti standard al mattino a digiuno
+              </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              
-              {/* VITA */}
-              <div className={`p-3 rounded-xl border space-y-1 ${
-                req?.waist ? 'bg-slate-900 border-sky-500/40' : 'bg-slate-900/60 border-slate-800'
-              }`}>
-                <span className="text-[11px] font-bold text-slate-300 block">
-                  Vita {req?.waist && <span className="text-sky-400">*</span>}
-                </span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 78"
-                    value={waist}
-                    onChange={(e) => setWaist(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {circumferenceFields.map((field) => (
+                <div
+                  key={field.key}
+                  className={`p-3 rounded-2xl border transition-all bg-[var(--color-surface-strong)] ${
+                    field.required
+                      ? 'border-sky-500/50 shadow-sm shadow-sky-500/10'
+                      : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-bold text-[var(--color-text)] tracking-tight">
+                      {field.label}
+                      {field.required && <span className="text-sky-400 font-black ml-1">*</span>}
+                    </span>
+                  </div>
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      step="0.5"
+                      placeholder={field.placeholder}
+                      value={field.value}
+                      onChange={(e) => field.setter(e.target.value)}
+                      className="w-full pl-3 pr-8 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] font-black text-sm focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 transition-all placeholder:text-[var(--color-text-muted)]/40"
+                    />
+                    <span className="absolute right-2.5 text-[10px] font-bold text-[var(--color-text-muted)] select-none pointer-events-none">
+                      cm
+                    </span>
+                  </div>
                 </div>
-              </div>
-
-              {/* TORACE */}
-              <div className={`p-3 rounded-xl border space-y-1 ${
-                req?.chest ? 'bg-slate-900 border-sky-500/40' : 'bg-slate-900/60 border-slate-800'
-              }`}>
-                <span className="text-[11px] font-bold text-slate-300 block">
-                  Torace {req?.chest && <span className="text-sky-400">*</span>}
-                </span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 102"
-                    value={chest}
-                    onChange={(e) => setChest(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
-                </div>
-              </div>
-
-              {/* FIANCHI */}
-              <div className={`p-3 rounded-xl border space-y-1 ${
-                req?.hips ? 'bg-slate-900 border-sky-500/40' : 'bg-slate-900/60 border-slate-800'
-              }`}>
-                <span className="text-[11px] font-bold text-slate-300 block">
-                  Fianchi {req?.hips && <span className="text-sky-400">*</span>}
-                </span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 96"
-                    value={hips}
-                    onChange={(e) => setHips(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
-                </div>
-              </div>
-
-              {/* BRACCIO DX */}
-              <div className={`p-3 rounded-xl border space-y-1 ${
-                req?.biceps ? 'bg-slate-900 border-sky-500/40' : 'bg-slate-900/60 border-slate-800'
-              }`}>
-                <span className="text-[11px] font-bold text-slate-300 block">
-                  Braccio Dx {req?.biceps && <span className="text-sky-400">*</span>}
-                </span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 37"
-                    value={bicepRight}
-                    onChange={(e) => setBicepRight(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
-                </div>
-              </div>
-
-              {/* BRACCIO SX */}
-              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
-                <span className="text-[11px] font-bold text-slate-300 block">Braccio Sx</span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 37"
-                    value={bicepLeft}
-                    onChange={(e) => setBicepLeft(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
-                </div>
-              </div>
-
-              {/* COSCIA DX */}
-              <div className={`p-3 rounded-xl border space-y-1 ${
-                req?.thighs ? 'bg-slate-900 border-sky-500/40' : 'bg-slate-900/60 border-slate-800'
-              }`}>
-                <span className="text-[11px] font-bold text-slate-300 block">
-                  Coscia Dx {req?.thighs && <span className="text-sky-400">*</span>}
-                </span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 58"
-                    value={thighRight}
-                    onChange={(e) => setThighRight(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
-                </div>
-              </div>
-
-              {/* COSCIA SX */}
-              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
-                <span className="text-[11px] font-bold text-slate-300 block">Coscia Sx</span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 58"
-                    value={thighLeft}
-                    onChange={(e) => setThighLeft(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
-                </div>
-              </div>
-
-              {/* SPALLE */}
-              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
-                <span className="text-[11px] font-bold text-slate-300 block">Spalle</span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 118"
-                    value={shoulders}
-                    onChange={(e) => setShoulders(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
-                </div>
-              </div>
-
-              {/* COLLO */}
-              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
-                <span className="text-[11px] font-bold text-slate-300 block">Collo</span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 39"
-                    value={neck}
-                    onChange={(e) => setNeck(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
-                </div>
-              </div>
-
-              {/* POLPACCIO */}
-              <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
-                <span className="text-[11px] font-bold text-slate-300 block">Polpaccio</span>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.5"
-                    placeholder="Es. 38"
-                    value={calfRight}
-                    onChange={(e) => setCalfRight(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold text-xs focus:outline-none focus:border-sky-400"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">cm</span>
-                </div>
-              </div>
-
+              ))}
             </div>
           </div>
 
           {/* 3. SEZIONE FOTO PROGRESSI */}
           {photoReq !== 'none' && (
-            <div className="space-y-3 pt-2 border-t border-slate-800/80">
+            <div className="space-y-3 pt-3 border-t border-[var(--color-border)]">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-[var(--color-text)] flex items-center gap-2">
                   <Camera className="w-4 h-4 text-purple-400" />
                   3. Foto Progressi Visive
                 </h3>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                   photoReq === 'mandatory'
-                    ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
-                    : 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                    : 'bg-purple-500/10 text-purple-400 border-purple-500/30'
                 }`}>
                   {photoReq === 'mandatory' ? 'Obbligatorie' : 'Facoltative'}
                 </span>
@@ -496,9 +378,9 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
                   return (
                     <div
                       key={pose}
-                      className="p-3 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-2 relative overflow-hidden"
+                      className="p-3 rounded-2xl bg-[var(--color-surface-strong)] border border-[var(--color-border)] text-center space-y-2 relative overflow-hidden"
                     >
-                      <span className="text-[11px] font-bold text-slate-300 block">{label}</span>
+                      <span className="text-[11px] font-black text-[var(--color-text)] block">{label}</span>
 
                       {currentPhoto ? (
                         <div className="relative rounded-xl overflow-hidden aspect-[3/4] border border-purple-500/40">
@@ -510,15 +392,15 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
                           <button
                             type="button"
                             onClick={() => handleRemovePhoto(pose)}
-                            className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-black/70 text-rose-400 hover:text-white transition-colors"
+                            className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-black/70 text-rose-400 hover:text-white transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       ) : (
-                        <label className="flex flex-col items-center justify-center rounded-xl aspect-[3/4] border-2 border-dashed border-slate-800 hover:border-purple-400/60 bg-slate-950/40 hover:bg-slate-950/80 transition-all cursor-pointer p-2 space-y-1.5">
-                          <Camera className="w-5 h-5 text-slate-500" />
-                          <span className="text-[10px] font-bold text-slate-400">Carica foto</span>
+                        <label className="flex flex-col items-center justify-center rounded-xl aspect-[3/4] border-2 border-dashed border-[var(--color-border)] hover:border-purple-400/60 bg-[var(--color-surface)]/60 hover:bg-[var(--color-surface)] transition-all cursor-pointer p-2 space-y-1.5">
+                          <Camera className="w-5 h-5 text-[var(--color-text-muted)]" />
+                          <span className="text-[10px] font-bold text-[var(--color-text-muted)]">Carica foto</span>
                           <input
                             type="file"
                             accept="image/*"
@@ -535,13 +417,13 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
           )}
 
           {/* 4. NOTE & SENSAZIONI */}
-          <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
-            <label className="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+          <div className="space-y-1.5 pt-3 border-t border-[var(--color-border)]">
+            <label className="text-xs font-black text-[var(--color-text)] uppercase tracking-wide flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5 text-amber-400" />
               Note, Sensazioni ed Eventuali Commenti
             </label>
             {scheduleConfig?.custom_notes_prompt && (
-              <p className="text-[11px] text-slate-400 italic">
+              <p className="text-[11px] text-[var(--color-text-muted)] italic">
                 "{scheduleConfig.custom_notes_prompt}"
               </p>
             )}
@@ -550,23 +432,23 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Es. ottime sensazioni nei carichi, energia costante..."
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-[var(--color-primary)] transition-colors resize-none"
+              className="w-full px-4 py-2.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] text-xs placeholder:text-[var(--color-text-muted)]/50 focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-focus)] transition-all resize-none"
             />
           </div>
 
           {/* Footer CTA */}
-          <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-800">
+          <div className="pt-4 flex items-center justify-end gap-3 border-t border-[var(--color-border)]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white font-bold text-xs transition-colors cursor-pointer"
+              className="px-4 py-2.5 rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] font-bold text-xs transition-colors cursor-pointer"
             >
               Annulla
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20"
+              className="px-6 py-2.5 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 active:scale-95"
             >
               {isSubmitting ? 'Salvataggio...' : 'Conferma e Salva Check'}
             </button>
@@ -577,3 +459,4 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
     </div>
   );
 };
+

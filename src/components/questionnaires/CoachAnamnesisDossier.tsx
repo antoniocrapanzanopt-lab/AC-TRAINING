@@ -154,9 +154,9 @@ export const CoachAnamnesisDossier: React.FC<CoachAnamnesisDossierProps> = ({
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-slate-200 hover:text-white hover:border-slate-600 transition-all cursor-pointer shadow"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-600 transition-all cursor-pointer shadow-xs"
           >
-            <Printer className="w-4 h-4 text-sky-400" /> Stampa PDF
+            <Printer className="w-4 h-4 text-sky-500 dark:text-sky-400" /> Stampa PDF
           </button>
 
           <button
@@ -398,9 +398,9 @@ export const CoachAnamnesisDossier: React.FC<CoachAnamnesisDossierProps> = ({
             <button
               type="button"
               onClick={onNavigateToNutrition}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-900 border border-slate-700 text-white font-bold text-xs hover:border-[var(--color-primary)] transition-all shadow cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white font-bold text-xs hover:border-[var(--color-primary)] transition-all shadow-xs cursor-pointer"
             >
-              <Flame className="w-4 h-4 text-amber-400" /> Stima Fabbisogno & Macro
+              <Flame className="w-4 h-4 text-amber-500 dark:text-amber-400" /> Stima Fabbisogno & Macro
             </button>
           )}
         </div>

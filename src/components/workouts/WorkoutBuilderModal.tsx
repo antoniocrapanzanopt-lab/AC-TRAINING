@@ -8,7 +8,8 @@ import { useAthletes } from '../../context/AthletesContext';
 import { useProgressions } from '../../context/ProgressionsContext';
 import { useToast } from '../../context/ToastContext';
 import { calculateEstimatedWorkoutTime } from '../../utils/workoutUtils';
-import { extractGroupTagFromNotes, encodeGroupTagInNotes } from '../../utils/noteCleaner';
+import { extractGroupTagFromNotes, encodeGroupTagInNotes, extractCircuitConfigFromNotes, encodeCircuitConfigInNotes } from '../../utils/noteCleaner';
+import { getCircuitConfig, saveCircuitConfig as persistCircuitConfig, CircuitDayConfig } from '../../utils/circuitConfig';
 import { AICoPilotModal } from './AICoPilotModal';
 import { GeneratedWorkoutResponse, normalizeDayName } from '../../lib/ai/workoutGenerator';
 import { getAthleteWorkoutProgress } from '../../services/workoutProgressService';
@@ -677,6 +678,61 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
   });
   const [isCompactMode, setIsCompactMode] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // ── STATO CIRCUITO / HIIT PER GIORNO ATTIVO ──
+  const [circuitConfig, setCircuitConfig] = useState<CircuitDayConfig>({
+    isCircuit: false,
+    totalRounds: 3,
+    restBetweenRoundsSec: 90,
+  });
+
+  // Carica la config circuito ogni volta che cambia il giorno o la scheda
+  useEffect(() => {
+    // 1. Priorità: Cerca se negli esercizi correnti per activeDay c'è un tag [CIRCUIT:X:Y]
+    const dayExercises = exercises.filter(
+      ex => (ex.day_name || 'Giorno A').trim().toLowerCase() === activeDay.trim().toLowerCase()
+    );
+    for (const ex of dayExercises) {
+      if (ex.notes) {
+        const fromNotes = extractCircuitConfigFromNotes(ex.notes);
+        if (fromNotes.isCircuit) {
+          setCircuitConfig({
+            isCircuit: true,
+            totalRounds: fromNotes.totalRounds,
+            restBetweenRoundsSec: fromNotes.restBetweenRoundsSec,
+          });
+          return;
+        }
+      }
+    }
+
+    // 2. Altrimenti usa la utility con fallback fuzzy su localStorage
+    const cfg = getCircuitConfig(initialWorkout?.id, activeDay);
+    setCircuitConfig(cfg);
+  }, [initialWorkout?.id, activeDay, exercises]);
+
+  const saveCircuitConfig = useCallback((cfg: CircuitDayConfig) => {
+    setCircuitConfig(cfg);
+    // Notifica istantanea real-time (tutti i tab/finestre atleti aperti)
+    persistCircuitConfig(initialWorkout?.id, activeDay, cfg);
+
+    // Aggiorna le note degli esercizi del giorno attivo in memoria per la persistenza su DB
+    setExercises(prev => prev.map(ex => {
+      const isThisDay = (ex.day_name || 'Giorno A').trim().toLowerCase() === activeDay.trim().toLowerCase();
+      if (!isThisDay) return ex;
+      const updatedNotes = encodeCircuitConfigInNotes(
+        ex.notes,
+        cfg.isCircuit,
+        cfg.totalRounds,
+        cfg.restBetweenRoundsSec
+      );
+      return {
+        ...ex,
+        notes: updatedNotes,
+      };
+    }));
+  }, [initialWorkout?.id, activeDay]);
+
 
   // Stati per modali rapidi note, alternativo e progressione nel layout a griglia
   const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
@@ -2278,26 +2334,31 @@ ${result.regole_adattamento || '-'}
       const dayIdx = getDayIndex(ex.day_name);
       const calculatedOrderIndex = (dayIdx * 1000) + posInDay;
 
-      return {
-        id: ex.id,
-        workout_id: initialWorkout?.id,
-        name: ex.name!.trim(),
-        sets: Number(ex.sets) || 1,
-        reps_target: ex.reps_target ? String(ex.reps_target) : '10',
-        rest_seconds: Number(ex.rest_seconds) || 60,
-        order_index: calculatedOrderIndex,
-        notes: encodeGroupTagInNotes(ex.notes, ex.group_tag) || undefined,
-        day_name: ex.day_name || 'Giorno A',
-        week_number: Number(ex.week_number) || 1,
-        target_weight: ex.target_weight ? String(ex.target_weight) : undefined,
-        rir_target: ex.rir_target ? String(ex.rir_target) : undefined,
-        tut: ex.tut ? String(ex.tut) : undefined,
-        is_time_based: Boolean(ex.is_time_based),
-        duration_seconds: ex.duration_seconds ? Number(ex.duration_seconds) : undefined,
-        alternative_exercise: ex.alternative_exercise || undefined,
-        progression_rule_id: ex.progression_rule_id || undefined,
-        video_url: ex.video_url || undefined,
-      };
+        const isThisActiveDay = (ex.day_name || 'Giorno A').trim().toLowerCase() === activeDay.trim().toLowerCase();
+        const notesWithCircuit = isThisActiveDay
+          ? encodeCircuitConfigInNotes(ex.notes, circuitConfig.isCircuit, circuitConfig.totalRounds, circuitConfig.restBetweenRoundsSec)
+          : ex.notes;
+
+        return {
+          id: ex.id,
+          workout_id: initialWorkout?.id,
+          name: ex.name!.trim(),
+          sets: Number(ex.sets) || 1,
+          reps_target: ex.reps_target ? String(ex.reps_target) : '10',
+          rest_seconds: Number(ex.rest_seconds) || 60,
+          order_index: calculatedOrderIndex,
+          notes: encodeGroupTagInNotes(notesWithCircuit, ex.group_tag) || undefined,
+          day_name: ex.day_name || 'Giorno A',
+          week_number: Number(ex.week_number) || 1,
+          target_weight: ex.target_weight ? String(ex.target_weight) : undefined,
+          rir_target: ex.rir_target ? String(ex.rir_target) : undefined,
+          tut: ex.tut ? String(ex.tut) : undefined,
+          is_time_based: Boolean(ex.is_time_based),
+          duration_seconds: ex.duration_seconds ? Number(ex.duration_seconds) : undefined,
+          alternative_exercise: ex.alternative_exercise || undefined,
+          progression_rule_id: ex.progression_rule_id || undefined,
+          video_url: ex.video_url || undefined,
+        };
     });
 
     // Modalità "Edit Template" dal catalogo
@@ -2407,6 +2468,7 @@ ${result.regole_adattamento || '-'}
 
       // ─── VERIFICA POST-SALVATAGGIO DAL DATABASE ───
       if (targetWorkoutId) {
+        persistCircuitConfig(targetWorkoutId, activeDay, circuitConfig);
         const refetched = await getExercisesForWorkout(targetWorkoutId);
         if (exercisesToSave.length > 0 && (!refetched || refetched.length === 0)) {
           throw new Error('Verifica fallita: la scheda ricaricata dal database risulta vuota.');
@@ -3315,18 +3377,20 @@ ${result.regole_adattamento || '-'}
           {/* ══════════════════════════════════════════════════════════════════ */}
           {/* LIVELLO B & C: CONTENUTO SEDUTA & PROGRESSIONE CONTESTUALE      */}
           {/* ══════════════════════════════════════════════════════════════════ */}
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <h3 className="text-base font-bold text-white flex items-center gap-2 group cursor-pointer" onClick={() => {
+          <div className="space-y-3">
+            {/* ── Riga titolo + badge + toolbar ──────────────────────────── */}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              {/* Sinistra: Nome giorno + badge */}
+              <div className="flex items-center gap-2.5 min-w-0">
+                <h3 className="text-base font-bold text-white flex items-center gap-2 group cursor-pointer shrink-0" onClick={() => {
                   if (!isRenamingDay) {
                     setDayNameInput(activeDay);
                     setIsRenamingDay(true);
                   }
                 }}>
                   {isRenamingDay ? (
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={dayNameInput}
                       onChange={e => setDayNameInput(e.target.value)}
                       onBlur={() => renameActiveDay(dayNameInput)}
@@ -3343,73 +3407,182 @@ ${result.regole_adattamento || '-'}
                       <Pencil className="w-3.5 h-3.5 text-slate-500 opacity-0 group-hover:opacity-100 hover:text-[var(--color-primary)] transition-all" />
                     </>
                   )}
-                  <span className="text-xs font-normal text-slate-400 ml-1">(Settimana {activeWeek})</span>
+                  <span className="text-xs font-normal text-slate-400">(W{activeWeek})</span>
                 </h3>
 
-                {/* Badge Durata Stimata */}
+                {/* Badge durata */}
                 {currentWeekDayExercises.length > 0 && (
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-full text-xs font-bold shadow-sm">
-                    <Clock className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-full text-xs font-bold">
+                    <Clock className="w-3 h-3" />
                     <span>{estimatedTime.display}</span>
                   </div>
                 )}
+
+                {/* Badge HIIT */}
+                {circuitConfig.isCircuit && (
+                  <div className="flex items-center gap-1 px-2.5 py-0.5 bg-purple-500/20 border border-purple-500/40 text-purple-300 rounded-full text-xs font-black">
+                    <Zap className="w-3 h-3 text-purple-400" />
+                    <span>{circuitConfig.totalRounds} giri</span>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-wrap">
-                {/* Toggle Vista Compatta Scheda */}
+
+              {/* ── Toolbar Azioni Giorno ────────────────────────────────── */}
+              <div className="flex items-center gap-1.5 mt-2 sm:mt-0 flex-wrap">
+                {/* Bottoni modalità - gruppo sinistra */}
+                <div className="flex items-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl">
+                  {/* HIIT / Circuito */}
+                  <button
+                    type="button"
+                    onClick={() => saveCircuitConfig({ ...circuitConfig, isCircuit: !circuitConfig.isCircuit })}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                      circuitConfig.isCircuit
+                        ? 'bg-purple-500/25 text-purple-300 shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                    title="Attiva la modalità HIIT/Circuito"
+                  >
+                    <Zap className={`w-3.5 h-3.5 ${circuitConfig.isCircuit ? 'text-purple-400' : ''}`} />
+                    <span className="hidden sm:inline">{circuitConfig.isCircuit ? 'HIIT ✓' : 'HIIT'}</span>
+                  </button>
+
+                  <div className="w-px h-4 bg-slate-700" />
+
+                  {/* Vista Compatta */}
+                  <button
+                    type="button"
+                    onClick={() => setIsCompactMode(prev => !prev)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                      isCompactMode
+                        ? 'bg-amber-500/20 text-amber-300'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                    title="Vista compatta"
+                  >
+                    <Sliders className={`w-3.5 h-3.5 ${isCompactMode ? 'text-amber-400' : ''}`} />
+                    <span className="hidden sm:inline">{isCompactMode ? 'Compatta ✓' : 'Compatta'}</span>
+                  </button>
+
+                  {currentWeekDayExercises.length >= 2 && (
+                    <>
+                      <div className="w-px h-4 bg-slate-700" />
+                      <button
+                        type="button"
+                        onClick={invertExercisesOrderInDay}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                        title="Inverti ordine esercizi"
+                      >
+                        <ArrowUpDown className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="hidden md:inline">Inverti</span>
+                      </button>
+                    </>
+                  )}
+
+                  {totalWeeks > 1 && activeWeek < totalWeeks && currentWeekDayExercises.length > 0 && (
+                    <>
+                      <div className="w-px h-4 bg-slate-700" />
+                      <button
+                        type="button"
+                        onClick={() => propagateDayToFutureWeeks(activeDay)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 rounded-lg transition-all cursor-pointer"
+                        title={`Propaga a settimane future`}
+                      >
+                        <FastForward className="w-3.5 h-3.5" />
+                        <span className="hidden md:inline">Propaga W+</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Consigli IA */}
                 <button
-                  type="button"
-                  onClick={() => setIsCompactMode(prev => !prev)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border cursor-pointer min-h-[36px] sm:min-h-0 ${
-                    isCompactMode
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm font-black'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
-                  }`}
-                  title="Attiva/disattiva la vista compatta ad alta densità per compilare rapidamente le schede senza scroll eccessivo"
-                >
-                  <Sliders className={`w-3.5 h-3.5 ${isCompactMode ? 'text-amber-400' : 'text-slate-400'}`} />
-                  <span>{isCompactMode ? 'Vista Compatta: ON' : 'Vista Compatta'}</span>
-                </button>
-
-                {currentWeekDayExercises.length >= 2 && (
-                  <button
-                    type="button"
-                    onClick={invertExercisesOrderInDay}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors border border-slate-700 shadow-sm cursor-pointer min-h-[36px] sm:min-h-0"
-                    title="Inverti l'ordine di tutti gli esercizi di questo giorno (es. da 1..N a N..1)"
-                  >
-                    <ArrowUpDown className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Inverti Ordine</span>
-                  </button>
-                )}
-                {totalWeeks > 1 && activeWeek < totalWeeks && currentWeekDayExercises.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => propagateDayToFutureWeeks(activeDay)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded-lg transition-colors shadow-sm cursor-pointer min-h-[36px] sm:min-h-0"
-                    title={`Copia tutti gli esercizi di ${activeDay} alle settimane da W${activeWeek + 1} a W${totalWeeks}`}
-                  >
-                    <FastForward className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Propaga {activeDay} a W+</span>
-                  </button>
-                )}
-
-                <button 
                   onClick={fetchAiSuggestions}
                   disabled={aiSuggestionsLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500/20 rounded-lg transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500/20 rounded-xl transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
                 >
-                  {aiSuggestionsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                  {aiSuggestionsLoading ? 'Analisi...' : 'Consigli IA'}
+                  {aiSuggestionsLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline">{aiSuggestionsLoading ? 'Analisi...' : 'Consigli IA'}</span>
                 </button>
-                <button 
+
+                {/* + Aggiungi Esercizio */}
+                <button
                   onClick={addExercise}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] rounded-lg transition-colors shadow-md shrink-0 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-[var(--color-primary)] text-black hover:bg-[var(--color-primary-hover)] rounded-xl transition-colors shadow-md shrink-0 cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" />
-                  Aggiungi Esercizio
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Esercizio</span>
                 </button>
               </div>
             </div>
+
+            {/* ── Pannello HIIT / Circuito (Full Width) ─────────────────── */}
+            {circuitConfig.isCircuit && (
+              <div className="px-4 py-3 bg-purple-950/40 border border-purple-500/30 rounded-xl animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-4 flex-wrap">
+                    {/* Badge / Indicatore */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-purple-500/20 border border-purple-500/40 flex items-center justify-center">
+                        <Zap className="w-3.5 h-3.5 text-purple-400" />
+                      </div>
+                      <span className="text-purple-300 text-xs font-bold uppercase tracking-wider">Circuito HIIT</span>
+                    </div>
+
+                    <div className="w-px h-4 bg-purple-500/20 hidden sm:block" />
+
+                    {/* Giri */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs font-medium">Giri totali:</span>
+                      <div className="flex items-center bg-slate-900 border border-slate-700/80 rounded-lg overflow-hidden shadow-inner">
+                        <button
+                          type="button"
+                          onClick={() => saveCircuitConfig({ ...circuitConfig, totalRounds: Math.max(1, circuitConfig.totalRounds - 1) })}
+                          className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer font-black text-sm"
+                        >
+                          −
+                        </button>
+                        <span className="w-8 text-center text-white font-black text-xs border-x border-slate-700/80">{circuitConfig.totalRounds}</span>
+                        <button
+                          type="button"
+                          onClick={() => saveCircuitConfig({ ...circuitConfig, totalRounds: Math.min(20, circuitConfig.totalRounds + 1) })}
+                          className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer font-black text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="w-px h-4 bg-purple-500/20 hidden sm:block" />
+
+                    {/* Recupero tra giri */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs font-medium">Recupero tra giri:</span>
+                      <div className="flex gap-1">
+                        {[60, 90, 120, 180].map(sec => (
+                          <button
+                            key={sec}
+                            type="button"
+                            onClick={() => saveCircuitConfig({ ...circuitConfig, restBetweenRoundsSec: sec })}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                              circuitConfig.restBetweenRoundsSec === sec
+                                ? 'bg-purple-600 text-white shadow-sm shadow-purple-500/40 ring-1 ring-purple-400/40'
+                                : 'bg-slate-900 border border-slate-700/80 hover:border-purple-500/50 text-slate-300 hover:text-white'
+                            }`}
+                          >
+                            {sec < 60 ? `${sec}s` : sec === 60 ? '1\'' : sec === 90 ? '1\'30"' : sec === 120 ? '2\'' : '3\''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span className="text-purple-300/70 text-[11px] italic hidden lg:inline">
+                    💡 Gli esercizi verranno eseguiti a stazioni in sequenza continua per {circuitConfig.totalRounds} {circuitConfig.totalRounds === 1 ? 'giro' : 'giri'}
+                  </span>
+                </div>
+              </div>
+            )}
+
 
             {isAiSuggestionsOpen && (
               <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 relative shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">

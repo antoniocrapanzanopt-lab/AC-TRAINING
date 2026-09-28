@@ -37,6 +37,8 @@ const HOME_EQUIPMENT_OPTIONS = [
   'Cintura zavorre',
 ];
 
+type LiftKey = 'squatKg' | 'benchKg' | 'deadliftKg' | 'pullupsReps';
+
 export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange }) => {
   const toggleSport = (sport: string) => {
     const current = data.pastSports || [];
@@ -59,19 +61,19 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Intestazione */}
-      <div className="border-b border-slate-800/80 pb-4">
-        <h3 className="text-lg font-black text-white flex items-center gap-2">
-          <Dumbbell className="w-5 h-5 text-[var(--color-primary)]" /> 3. Allenamento & Esperienza Pregressa
+      <div className="border-b border-slate-200 dark:border-slate-800/80 pb-4">
+        <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+          <Dumbbell className="w-5 h-5 text-amber-500 dark:text-[var(--color-primary)]" /> 3. Allenamento & Esperienza Pregressa
         </h3>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium mt-1">
           Identifica la tua anzianità di sovraccarico, l'ambiente di allenamento e l'attrezzatura a disposizione.
         </p>
       </div>
 
       {/* 1. Anzianità di Allenamento */}
       <div className="space-y-2">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-          Anzianità di Allenamento con Pesi <span className="text-[var(--color-primary)]">*</span>
+        <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+          Anzianità di Allenamento con Pesi <span className="text-amber-500 dark:text-[var(--color-primary)]">*</span>
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
@@ -97,16 +99,16 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
                 key={item.id}
                 type="button"
                 onClick={() => onChange({ experienceLevel: item.id as ExperienceLevel })}
-                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer shadow-xs ${
                   isSelected
-                    ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)] text-white shadow-md'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:bg-slate-900/40'
+                    ? 'bg-amber-500/10 dark:bg-[var(--color-primary)]/15 border-amber-500 dark:border-[var(--color-primary)] ring-1 ring-amber-500/30 text-slate-900 dark:text-white'
+                    : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900/40'
                 }`}
               >
-                <span className={`block font-black text-sm ${isSelected ? 'text-[var(--color-primary)]' : 'text-slate-200'}`}>
+                <span className={`block font-black text-sm ${isSelected ? 'text-amber-600 dark:text-[var(--color-primary)]' : 'text-slate-800 dark:text-slate-200'}`}>
                   {item.title}
                 </span>
-                <span className="block text-[11px] text-slate-400 mt-1 leading-snug">
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
                   {item.desc}
                 </span>
               </button>
@@ -117,7 +119,7 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
 
       {/* 2. Sport Praticati in Passato (Multi-Chip) */}
       <div className="space-y-2">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
+        <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
           Sport o discipline praticate in passato (Seleziona tutto ciò che si applica)
         </label>
         <div className="flex flex-wrap gap-2">
@@ -128,13 +130,13 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
                 key={sport}
                 type="button"
                 onClick={() => toggleSport(sport)}
-                className={`py-1.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`py-1.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${
                   isSelected
-                    ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)] shadow-sm'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    ? 'bg-amber-500 text-black border-amber-500 font-black'
+                    : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                {isSelected && <Check className="w-3 h-3" />}
+                {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                 {sport}
               </button>
             );
@@ -144,8 +146,8 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
 
       {/* 3. Ambiente di Allenamento */}
       <div className="space-y-3">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-          Dove ti alleni? <span className="text-[var(--color-primary)]">*</span>
+        <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+          Dove ti alleni? <span className="text-amber-500 dark:text-[var(--color-primary)]">*</span>
         </label>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
@@ -161,10 +163,10 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
                 key={loc.id}
                 type="button"
                 onClick={() => onChange({ trainingLocation: loc.id as TrainingLocationType })}
-                className={`p-3.5 rounded-2xl border text-center font-bold text-xs transition-all cursor-pointer flex flex-col items-center justify-center gap-2 ${
+                className={`p-3.5 rounded-2xl border text-center font-bold text-xs transition-all cursor-pointer flex flex-col items-center justify-center gap-2 shadow-xs ${
                   isSelected
-                    ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)] text-[var(--color-primary)] shadow-md ring-1 ring-[var(--color-primary)]/30'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-400 ring-1 ring-amber-500/30'
+                    : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
                 <Icon className="w-5 h-5" />
@@ -177,9 +179,9 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
 
       {/* 4. CONDIZIONALE: Attrezzatura a Casa (Se Home Gym o Ibrido) */}
       {isHomeOrHybrid && (
-        <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-800/40 space-y-3 animate-in fade-in duration-200">
-          <label className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-            <Home className="w-4 h-4 text-amber-400" /> Attrezzatura Disponibile a Casa
+        <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 space-y-3 animate-in fade-in duration-200">
+          <label className="text-xs font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+            <Home className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Attrezzatura Disponibile a Casa
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {HOME_EQUIPMENT_OPTIONS.map((item) => {
@@ -189,14 +191,14 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
                   key={item}
                   type="button"
                   onClick={() => toggleEquipment(item)}
-                  className={`p-2.5 rounded-xl border text-left text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${
+                  className={`p-2.5 rounded-xl border text-left text-xs font-bold transition-all flex items-center justify-between cursor-pointer shadow-xs ${
                     isChecked
-                      ? 'bg-amber-500/20 border-amber-500 text-amber-200'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      ? 'bg-amber-100 dark:bg-amber-500/20 border-amber-400 dark:border-amber-500 text-amber-900 dark:text-amber-200'
+                      : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
                   <span className="truncate">{item}</span>
-                  {isChecked && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 ml-2" />}
+                  {isChecked && <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 ml-2" />}
                 </button>
               );
             })}
@@ -206,7 +208,7 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
 
       {/* 5. Esercizi non graditi */}
       <div className="space-y-1.5">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+        <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
           Esercizi che non sopporti o preferisci evitare (Opzionale)
         </label>
         <input
@@ -214,31 +216,31 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
           value={data.dislikedExercises || ''}
           onChange={(e) => onChange({ dislikedExercises: e.target.value })}
           placeholder="es. Affondi in camminata, panca inclinata manubri, ecc."
-          className="w-full px-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)] placeholder:text-slate-600"
+          className="w-full px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-amber-500 placeholder:text-slate-400 dark:placeholder:text-slate-600 shadow-xs"
         />
       </div>
 
       {/* 6. Carichi Indicativi sui Fondamentali (Opzionali) */}
-      <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-3">
+      <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 space-y-3 shadow-xs">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
             Carichi Indicativi Fondamentali (Opzionali se noti)
           </label>
-          <span className="text-[10px] text-slate-500">1RM o serie pesante</span>
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">1RM o serie pesante</span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { key: 'squatKg', label: 'Squat (kg)' },
-            { key: 'benchKg', label: 'Panca Piana (kg)' },
-            { key: 'deadliftKg', label: 'Stacco (kg)' },
-            { key: 'pullupsReps', label: 'Trazioni (Max Reps)' },
+            { key: 'squatKg' as LiftKey, label: 'Squat (kg)' },
+            { key: 'benchKg' as LiftKey, label: 'Panca Piana (kg)' },
+            { key: 'deadliftKg' as LiftKey, label: 'Stacco (kg)' },
+            { key: 'pullupsReps' as LiftKey, label: 'Trazioni (Max Reps)' },
           ].map((lift) => (
-            <div key={lift.key} className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-center">
-              <span className="text-[10px] font-bold text-slate-400 block mb-1">{lift.label}</span>
+            <div key={lift.key} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center">
+              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1">{lift.label}</span>
               <input
                 type="number"
-                value={(data.indicativeMaxLifts as any)?.[lift.key] || ''}
+                value={data.indicativeMaxLifts?.[lift.key] ?? ''}
                 onChange={(e) =>
                   onChange({
                     indicativeMaxLifts: {
@@ -248,7 +250,7 @@ export const Step3TrainingExperience: React.FC<StepProps> = ({ data, onChange })
                   })
                 }
                 placeholder="—"
-                className="w-full text-center bg-transparent font-mono font-bold text-sm text-white focus:outline-none placeholder:text-slate-600"
+                className="w-full text-center bg-transparent font-mono font-bold text-sm text-slate-900 dark:text-white focus:outline-none placeholder:text-slate-400 dark:placeholder:text-slate-600"
               />
             </div>
           ))}

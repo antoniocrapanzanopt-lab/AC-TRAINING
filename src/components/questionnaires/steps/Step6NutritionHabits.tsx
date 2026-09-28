@@ -54,11 +54,11 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Intestazione */}
-      <div className="border-b border-slate-800/80 pb-4">
-        <h3 className="text-lg font-black text-white flex items-center gap-2">
-          <Utensils className="w-5 h-5 text-[var(--color-primary)]" /> 6. Nutrizione & Abitudini Alimentari
+      <div className="border-b border-slate-200 dark:border-slate-800/80 pb-4">
+        <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+          <Utensils className="w-5 h-5 text-amber-500 dark:text-[var(--color-primary)]" /> 6. Nutrizione & Abitudini Alimentari
         </h3>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium mt-1">
           Identifica la tua routine alimentare, la frequenza dei pasti e il livello di precisione con cui gestisci il cibo.
         </p>
       </div>
@@ -66,9 +66,9 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
       {/* 1. Pasti al Giorno & Colazione */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Pasti al Giorno */}
-        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-2.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
-            Quanti pasti consumi al giorno? <span className="text-[var(--color-primary)]">*</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 space-y-2.5 shadow-xs">
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+            Quanti pasti consumi al giorno? <span className="text-amber-500 dark:text-[var(--color-primary)]">*</span>
           </label>
           <div className="grid grid-cols-4 gap-2">
             {[2, 3, 4, 5].map((count) => {
@@ -78,10 +78,10 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
                   key={count}
                   type="button"
                   onClick={() => onChange({ mealsPerDay: count as MealsPerDay })}
-                  className={`py-2.5 rounded-xl border text-center font-black text-xs transition-all cursor-pointer ${
+                  className={`py-2.5 rounded-xl border text-center font-black text-xs transition-all cursor-pointer shadow-xs ${
                     isSelected
-                      ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)] shadow-sm'
-                      : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                      ? 'bg-amber-500 text-black border-amber-500 shadow-sm'
+                      : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
                   {count} pasti
@@ -92,9 +92,9 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
         </div>
 
         {/* Colazione */}
-        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-2.5">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
-            Abitudine Colazione <span className="text-[var(--color-primary)]">*</span>
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 space-y-2.5 shadow-xs">
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+            Abitudine Colazione <span className="text-amber-500 dark:text-[var(--color-primary)]">*</span>
           </label>
           <div className="grid grid-cols-2 gap-2">
             {[
@@ -109,10 +109,10 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
                   key={item.id}
                   type="button"
                   onClick={() => onChange({ breakfastHabit: item.id as BreakfastHabit })}
-                  className={`py-2.5 px-3 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                  className={`py-2.5 px-3 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer shadow-xs ${
                     isSelected
-                      ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)] text-[var(--color-primary)] shadow-sm'
-                      : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                      ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-[var(--color-primary)] font-black'
+                      : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
                   {item.label}
@@ -124,23 +124,23 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
       </div>
 
       {/* 2. Tracciamento Calorie con App (Condizionale) */}
-      <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <label className="text-xs font-black uppercase tracking-wider text-slate-200 block">
-              Utilizzi o hai usato app contacalorie (es. MyFitnessPal)? <span className="text-[var(--color-primary)]">*</span>
+            <label className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-200 block">
+              Utilizzi o hai usato app contacalorie (es. MyFitnessPal)? <span className="text-amber-500 dark:text-[var(--color-primary)]">*</span>
             </label>
-            <span className="text-[11px] text-slate-400">Tracciamento di calorie e macronutrienti giornalieri</span>
+            <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Tracciamento di calorie e macronutrienti giornalieri</span>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 shrink-0">
             <button
               type="button"
               onClick={() => onChange({ calorieTracking: false, calorieTrackingDetails: undefined })}
               className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
                 !data.calorieTracking
-                  ? 'bg-slate-800 text-slate-300 shadow'
-                  : 'text-slate-500 hover:text-slate-300'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-300 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
               }`}
             >
               No
@@ -155,8 +155,8 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
               }
               className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
                 data.calorieTracking
-                  ? 'bg-[var(--color-primary)] text-black shadow'
-                  : 'text-slate-500 hover:text-slate-300'
+                  ? 'bg-amber-500 text-black shadow-sm font-black'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
               }`}
             >
               Sì 📱
@@ -166,9 +166,9 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
 
         {/* Dettaglio Condizionale Tracciamento */}
         {data.calorieTracking && (
-          <div className="pt-3 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in duration-200">
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in duration-200">
             <div>
-              <label className="text-[11px] font-bold text-slate-400 block mb-1">Quale app utilizzi?</label>
+              <label className="text-[11px] font-extrabold text-slate-700 dark:text-slate-400 block mb-1">Quale app utilizzi?</label>
               <input
                 type="text"
                 value={data.calorieTrackingDetails?.appUsed || ''}
@@ -181,12 +181,12 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
                   })
                 }
                 placeholder="es. MyFitnessPal, MacroFactor, Yazio..."
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-amber-500 shadow-xs"
               />
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-400 block mb-1">Livello di Accuratezza</label>
+              <label className="text-[11px] font-extrabold text-slate-700 dark:text-slate-400 block mb-1">Livello di Accuratezza</label>
               <select
                 value={data.calorieTrackingDetails?.precision || 'al_grammo'}
                 onChange={(e) =>
@@ -197,7 +197,7 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
                     },
                   })
                 }
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white font-bold text-xs focus:outline-none focus:border-[var(--color-primary)]"
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:border-amber-500 shadow-xs"
               >
                 <option value="al_grammo">⚖️ Peso tutto con la bilancia al grammo</option>
                 <option value="approssimativo">👁️ Traccio porzioni a occhio</option>
@@ -212,13 +212,13 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Regime */}
         <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
-            Regime Alimentare <span className="text-[var(--color-primary)]">*</span>
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+            Regime Alimentare <span className="text-amber-500 dark:text-[var(--color-primary)]">*</span>
           </label>
           <select
             value={data.dietaryRegime}
             onChange={(e) => onChange({ dietaryRegime: e.target.value as DietaryRegime })}
-            className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-white font-bold text-xs focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+            className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:border-amber-500 cursor-pointer shadow-xs"
           >
             <option value="onnivoro">🥩 Onnivoro (Mangio di tutto)</option>
             <option value="flessibile">🍕 Flessibile / IIFYM</option>
@@ -231,13 +231,13 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
 
         {/* Consumo Acqua */}
         <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-            <Droplets className="w-4 h-4 text-sky-400" /> Acqua Bevuta al Giorno
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Droplets className="w-4 h-4 text-sky-500" /> Acqua Bevuta al Giorno
           </label>
           <select
             value={data.waterIntake}
             onChange={(e) => onChange({ waterIntake: e.target.value as WaterIntakeLiters })}
-            className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-white font-bold text-xs focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+            className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:border-amber-500 cursor-pointer shadow-xs"
           >
             <option value="meno_1_5L">💧 Meno di 1.5 Litri (Bevo poco)</option>
             <option value="1_5_2_5L">💧 1.5 - 2.5 Litri (Standard)</option>
@@ -249,7 +249,7 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
 
       {/* 4. Intolleranze & Allergie (Multi-Chip) */}
       <div className="space-y-2">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
+        <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
           Allergie o Intolleranze Diagnosticate (Seleziona tutto ciò che si applica)
         </label>
         <div className="flex flex-wrap gap-2">
@@ -260,13 +260,13 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
                 key={item}
                 type="button"
                 onClick={() => toggleAllergy(item)}
-                className={`py-1.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`py-1.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${
                   isSelected
-                    ? 'bg-red-950/80 border-red-600 text-red-200 shadow-sm'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    ? 'bg-red-50 dark:bg-red-950/80 border-red-400 dark:border-red-600 text-red-800 dark:text-red-200 shadow-sm'
+                    : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                {isSelected && <Check className="w-3 h-3 text-red-400" />}
+                {isSelected && <Check className="w-3.5 h-3.5 text-red-600 dark:text-red-400 stroke-[3]" />}
                 {item}
               </button>
             );
@@ -276,8 +276,8 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
 
       {/* 5. Integratori in Uso */}
       <div className="space-y-2">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-          <Pill className="w-4 h-4 text-emerald-400" /> Integratori Assunti Abitualmente
+        <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+          <Pill className="w-4 h-4 text-emerald-500" /> Integratori Assunti Abitualmente
         </label>
         <div className="flex flex-wrap gap-2">
           {SUPPLEMENTS_LIST.map((item) => {
@@ -287,13 +287,13 @@ export const Step6NutritionHabits: React.FC<StepProps> = ({ data, onChange }) =>
                 key={item}
                 type="button"
                 onClick={() => toggleSupplement(item)}
-                className={`py-1.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`py-1.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${
                   isSelected
-                    ? 'bg-emerald-950/80 border-emerald-600 text-emerald-200 shadow-sm'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-400 dark:border-emerald-600 text-emerald-800 dark:text-emerald-200 shadow-sm'
+                    : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                {isSelected && <Check className="w-3 h-3 text-emerald-400" />}
+                {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 stroke-[3]" />}
                 {item}
               </button>
             );

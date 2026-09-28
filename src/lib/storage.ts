@@ -137,8 +137,84 @@ export async function uploadExerciseVideoToStorage(
       .getPublicUrl(data.path);
 
     return { url: publicUrlData.publicUrl, isRemote: true };
-  } catch (err: any) {
-    console.warn('Eccezione durante l\'upload del video:', err.message);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('Eccezione durante l\'upload del video:', msg);
     return { url: fallbackDataUrl, isRemote: false };
+  }
+}
+
+/**
+ * Converte un DataURL base64 in un Blob per upload in Supabase Storage.
+ */
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const parts = dataUrl.split(',');
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const bstr = atob(parts[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+}
+
+/**
+ * Carica una Foto Progressi nel Bucket 'progress-photos' su Supabase Storage.
+ * Restituisce l'URL pubblico e il path relativo nel bucket.
+ */
+export async function uploadProgressPhotoToStorage(
+  athleteId: string,
+  fileOrDataUrl: File | string,
+  pose: string = 'front'
+): Promise<{ url: string; storagePath: string | null; isRemote: boolean }> {
+  try {
+    let fileToUpload: Blob;
+    let fileExt = 'jpg';
+
+    if (typeof fileOrDataUrl === 'string') {
+      if (!fileOrDataUrl.startsWith('data:')) {
+        return { url: fileOrDataUrl, storagePath: null, isRemote: true };
+      }
+      fileToUpload = dataUrlToBlob(fileOrDataUrl);
+      if (fileOrDataUrl.includes('image/png')) fileExt = 'png';
+      else if (fileOrDataUrl.includes('image/webp')) fileExt = 'webp';
+    } else {
+      fileToUpload = fileOrDataUrl;
+      fileExt = fileOrDataUrl.name.split('.').pop() || 'jpg';
+    }
+
+    const cleanId = athleteId || 'general';
+    const randomSuffix = Math.random().toString(36).slice(2, 8);
+    const fileName = `${cleanId}/${Date.now()}_${pose}_${randomSuffix}.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from('progress-photos')
+      .upload(fileName, fileToUpload, {
+        cacheControl: '31536000',
+        upsert: true,
+      });
+
+    if (error || !data?.path) {
+      console.warn('Upload a Supabase Storage fallito (usando fallback DataURL):', error?.message);
+      const fallbackUrl = typeof fileOrDataUrl === 'string' ? fileOrDataUrl : URL.createObjectURL(fileOrDataUrl);
+      return { url: fallbackUrl, storagePath: null, isRemote: false };
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('progress-photos')
+      .getPublicUrl(data.path);
+
+    return {
+      url: publicUrlData.publicUrl,
+      storagePath: data.path,
+      isRemote: true,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('Eccezione durante upload foto progresso:', msg);
+    const fallbackUrl = typeof fileOrDataUrl === 'string' ? fileOrDataUrl : URL.createObjectURL(fileOrDataUrl);
+    return { url: fallbackUrl, storagePath: null, isRemote: false };
   }
 }

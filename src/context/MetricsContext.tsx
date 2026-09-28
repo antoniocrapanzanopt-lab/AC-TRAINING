@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { getStorageItem, setStorageItem } from '../lib/storage';
+import { getStorageItem, setStorageItem, uploadProgressPhotoToStorage } from '../lib/storage';
 import {
   AthleteMetric,
   AthleteMaxLift,
@@ -37,7 +37,9 @@ interface MetricsContextType {
   getAthleteSchedule: (athleteId: string) => AthleteCheckScheduleConfig;
   saveAthleteSchedule: (config: AthleteCheckScheduleConfig) => Promise<void>;
   getAthleteScheduleState: (athleteId: string, latestMetricDate?: string | null) => CheckScheduleState;
-  addProgressPhoto: (photo: Omit<AthleteProgressPhoto, 'id' | 'created_at'>) => Promise<AthleteProgressPhoto>;
+  fetchAthleteProgressPhotos: (athleteId: string) => Promise<AthleteProgressPhoto[]>;
+  fetchAllProgressPhotos: () => Promise<void>;
+  addProgressPhoto: (photo: Omit<AthleteProgressPhoto, 'id' | 'created_at'>, file?: File) => Promise<AthleteProgressPhoto>;
   getAthleteProgressPhotos: (athleteId: string) => AthleteProgressPhoto[];
   deleteProgressPhoto: (photoId: string) => Promise<void>;
 }
@@ -46,6 +48,7 @@ const MetricsContext = createContext<MetricsContextType | undefined>(undefined);
 
 export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const [metrics, setMetrics] = useState<AthleteMetric[]>(() => {
     const list = getStorageItem<AthleteMetric[]>('builder_athlete_metrics', []);
     // Purga automatica di eventuali record anomali o futuri da cache
@@ -136,6 +139,41 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'athlete_progress_photos' },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as { id?: string })?.id;
+            if (oldId) {
+              setProgressPhotos(prev => {
+                const updated = prev.filter(p => p.id !== oldId);
+                setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+                return updated;
+              });
+            }
+          } else if (payload.eventType === 'INSERT') {
+            const newRow = payload.new as AthleteProgressPhoto;
+            if (newRow && newRow.id) {
+              setProgressPhotos(prev => {
+                if (prev.some(p => p.id === newRow.id)) return prev;
+                const updated = [newRow, ...prev];
+                setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+                return updated;
+              });
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedRow = payload.new as AthleteProgressPhoto;
+            if (updatedRow && updatedRow.id) {
+              setProgressPhotos(prev => {
+                const updated = prev.map(p => (p.id === updatedRow.id ? updatedRow : p));
+                setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+                return updated;
+              });
+            }
+          }
+        }
+      )
       .on('broadcast', { event: 'metric_deleted' }, ({ payload }) => {
         const { id, athleteId, date } = (payload || {}) as { id?: string; athleteId?: string; date?: string };
         setMetrics(prev => {
@@ -151,9 +189,62 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return updated;
         });
       })
+      .on('broadcast', { event: 'progress_photo_added' }, ({ payload }) => {
+        const photo = payload as AthleteProgressPhoto;
+        if (photo && photo.id) {
+          setProgressPhotos(prev => {
+            if (prev.some(p => p.id === photo.id)) return prev;
+            const updated = [photo, ...prev];
+            setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+            return updated;
+          });
+          notifyChange();
+        }
+      })
+      .on('broadcast', { event: 'progress_photo_deleted' }, ({ payload }) => {
+        const { photoId } = (payload || {}) as { photoId?: string };
+        if (photoId) {
+          setProgressPhotos(prev => {
+            const updated = prev.filter(p => p.id !== photoId);
+            setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+            return updated;
+          });
+          notifyChange();
+        }
+      })
+      .on('broadcast', { event: 'request_athlete_progress_photos' }, ({ payload }) => {
+        const { athleteId } = (payload || {}) as { athleteId?: string };
+        if (athleteId) {
+          const currentPhotos = getStorageItem<AthleteProgressPhoto[]>(STORAGE_KEYS.PROGRESS_PHOTOS, []);
+          const matches = currentPhotos.filter(p => p.athlete_id === athleteId);
+          if (matches.length > 0) {
+            channel.send({
+              type: 'broadcast',
+              event: 'sync_athlete_progress_photos',
+              payload: { athleteId, photos: matches },
+            });
+          }
+        }
+      })
+      .on('broadcast', { event: 'sync_athlete_progress_photos' }, ({ payload }) => {
+        const { photos } = (payload || {}) as { athleteId?: string; photos?: AthleteProgressPhoto[] };
+        if (Array.isArray(photos) && photos.length > 0) {
+          setProgressPhotos(prev => {
+            const missing = photos.filter(p => !prev.some(existing => existing.id === p.id));
+            if (missing.length === 0) return prev;
+            const updated = [...missing, ...prev];
+            setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+            return updated;
+          });
+          notifyChange();
+        }
+      })
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
+      channelRef.current = null;
       supabase.removeChannel(channel);
     };
   }, []);
@@ -235,10 +326,77 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [user]);
 
+  // Carica le foto progressi di un singolo atleta
+  const fetchAthleteProgressPhotos = useCallback(async (athId: string): Promise<AthleteProgressPhoto[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('athlete_progress_photos')
+        .select('*')
+        .eq('athlete_id', athId)
+        .order('date', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        const remotePhotos = data as AthleteProgressPhoto[];
+        setProgressPhotos(prev => {
+          const others = prev.filter(p => p.athlete_id !== athId);
+          const pendingLocals = prev.filter(p => p.athlete_id === athId && !remotePhotos.some(r => r.id === p.id));
+          const updated = [...remotePhotos, ...pendingLocals, ...others];
+          setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+          return updated;
+        });
+      }
+    } catch (err: unknown) {
+      console.warn('Fetch athlete_progress_photos fallito:', err);
+    }
+
+    // Invia richiesta broadcast a eventuali client/finestre aperte (es. finestra privata atleta)
+    try {
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'request_athlete_progress_photos',
+        payload: { athleteId: athId },
+      });
+    } catch {
+      // Ignora silenziosamente
+    }
+
+    const currentPhotos = getStorageItem<AthleteProgressPhoto[]>(STORAGE_KEYS.PROGRESS_PHOTOS, []);
+    return currentPhotos.filter(p => p.athlete_id === athId);
+  }, []);
+
+  // Carica tutte le foto progressi dal DB
+  const fetchAllProgressPhotos = useCallback(async (): Promise<void> => {
+    try {
+      if (user?.role === 'athlete') {
+        const targetId = user.athleteId || user.id;
+        await fetchAthleteProgressPhotos(targetId);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('athlete_progress_photos')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(2000);
+
+      if (!error && Array.isArray(data)) {
+        const remoteList = data as AthleteProgressPhoto[];
+        setProgressPhotos(prev => {
+          const pendingLocals = prev.filter(p => !remoteList.some(r => r.id === p.id));
+          const updated = [...remoteList, ...pendingLocals];
+          setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+          return updated;
+        });
+      }
+    } catch (err: unknown) {
+      console.warn('Eccezione in fetchAllProgressPhotos:', err);
+    }
+  }, [user, fetchAthleteProgressPhotos]);
+
   useEffect(() => {
-    // Avvio parallelo: le due fetch non dipendono l'una dall'altra
-    Promise.all([fetchAllMetrics(), fetchAllMaxLifts()]);
-  }, [fetchAllMetrics, fetchAllMaxLifts]);
+    // Avvio parallelo: le tre fetch non dipendono l'una dall'altra
+    Promise.all([fetchAllMetrics(), fetchAllMaxLifts(), fetchAllProgressPhotos()]);
+  }, [fetchAllMetrics, fetchAllMaxLifts, fetchAllProgressPhotos]);
 
   // Carica le metriche di uno specifico atleta (Supabase unica fonte di verità, senza resurrezioni di record cancellati)
   const fetchMetricsForAthlete = useCallback(async (athleteId: string): Promise<AthleteMetric[]> => {
@@ -718,33 +876,122 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // ─── GESTIONE FOTO PROGRESSI ──────────────────────────────────────────
 
-  const addProgressPhoto = useCallback(async (photoData: Omit<AthleteProgressPhoto, 'id' | 'created_at'>): Promise<AthleteProgressPhoto> => {
-    const newPhoto: AthleteProgressPhoto = {
-      ...photoData,
-      id: 'photo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-      created_at: new Date().toISOString(),
-    };
+  const addProgressPhoto = useCallback(
+    async (
+      photoData: Omit<AthleteProgressPhoto, 'id' | 'created_at'>,
+      file?: File
+    ): Promise<AthleteProgressPhoto> => {
+      // 1. Upload nel bucket storage 'progress-photos' su Supabase
+      let finalImageUrl = photoData.image_url;
+      let finalStoragePath: string | null = photoData.storage_path || null;
 
-    setProgressPhotos(prev => {
-      const updated = [newPhoto, ...prev];
-      setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
-      return updated;
-    });
+      try {
+        const uploadRes = await uploadProgressPhotoToStorage(
+          photoData.athlete_id,
+          file || photoData.image_url,
+          photoData.pose
+        );
+        finalImageUrl = uploadRes.url;
+        finalStoragePath = uploadRes.storagePath;
+      } catch (err: unknown) {
+        console.warn('Upload a Supabase Storage fallito, uso fallback:', err);
+      }
 
-    notifyChange();
-    return newPhoto;
-  }, []);
+      const newPhoto: AthleteProgressPhoto = {
+        ...photoData,
+        id: 'photo_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        image_url: finalImageUrl,
+        storage_path: finalStoragePath,
+        created_at: new Date().toISOString(),
+      };
+
+      // 2. Inserimento nel database Supabase (se tabella disponibile)
+      try {
+        const { data: inserted, error } = await supabase
+          .from('athlete_progress_photos')
+          .insert([{
+            athlete_id: newPhoto.athlete_id,
+            metric_id: newPhoto.metric_id || null,
+            date: newPhoto.date,
+            pose: newPhoto.pose,
+            image_url: newPhoto.image_url,
+            storage_path: newPhoto.storage_path || null,
+            notes: newPhoto.notes || null,
+          }])
+          .select()
+          .single();
+
+        if (!error && inserted) {
+          newPhoto.id = inserted.id;
+        }
+      } catch (err: unknown) {
+        console.warn('Insert in athlete_progress_photos fallita (tabella in attesa o offline):', err);
+      }
+
+      // 3. Salva in memoria e cache storage locale
+      setProgressPhotos(prev => {
+        const updated = [newPhoto, ...prev.filter(p => p.id !== newPhoto.id)];
+        setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+        return updated;
+      });
+
+      // 4. Invia notifica broadcast in tempo reale a tutti i client (coach e atleta)
+      try {
+        channelRef.current?.send({
+          type: 'broadcast',
+          event: 'progress_photo_added',
+          payload: newPhoto,
+        });
+      } catch (err: unknown) {
+        console.warn('Broadcast realtime foto fallito:', err);
+      }
+
+      notifyChange();
+      return newPhoto;
+    },
+    []
+  );
 
   const getAthleteProgressPhotos = useCallback((athId: string): AthleteProgressPhoto[] => {
     return progressPhotos.filter(p => p.athlete_id === athId);
   }, [progressPhotos]);
 
   const deleteProgressPhoto = useCallback(async (photoId: string): Promise<void> => {
+    let photoToDelete: AthleteProgressPhoto | undefined;
     setProgressPhotos(prev => {
+      photoToDelete = prev.find(p => p.id === photoId);
       const updated = prev.filter(p => p.id !== photoId);
       setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
       return updated;
     });
+
+    // 1. Cancella da Supabase se record presente
+    try {
+      await supabase.from('athlete_progress_photos').delete().eq('id', photoId);
+    } catch (err: unknown) {
+      console.warn('Cancellazione DB athlete_progress_photos fallita:', err);
+    }
+
+    // 2. Cancella dal bucket Supabase se presente storage_path
+    if (photoToDelete?.storage_path) {
+      try {
+        await supabase.storage.from('progress-photos').remove([photoToDelete.storage_path]);
+      } catch (err: unknown) {
+        console.warn('Cancellazione storage fallita:', err);
+      }
+    }
+
+    // 3. Notifica broadcast cancellazione a tutti i client
+    try {
+      channelRef.current?.send({
+        type: 'broadcast',
+        event: 'progress_photo_deleted',
+        payload: { photoId },
+      });
+    } catch (err: unknown) {
+      console.warn('Broadcast delete fallito:', err);
+    }
+
     notifyChange();
   }, []);
 
@@ -768,6 +1015,8 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         getAthleteSchedule,
         saveAthleteSchedule,
         getAthleteScheduleState,
+        fetchAthleteProgressPhotos,
+        fetchAllProgressPhotos,
         addProgressPhoto,
         getAthleteProgressPhotos,
         deleteProgressPhoto,

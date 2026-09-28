@@ -188,13 +188,13 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Sezione Massimali */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-xs">
         <div>
-          <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-            <Award className="w-5 h-5 text-[var(--color-primary)]" />
+          <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <Award className="w-5 h-5 text-amber-500 dark:text-[var(--color-primary)]" />
             <span>Massimali & Record Personali (1RM)</span>
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 font-medium">
             Traccia l'evoluzione della forza su esercizi fondamentali e personalizzati (Formula di Brzycki).
           </p>
         </div>
@@ -202,7 +202,7 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
         <button
           type="button"
           onClick={() => setShowLiftModal(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-extrabold text-xs rounded-xl shadow-lg shadow-[var(--color-primary)]/10 transition-all cursor-pointer shrink-0"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-black font-extrabold text-xs rounded-xl shadow-md transition-all cursor-pointer shrink-0"
         >
           <Plus className="w-4 h-4 stroke-[3]" />
           <span>Aggiungi PR / Massimale</span>
@@ -211,14 +211,14 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
 
       {/* LISTA CARD ESERCIZI CON GRAFICO ESPANDIBILE */}
       {exercisesSummary.length === 0 ? (
-        <div className="bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800 p-6 sm:p-8 rounded-3xl text-center space-y-5 shadow-xl">
-          <div className="w-14 h-14 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] mx-auto shadow-lg shadow-[var(--color-primary)]/10">
+        <div className="bg-white dark:bg-gradient-to-b dark:from-slate-900/90 dark:to-slate-950 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 rounded-3xl text-center space-y-5 shadow-xs">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 dark:text-[var(--color-primary)] mx-auto shadow-sm">
             <Dumbbell className="w-7 h-7" />
           </div>
 
           <div className="space-y-1">
-            <h4 className="text-base font-black text-white">Nessun massimale registrato</h4>
-            <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+            <h4 className="text-base font-black text-slate-900 dark:text-white">Nessun massimale registrato</h4>
+            <p className="text-xs text-slate-600 dark:text-slate-400 font-medium max-w-md mx-auto leading-relaxed">
               Inizia a tracciare la tua progressione di forza nei test reali o stimati su base 1RM.
             </p>
           </div>
@@ -231,7 +231,7 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
                 setSelectedExerciseOption('Squat');
                 setShowLiftModal(true);
               }}
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-[0_0_20px_rgba(234,179,8,0.25)] cursor-pointer"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-md cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
               <span>Inserisci il tuo primo Massimale</span>
@@ -239,8 +239,8 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
           </div>
 
           {/* Quick-add chips per esercizi fondamentali */}
-          <div className="pt-3 border-t border-slate-800/80 space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 space-y-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
               Oppure seleziona un esercizio fondamentale con 1-click:
             </span>
             <div className="flex flex-wrap items-center justify-center gap-2 max-w-lg mx-auto">
@@ -252,9 +252,9 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
                     setSelectedExerciseOption(ex);
                     setShowLiftModal(true);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 group"
+                  className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 group shadow-xs"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] opacity-60 group-hover:opacity-100" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-[var(--color-primary)] opacity-80 group-hover:opacity-100" />
                   <span>{ex}</span>
                 </button>
               ))}
@@ -284,10 +284,10 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
             return (
               <div
                 key={exKey}
-                className={`bg-slate-900 border transition-all duration-200 rounded-3xl overflow-hidden shadow-lg ${
+                className={`bg-white dark:bg-slate-900 border transition-all duration-200 rounded-3xl overflow-hidden shadow-xs ${
                   isExpanded
-                    ? 'border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/30'
-                    : 'border-slate-800 hover:border-slate-700'
+                    ? 'border-amber-500 dark:border-[var(--color-primary)] ring-1 ring-amber-500/30'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
                 {/* Header Card Esercizio */}
@@ -296,20 +296,20 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
                   className="p-4 sm:p-5 flex items-center justify-between cursor-pointer select-none"
                 >
                   <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                    <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/30 flex items-center justify-center text-[var(--color-primary)] shrink-0">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 dark:bg-[var(--color-primary)]/15 border border-amber-500/30 dark:border-[var(--color-primary)]/30 flex items-center justify-center text-amber-600 dark:text-[var(--color-primary)] shrink-0">
                       <Dumbbell className="w-5 h-5" />
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-extrabold text-white text-base sm:text-lg truncate">
+                        <h4 className="font-extrabold text-slate-900 dark:text-white text-base sm:text-lg truncate">
                           {exName}
                         </h4>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                           {count} {count === 1 ? 'test' : 'test'}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         Ultimo test: {new Date(topLift.date).toLocaleDateString('it-IT')}
                       </p>
                     </div>
@@ -317,19 +317,19 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
 
                   <div className="flex items-center gap-3 shrink-0 ml-3">
                     <div className="text-right">
-                      <span className="text-2xl sm:text-3xl font-black text-[var(--color-primary)] block leading-none">
-                        {topLift.calculated_1rm} <span className="text-xs font-bold text-slate-400">kg</span>
+                      <span className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-[var(--color-primary)] block leading-none">
+                        {topLift.calculated_1rm} <span className="text-xs font-bold text-slate-500 dark:text-slate-400">kg</span>
                       </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                         {topLift.is_real_1rm ? '1RM Reale' : '1RM Stimato'}
                       </span>
                     </div>
 
-                    <button type="button" className="p-1 text-slate-400 hover:text-white">
+                    <button type="button" className="p-1 text-slate-500 hover:text-slate-900 dark:hover:text-white">
                       {isExpanded ? (
-                        <ChevronUp className="w-6 h-6 text-amber-400" />
+                        <ChevronUp className="w-6 h-6 text-amber-500" />
                       ) : (
-                        <ChevronDown className="w-6 h-6 text-slate-500" />
+                        <ChevronDown className="w-6 h-6 text-slate-400" />
                       )}
                     </button>
                   </div>
@@ -337,12 +337,12 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
 
                 {/* CONTENUTO ESPANSO: GRAFICO EVOLUZIONE + STORICO COMPLETO */}
                 {isExpanded && (
-                  <div className="border-t border-slate-800 bg-slate-950/60 p-4 sm:p-6 space-y-6">
+                  <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 p-4 sm:p-6 space-y-6">
                     {/* Grafico Evoluzione Massimale (1RM vs Tempo) */}
                     <div>
                       <div className="flex items-center justify-between mb-3">
-                        <h5 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4 text-[var(--color-primary)]" />
+                        <h5 className="text-xs font-extrabold text-slate-800 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4 text-amber-500 dark:text-[var(--color-primary)]" />
                           <span>Evoluzione 1RM nel Tempo ({exName})</span>
                         </h5>
                         <span className="text-[10px] text-slate-500 font-semibold">
@@ -351,29 +351,36 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
                       </div>
 
                       {chartData.length > 1 ? (
-                        <div className="h-56 sm:h-64 w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-3 shadow-inner">
+                        <div className="h-56 sm:h-64 w-full bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 shadow-inner">
                           <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={chartData} margin={{ top: 10, right: 15, left: -20, bottom: 5 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                              <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 11 }} />
-                              <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
+                              <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" opacity={0.5} />
+                              <XAxis dataKey="date" stroke="#64748b" tick={{ fontSize: 11 }} />
+                              <YAxis stroke="#64748b" tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
                               <Tooltip
-                                contentStyle={{
-                                  backgroundColor: '#0f172a',
-                                  borderColor: '#334155',
-                                  borderRadius: '12px',
-                                  color: '#fff',
-                                  fontSize: '12px',
-                                }}
-                                formatter={(val: any, _name: any, item: any) => [
-                                  `${val} kg (1RM)`,
-                                  `Sollevati: ${item.payload.weightKg}kg x ${item.payload.reps} reps`,
-                                ]}
-                                labelFormatter={(label, payload) => {
-                                  if (payload && payload[0]) {
-                                    return `Data: ${payload[0].payload.fullDate}`;
+                                content={({ active, payload }) => {
+                                  if (active && payload && payload.length) {
+                                    const item = payload[0].payload as {
+                                      fullDate: string;
+                                      valore1RM: number;
+                                      weightKg: number;
+                                      reps: number;
+                                    };
+                                    return (
+                                      <div className="bg-slate-950/95 border border-slate-800 p-3 rounded-2xl shadow-2xl backdrop-blur-md space-y-1 z-50 force-text-white">
+                                        <div className="text-[10px] font-bold text-slate-400">
+                                          Data: {item.fullDate}
+                                        </div>
+                                        <div className="text-base font-black font-mono text-amber-400">
+                                          {item.valore1RM} kg (1RM)
+                                        </div>
+                                        <div className="text-xs text-slate-300">
+                                          Sollevati: {item.weightKg}kg × {item.reps} reps
+                                        </div>
+                                      </div>
+                                    );
                                   }
-                                  return label;
+                                  return null;
                                 }}
                               />
                               <Line
@@ -388,7 +395,7 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
                           </ResponsiveContainer>
                         </div>
                       ) : (
-                        <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-center text-xs text-slate-400">
+                        <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-center text-xs text-slate-600 dark:text-slate-400">
                           Inserisci un secondo test per sbloccare il grafico dell'evoluzione temporale di {exName}.
                         </div>
                       )}
@@ -396,12 +403,12 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
 
                     {/* Storico Completo di questo Esercizio */}
                     <div className="space-y-2">
-                      <h5 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      <h5 className="text-xs font-extrabold text-slate-800 dark:text-slate-300 uppercase tracking-wider">
                         Storico Rilevazioni ({history.length})
                       </h5>
-                      <div className="overflow-x-auto rounded-2xl border border-slate-800">
+                      <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
                         <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] font-semibold border-b border-slate-800">
+                          <thead className="bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-400 uppercase text-[10px] font-extrabold border-b border-slate-200 dark:border-slate-800">
                             <tr>
                               <th className="p-3">Data</th>
                               <th className="p-3">Carico x Reps</th>
@@ -411,37 +418,37 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
                               <th className="p-3 text-right">Azioni</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-800/60 bg-slate-950 text-slate-300">
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-300 font-medium">
                             {history.map(lift => (
-                              <tr key={lift.id} className="hover:bg-slate-900/50 transition-colors">
-                                <td className="p-3 font-semibold text-white">
+                              <tr key={lift.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                                <td className="p-3 font-bold text-slate-900 dark:text-white">
                                   {new Date(lift.date).toLocaleDateString('it-IT')}
                                 </td>
-                                <td className="p-3 font-bold text-slate-200">
+                                <td className="p-3 font-bold text-slate-800 dark:text-slate-200">
                                   {lift.weight_kg} kg × {lift.reps} {lift.reps === 1 ? 'rep' : 'reps'}
                                 </td>
-                                <td className="p-3 font-extrabold text-[var(--color-primary)]">
+                                <td className="p-3 font-extrabold text-amber-600 dark:text-[var(--color-primary)]">
                                   {lift.calculated_1rm} kg
                                 </td>
                                 <td className="p-3">
                                   <span
                                     className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                       lift.is_real_1rm
-                                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                                        : 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
+                                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                                        : 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/30'
                                     }`}
                                   >
                                     {lift.is_real_1rm ? '1RM Reale' : 'Formula Brzycki'}
                                   </span>
                                 </td>
-                                <td className="p-3 text-slate-400 max-w-[180px] truncate">
+                                <td className="p-3 text-slate-600 dark:text-slate-400 max-w-[180px] truncate">
                                   {lift.notes || '—'}
                                 </td>
                                 <td className="p-3 text-right">
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteLift(lift.id)}
-                                    className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
                                     title="Elimina record"
                                   >
                                     <Trash2 className="w-4 h-4" />

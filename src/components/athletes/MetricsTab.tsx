@@ -24,6 +24,7 @@ import { useToast } from '../../context/ToastContext';
 import { MaxLiftsSection } from '../metrics/MaxLiftsSection';
 import { AthleteMetricsTrendChart } from '../metrics/AthleteMetricsTrendChart';
 import { EnergyEstimatorSection } from '../nutrition/EnergyEstimatorSection';
+import { BeforeAfterSection } from '../metrics/BeforeAfterSection';
 import {
   CheckFrequency,
   DayOfWeek,
@@ -55,6 +56,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
     updateMetric,
     deleteMetric,
     fetchMaxLiftsForAthlete,
+    fetchAthleteProgressPhotos,
     getAthleteSchedule,
     saveAthleteSchedule,
     getAthleteScheduleState,
@@ -62,7 +64,7 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
 
   const { showSuccess, showError } = useToast();
 
-  const [activeSubTab, setActiveSubTab] = useState<'misure' | 'fabbisogno' | 'massimali'>('misure');
+  const [activeSubTab, setActiveSubTab] = useState<'misure' | 'fabbisogno' | 'massimali' | 'foto'>('misure');
   const [isScheduleOpen, setIsScheduleOpen] = useState<boolean>(false);
 
 
@@ -94,8 +96,9 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
     if (athleteId) {
       fetchMetricsForAthlete(athleteId);
       fetchMaxLiftsForAthlete(athleteId);
+      fetchAthleteProgressPhotos(athleteId);
     }
-  }, [athleteId, fetchMetricsForAthlete, fetchMaxLiftsForAthlete]);
+  }, [athleteId, fetchMetricsForAthlete, fetchMaxLiftsForAthlete, fetchAthleteProgressPhotos]);
 
   // Ultimi check dell'atleta selezionato ordinati dal più recente
   const sortedMetrics = useMemo(() => {
@@ -330,6 +333,18 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
           >
             <Dumbbell className="w-4 h-4" />
             <span>Massimali & 1RM ({maxLifts.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('foto')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+              activeSubTab === 'foto'
+                ? 'bg-[var(--color-primary)] text-black font-black shadow-md shadow-[var(--color-primary)]/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Camera className="w-4 h-4 text-purple-400" />
+            <span>Prima & Dopo</span>
           </button>
         </div>
 
@@ -781,6 +796,13 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
       {/* ─── SOTTO-TAB MASSIMALI & 1RM ────────────────────────────────── */}
       {activeSubTab === 'massimali' && (
         <MaxLiftsSection athleteId={athleteId} athleteName={athleteName} isCoachView={true} />
+      )}
+
+      {/* ─── SOTTO-TAB FOTO PRIMA & DOPO ─────────────────────────────── */}
+      {activeSubTab === 'foto' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <BeforeAfterSection athleteId={athleteId} isCoachView={true} />
+        </div>
       )}
 
       {/* ─── MODALE AGGIUNGI CHECK MISURE ────────────────────────────── */}

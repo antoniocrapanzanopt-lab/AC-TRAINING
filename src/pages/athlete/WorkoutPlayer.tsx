@@ -13,9 +13,12 @@ import {
   Pause,
   RotateCcw,
   Eye,
+  Zap,
 } from 'lucide-react';
 
+
 import { WorkoutTemplate, WorkoutExercise, ExerciseLog } from '../../types/workout';
+import { getCircuitConfig, CircuitDayConfig } from '../../utils/circuitConfig';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useToast } from '../../context/ToastContext';
 import { useMetrics } from '../../context/MetricsContext';
@@ -113,6 +116,29 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   // Stato Connessione Realtime
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [lastSavedText, setLastSavedText] = useState<string>('Salvato');
+
+  // ── MODALITÀ HIIT / CIRCUITO (Realtime listener + DB notes support) ──
+  const [circuitPing, setCircuitPing] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setCircuitPing(p => p + 1);
+    window.addEventListener('circuit-config-changed', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('circuit-config-changed', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  const circuitConfig = useMemo<CircuitDayConfig>(() => {
+    return getCircuitConfig(workout?.id, currentDayName, activeExercises);
+  }, [workout?.id, currentDayName, activeExercises, circuitPing]);
+
+  const isCircuitMode = circuitConfig.isCircuit;
+  const [currentRound, setCurrentRound] = useState(1);
+  const [isRoundRestActive, setIsRoundRestActive] = useState(false);
+  const roundRestEndRef = useRef<number | null>(null);
+  const [roundRestRemaining, setRoundRestRemaining] = useState<number | null>(null);
 
   const [activeExerciseModalIndex, setActiveExerciseModalIndex] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -500,17 +526,19 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             });
           }
         }
-        const safeRest = restSeconds > 0 ? restSeconds : 90;
-        restEndTimestampRef.current = Date.now() + safeRest * 1000;
-        setTotalRestSeconds(safeRest);
-        setRestTimer(safeRest);
-        if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+        if (!isCircuitMode) {
+          const safeRest = restSeconds > 0 ? restSeconds : 90;
+          restEndTimestampRef.current = Date.now() + safeRest * 1000;
+          setTotalRestSeconds(safeRest);
+          setRestTimer(safeRest);
+          if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+        }
       }
 
       return { ...prev, [exerciseId]: currentList };
     });
     scheduleAutosave(true); // Salvataggio immediato al completamento della serie
-  }, [scheduleAutosave, isWorkoutStarted, elapsedTime, sessionId, activeExercises, startWorkoutSession, workout.id, targetAthleteId, athleteId, currentWeekNumber]);
+  }, [scheduleAutosave, isWorkoutStarted, elapsedTime, sessionId, activeExercises, startWorkoutSession, workout.id, targetAthleteId, athleteId, currentWeekNumber, isCircuitMode]);
 
   const handleSkipRest = useCallback(() => {
     setRestTimer(null);
@@ -531,6 +559,73 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     setExerciseNotes((prev) => ({ ...prev, [exerciseId]: val }));
     scheduleAutosave(false);
   }, [scheduleAutosave]);
+
+  // \u2500\u2500 CIRCUITO: Timer recupero tra giri \u2500\u2500
+  useEffect(() => {
+    if (!isCircuitMode) return;
+    const interval = setInterval(() => {
+      if (!roundRestEndRef.current) {
+        setRoundRestRemaining(null);
+        return;
+      }
+      const rem = Math.max(0, Math.ceil((roundRestEndRef.current - Date.now()) / 1000));
+      if (rem > 0) {
+        setRoundRestRemaining(rem);
+      } else {
+        roundRestEndRef.current = null;
+        setRoundRestRemaining(null);
+        setIsRoundRestActive(false);
+        if (isRestAudioEnabled()) playRestCompleteTone();
+        if (navigator.vibrate) navigator.vibrate([120, 60, 200, 60, 200]);
+        // Avanza automaticamente al prossimo giro
+        setCompletedSets({});
+        setCurrentRound(prev => prev + 1);
+        setActiveExerciseModalIndex(0);
+      }
+    }, 300);
+    return () => clearInterval(interval);
+  }, [isCircuitMode]);
+
+  // Avanza al giro successivo (resetta i completedSets e incrementa currentRound)
+  const handleStartNextRound = useCallback(() => {
+    setCompletedSets({});
+    setCurrentRound(prev => prev + 1);
+    setIsRoundRestActive(false);
+    roundRestEndRef.current = null;
+    setRoundRestRemaining(null);
+    // Riapri il primo esercizio automaticamente
+    setActiveExerciseModalIndex(0);
+  }, []);
+
+  // Resetta il circuito da capo (Giro 1, cancella serie completate e azzera modale)
+  const handleResetCircuit = useCallback(() => {
+    setCurrentRound(1);
+    setIsRoundRestActive(false);
+    roundRestEndRef.current = null;
+    setRoundRestRemaining(null);
+    setCompletedSets({});
+    setActiveExerciseModalIndex(null);
+  }, []);
+
+  // Rilevazione completamento giro: tutti gli esercizi del giro completati
+  const isCurrentRoundCompleted = useMemo(() => {
+    if (!isCircuitMode) return false;
+    return activeExercises.every(ex => {
+      // In circuit mode ogni esercizio ha 1 "serie" per giro (la serie 0 = il giro corrente)
+      return Boolean(completedSets[ex.id]?.[0]);
+    });
+  }, [isCircuitMode, activeExercises, completedSets]);
+
+  // Quando il giro si completa, avvia automaticamente il recupero tra giri
+  useEffect(() => {
+    if (!isCircuitMode || !isCurrentRoundCompleted || isRoundRestActive) return;
+    if (currentRound < circuitConfig.totalRounds) {
+      setIsRoundRestActive(true);
+      roundRestEndRef.current = Date.now() + circuitConfig.restBetweenRoundsSec * 1000;
+      setRoundRestRemaining(circuitConfig.restBetweenRoundsSec);
+      if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+    }
+  }, [isCircuitMode, isCurrentRoundCompleted, isRoundRestActive, currentRound, circuitConfig]);
 
   const handleOpenFinishFlow = () => {
     setShowQuestionnaireModal(true);
@@ -810,14 +905,16 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     }
   };
 
-  // Individua l'indice dell'esercizio attivo corrente (il primo non ancora completato)
+  // Individua l'indice dell'esercizio attivo corrente (il primo non ancora completato nel giro/sessione)
   const currentActiveExerciseIndex = useMemo(() => {
     const firstUnfinished = activeExercises.findIndex((ex) => {
-      const isDone = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
+      const isDone = isCircuitMode
+        ? Boolean(completedSets[ex.id]?.[0])
+        : Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
       return !isDone;
     });
     return firstUnfinished !== -1 ? firstUnfinished : 0;
-  }, [activeExercises, completedSets]);
+  }, [activeExercises, completedSets, isCircuitMode]);
 
   return (
     <div className="fixed inset-0 bg-[var(--color-bg)] z-50 flex flex-col font-sans overflow-hidden">
@@ -945,27 +1042,156 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         />
       )}
 
+      {/* ── BANNER RECUPERO TRA GIRI (CIRCUIT MODE) ─────────────────────── */}
+      {isCircuitMode && isRoundRestActive && roundRestRemaining !== null && roundRestRemaining > 0 && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 flex flex-col items-center justify-center gap-6 px-6">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-purple-500/20 border-2 border-purple-500/60 flex items-center justify-center">
+              <Zap className="w-8 h-8 text-purple-400" />
+            </div>
+            <h2 className="text-2xl font-black text-white">Giro {currentRound} completato! 🔥</h2>
+            <p className="text-slate-300 text-sm">Recupero prima del Giro {currentRound + 1} di {circuitConfig.totalRounds}</p>
+            {/* Cerchio countdown */}
+            <div className="relative w-32 h-32">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="44" fill="none" stroke="rgb(88 28 135 / 0.3)" strokeWidth="8" />
+                <circle
+                  cx="50" cy="50" r="44" fill="none" stroke="rgb(168 85 247)" strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 44}`}
+                  strokeDashoffset={`${2 * Math.PI * 44 * (1 - roundRestRemaining / circuitConfig.restBetweenRoundsSec)}`}
+                  className="transition-all duration-300"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-3xl font-black text-white font-mono">{roundRestRemaining}s</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleStartNextRound}
+              className="px-8 py-3.5 rounded-2xl bg-purple-500 hover:bg-purple-400 text-white font-black text-base shadow-lg shadow-purple-500/30 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+            >
+              <Zap className="w-5 h-5" />
+              Inizia Giro {currentRound + 1}
+            </button>
+            <button type="button" onClick={handleStartNextRound} className="text-slate-400 hover:text-white text-xs font-bold cursor-pointer">Salta recupero</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── BANNER ULTIMO GIRO COMPLETATO (CIRCUIT MODE) ─────────────────── */}
+      {isCircuitMode && isCurrentRoundCompleted && currentRound >= circuitConfig.totalRounds && !isRoundRestActive && isWorkoutStarted && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 flex flex-col items-center justify-center gap-6 px-6">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="text-5xl">🏆</div>
+            <h2 className="text-2xl font-black text-white">Circuito Completato!</h2>
+            <p className="text-slate-300 text-sm">Hai completato tutti i {circuitConfig.totalRounds} giri</p>
+            <button
+              type="button"
+              onClick={handleOpenFinishFlow}
+              className="px-8 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-base shadow-lg shadow-emerald-500/30 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+            >
+              <Check className="w-5 h-5 stroke-[3]" />
+              Termina e Salva
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* SCROLLABLE EXERCISES LIST - OTTIMIZZATO PER SPAZIO E LARGHEZZA */}
       <div className={`flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 ${!isWorkoutStarted ? 'pb-36' : 'pb-28'} bg-[var(--color-bg)]`}>
         <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-3 sm:space-y-4">
+
+          {/* ── HEADER CIRCUITO / HIIT ────────────────────────────────────── */}
+          {isCircuitMode && (
+            <div className="flex items-center justify-between gap-3 px-4 py-3 bg-purple-50/80 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/30 rounded-2xl shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-500/20 border border-purple-200 dark:border-purple-500/40 flex items-center justify-center shrink-0">
+                  <Zap className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <div className="text-xs text-purple-700 dark:text-purple-300 font-extrabold uppercase tracking-wider">Modalità HIIT / Circuito</div>
+                  <div className="text-slate-900 dark:text-white font-black text-sm">{activeExercises.length} esercizi × {circuitConfig.totalRounds} giri</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    initOrResumeAudioContext();
+                    setActiveExerciseModalIndex(currentActiveExerciseIndex);
+                  }}
+                  className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white font-black text-xs rounded-xl shadow-md shadow-purple-600/30 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all force-text-white"
+                  title="Avvia il timer automatico del circuito"
+                >
+                  <Play className="w-3.5 h-3.5 fill-white text-white" />
+                  <span className="text-white">Avvia Circuito</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Vuoi davvero resettare il circuito e ricominciare dal Giro 1?')) {
+                      handleResetCircuit();
+                    }
+                  }}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/90 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 hover:text-amber-600 dark:hover:text-amber-300 border border-slate-300 dark:border-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-xs"
+                  title="Resetta il circuito e ricomincia dal Giro 1"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Resetta Circuito</span>
+                </button>
+
+                <div className="flex flex-col items-end gap-0.5">
+                  <div className="text-purple-700 dark:text-purple-300 font-black text-lg">
+                    Giro <span className="text-slate-900 dark:text-white text-xl">{Math.min(currentRound, circuitConfig.totalRounds)}</span>
+                    <span className="text-slate-500 dark:text-slate-400 text-base"> / {circuitConfig.totalRounds}</span>
+                  </div>
+                {/* Mini progress giri */}
+                <div className="flex gap-1">
+                  {Array.from({ length: circuitConfig.totalRounds }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`h-1.5 w-6 rounded-full transition-all ${
+                        i < currentRound - 1
+                          ? 'bg-emerald-500'
+                          : i === currentRound - 1
+                          ? isCurrentRoundCompleted ? 'bg-emerald-500' : 'bg-purple-500 dark:bg-purple-400 animate-pulse'
+                          : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
           {activeExercises.map((ex, idx) => {
-            const isCompleted = Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
+            const isCompleted = isCircuitMode
+              ? Boolean(completedSets[ex.id]?.[0])
+              : Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
             const isActive = idx === currentActiveExerciseIndex;
 
             return (
               <React.Fragment key={ex.id}>
                 <ExerciseCard
-                  exercise={ex}
+                  exercise={isCircuitMode ? { ...ex, sets: 1 } : ex}
                   index={idx}
                   isActive={isActive}
                   isCompleted={isCompleted}
                   completedSetsMap={completedSets[ex.id] || []}
                   previousHistory={previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()]}
                   onOpenExecutionModal={() => setActiveExerciseModalIndex(idx)}
+                  circuitMode={isCircuitMode}
+                  circuitRound={currentRound}
+                  circuitTotalRounds={circuitConfig.totalRounds}
                 />
               </React.Fragment>
             );
           })}
+
 
           {/* Pulsante Termina e Salva Allenamento a fine scheda per atleti */}
           {(isWorkoutStarted || hasAnyProgress) && (
@@ -1031,8 +1257,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         const currentEx = activeExercises[activeExerciseModalIndex];
         return (
           <ExerciseExecutionModal
+            key={`${currentEx.id}_${currentRound}`}
             isOpen={true}
-            exercise={currentEx}
+            exercise={isCircuitMode ? { ...currentEx, sets: 1 } : currentEx}
             exerciseIndex={activeExerciseModalIndex}
             totalExercises={activeExercises.length}
             logs={logs[currentEx.id] || []}
@@ -1047,21 +1274,25 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             onNoteFeedbackChange={(val) => handleNoteChange(currentEx.id, val)}
             onToggleSetComplete={(setIdx) => handleToggleSetComplete(currentEx.id, setIdx, currentEx.rest_seconds)}
             onNavigateNext={() => {
-              if (activeExerciseModalIndex < activeExercises.length - 1) {
-                setActiveExerciseModalIndex(activeExerciseModalIndex + 1);
-              } else {
-                setActiveExerciseModalIndex(null);
-              }
+              setActiveExerciseModalIndex((prev) =>
+                prev !== null && prev < activeExercises.length - 1 ? prev + 1 : null
+              );
             }}
             onNavigatePrev={() => {
-              if (activeExerciseModalIndex > 0) {
-                setActiveExerciseModalIndex(activeExerciseModalIndex - 1);
-              }
+              setActiveExerciseModalIndex((prev) =>
+                prev !== null && prev > 0 ? prev - 1 : 0
+              );
             }}
             hasNext={activeExerciseModalIndex < activeExercises.length - 1}
             hasPrev={activeExerciseModalIndex > 0}
             onClose={() => setActiveExerciseModalIndex(null)}
             onFinishWorkout={handleOpenFinishFlow}
+            isCircuitMode={isCircuitMode}
+            circuitRound={currentRound}
+            circuitTotalRounds={circuitConfig.totalRounds}
+            nextExercise={activeExercises[activeExerciseModalIndex + 1]}
+            nextExerciseName={activeExercises[activeExerciseModalIndex + 1]?.name}
+            onResetCircuit={handleResetCircuit}
           />
         );
       })()}

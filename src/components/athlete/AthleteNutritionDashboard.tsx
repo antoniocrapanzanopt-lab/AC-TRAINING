@@ -147,36 +147,36 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
   if (!hasAcceptedDisclaimer) {
     return (
       <div className="space-y-6 animate-in fade-in zoom-in-95 duration-200">
-        <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-b from-rose-950/60 to-slate-950 border-2 border-rose-500/70 shadow-2xl shadow-rose-950/80 space-y-6">
+        <div className="p-6 sm:p-8 rounded-3xl bg-rose-50/90 dark:bg-gradient-to-b dark:from-rose-950/60 dark:to-slate-950 border-2 border-rose-300 dark:border-rose-500/70 shadow-xl dark:shadow-rose-950/80 space-y-6">
           
-          <div className="flex items-center gap-3.5 border-b border-rose-500/30 pb-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0 shadow-lg shadow-rose-500/20">
-              <AlertTriangle className="w-6 h-6 animate-pulse text-rose-400" />
+          <div className="flex items-center gap-3.5 border-b border-rose-200 dark:border-rose-500/30 pb-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-500/20 border border-rose-300 dark:border-rose-500/40 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0 shadow-sm">
+              <AlertTriangle className="w-6 h-6 animate-pulse text-rose-600 dark:text-rose-400" />
             </div>
             <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-rose-400 block">
+              <span className="text-[10px] font-black uppercase tracking-widest text-rose-700 dark:text-rose-400 block">
                 Presa Visione Obbligatoria
               </span>
-              <h3 className="text-base sm:text-lg font-black text-white uppercase tracking-tight">
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
                 Avvertenza Legale & Consapevolezza
               </h3>
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-rose-900/20 border border-rose-500/30 text-xs sm:text-sm text-rose-100/90 leading-relaxed space-y-3 font-medium">
+          <div className="p-4 rounded-2xl bg-white dark:bg-rose-900/20 border border-rose-200 dark:border-rose-500/30 text-xs sm:text-sm text-slate-800 dark:text-rose-100/90 leading-relaxed space-y-3 font-medium shadow-xs">
             <p>
               {NUTRITION_DISCLAIMER}
             </p>
           </div>
 
-          <label className="flex items-start gap-3.5 p-4 rounded-2xl bg-rose-950/80 border border-rose-500/50 cursor-pointer hover:border-rose-400 transition-colors select-none">
+          <label className="flex items-start gap-3.5 p-4 rounded-2xl bg-white dark:bg-rose-950/80 border border-rose-300 dark:border-rose-500/50 cursor-pointer hover:border-rose-400 transition-colors select-none shadow-xs">
             <input
               type="checkbox"
               checked={checkboxChecked}
               onChange={(e) => setCheckboxChecked(e.target.checked)}
               className="w-5 h-5 rounded-lg border-2 border-rose-500 text-rose-600 focus:ring-rose-500 mt-0.5 shrink-0 cursor-pointer accent-rose-500"
             />
-            <span className="text-xs font-bold text-white leading-snug">
+            <span className="text-xs font-bold text-slate-900 dark:text-white leading-snug">
               Dichiaro di aver letto, compreso e accettato che i valori calcolati sono una stima orientativa/educativa e non costituiscono una prescrizione medica o nutrizionale personalizzata.
             </span>
           </label>
@@ -190,7 +190,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
               } catch {}
               setHasAcceptedDisclaimer(true);
             }}
-            className="w-full py-4 px-6 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm uppercase tracking-wider transition-all disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-2 shadow-xl shadow-rose-600/30 cursor-pointer"
+            className="w-full py-4 px-6 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm uppercase tracking-wider transition-all disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-2 shadow-xl shadow-rose-600/30 cursor-pointer force-text-white"
           >
             <span>Accetta e Visualizza i Tuoi Obiettivi Energetici</span>
             <ArrowRight className="w-4 h-4 stroke-[3]" />
@@ -205,7 +205,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
     <div className="space-y-6">
       
       {/* Badge Consenso Registrato + Bottone Reset */}
-      <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+      <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4" />
           <span>Consenso e Presa Visione Legale Registrati</span>
@@ -219,7 +219,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
             setHasAcceptedDisclaimer(false);
             setCheckboxChecked(false);
           }}
-          className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer flex items-center gap-1"
+          className="text-[10px] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white underline cursor-pointer flex items-center gap-1 font-semibold"
         >
           <RotateCcw className="w-3 h-3" />
           <span>Rileggi Disclaimer</span>
@@ -227,7 +227,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
       </div>
 
       {/* CARD PRINCIPALE: TARGET CALORICO & OBIETTIVO */}
-      <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-slate-950 via-[var(--color-panel)] to-slate-950 border border-[var(--color-panel-border)] shadow-2xl space-y-6 relative overflow-hidden">
+      <div className="p-6 sm:p-8 rounded-3xl bg-[var(--color-panel)] dark:bg-gradient-to-r dark:from-slate-950 dark:via-[var(--color-panel)] dark:to-slate-950 border border-[var(--color-panel-border)] shadow-xl space-y-6 relative overflow-hidden">
         
         {/* Glow di sfondo */}
         <div className="absolute top-0 right-0 w-80 h-80 bg-[var(--color-primary)]/5 rounded-full blur-3xl pointer-events-none" />
@@ -237,7 +237,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
             <span className="text-[10px] font-black uppercase tracking-widest text-[var(--color-primary)] block">
               Piano Nutrizionale Attivo
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-[var(--color-text)] mt-0.5">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-0.5">
               I Tuoi Obiettivi Energetici Giornalieri
             </h2>
             <div className="flex items-center gap-2 mt-2">
@@ -245,7 +245,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
                 {planData.goalLabel}
               </span>
               {planData.reviewDate && (
-                <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
+                <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1 font-medium">
                   <Clock className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
                   Prossima revisione: {planData.reviewDate}
                 </span>
@@ -259,7 +259,7 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
               <button
                 type="button"
                 onClick={onOpenEstimator}
-                className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] font-bold text-xs transition-all shadow-sm cursor-pointer"
+                className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 font-bold text-xs transition-all shadow-xs cursor-pointer"
                 title="Ricalcola fabbisogno energetico con i tuoi dati corporei"
               >
                 <Calculator className="w-3.5 h-3.5 text-amber-500" />
@@ -270,9 +270,9 @@ export const AthleteNutritionDashboard: React.FC<AthleteNutritionDashboardProps>
             <button
               type="button"
               onClick={() => setIsEditModalOpen(true)}
-              className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] font-bold text-xs transition-all shadow-sm cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 font-bold text-xs transition-all shadow-xs cursor-pointer"
             >
-              <Pencil className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+              <Pencil className="w-3.5 h-3.5 text-amber-500 dark:text-[var(--color-primary)]" />
               <span>Modifica Macro</span>
             </button>
 

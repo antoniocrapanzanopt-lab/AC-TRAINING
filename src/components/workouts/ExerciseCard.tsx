@@ -10,6 +10,7 @@ import {
 import { WorkoutExercise } from '../../types/workout';
 import { ExerciseAnatomyModal } from './ExerciseAnatomyModal';
 import { PreviousExerciseHistory } from '../../utils/workoutHistoryResolver';
+import { getExerciseWorkSeconds } from '../../utils/circuitConfig';
 
 interface ExerciseCardProps {
   exercise: WorkoutExercise;
@@ -25,6 +26,10 @@ interface ExerciseCardProps {
   onLogChange?: (setIndex: number, field: 'reps' | 'weight' | 'rpe', value: string) => void;
   onNoteFeedbackChange?: (value: string) => void;
   onToggleSetComplete?: (setIndex: number) => void;
+  // Circuit/HIIT mode
+  circuitMode?: boolean;
+  circuitRound?: number;
+  circuitTotalRounds?: number;
 }
 
 export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
@@ -35,6 +40,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   completedSetsMap = [],
   onToggleActive,
   onOpenExecutionModal,
+  circuitMode = false,
+  circuitRound = 1,
+  circuitTotalRounds = 1,
 }) => {
   const [showAnatomyModal, setShowAnatomyModal] = useState(false);
 
@@ -64,6 +72,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   );
 
   const formattedTarget = (() => {
+    if (circuitMode) {
+      return `${getExerciseWorkSeconds(exercise)}s`;
+    }
     if (isTimeBased) {
       if (exercise.duration_seconds && exercise.duration_seconds > 0) {
         if (exercise.duration_seconds >= 60 && exercise.duration_seconds % 60 === 0) {
@@ -123,17 +134,17 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
             {/* Pillola di Stato Dinamica */}
             {isCompleted ? (
               <span className="text-xs sm:text-sm font-black text-emerald-400 bg-emerald-500/20 border border-emerald-500/40 px-3 py-0.5 rounded-full flex items-center gap-1">
-                ✓ Completato ({totalSets}/{totalSets})
+                {circuitMode ? `✓ Giro ${circuitRound > circuitTotalRounds ? circuitTotalRounds : circuitRound}` : `✓ Completato (${totalSets}/${totalSets})`}
               </span>
             ) : isActive ? (
               <span className="text-xs sm:text-sm font-black text-[var(--color-primary)] bg-[var(--color-primary)]/20 border border-[var(--color-primary)]/40 px-3 py-0.5 rounded-full flex items-center gap-1.5 shadow-sm">
                 <span className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-pulse" />
-                <span>In Esecuzione</span>
-                {completedCount > 0 && <span className="text-amber-300 font-bold ml-0.5">({completedCount}/{totalSets})</span>}
+                <span>{circuitMode ? `Giro ${circuitRound} / ${circuitTotalRounds}` : 'In Esecuzione'}</span>
+                {!circuitMode && completedCount > 0 && <span className="text-amber-300 font-bold ml-0.5">({completedCount}/{totalSets})</span>}
               </span>
             ) : (
               <span className="text-xs sm:text-sm font-bold text-slate-300 uppercase tracking-wider">
-                Esercizio {index + 1}
+                {circuitMode ? `Esercizio ${index + 1}` : `Esercizio ${index + 1}`}
               </span>
             )}
           </div>
@@ -193,11 +204,21 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           {/* Serie x Reps / Tempo */}
           <div className="flex items-center gap-1.5 font-bold text-white">
             <Dumbbell className={`w-5 h-5 ${isActive ? 'text-[var(--color-primary)]' : 'text-slate-300'} shrink-0`} />
-            <span className={`${isActive ? 'text-[var(--color-primary)]' : 'text-white'} font-black text-base sm:text-xl font-mono`}>
-              {exercise.sets}
-            </span>
-            <span className="text-slate-300 text-xs sm:text-sm font-black uppercase">serie ×</span>
-            <span className="text-white font-black text-base sm:text-xl">{formattedTarget}</span>
+            {circuitMode ? (
+              <>
+                <span className={`${isActive ? 'text-purple-400' : 'text-purple-300'} font-black text-base sm:text-xl font-mono`}>{circuitTotalRounds}</span>
+                <span className="text-slate-300 text-xs sm:text-sm font-black uppercase">giri ×</span>
+                <span className="text-white font-black text-base sm:text-xl">{formattedTarget}</span>
+              </>
+            ) : (
+              <>
+                <span className={`${isActive ? 'text-[var(--color-primary)]' : 'text-white'} font-black text-base sm:text-xl font-mono`}>
+                  {exercise.sets}
+                </span>
+                <span className="text-slate-300 text-xs sm:text-sm font-black uppercase">serie ×</span>
+                <span className="text-white font-black text-base sm:text-xl">{formattedTarget}</span>
+              </>
+            )}
             {exercise.target_weight && (
               <span className="ml-1.5 px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 font-black border border-amber-500/35 text-xs sm:text-sm flex items-center gap-1">
                 <Target className="w-3.5 h-3.5" />

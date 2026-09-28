@@ -7,9 +7,9 @@ export function cleanExecutiveNotes(rawNotes?: string): string {
   if (!rawNotes) return '';
   let str = rawNotes;
 
-  // 1. Rimuovi marcatori di fine nota e tag di raggruppamento (es. [GROUP:...], [SS:...])
+  // 1. Rimuovi marcatori di fine nota e tag di raggruppamento (es. [GROUP:...], [SS:...], [CIRCUIT:...])
   str = str.replace(/fine note\.?/gi, ' ');
-  str = str.replace(/\[(?:GROUP|SS):[^\]]+\]\s*/gi, ' ');
+  str = str.replace(/\[(?:GROUP|SS|CIRCUIT|HIIT):[^\]]+\]\s*/gi, ' ');
 
   // 2. Rimuovi prefissi/marche tecniche
   str = str.replace(/\b(n_s|t_w|rir|tut|rir_target|target_weight)\s*:\s*[^.]+(\.|$)/gi, ' ');
@@ -68,4 +68,48 @@ export function encodeGroupTagInNotes(cleanNotes?: string, groupTag?: string): s
   if (!groupTag) return baseNotes;
   return `[GROUP:${groupTag}] ${baseNotes}`.trim();
 }
+
+/**
+ * Estrae la configurazione Circuito/HIIT codificata nelle note (es. [CIRCUIT:3:90])
+ */
+export function extractCircuitConfigFromNotes(rawNotes?: string): {
+  isCircuit: boolean;
+  totalRounds: number;
+  restBetweenRoundsSec: number;
+  cleanNotes: string;
+} {
+  if (!rawNotes) {
+    return { isCircuit: false, totalRounds: 3, restBetweenRoundsSec: 90, cleanNotes: '' };
+  }
+  const match = rawNotes.match(/\[(?:CIRCUIT|HIIT):(\d+):(\d+)\]\s*/i);
+  if (match) {
+    const totalRounds = parseInt(match[1], 10) || 3;
+    const restBetweenRoundsSec = parseInt(match[2], 10) || 90;
+    const cleanNotes = rawNotes.replace(match[0], '').trim();
+    return {
+      isCircuit: true,
+      totalRounds,
+      restBetweenRoundsSec,
+      cleanNotes,
+    };
+  }
+  return { isCircuit: false, totalRounds: 3, restBetweenRoundsSec: 90, cleanNotes: rawNotes };
+}
+
+/**
+ * Codifica o aggiorna/rimuove la configurazione Circuito/HIIT nelle note
+ */
+export function encodeCircuitConfigInNotes(
+  cleanNotes?: string,
+  isCircuit?: boolean,
+  totalRounds: number = 3,
+  restBetweenRoundsSec: number = 90
+): string {
+  let str = (cleanNotes || '').replace(/\[(?:CIRCUIT|HIIT):(\d+):(\d+)\]\s*/gi, '').trim();
+  if (isCircuit) {
+    str = `[CIRCUIT:${totalRounds}:${restBetweenRoundsSec}] ${str}`.trim();
+  }
+  return str;
+}
+
 

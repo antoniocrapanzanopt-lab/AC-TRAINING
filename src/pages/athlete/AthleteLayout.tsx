@@ -142,11 +142,11 @@ export const AthleteLayout: React.FC = () => {
           <div>
             <div className="flex items-center gap-1.5">
               <h1 className="font-black text-lg tracking-tight text-[var(--color-text)]">AC</h1>
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-800 dark:text-[var(--color-primary)] border border-amber-500/30">
                 App
               </span>
             </div>
-            <p className="text-[10px] text-[var(--color-text-muted)] font-medium flex items-center gap-1">
+            <p className="text-[11px] text-slate-700 dark:text-slate-300 font-semibold flex items-center gap-1.5 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               {currentAthlete?.fullName || user?.name || user?.email || 'Portale Atleta'}
             </p>
@@ -158,7 +158,7 @@ export const AthleteLayout: React.FC = () => {
           <button
             type="button"
             onClick={logout}
-            className="p-2 text-[var(--color-text-muted)] hover:text-rose-500 hover:bg-[var(--color-surface-strong)] rounded-xl transition-all cursor-pointer border border-transparent hover:border-[var(--color-border)]"
+            className="p-2 text-slate-600 dark:text-slate-400 hover:text-rose-500 hover:bg-[var(--color-surface-strong)] rounded-xl transition-all cursor-pointer border border-transparent hover:border-[var(--color-border)]"
             title="Esci dal portale"
           >
             <LogOut className="w-4 h-4" />

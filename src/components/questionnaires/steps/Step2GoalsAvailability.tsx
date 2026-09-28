@@ -71,16 +71,16 @@ export const Step2GoalsAvailability: React.FC<StepProps> = ({ data, onChange }) 
                 onClick={() => onChange({ primaryGoal: item.id as PrimaryGoalType })}
                 className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                   isSelected
-                    ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)] text-white shadow-lg ring-1 ring-[var(--color-primary)]/30'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:bg-slate-900/40'
+                    ? 'bg-amber-500/15 border-amber-500 text-slate-900 dark:text-white shadow-xs ring-1 ring-amber-400/30'
+                    : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900/40'
                 }`}
               >
                 <div>
                   <span className="text-2xl mb-2 block">{item.icon}</span>
-                  <span className={`block font-black text-sm ${isSelected ? 'text-[var(--color-primary)]' : 'text-slate-200'}`}>
+                  <span className={`block font-black text-sm ${isSelected ? 'text-amber-700 dark:text-[var(--color-primary)]' : 'text-slate-800 dark:text-slate-200'}`}>
                     {item.title}
                   </span>
-                  <span className="block text-[11px] text-slate-400 mt-1 leading-snug">
+                  <span className="block text-[11px] text-slate-600 dark:text-slate-400 mt-1 leading-snug">
                     {item.desc}
                   </span>
                 </div>
@@ -92,7 +92,7 @@ export const Step2GoalsAvailability: React.FC<StepProps> = ({ data, onChange }) 
 
       {/* 2. Dettaglio / Aspettative */}
       <div className="space-y-1.5">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+        <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
           Dettagli o aspettative a medio termine (Opzionale)
         </label>
         <textarea
@@ -100,17 +100,17 @@ export const Step2GoalsAvailability: React.FC<StepProps> = ({ data, onChange }) 
           value={data.goalNotes || ''}
           onChange={(e) => onChange({ goalNotes: e.target.value })}
           placeholder="es. Focus glutei e spalle, vorrei sentirmi più atletico e definire l'addome entro 6 mesi..."
-          className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-[var(--color-primary)] placeholder:text-slate-600"
+          className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-amber-500 placeholder:text-slate-500 dark:placeholder:text-slate-600 shadow-xs"
         />
       </div>
 
       {/* 3. Giorni di Allenamento / Settimana */}
-      <div className="space-y-3 p-4 rounded-2xl bg-slate-950 border border-slate-800/80">
+      <div className="space-y-3 p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 shadow-xs">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-            <Calendar className="w-4 h-4 text-[var(--color-primary)]" /> Giorni a Settimana Dedicabili <span className="text-[var(--color-primary)]">*</span>
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Calendar className="w-4 h-4 text-amber-500 dark:text-[var(--color-primary)]" /> Giorni a Settimana Dedicabili <span className="text-amber-500 dark:text-[var(--color-primary)]">*</span>
           </label>
-          <span className="text-xs font-black text-[var(--color-primary)]">
+          <span className="text-xs font-black text-amber-600 dark:text-[var(--color-primary)]">
             {data.weeklyDaysTarget} Allenamenti / Settimana
           </span>
         </div>
@@ -125,8 +125,8 @@ export const Step2GoalsAvailability: React.FC<StepProps> = ({ data, onChange }) 
                 onClick={() => onChange({ weeklyDaysTarget: days })}
                 className={`py-3 rounded-xl border font-black text-sm transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-[var(--color-primary)] text-black border-[var(--color-primary)] shadow-md'
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700'
+                    ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-xs'
+                    : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-300'
                 }`}
               >
                 {days} gg
@@ -140,8 +140,8 @@ export const Step2GoalsAvailability: React.FC<StepProps> = ({ data, onChange }) 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Durata Seduta */}
         <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-            <Clock className="w-4 h-4 text-slate-400" /> Tempo per Seduta <span className="text-[var(--color-primary)]">*</span>
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Clock className="w-4 h-4 text-slate-500 dark:text-slate-400" /> Tempo per Seduta <span className="text-amber-500 dark:text-[var(--color-primary)]">*</span>
           </label>
           <div className="grid grid-cols-2 gap-2">
             {[
@@ -158,8 +158,8 @@ export const Step2GoalsAvailability: React.FC<StepProps> = ({ data, onChange }) 
                   onClick={() => onChange({ sessionDurationMinutes: item.val as SessionDurationMinutes })}
                   className={`py-2.5 px-3 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     isSelected
-                      ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)] text-[var(--color-primary)] shadow-sm'
-                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                      ? 'bg-amber-500/15 border-amber-500 text-amber-700 dark:text-[var(--color-primary)] shadow-xs'
+                      : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
                   }`}
                 >
                   {item.label}
@@ -171,13 +171,13 @@ export const Step2GoalsAvailability: React.FC<StepProps> = ({ data, onChange }) 
 
         {/* Fascia Oraria */}
         <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-            <Sun className="w-4 h-4 text-slate-400" /> Fascia Oraria Preferita
+          <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Sun className="w-4 h-4 text-slate-500 dark:text-slate-400" /> Fascia Oraria Preferita
           </label>
           <select
             value={data.preferredTrainingTime}
             onChange={(e) => onChange({ preferredTrainingTime: e.target.value as PreferredTrainingTime })}
-            className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-white font-bold text-xs focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+            className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-bold text-xs focus:outline-none focus:border-amber-500 cursor-pointer shadow-xs"
           >
             <option value="morning_early">🌅 Mattina presto (06:00 - 09:00)</option>
             <option value="morning">☀️ Metà mattina (09:00 - 12:00)</option>

@@ -84,10 +84,11 @@ export interface CheckScheduleState {
 export interface AthleteProgressPhoto {
   id: string;
   athlete_id: string;
-  metric_id?: string;
+  metric_id?: string | null;
   date: string;
   pose: 'front' | 'back' | 'side' | 'other';
   image_url: string;
-  notes?: string;
+  storage_path?: string | null;
+  notes?: string | null;
   created_at: string;
 }
