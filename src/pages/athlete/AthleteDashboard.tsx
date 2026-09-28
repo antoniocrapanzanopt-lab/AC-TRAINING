@@ -28,7 +28,6 @@ import {
   ActiveWorkoutDraft,
 } from '../../lib/offline/offlineWorkoutStorage';
 import { PwaInstallBanner } from '../../components/pwa/PwaInstallBanner';
-import { AthleteCommunicationsFeed } from '../../components/athlete/AthleteCommunicationsFeed';
 import { AthleteWorkoutHistory, SessionRow } from '../../components/athlete/AthleteWorkoutHistory';
 import { AthleteQuestionnaireWizard } from '../../components/questionnaires/AthleteQuestionnaireWizard';
 import { AthleteAdherenceCard } from '../../components/athlete/AthleteAdherenceCard';
@@ -1093,15 +1092,6 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
             : 'La tua home per raggiungere i tuoi obiettivi.'}
         </p>
       </div>
-
-      {/* ─── AVVISO COMUNICAZIONI COACH (POPUP AUTOMATICO SE NON VISIONATE) ─── */}
-      {athleteId && (
-        <AthleteCommunicationsFeed
-          athleteId={athleteId}
-          autoOpenUnread={true}
-          hideIfEmpty={true}
-        />
-      )}
 
       {/* ─── BANNER INVITO AGGIUNGI AC ALLA HOME ─── */}
       <PwaInstallBanner />

@@ -31,6 +31,7 @@ interface AthleteCommunicationsFeedProps {
   athleteId: string;
   hideIfEmpty?: boolean;
   autoOpenUnread?: boolean;
+  popupOnly?: boolean;
 }
 
 const typeConfig: Record<BroadcastType, { label: string; icon: React.FC<{ className?: string }>; badgeCls: string }> = {
@@ -165,6 +166,7 @@ export const AthleteCommunicationsFeed: React.FC<AthleteCommunicationsFeedProps>
   athleteId,
   hideIfEmpty = false,
   autoOpenUnread = false,
+  popupOnly = false,
 }) => {
   const { broadcasts, communications, markRecipientRead, confirmRecipientRead, recordRecipientClick } = useCommunications();
   const { timeline } = useAthletes();
