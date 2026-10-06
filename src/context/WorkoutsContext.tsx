@@ -85,7 +85,7 @@ interface WorkoutsContextType {
   unassignWorkoutFromAthlete: (athleteId: string, workoutId: string, deletePrivateWorkout?: boolean) => Promise<{ success: boolean; error?: string }>;
   getAssignedWorkoutsForAthlete: (athleteId: string) => Promise<AthleteAssignedWorkout[]>;
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
-  forkWorkoutForAthlete: (workoutId: string, athleteId: string, newWorkoutData: Partial<WorkoutTemplate>, newExercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; error?: string }>;
+  forkWorkoutForAthlete: (workoutId: string, athleteId: string, newWorkoutData: Partial<WorkoutTemplate>, newExercises: Partial<WorkoutExercise>[]) => Promise<{ success: boolean; workoutId?: string; error?: string }>;
   forkWorkoutForAllAssigned: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
   forceSyncMasterTemplate: (masterWorkoutId: string) => Promise<{ success: boolean; error?: string }>;
   
@@ -957,7 +957,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         throw new Error('Verifica copia scheda fallita: esercizi incompleti nel database.');
       }
       
-      return { success: true };
+      return { success: true, workoutId: clonedWorkout.id };
     } catch (error: unknown) {
       console.error("Error forking workout for athlete:", error);
       const msg = extractErrorMessage(error);

@@ -2393,6 +2393,9 @@ ${result.regole_adattamento || '-'}
             exercisesToSave
           );
           if (!forkRes.success) throw new Error(forkRes.error || 'Errore durante la duplicazione della scheda atleta');
+          if (forkRes.workoutId) {
+            targetWorkoutId = forkRes.workoutId;
+          }
           showSuccess('Copia locale creata e assegnata all\'atleta con successo!');
         } else {
           // Raccogli tutti gli ID originali non più presenti nella scheda salvata

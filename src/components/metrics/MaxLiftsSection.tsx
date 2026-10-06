@@ -367,14 +367,14 @@ export const MaxLiftsSection: React.FC<MaxLiftsSectionProps> = ({
                                       reps: number;
                                     };
                                     return (
-                                      <div className="bg-slate-950/95 border border-slate-800 p-3 rounded-2xl shadow-2xl backdrop-blur-md space-y-1 z-50 force-text-white">
-                                        <div className="text-[10px] font-bold text-slate-400">
+                                      <div className="bg-white/95 dark:bg-slate-950/95 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl shadow-xl dark:shadow-2xl backdrop-blur-md space-y-1 z-50">
+                                        <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
                                           Data: {item.fullDate}
                                         </div>
-                                        <div className="text-base font-black font-mono text-amber-400">
+                                        <div className="text-base font-black font-mono text-amber-600 dark:text-amber-400">
                                           {item.valore1RM} kg (1RM)
                                         </div>
-                                        <div className="text-xs text-slate-300">
+                                        <div className="text-xs text-slate-600 dark:text-slate-300">
                                           Sollevati: {item.weightKg}kg × {item.reps} reps
                                         </div>
                                       </div>

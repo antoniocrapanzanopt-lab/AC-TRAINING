@@ -153,9 +153,10 @@ export const ExerciseHistoryModal: React.FC<ExerciseHistoryModalProps> = ({
 
                 {/* Note della sessione se presenti */}
                 {sess.notes && (
-                  <p className="text-[11px] text-[var(--color-text-muted)] italic mt-2.5 pt-2 border-t border-[var(--color-border)]">
-                    "{sess.notes}"
-                  </p>
+                  <div className="mt-2.5 pt-2 border-t border-[var(--color-border)] flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
+                    <span className="font-black text-amber-500 shrink-0">💬 Nota:</span>
+                    <span className="italic text-slate-800 dark:text-slate-200">{sess.notes}</span>
+                  </div>
                 )}
               </div>
             ))

@@ -189,7 +189,7 @@ export function buildAthleteReport(
   // Filtra sessioni atleta (solo sessioni completate con end_time o con effettivi log di serie registrati)
   const athleteSessions = sessions.filter((s) => {
     if (s.athlete_id !== athlete.id) return false;
-    const hasLogs = logs.some((l) => l.session_id === s.id && (l.reps_completed > 0 || l.weight_kg > 0));
+    const hasLogs = logs.some((l) => l.session_id === s.id && (l.reps_completed > 0 || l.weight_kg >= 0));
     return Boolean(s.end_time || hasLogs);
   });
 

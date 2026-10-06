@@ -77,9 +77,10 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
             setCurrentStep(7);
             setMaxReachedStep(7);
           } else if (record.currentStep && record.currentStep > 1) {
-            setMaxReachedStep(Math.max(record.currentStep, 1));
+            const clamped = Math.min(record.currentStep, 7);
+            setMaxReachedStep(Math.max(clamped, 1));
             setDraftBannerInfo({
-              step: record.currentStep,
+              step: clamped,
               date: record.updatedAt || new Date().toISOString(),
             });
           }
@@ -129,7 +130,7 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
     }
     if (stepNumber === 7) {
       if (!formData.privacyConsent) {
-        return { valid: false, errorMsg: 'È necessario confermare la presa visione e veridicità dei dati.' };
+        return { valid: false, errorMsg: 'Conferma la presa visione e la veridicità dei dati inseriti spuntando la casella prima di inviare.' };
       }
     }
     return { valid: true };
@@ -173,7 +174,7 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
   const handleComplete = async () => {
     const check = validateStep(7);
     if (!check.valid) {
-      showError('Attenzione', check.errorMsg || 'Verifica i consensi prima di inviare.');
+      showError('Attenzione', check.errorMsg || 'Verifica la presa visione prima di inviare.');
       return;
     }
 
@@ -182,13 +183,14 @@ export const AthleteQuestionnaireWizard: React.FC<AthleteQuestionnaireWizardProp
       const res = await completeOnboardingQuestionnaire(athleteId, formData);
       if (res.success && res.record) {
         setIsCompletedSuccess(true);
-        showSuccess('Questionario Inviato!', 'I tuoi dati sono stati salvati e inoltrati al coach.');
+        showSuccess('Questionario Inviato!', 'I tuoi dati di anamnesi sono stati registrati con successo.');
         if (onComplete) onComplete(res.record);
       } else {
         showError('Errore di Salvataggio', res.error || 'Impossibile completare il questionario.');
       }
-    } catch (e: any) {
-      showError('Errore', e?.message || 'Si è verificato un errore durante l’invio.');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Si è verificato un errore durante l’invio.';
+      showError('Errore', msg);
     } finally {
       setIsSubmitting(false);
     }

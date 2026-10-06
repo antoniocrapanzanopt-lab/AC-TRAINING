@@ -76,7 +76,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
           type="button"
           onClick={() => onComplete(task.id)}
           title="Segna come completata"
-          className="w-7 h-7 rounded-xl border-2 border-slate-700 hover:border-emerald-400 hover:bg-emerald-500/20 flex items-center justify-center text-transparent hover:text-emerald-400 transition-all shrink-0 mt-0.5 cursor-pointer shadow-sm active:scale-90"
+          className="w-7 h-7 rounded-full border-2 border-slate-700 hover:border-emerald-400 hover:bg-emerald-500/20 flex items-center justify-center text-transparent hover:text-emerald-400 transition-all shrink-0 mt-0.5 cursor-pointer shadow-sm active:scale-90"
         >
           <Check className="w-4 h-4 stroke-[3]" />
         </button>

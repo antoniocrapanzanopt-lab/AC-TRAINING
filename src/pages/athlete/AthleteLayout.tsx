@@ -136,8 +136,8 @@ export const AthleteLayout: React.FC = () => {
       {/* ─── TOP APP BAR ATLETA CON SUPPORTO SAFE AREA NOTCH / DYNAMIC ISLAND iOS ─── */}
       <header className="sticky top-0 z-30 bg-[var(--color-surface)]/85 backdrop-blur-xl border-b border-[var(--color-border)] px-4 sm:px-6 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-3 flex items-center justify-between shadow-md transition-colors duration-200">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-full bg-[var(--color-surface)] border-2 border-[var(--color-primary)] shadow-md shrink-0 flex items-center justify-center relative overflow-hidden">
-            <img src="/ac-logo-transparent.png" alt="AC" className="w-full h-full object-contain scale-115" />
+          <div className="w-12 h-12 rounded-full bg-slate-950 border-2 border-amber-400 dark:border-[var(--color-primary)] shadow-md shadow-amber-500/10 shrink-0 flex items-center justify-center relative overflow-hidden">
+            <img src="/ac-logo-transparent.png" alt="AC" className="w-full h-full object-contain scale-115 drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">

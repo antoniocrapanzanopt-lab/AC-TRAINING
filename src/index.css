@@ -136,9 +136,7 @@
   [data-theme="light"] .bg-purple-600,
   [data-theme="light"] .bg-purple-600 *,
   [data-theme="light"] [class*="from-black"] .text-white,
-  [data-theme="light"] [class*="from-black"] [class*="text-slate-"],
-  [data-theme="light"] .recharts-tooltip-wrapper .text-white,
-  [data-theme="light"] .recharts-tooltip-wrapper [class*="text-slate-"] {
+  [data-theme="light"] [class*="from-black"] [class*="text-slate-"] {
     color: #ffffff !important;
   }
 

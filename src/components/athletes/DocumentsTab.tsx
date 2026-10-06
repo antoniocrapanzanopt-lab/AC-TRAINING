@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   FileText,
   Plus,
@@ -15,6 +15,7 @@ import {
   Lock,
   Globe,
   XCircle,
+  Printer,
 } from 'lucide-react';
 import {
   AthleteDocument,
@@ -27,6 +28,9 @@ import { useDocuments } from '../../context/DocumentsContext';
 import { useToast } from '../../context/ToastContext';
 import { DocumentModal } from '../documents/DocumentModal';
 import { ConsentModal } from '../documents/ConsentModal';
+import { ContractSignatureModal } from '../contract/ContractSignatureModal';
+import { getAthleteSignedContract } from '../../services/contractService';
+import { AthleteSignedContract } from '../../types/contract';
 
 interface DocumentsTabProps {
   athleteId: string;
@@ -73,6 +77,21 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ athleteId, athleteNa
     docId: null,
   });
 
+  const [signedContract, setSignedContract] = useState<AthleteSignedContract | null>(null);
+  const [isContractModalOpen, setIsContractModalOpen] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (athleteId) {
+      getAthleteSignedContract(athleteId).then((sc) => {
+        if (isMounted) setSignedContract(sc);
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [athleteId]);
+
   // Documenti dell'atleta
   const athleteDocs = useMemo(() => {
     return documents
@@ -112,13 +131,19 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ athleteId, athleteNa
     }
 
     // 2. Informativa Privacy (GDPR)
-    const privacyConsent = athleteConsents.find(c => c.consentType === 'privacy' && c.status === 'granted');
+    const privacyConsent = signedContract
+      ? ({ grantDate: signedContract.signedAt, status: 'granted' } as unknown as AthleteConsent)
+      : athleteConsents.find(c => c.consentType === 'privacy' && c.status === 'granted');
 
     // 3. Liberatoria Foto/Video
-    const photoConsent = athleteConsents.find(c => c.consentType === 'photo_video' && c.status === 'granted');
+    const photoConsent = signedContract
+      ? ({ grantDate: signedContract.signedAt, status: 'granted' } as unknown as AthleteConsent)
+      : athleteConsents.find(c => c.consentType === 'photo_video' && c.status === 'granted');
 
     // 4. Contratto
-    const contractDoc = athleteDocs.find(d => d.category === 'contract');
+    const contractDoc = signedContract
+      ? ({ id: signedContract.id, createdAt: signedContract.signedAt, title: 'Accordo di Collaborazione' } as unknown as AthleteDocument)
+      : athleteDocs.find(d => d.category === 'contract');
 
     return {
       latestMedDoc,
@@ -127,7 +152,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ athleteId, athleteNa
       photoConsent,
       contractDoc,
     };
-  }, [athleteDocs, athleteConsents]);
+  }, [athleteDocs, athleteConsents, signedContract]);
 
   // Documenti filtrati
   const filteredDocs = useMemo(() => {
@@ -201,6 +226,67 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({ athleteId, athleteNa
           <Plus className="w-4 h-4" /> Carica Nuovo Documento
         </button>
       </div>
+
+      {/* ── Highlight Card: Fascicolo Contrattuale & Patto di Testimonianza ── */}
+      <div className="p-5 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-2xl bg-amber-400/20 text-amber-400 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                Fascicolo Contrattuale &amp; Patto di Testimonianza
+              </h4>
+              {signedContract ? (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase">
+                  Firmato
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-black uppercase">
+                  In Attesa di Firma
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {signedContract
+                ? `Sottoscritto digitalmente il ${new Date(signedContract.signedAt).toLocaleDateString('it-IT')}. Termini di servizio, liberatoria video e intervista con bonus.`
+                : 'L’atleta non ha ancora apposto la firma digitale sul contratto e patto di testimonianza.'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsContractModalOpen(true)}
+          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition-all shadow shrink-0 cursor-pointer ${
+            signedContract
+              ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+              : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/20'
+          }`}
+        >
+          {signedContract ? (
+            <>
+              <Printer className="w-3.5 h-3.5" />
+              <span>Visualizza / Stampa PDF</span>
+            </>
+          ) : (
+            <>
+              <Eye className="w-3.5 h-3.5" />
+              <span>Anteprima Contratto</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Modale Visualizzazione / Stampa Contratto Atleta */}
+      <ContractSignatureModal
+        isOpen={isContractModalOpen}
+        onClose={() => setIsContractModalOpen(false)}
+        athleteId={athleteId}
+        athleteName={athleteName}
+        readOnly={true}
+      />
 
       {/* KPI Cards Requisiti Obbligatori */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

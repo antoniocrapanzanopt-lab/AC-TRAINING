@@ -35,6 +35,12 @@ import { getAthleteOnboardingResponse } from '../../services/questionnaireServic
 import { fetchAthleteAdherenceData, AdherenceScoreResult } from '../../services/adherenceService';
 import { AthleteOnboardingRecord } from '../../types/questionnaire';
 import { Sparkles } from 'lucide-react';
+import { ContractSignatureModal } from '../../components/contract/ContractSignatureModal';
+import {
+  getAthleteSignedContract,
+  getAthleteContractStatus,
+} from '../../services/contractService';
+import { AthleteSignedContract } from '../../types/contract';
 import {
   isCompletedSession,
   normalizeDayName,
@@ -447,6 +453,10 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
   const [onboardingRecord, setOnboardingRecord] = useState<AthleteOnboardingRecord | null>(null);
   const [isLoadingOnboarding, setIsLoadingOnboarding] = useState<boolean>(false);
+  const [signedContract, setSignedContract] = useState<AthleteSignedContract | null>(null);
+  const [needsContractSignature, setNeedsContractSignature] = useState<boolean>(false);
+  const [isLoadingContract, setIsLoadingContract] = useState<boolean>(true);
+  const [isContractModalOpen, setIsContractModalOpen] = useState<boolean>(false);
 
   const [adherenceData, setAdherenceData] = useState<AdherenceScoreResult | null>(() => {
     if (typeof window !== 'undefined' && athleteId) {
@@ -505,6 +515,31 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
           if (isMounted) setIsLoadingOnboarding(false);
         });
     }, 300);
+
+    // 3. Caricamento contratto firmato & stato versione attiva
+    getAthleteContractStatus(athleteId)
+      .then((status) => {
+        if (isMounted) {
+          setSignedContract(status.latestSignature);
+          setNeedsContractSignature(status.needsSignature);
+          setIsLoadingContract(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          getAthleteSignedContract(athleteId)
+            .then((sc) => {
+              if (isMounted) {
+                setSignedContract(sc);
+                setNeedsContractSignature(!sc);
+                setIsLoadingContract(false);
+              }
+            })
+            .catch(() => {
+              if (isMounted) setIsLoadingContract(false);
+            });
+        }
+      });
 
     const handleAdherenceRefresh = () => loadAdherence(true, true);
     window.addEventListener('athlete_draft_updated', handleAdherenceRefresh);
@@ -1128,6 +1163,30 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         </div>
       )}
 
+      {/* ─── BANNER ACCORDO & PATTO DI TESTIMONIANZA SE NON FIRMATO O DA RINNOVARE ─── */}
+      {!isLoadingContract && needsContractSignature && (
+        <div className="p-5 rounded-3xl bg-slate-900 border border-amber-400/40 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in duration-300">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase">
+                Documento in Sospeso
+              </span>
+            </div>
+            <h3 className="text-base font-black text-white flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
+              Termini e condizioni di utilizzo 2026/2027
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsContractModalOpen(true)}
+            className="px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-400/20 shrink-0 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+          >
+            <span>Firma Ora</span>
+          </button>
+        </div>
+      )}
+
       {/* ─── 2. INDICE ADERENZA AL PERCORSO (STALE-WHILE-REVALIDATE IMMEDIATO) ─── */}
       {adherenceData && (
         <AthleteAdherenceCard
@@ -1200,6 +1259,26 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         activeWorkoutTitle={firstAssigned?.workout?.title}
         initialSessions={cachedSessionsForHistory}
       />
+
+      {/* Modale Firma Rapida Contratto */}
+      {athleteId && (
+        <ContractSignatureModal
+          isOpen={isContractModalOpen}
+          onClose={() => setIsContractModalOpen(false)}
+          athleteId={athleteId}
+          athleteName={athleteFirstName ? `${athleteFirstName} ${currentAthlete?.lastName || ''}`.trim() : (user?.name || 'Atleta')}
+          athleteBirthDate={currentAthlete?.dateOfBirth}
+          athleteBirthPlace={currentAthlete?.city}
+          athleteAddress={currentAthlete?.address}
+          athleteFiscalCode={currentAthlete?.fiscalCode}
+          readOnly={!needsContractSignature && Boolean(signedContract)}
+          onSignedSuccess={(newSigned) => {
+            setSignedContract(newSigned);
+            setNeedsContractSignature(false);
+            setIsContractModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };

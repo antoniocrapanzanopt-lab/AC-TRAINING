@@ -114,7 +114,7 @@ export async function fetchAthletePreviousExerciseHistory(
       }>) || [];
 
       // Raggruppa i log di QUESTA sessione per esercizio
-      const sessionExMap = new Map<string, { name: string; sets: PreviousSetData[]; notes?: string | null }>();
+      const sessionExMap = new Map<string, { name: string; sets: PreviousSetData[]; notes?: string | null; feedback?: string | null }>();
 
       for (const log of logs) {
         const exId = log.exercise_id || log.workout_exercises?.id || '';
@@ -122,10 +122,26 @@ export async function fetchAthletePreviousExerciseHistory(
         const key = exId || normalizeName(exName);
 
         if (!sessionExMap.has(key)) {
-          sessionExMap.set(key, { name: exName, sets: [], notes: session.notes });
+          sessionExMap.set(key, { name: exName, sets: [], notes: session.notes, feedback: null });
         }
 
-        sessionExMap.get(key)!.sets.push({
+        // Estrai l'eventuale feedback scritto dall'atleta per questo esercizio (es. "Feedback: ...")
+        let logFeedback: string | null = null;
+        if (log.notes) {
+          const fbMatch = log.notes.match(/Feedback:\s*([^|]+)/i);
+          if (fbMatch && fbMatch[1]) {
+            logFeedback = fbMatch[1].trim();
+          } else if (!log.notes.includes('RPE:') && !log.notes.includes('kg')) {
+            logFeedback = log.notes.trim();
+          }
+        }
+
+        const currentEntry = sessionExMap.get(key)!;
+        if (logFeedback && !currentEntry.feedback) {
+          currentEntry.feedback = logFeedback;
+        }
+
+        currentEntry.sets.push({
           setNumber: log.set_number || 1,
           reps: log.reps_completed,
           weightKg: log.weight_kg,
@@ -137,12 +153,15 @@ export async function fetchAthletePreviousExerciseHistory(
       for (const [key, val] of sessionExMap.entries()) {
         val.sets.sort((a, b) => a.setNumber - b.setNumber);
 
+        // La nota dell'esercizio è preferibilmente il feedback specifico dell'atleta o la nota della sessione
+        const displayNote = val.feedback || val.notes || null;
+
         const entry: PastSessionHistoryEntry = {
           sessionId: session.id,
           sessionDate,
           formattedDate,
           sets: val.sets,
-          notes: val.notes,
+          notes: displayNote,
         };
 
         if (!accumulatorMap.has(key)) {

@@ -280,7 +280,7 @@ export async function fetchAthleteAdherenceData(athleteId: string, forceRefresh 
       const dateLimit = twentyEightDaysAgo.toISOString();
 
       // 3. Esegui in un unico blocco parallelo le query essenziali
-      const [sessionsRes, assignedRes, onboardingRes, athRecordRes] = await Promise.all([
+      const [sessionsRes, assignedRes, athRecordRes] = await Promise.all([
         supabase
           .from('workout_sessions')
           .select('id, athlete_id, status, skip_reason, start_time, rpe, notes')
@@ -294,13 +294,8 @@ export async function fetchAthleteAdherenceData(athleteId: string, forceRefresh 
           .limit(1)
           .maybeSingle(),
         supabase
-          .from('athlete_onboarding_responses')
-          .select('id, status')
-          .eq('athlete_id', athleteId)
-          .maybeSingle(),
-        supabase
           .from('athletes')
-          .select('id, auth_user_id')
+          .select('id, auth_user_id, goals, medical_cert_notes')
           .or(`id.eq.${athleteId},auth_user_id.eq.${athleteId}`)
           .maybeSingle(),
       ]);
@@ -310,10 +305,41 @@ export async function fetchAthleteAdherenceData(athleteId: string, forceRefresh 
         if (athRecordRes.data.auth_user_id) matchingIds.add(athRecordRes.data.auth_user_id);
       }
 
+      const idList = Array.from(matchingIds);
+
+      // Risoluzione Onboarding / Check-in multi-source robusta
+      const [onboardingRes, notesRes] = await Promise.all([
+        supabase
+          .from('athlete_onboarding_responses')
+          .select('id, status')
+          .in('athlete_id', idList)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('athlete_notes')
+          .select('id, content')
+          .in('athlete_id', idList)
+          .eq('category', 'medical')
+          .order('created_at', { ascending: false })
+          .limit(5),
+      ]);
+
+      // Verifica completamento check-in/onboarding su tutte le sorgenti
+      let hasCompletedCheckinOrOnboarding = onboardingRes.data?.status === 'completed';
+      if (!hasCompletedCheckinOrOnboarding && notesRes.data) {
+        const hasBackupOnboarding = notesRes.data.some((n) => n.content?.startsWith('[AC_ONBOARDING_DATA]:'));
+        if (hasBackupOnboarding) {
+          hasCompletedCheckinOrOnboarding = true;
+        }
+      }
+      if (!hasCompletedCheckinOrOnboarding && athRecordRes.data && (athRecordRes.data.goals || athRecordRes.data.medical_cert_notes)) {
+        hasCompletedCheckinOrOnboarding = true;
+      }
+
       // Se l'atleta ha un auth_user_id separato, esegui eventuale fallback sessioni se vuote
       let sessions = sessionsRes.data || [];
       if (sessions.length === 0 && matchingIds.size > 1) {
-        const idList = Array.from(matchingIds);
         const { data: fallbackSessions } = await supabase
           .from('workout_sessions')
           .select('id, athlete_id, status, skip_reason, start_time, rpe, notes')
@@ -369,8 +395,13 @@ export async function fetchAthleteAdherenceData(athleteId: string, forceRefresh 
         }
       }
 
-      const totalPrescribedSets = Math.max(loggedSets, totalPrescribedSessions * 14);
-      const hasCompletedCheckinOrOnboarding = onboardingRes.data?.status === 'completed';
+      // Calcolo serie previste equo e contestualizzato:
+      // Se l'atleta ha completato sedute, le serie attese sono proporzionate alle sedute svolte (~14 serie a seduta),
+      // evitando di penalizzare con l'intero monte serie futuro mensile di 28 giorni.
+      const expectedSets = completedSessions > 0
+        ? Math.max(1, completedSessions * 14)
+        : Math.max(1, totalPrescribedSessions * 14);
+      const totalPrescribedSets = Math.max(loggedSets, expectedSets);
 
       const result = computeAdherenceScore({
         athleteId,
@@ -382,10 +413,10 @@ export async function fetchAthleteAdherenceData(athleteId: string, forceRefresh 
         setsWithRpeOrNotes: setsWithFeedback,
         hasCompletedCheckinOrOnboarding,
         debugMeta: {
-          resolvedAthleteIds: Array.from(matchingIds),
+          resolvedAthleteIds: idList,
           sessionsFound: sessions.length,
           logsFound: loggedSets,
-          onboardingStatus: onboardingRes.data?.status || 'none',
+          onboardingStatus: hasCompletedCheckinOrOnboarding ? 'completed' : (onboardingRes.data?.status || 'none'),
         },
       });
 
@@ -448,8 +479,8 @@ export async function fetchBatchAthletesAdherence(athleteIds: string[]): Promise
     twentyEightDaysAgo.setDate(twentyEightDaysAgo.getDate() - 28);
     const dateLimit = twentyEightDaysAgo.toISOString();
 
-    // 1. Esegui 3 query aggregate per tutti gli atleti
-    const [sessionsRes, assignedRes, onboardingRes] = await Promise.all([
+    // 1. Esegui query aggregate per tutti gli atleti inclusi profili e note onboarding
+    const [sessionsRes, assignedRes, onboardingRes, athletesRes, notesRes] = await Promise.all([
       supabase
         .from('workout_sessions')
         .select('id, athlete_id, status, skip_reason, start_time, rpe, notes')
@@ -464,11 +495,22 @@ export async function fetchBatchAthletesAdherence(athleteIds: string[]): Promise
         .from('athlete_onboarding_responses')
         .select('athlete_id, status')
         .in('athlete_id', idsToFetch),
+      supabase
+        .from('athletes')
+        .select('id, goals, medical_cert_notes')
+        .in('id', idsToFetch),
+      supabase
+        .from('athlete_notes')
+        .select('athlete_id, content')
+        .in('athlete_id', idsToFetch)
+        .eq('category', 'medical'),
     ]);
 
     const allSessions = sessionsRes.data || [];
     const allAssigned = assignedRes.data || [];
     const allOnboarding = onboardingRes.data || [];
+    const allAthletes = athletesRes.data || [];
+    const allNotes = notesRes.data || [];
 
     // Mappa sessioni per atleta
     const sessionsByAthlete = new Map<string, typeof allSessions>();
@@ -486,10 +528,22 @@ export async function fetchBatchAthletesAdherence(athleteIds: string[]): Promise
       }
     });
 
-    // Mappa onboarding per atleta
-    const onboardingByAthlete = new Map<string, string>();
+    // Mappa onboarding per atleta (con supporto a note e profilo)
+    const onboardingByAthlete = new Map<string, boolean>();
     allOnboarding.forEach((o) => {
-      onboardingByAthlete.set(o.athlete_id, o.status);
+      if (o.status === 'completed') {
+        onboardingByAthlete.set(o.athlete_id, true);
+      }
+    });
+    allNotes.forEach((n) => {
+      if (n.content?.startsWith('[AC_ONBOARDING_DATA]:')) {
+        onboardingByAthlete.set(n.athlete_id, true);
+      }
+    });
+    allAthletes.forEach((ath) => {
+      if (ath.goals || ath.medical_cert_notes) {
+        onboardingByAthlete.set(ath.id, true);
+      }
     });
 
     // 2. Raccogli tutti gli id sessione per la singola query sui log
@@ -541,8 +595,12 @@ export async function fetchBatchAthletesAdherence(athleteIds: string[]): Promise
         }).length;
       });
 
-      const totalPrescribedSets = Math.max(loggedSets, totalPrescribedSessions * 14);
-      const hasCompletedCheckinOrOnboarding = onboardingByAthlete.get(athId) === 'completed';
+      // Calcolo serie equo e contestualizzato alle sedute svolte
+      const expectedSets = completedSessions > 0
+        ? Math.max(1, completedSessions * 14)
+        : Math.max(1, totalPrescribedSessions * 14);
+      const totalPrescribedSets = Math.max(loggedSets, expectedSets);
+      const hasCompletedCheckinOrOnboarding = onboardingByAthlete.get(athId) === true;
 
       const scoreResult = computeAdherenceScore({
         athleteId: athId,

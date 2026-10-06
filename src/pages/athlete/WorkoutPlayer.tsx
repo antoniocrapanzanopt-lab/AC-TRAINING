@@ -504,6 +504,34 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     scheduleAutosave(false);
   }, [scheduleAutosave]);
 
+  const handleAddSet = useCallback((exerciseId: string) => {
+    setLogs((prev) => {
+      const current = prev[exerciseId] || [];
+      return { ...prev, [exerciseId]: [...current, { reps: '', weight: '', rpe: '' }] };
+    });
+    setCompletedSets((prev) => {
+      const current = prev[exerciseId] || [];
+      return { ...prev, [exerciseId]: [...current, false] };
+    });
+    scheduleAutosave(false);
+  }, [scheduleAutosave]);
+
+  const handleRemoveSet = useCallback((exerciseId: string, setIndex: number) => {
+    setLogs((prev) => {
+      const current = prev[exerciseId] || [];
+      if (setIndex < 0 || setIndex >= current.length) return prev;
+      const updated = current.filter((_, idx) => idx !== setIndex);
+      return { ...prev, [exerciseId]: updated };
+    });
+    setCompletedSets((prev) => {
+      const current = prev[exerciseId] || [];
+      if (setIndex < 0 || setIndex >= current.length) return prev;
+      const updated = current.filter((_, idx) => idx !== setIndex);
+      return { ...prev, [exerciseId]: updated };
+    });
+    scheduleAutosave(false);
+  }, [scheduleAutosave]);
+
   const handleToggleSetComplete = useCallback((exerciseId: string, setIdx: number, restSeconds: number) => {
     setCompletedSets((prev) => {
       const currentList = prev[exerciseId] ? [...prev[exerciseId]] : [];
@@ -674,18 +702,19 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         const exLogs = logs[ex.id] || [];
         const userFeedback = exerciseNotes[ex.id]?.trim();
         const completedMap = completedSets[ex.id] || [];
+        const totalSetsToProcess = Math.max(ex.sets || 1, exLogs.length, completedMap.length);
 
-        for (let idx = 0; idx < (ex.sets || 1); idx++) {
+        for (let idx = 0; idx < totalSetsToProcess; idx++) {
           const setLog = exLogs[idx] || { reps: '', weight: '', rpe: '' };
           const isCompleted = !!completedMap[idx];
 
           const repsNum = parseRepsToNumber(setLog.reps, 0);
           const parsedWeight = parseWeightToNumber(setLog.weight);
           const weightNum = parsedWeight.weightKg;
+          const hasExplicitWeight = setLog.weight !== undefined && setLog.weight !== null && String(setLog.weight).trim() !== '';
 
-          // Un set è valido SOLO se l'atleta ha inserito reps, carico, RPE,
-          // oppure se ha spuntato il set come completato (con almeno un dato reale)
-          const hasRealData = repsNum > 0 || weightNum > 0 || Boolean(setLog.rpe && setLog.rpe.trim());
+          // Un set è valido se completato, o se l'atleta ha inserito reps, carico (anche 0kg per corpo libero), o RPE
+          const hasRealData = repsNum > 0 || hasExplicitWeight || Boolean(setLog.rpe && setLog.rpe.trim());
           const shouldSave = hasRealData || isCompleted;
 
           if (shouldSave) {
@@ -698,8 +727,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               session_id: effectiveSessionId || 'offline-pending',
               exercise_id: ex.id,
               set_number: idx + 1,
-              reps_completed: repsNum > 0 ? repsNum : undefined,
-              weight_kg: weightNum > 0 ? weightNum : undefined,
+              reps_completed: repsNum > 0 ? repsNum : (isCompleted ? parseRepsToNumber(ex.reps_target, 10) : 0),
+              weight_kg: hasExplicitWeight ? weightNum : (isCompleted ? 0 : undefined),
               notes: noteParts.length > 0 ? noteParts.join(' | ') : undefined,
             });
 
@@ -861,7 +890,11 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         return acc + completedMap.filter(Boolean).length;
       }, 0);
 
-      const totalSetsPlanned = activeExercises.reduce((acc, ex) => acc + (ex.sets || 0), 0);
+      const totalSetsPlanned = activeExercises.reduce((acc, ex) => {
+        const exLogs = logs[ex.id] || [];
+        const completedMap = completedSets[ex.id] || [];
+        return acc + Math.max(ex.sets || 0, exLogs.length, completedMap.length);
+      }, 0);
 
       // Aggiorna progresso locale e rimuovi bozza attiva
       try {
@@ -919,69 +952,69 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   return (
     <div className="fixed inset-0 bg-[var(--color-bg)] z-50 flex flex-col font-sans overflow-hidden">
       {/* ── HEADER LIVE ELEGANTE & SPAZIOSO ── */}
-      <div className="bg-[var(--color-surface)]/95 backdrop-blur-xl border-b border-[var(--color-border)] px-4 sm:px-6 lg:px-8 pt-[calc(0.75rem+env(safe-area-inset-top,0px))] pb-3 sm:pb-4 shadow-lg relative z-20 shrink-0">
-        <div className="max-w-4xl xl:max-w-5xl mx-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+      <div className="bg-[var(--color-surface)]/95 backdrop-blur-xl border-b border-[var(--color-border)] px-2.5 sm:px-6 lg:px-8 pt-[calc(0.5rem+env(safe-area-inset-top,0px))] pb-2.5 sm:pb-4 shadow-lg relative z-20 shrink-0">
+        <div className="max-w-4xl xl:max-w-5xl mx-auto flex items-center justify-between gap-1.5 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => {
                 flushAutosave();
                 onClose();
               }}
-              className="min-w-[44px] min-h-[44px] w-11 h-11 text-[var(--color-text-muted)] hover:text-[var(--color-text)] rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] border border-[var(--color-border)] flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0 shadow-sm"
+              className="min-w-[38px] min-h-[38px] w-9.5 h-9.5 sm:w-11 sm:h-11 text-[var(--color-text-muted)] hover:text-[var(--color-text)] rounded-xl sm:rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-panel)] border border-[var(--color-border)] flex items-center justify-center transition-all active:scale-95 cursor-pointer shrink-0 shadow-sm"
               title="Chiudi sessione"
               aria-label="Chiudi sessione"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {!isWorkoutStarted ? (
               /* STATO ANTEPRIMA: SOLO GIORNO + SETTIMANA + ICONA OCCHIO */
-              <div className="flex items-center gap-2 min-w-0">
-                <h1 className="text-lg sm:text-2xl font-black text-white truncate">
+              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <h1 className="text-base sm:text-2xl font-black text-white truncate">
                   {currentDayName}
                 </h1>
-                <span className="text-sm sm:text-base text-slate-300 font-bold shrink-0">
+                <span className="text-xs sm:text-base text-slate-300 font-bold shrink-0">
                   • Settimana {currentWeekNumber}
                 </span>
-                <span className="p-1.5 rounded-lg bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0" title="Anteprima scheda">
-                  <Eye className="w-4 h-4" />
+                <span className="p-1 sm:p-1.5 rounded-lg bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0" title="Anteprima scheda">
+                  <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </span>
               </div>
             ) : (
               /* STATO WORKOUT AVVIATO: CRONOMETRO & STATO SYNC */
-              <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
                 {/* Timer Badge Interattivo con Controlli Play / Pausa / Reset */}
-                <div className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border transition-all shadow-sm ${
+                <div className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl border transition-all shadow-sm shrink-0 ${
                   isTimerRunning
                     ? 'bg-amber-500/20 border-amber-500/40 text-[var(--color-primary)]'
                     : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
                 }`}>
-                  <span className="font-mono text-sm sm:text-base font-black flex items-center gap-1.5">
-                    <Clock className={`w-4 h-4 ${isTimerRunning ? 'text-[var(--color-primary)] animate-pulse' : 'text-slate-300'}`} />
+                  <span className="font-mono text-xs sm:text-base font-black flex items-center gap-1">
+                    <Clock className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isTimerRunning ? 'text-[var(--color-primary)] animate-pulse' : 'text-slate-300'}`} />
                     {formatTime(elapsedTime)}
                   </span>
 
                   {/* Divider */}
-                  <div className="w-[1.5px] h-4 bg-slate-700 mx-0.5" />
+                  <div className="w-[1px] h-3.5 sm:h-4 bg-slate-700 mx-0.5" />
 
                   {/* Pulsante Pausa / Riprendi */}
                   <button
                     type="button"
                     onClick={isTimerRunning ? handlePauseTimer : handleStartOrResumeTimer}
-                    className={`p-1.5 rounded-lg text-xs sm:text-sm font-black transition-all active:scale-95 cursor-pointer min-h-[32px] ${
+                    className={`p-1 sm:p-1.5 rounded-lg text-xs sm:text-sm font-black transition-all active:scale-95 cursor-pointer min-h-[28px] sm:min-h-[32px] flex items-center justify-center ${
                       isTimerRunning
                         ? 'text-amber-300 hover:bg-amber-500/20'
-                        : 'text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1 px-2'
+                        : 'text-emerald-400 hover:bg-emerald-500/20 flex items-center gap-1 px-1.5'
                     }`}
                     title={isTimerRunning ? 'Metti in pausa il cronometro' : 'Riprendi il cronometro'}
                   >
                     {isTimerRunning ? (
-                      <Pause className="w-4 h-4 fill-current" />
+                      <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current" />
                     ) : (
                       <>
-                        <Play className="w-4 h-4 fill-current text-emerald-400" />
-                        <span className="text-xs font-black uppercase">Riprendi</span>
+                        <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current text-emerald-400" />
+                        <span className="text-[11px] sm:text-xs font-black uppercase hidden xs:inline">Riprendi</span>
                       </>
                     )}
                   </button>
@@ -990,15 +1023,15 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                   <button
                     type="button"
                     onClick={handleResetTimer}
-                    className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-all active:scale-95 cursor-pointer min-h-[32px]"
+                    className="p-1 sm:p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition-all active:scale-95 cursor-pointer min-h-[28px] sm:min-h-[32px]"
                     title="Azzera il cronometro"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
+                    <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </button>
                 </div>
 
                 {/* Badge Stato Salvataggio */}
-                <span className="text-xs sm:text-sm text-slate-300 hidden sm:flex items-center gap-1.5 font-bold">
+                <span className="text-xs sm:text-sm text-slate-300 hidden md:flex items-center gap-1.5 font-bold">
                   {isOnline ? (
                     <span className="flex items-center gap-1.5 text-emerald-400 font-black" title={lastSavedText}>
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1016,16 +1049,16 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           </div>
 
           {/* Destra: Azioni Header */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {(isWorkoutStarted || hasAnyProgress) && (
               <button
                 type="button"
                 onClick={handleOpenFinishFlow}
                 disabled={isSaving}
-                className="min-h-[46px] px-5 sm:px-7 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm sm:text-base flex items-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer"
+                className="min-h-[38px] sm:min-h-[46px] px-3 sm:px-7 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-base flex items-center gap-1.5 sm:gap-2 shadow-lg shadow-emerald-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
               >
-                <Check className="w-5 h-5 stroke-[3.5]" />
-                <span>Completa</span>
+                <Check className="w-4 h-4 sm:w-5 sm:h-5 stroke-[3.5]" />
+                <span className="hidden xs:inline">Completa</span>
               </button>
             )}
           </div>
@@ -1273,6 +1306,8 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             onLogChange={(setIdx, field, val) => handleLogChange(currentEx.id, setIdx, field, val)}
             onNoteFeedbackChange={(val) => handleNoteChange(currentEx.id, val)}
             onToggleSetComplete={(setIdx) => handleToggleSetComplete(currentEx.id, setIdx, currentEx.rest_seconds)}
+            onAddSet={() => handleAddSet(currentEx.id)}
+            onRemoveSet={(setIdx) => handleRemoveSet(currentEx.id, setIdx)}
             onNavigateNext={() => {
               setActiveExerciseModalIndex((prev) =>
                 prev !== null && prev < activeExercises.length - 1 ? prev + 1 : null
@@ -1304,12 +1339,13 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
         let emptyExercisesCount = 0;
 
         activeExercises.forEach((ex) => {
-          totalSetsPlanned += ex.sets;
           const exLogs = logs[ex.id] || [];
           const completedMap = completedSets[ex.id] || [];
+          const totalExSets = Math.max(ex.sets || 1, exLogs.length, completedMap.length);
+          totalSetsPlanned += totalExSets;
           let exerciseHasAnyWeight = false;
 
-          for (let i = 0; i < ex.sets; i++) {
+          for (let i = 0; i < totalExSets; i++) {
             const l = exLogs[i];
             const isDone = !!completedMap[i];
             let w = parseWeightToNumber(l?.weight).weightKg;

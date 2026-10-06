@@ -17,15 +17,15 @@ const monthNamesShort = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago',
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl backdrop-blur-xl">
-        <p className="text-xs font-bold text-slate-300 mb-2 uppercase">{label}</p>
+      <div className="p-3 rounded-xl bg-white/95 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl backdrop-blur-xl">
+        <p className="text-xs font-bold text-slate-600 dark:text-slate-300 mb-2 uppercase">{label}</p>
         <div className="space-y-1">
-          <p className="text-sm font-black text-[var(--color-primary)] flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[var(--color-primary)]"></span>
+          <p className="text-sm font-black text-amber-600 dark:text-[var(--color-primary)] flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500 dark:bg-[var(--color-primary)]"></span>
             € {(payload[0]?.value || 0).toLocaleString('it-IT')} Incassi
           </p>
-          <p className="text-sm font-black text-emerald-400 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <p className="text-sm font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400"></span>
             {payload[1]?.value || 0} Atleti
           </p>
         </div>

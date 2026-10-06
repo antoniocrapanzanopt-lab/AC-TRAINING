@@ -18,7 +18,13 @@ import { AthleteCommunicationsFeed } from '../../components/athlete/AthleteCommu
 import { AthleteQuestionnaireWizard } from '../../components/questionnaires/AthleteQuestionnaireWizard';
 import { getAthleteOnboardingResponse } from '../../services/questionnaireService';
 import { AthleteOnboardingRecord } from '../../types/questionnaire';
-import { FileText, Sparkles } from 'lucide-react';
+import { FileText, Sparkles, ShieldCheck } from 'lucide-react';
+import { ContractSignatureModal } from '../../components/contract/ContractSignatureModal';
+import {
+  getAthleteSignedContract,
+  getAthleteContractStatus,
+} from '../../services/contractService';
+import { AthleteSignedContract } from '../../types/contract';
 
 export const AthleteProfileView: React.FC = () => {
   const { user } = useAuth();
@@ -36,14 +42,31 @@ export const AthleteProfileView: React.FC = () => {
 
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
   const [onboardingRecord, setOnboardingRecord] = useState<AthleteOnboardingRecord | null>(null);
+  const [signedContract, setSignedContract] = useState<AthleteSignedContract | null>(null);
+  const [needsContractSignature, setNeedsContractSignature] = useState<boolean>(false);
+  const [isContractModalOpen, setIsContractModalOpen] = useState<boolean>(false);
 
-  // Carica stato questionario onboarding
+  // Carica stato questionario onboarding & contratto firmato
   useEffect(() => {
     let isMounted = true;
     if (athleteId) {
       getAthleteOnboardingResponse(athleteId).then((rec) => {
         if (isMounted) setOnboardingRecord(rec);
       });
+      getAthleteContractStatus(athleteId)
+        .then((status) => {
+          if (isMounted) {
+            setSignedContract(status.latestSignature);
+            setNeedsContractSignature(status.needsSignature);
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            getAthleteSignedContract(athleteId).then((contract) => {
+              if (isMounted) setSignedContract(contract);
+            });
+          }
+        });
     }
     return () => {
       isMounted = false;
@@ -238,6 +261,74 @@ export const AthleteProfileView: React.FC = () => {
           <span>{onboardingRecord?.status === 'completed' ? 'Visualizza / Modifica' : 'Compila Anamnesi'}</span>
         </button>
       </div>
+
+      {/* 2.6 Fascicolo Contrattuale & Patto di Testimonianza */}
+      <div className="p-5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-amber-400/15 text-amber-400 border border-amber-400/30 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-[var(--color-text)]">
+                Termini e condizioni di utilizzo 2026/2027
+              </h3>
+              {signedContract && !needsContractSignature ? (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase">
+                  Firmato
+                </span>
+              ) : signedContract && needsContractSignature ? (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-black uppercase">
+                  Da Rinnovare
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-black uppercase">
+                  In Attesa di Firma
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+              {signedContract && !needsContractSignature
+                ? `Firmato digitalmente il ${new Date(signedContract.signedAt).toLocaleDateString('it-IT')}. Versione: ${signedContract.contractVersion}.`
+                : signedContract && needsContractSignature
+                ? `È disponibile una versione aggiornata dei termini rispetto a quella firmata (${signedContract.contractVersion}). Sottoscrivi per confermare.`
+                : 'Sottoscrivi digitalmente le condizioni del servizio, la dichiarazione di salute e i consensi.'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsContractModalOpen(true)}
+          className={`px-4 py-2 rounded-xl text-xs font-black transition-all shadow shrink-0 flex items-center justify-center gap-1.5 cursor-pointer ${
+            signedContract && !needsContractSignature
+              ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700'
+              : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/20'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>{signedContract && !needsContractSignature ? 'Visualizza / Stampa' : 'Leggi e Firma Subito'}</span>
+        </button>
+      </div>
+
+      {/* Modale Firma / Visione Contratto */}
+      {athleteId && (
+        <ContractSignatureModal
+          isOpen={isContractModalOpen}
+          onClose={() => setIsContractModalOpen(false)}
+          athleteId={athleteId}
+          athleteName={currentAthlete ? `${currentAthlete.firstName} ${currentAthlete.lastName}` : (user?.name || 'Atleta')}
+          athleteBirthDate={currentAthlete?.dateOfBirth}
+          athleteBirthPlace={currentAthlete?.city}
+          athleteAddress={currentAthlete?.address}
+          athleteFiscalCode={currentAthlete?.fiscalCode}
+          readOnly={!needsContractSignature && Boolean(signedContract)}
+          onSignedSuccess={(newSigned) => {
+            setSignedContract(newSigned);
+            setNeedsContractSignature(false);
+          }}
+        />
+      )}
 
       {/* 3. Prossimo Appuntamento & Calendario */}
       <AthleteNextAppointmentCard targetAthleteId={athleteId} />

@@ -264,19 +264,19 @@ export const AthleteMetricsTrendChart: React.FC<AthleteMetricsTrendChartProps> =
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
-                      <div className="bg-slate-950/95 border border-slate-800 p-3 rounded-2xl shadow-2xl backdrop-blur-md space-y-1 z-50">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
-                          <Calendar className="w-3 h-3 text-[var(--color-primary)]" />
+                      <div className="bg-white/95 dark:bg-slate-950/95 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl shadow-xl dark:shadow-2xl backdrop-blur-md space-y-1 z-50">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                          <Calendar className="w-3 h-3 text-amber-500 dark:text-[var(--color-primary)]" />
                           <span>{data.fullDate}</span>
                         </div>
-                        <div className="text-base font-black font-mono text-white flex items-center gap-1">
+                        <div className="text-base font-black font-mono text-slate-900 dark:text-white flex items-center gap-1">
                           <span>{data.value}</span>
                           <span className="text-xs font-bold" style={{ color: selectedMetric.color }}>
                             {selectedMetric.unit}
                           </span>
                         </div>
                         {data.notes && (
-                          <p className="text-[11px] text-slate-300 italic pt-1 border-t border-slate-800/80 max-w-xs">
+                          <p className="text-[11px] text-slate-600 dark:text-slate-300 italic pt-1 border-t border-slate-100 dark:border-slate-800/80 max-w-xs">
                             "{data.notes}"
                           </p>
                         )}

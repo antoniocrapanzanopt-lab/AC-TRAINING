@@ -112,6 +112,9 @@ export const TasksPage: React.FC = () => {
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; taskId: string | null; taskTitle?: string }>({
     open: false, taskId: null,
   });
+  const [completeModal, setCompleteModal] = useState<{ open: boolean; taskId: string | null; taskTitle?: string }>({
+    open: false, taskId: null,
+  });
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const owner = getLocalOwnerProfile();
@@ -234,8 +237,22 @@ export const TasksPage: React.FC = () => {
     }
   };
 
-  const handleComplete = (id: string) => {
-    if (completeTask(id)) showSuccess('Completata!', 'Attività segnata come conclusa.');
+  const handleRequestComplete = (id: string, title?: string) => {
+    const task = tasks.find((t) => t.id === id);
+    setCompleteModal({
+      open: true,
+      taskId: id,
+      taskTitle: title || task?.title,
+    });
+  };
+
+  const handleConfirmComplete = () => {
+    if (completeModal.taskId) {
+      if (completeTask(completeModal.taskId)) {
+        showSuccess('Completata!', 'Attività segnata come conclusa.');
+      }
+    }
+    setCompleteModal({ open: false, taskId: null });
   };
 
   const handleReschedule = (id: string, daysToAdd: number) => {
@@ -283,7 +300,7 @@ export const TasksPage: React.FC = () => {
   const taskRowProps = (task: AthleteTask) => ({
     task,
     taskType: task.task_type ?? deriveTaskType(task.category, task.origin),
-    onComplete: handleComplete,
+    onComplete: (id: string) => handleRequestComplete(id, task.title),
     onEdit: (t: AthleteTask) => { setEditingTask(t); setIsModalOpen(true); },
     onDuplicate: handleDuplicate,
     onDelete: (id: string) => setDeleteModal({ open: true, taskId: id, taskTitle: task.title }),
@@ -412,7 +429,7 @@ export const TasksPage: React.FC = () => {
           {/* Pannello sistema — collassato di default */}
           <SystemTasksPanel
             tasks={tasks}
-            onComplete={handleComplete}
+            onComplete={(id) => handleRequestComplete(id)}
             onNavigateAthlete={handleNavigateToAthlete}
           />
         </div>
@@ -506,7 +523,7 @@ export const TasksPage: React.FC = () => {
         <TaskBoardView
           tasks={tasks}
           onMoveKanban={updateTaskKanban}
-          onComplete={handleComplete}
+          onComplete={(id) => handleRequestComplete(id)}
         />
       )}
 
@@ -653,6 +670,39 @@ export const TasksPage: React.FC = () => {
                 className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs cursor-pointer shadow-lg shadow-rose-600/30"
               >
                 Elimina
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODALE CONFERMA COMPLETAMENTO ─── */}
+      {completeModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mx-auto">
+              <Check className="w-6 h-6 stroke-[3]" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-black text-white">Conferma Completamento</h3>
+              <p className="text-xs text-slate-300">
+                Sei sicuro di voler segnare come completata {completeModal.taskTitle ? `"${completeModal.taskTitle}"` : "questa attività"}?
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setCompleteModal({ open: false, taskId: null })}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer transition-colors"
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmComplete}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer shadow-lg shadow-emerald-500/25 transition-all active:scale-95"
+              >
+                Sì, Completa
               </button>
             </div>
           </div>

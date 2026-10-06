@@ -28,6 +28,7 @@ import { useDocuments } from '../../context/DocumentsContext';
 import { useToast } from '../../context/ToastContext';
 import { DocumentModal } from '../../components/documents/DocumentModal';
 import { ConsentModal } from '../../components/documents/ConsentModal';
+import { ContractTemplatesEditor } from '../../components/contract/ContractTemplatesEditor';
 import { getDaysRemaining } from '../../lib/statusEngine';
 
 const categoryLabels: Record<DocumentCategory, string> = {
@@ -68,7 +69,7 @@ export const DocumentsPage: React.FC = () => {
   } = useDocuments();
   const { showSuccess, showError, showInfo } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'documents' | 'consents'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'consents' | 'contract_templates'>('documents');
 
   // Filtri Documenti
   const [query, setQuery] = useState('');
@@ -227,6 +228,17 @@ export const DocumentsPage: React.FC = () => {
           }`}
         >
           <ShieldCheck className="w-4 h-4" /> Consensi Privacy & Liberatorie ({metrics.totalConsents})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('contract_templates')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'contract_templates'
+              ? 'bg-amber-400 text-black shadow-md'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+          }`}
+        >
+          <FileText className="w-4 h-4" /> Modelli Contrattuali &amp; Accordi
         </button>
       </div>
 
@@ -557,6 +569,13 @@ export const DocumentsPage: React.FC = () => {
         editingConsent={editingConsent}
         mode={consentModalMode}
       />
+
+      {/* TAB 3: MODELLI CONTRATTUALI & ACCORDI */}
+      {activeTab === 'contract_templates' && (
+        <div className="p-6 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl">
+          <ContractTemplatesEditor />
+        </div>
+      )}
 
       {/* Modale Conferma Eliminazione */}
       {deleteModal.open && (

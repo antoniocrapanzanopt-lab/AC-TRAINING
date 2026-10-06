@@ -256,17 +256,51 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
             weightKg: log.weight_kg || 0,
           });
           if (log.notes) {
-            entry.notesSet.add(log.notes);
+            // Isola il feedback dell'atleta pulito se presente
+            const match = log.notes.match(/Feedback:\s*([^|]+)/i);
+            if (match && match[1]) {
+              entry.notesSet.add(match[1].trim());
+            } else if (!log.notes.includes('RPE:') && !log.notes.includes('kg')) {
+              entry.notesSet.add(log.notes.trim());
+            } else {
+              entry.notesSet.add(log.notes);
+            }
           }
         });
 
         const exercises: PastSessionExercise[] = Array.from(exMap.entries()).map(([name, { sets, notesSet }]) => ({
           name,
           sets: sets.sort((a, b) => a.setNumber - b.setNumber),
-          notes: Array.from(notesSet).join(' | '),
+          notes: Array.from(notesSet).join(' • '),
         }));
 
         setSessionLogsMap((prev) => ({ ...prev, [sessionId]: exercises }));
+      } else {
+        // Fallback da localStorage se non ancora sincronizzato sul server
+        try {
+          const localLogsMap = JSON.parse(localStorage.getItem('builder_completed_session_logs') || '{}');
+          const localLogs = localLogsMap[sessionId];
+          if (Array.isArray(localLogs) && localLogs.length > 0) {
+            const exMap = new Map<string, { sets: { setNumber: number; reps: number; weightKg: number }[]; notesSet: Set<string> }>();
+            localLogs.forEach((l: { exercise_id?: string; set_number?: number; reps_completed?: number; weight_kg?: number; notes?: string }) => {
+              const exName = 'Esercizio Registrato';
+              if (!exMap.has(exName)) exMap.set(exName, { sets: [], notesSet: new Set<string>() });
+              const entry = exMap.get(exName)!;
+              entry.sets.push({
+                setNumber: l.set_number || 1,
+                reps: l.reps_completed || 0,
+                weightKg: l.weight_kg || 0,
+              });
+              if (l.notes) entry.notesSet.add(l.notes);
+            });
+            const exercises: PastSessionExercise[] = Array.from(exMap.entries()).map(([name, { sets, notesSet }]) => ({
+              name,
+              sets: sets.sort((a, b) => a.setNumber - b.setNumber),
+              notes: Array.from(notesSet).join(' • '),
+            }));
+            setSessionLogsMap((prev) => ({ ...prev, [sessionId]: exercises }));
+          }
+        } catch (_) {}
       }
     } catch (err) {
       console.warn('Errore lazy-load logs sessione:', err);

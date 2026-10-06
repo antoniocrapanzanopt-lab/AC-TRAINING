@@ -15,7 +15,7 @@ export const QUESTIONNAIRE_STEPS: StepInfo[] = [
   { number: 4, title: 'Stile di Vita & Recupero', shortTitle: 'Recupero', icon: '🌙' },
   { number: 5, title: 'Salute & Safety Check', shortTitle: 'Salute', icon: '🩺' },
   { number: 6, title: 'Nutrizione & Abitudini', shortTitle: 'Nutrizione', icon: '🥗' },
-  { number: 7, title: 'Allegati & Invio', shortTitle: 'Allegati', icon: '📎' },
+  { number: 7, title: 'Foto Check & Allegati', shortTitle: 'Allegati', icon: '📷' },
 ];
 
 interface QuestionnaireProgressBarProps {
@@ -57,7 +57,7 @@ export const QuestionnaireProgressBar: React.FC<QuestionnaireProgressBarProps> =
       </div>
 
       {/* Pillole Step Touch per Navigazione Rapida */}
-      <div className="grid grid-cols-7 gap-1 sm:gap-2 pt-1">
+      <div className="grid grid-cols-4 sm:grid-cols-7 gap-1 sm:gap-2 pt-1">
         {QUESTIONNAIRE_STEPS.map((step) => {
           const isDone = step.number < currentStep;
           const isCurrent = step.number === currentStep;

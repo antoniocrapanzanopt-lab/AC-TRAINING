@@ -40,6 +40,7 @@ interface MetricsContextType {
   fetchAthleteProgressPhotos: (athleteId: string) => Promise<AthleteProgressPhoto[]>;
   fetchAllProgressPhotos: () => Promise<void>;
   addProgressPhoto: (photo: Omit<AthleteProgressPhoto, 'id' | 'created_at'>, file?: File) => Promise<AthleteProgressPhoto>;
+  updateProgressPhoto: (photoId: string, newImageDataUrl: string, pose: string) => Promise<void>;
   getAthleteProgressPhotos: (athleteId: string) => AthleteProgressPhoto[];
   deleteProgressPhoto: (photoId: string) => Promise<void>;
 }
@@ -88,15 +89,9 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         syncFromLocalStorage();
       }
     };
-    const handleCustomEvent = () => {
-      syncFromLocalStorage();
-    };
-
     window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('metrics_updated', handleCustomEvent);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('metrics_updated', handleCustomEvent);
     };
   }, [syncFromLocalStorage]);
 
@@ -338,12 +333,21 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (!error && Array.isArray(data)) {
         const remotePhotos = data as AthleteProgressPhoto[];
         setProgressPhotos(prev => {
-          const others = prev.filter(p => p.athlete_id !== athId);
-          const pendingLocals = prev.filter(p => p.athlete_id === athId && !remotePhotos.some(r => r.id === p.id));
+          const others = prev.filter(p => String(p.athlete_id).toLowerCase() !== String(athId).toLowerCase());
+          const pendingLocals = prev.filter(p => String(p.athlete_id).toLowerCase() === String(athId).toLowerCase() && !remotePhotos.some(r => r.id === p.id));
           const updated = [...remotePhotos, ...pendingLocals, ...others];
-          setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+          try {
+            const sanitized = updated.slice(0, 100).map(p => ({
+              ...p,
+              image_url: p.image_url?.startsWith('data:') ? '' : p.image_url,
+            }));
+            setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, sanitized);
+          } catch {
+            // Ignore quota issues
+          }
           return updated;
         });
+        return remotePhotos;
       }
     } catch (err: unknown) {
       console.warn('Fetch athlete_progress_photos fallito:', err);
@@ -361,7 +365,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     const currentPhotos = getStorageItem<AthleteProgressPhoto[]>(STORAGE_KEYS.PROGRESS_PHOTOS, []);
-    return currentPhotos.filter(p => p.athlete_id === athId);
+    return currentPhotos.filter(p => String(p.athlete_id).toLowerCase() === String(athId).toLowerCase());
   }, []);
 
   // Carica tutte le foto progressi dal DB
@@ -931,7 +935,15 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // 3. Salva in memoria e cache storage locale
       setProgressPhotos(prev => {
         const updated = [newPhoto, ...prev.filter(p => p.id !== newPhoto.id)];
-        setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+        try {
+          const sanitized = updated.slice(0, 100).map(p => ({
+            ...p,
+            image_url: p.image_url?.startsWith('data:') ? '' : p.image_url,
+          }));
+          setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, sanitized);
+        } catch {
+          // ignore quota issues
+        }
         return updated;
       });
 
@@ -953,7 +965,8 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 
   const getAthleteProgressPhotos = useCallback((athId: string): AthleteProgressPhoto[] => {
-    return progressPhotos.filter(p => p.athlete_id === athId);
+    if (!athId) return [];
+    return progressPhotos.filter(p => String(p.athlete_id).toLowerCase() === String(athId).toLowerCase());
   }, [progressPhotos]);
 
   const deleteProgressPhoto = useCallback(async (photoId: string): Promise<void> => {
@@ -961,7 +974,15 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setProgressPhotos(prev => {
       photoToDelete = prev.find(p => p.id === photoId);
       const updated = prev.filter(p => p.id !== photoId);
-      setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, updated);
+      try {
+        const sanitized = updated.slice(0, 100).map(p => ({
+          ...p,
+          image_url: p.image_url?.startsWith('data:') ? '' : p.image_url,
+        }));
+        setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, sanitized);
+      } catch {
+        // ignore quota issues
+      }
       return updated;
     });
 
@@ -995,6 +1016,59 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     notifyChange();
   }, []);
 
+  const updateProgressPhoto = useCallback(async (photoId: string, newImageDataUrl: string, _pose: string): Promise<void> => {
+    // 1. Converti dataURL in Blob per l'upload
+    let newUrl = newImageDataUrl;
+    let newStoragePath: string | null = null;
+    try {
+      const res = await fetch(newImageDataUrl);
+      const blob = await res.blob();
+      const ext = 'jpg';
+      const path = `normalized/${photoId}_${Date.now()}.${ext}`;
+      const { data: upData, error: upErr } = await supabase.storage
+        .from('progress-photos')
+        .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+      if (!upErr && upData) {
+        const { data: { publicUrl } } = supabase.storage.from('progress-photos').getPublicUrl(path);
+        newUrl = publicUrl;
+        newStoragePath = path;
+      }
+    } catch (err: unknown) {
+      console.warn('[updateProgressPhoto] Upload storage fallito, uso dataURL:', err);
+    }
+
+    // 2. Aggiorna record in DB
+    try {
+      await supabase
+        .from('athlete_progress_photos')
+        .update({ image_url: newUrl, ...(newStoragePath ? { storage_path: newStoragePath } : {}) })
+        .eq('id', photoId);
+    } catch (err: unknown) {
+      console.warn('[updateProgressPhoto] Update DB fallito:', err);
+    }
+
+    // 3. Aggiorna stato in memoria
+    setProgressPhotos(prev => {
+      const updated = prev.map(p =>
+        p.id === photoId
+          ? { ...p, image_url: newUrl, ...(newStoragePath ? { storage_path: newStoragePath } : {}) }
+          : p
+      );
+      try {
+        const sanitized = updated.slice(0, 100).map(p => ({
+          ...p,
+          image_url: p.image_url?.startsWith('data:') ? '' : p.image_url,
+        }));
+        setStorageItem(STORAGE_KEYS.PROGRESS_PHOTOS, sanitized);
+      } catch {
+        // ignore quota issues
+      }
+      return updated;
+    });
+
+    notifyChange();
+  }, []);
+
   return (
     <MetricsContext.Provider
       value={{
@@ -1018,6 +1092,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         fetchAthleteProgressPhotos,
         fetchAllProgressPhotos,
         addProgressPhoto,
+        updateProgressPhoto,
         getAthleteProgressPhotos,
         deleteProgressPhoto,
       }}

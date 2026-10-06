@@ -124,6 +124,9 @@ export interface OnboardingQuestionnaireData {
   documentAttachments: OnboardingDocAttachment[];
   finalNotesForCoach?: string;
   privacyConsent: boolean;
+
+  // Step 8: Accordo di Collaborazione & Patto di Testimonianza
+  signedContract?: import('./contract').AthleteSignedContract;
 }
 
 // ─── EXECUTIVE DOSSIER & SINTESI PER IL COACH ───────────────────────────────

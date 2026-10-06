@@ -64,7 +64,26 @@ export const MetricsTab: React.FC<MetricsTabProps> = ({
 
   const { showSuccess, showError } = useToast();
 
-  const [activeSubTab, setActiveSubTab] = useState<'misure' | 'fabbisogno' | 'massimali' | 'foto'>('misure');
+  const [activeSubTab, setActiveSubTabState] = useState<'misure' | 'fabbisogno' | 'massimali' | 'foto'>(() => {
+    try {
+      const saved = sessionStorage.getItem(`metrics_subtab_${athleteId}`);
+      if (saved && ['misure', 'fabbisogno', 'massimali', 'foto'].includes(saved)) {
+        return saved as 'misure' | 'fabbisogno' | 'massimali' | 'foto';
+      }
+    } catch {
+      // ignore
+    }
+    return 'misure';
+  });
+
+  const setActiveSubTab = (tab: 'misure' | 'fabbisogno' | 'massimali' | 'foto') => {
+    setActiveSubTabState(tab);
+    try {
+      sessionStorage.setItem(`metrics_subtab_${athleteId}`, tab);
+    } catch {
+      // ignore
+    }
+  };
   const [isScheduleOpen, setIsScheduleOpen] = useState<boolean>(false);
 
 

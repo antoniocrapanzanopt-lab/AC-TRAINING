@@ -13,6 +13,8 @@ import {
   ChevronUp,
   Flame,
   Plus,
+  ShieldCheck,
+  Eye,
 } from 'lucide-react';
 import {
   AthleteOnboardingRecord,
@@ -23,6 +25,9 @@ import {
   generateExecutiveSummary,
 } from '../../services/questionnaireService';
 import { AthleteQuestionnaireWizard } from './AthleteQuestionnaireWizard';
+import { ContractSignatureModal } from '../contract/ContractSignatureModal';
+import { getAthleteSignedContract } from '../../services/contractService';
+import { AthleteSignedContract } from '../../types/contract';
 
 interface CoachAnamnesisDossierProps {
   athleteId: string;
@@ -42,6 +47,8 @@ export const CoachAnamnesisDossier: React.FC<CoachAnamnesisDossierProps> = ({
   const [isEditingWizardOpen, setIsEditingWizardOpen] = useState<boolean>(false);
   const [showRawAnswers, setShowRawAnswers] = useState<boolean>(false);
   const [activePhotoModal, setActivePhotoModal] = useState<string | null>(null);
+  const [signedContract, setSignedContract] = useState<AthleteSignedContract | null>(null);
+  const [isContractModalOpen, setIsContractModalOpen] = useState<boolean>(false);
 
   const loadData = async () => {
     if (!athleteId) return;
@@ -49,6 +56,8 @@ export const CoachAnamnesisDossier: React.FC<CoachAnamnesisDossierProps> = ({
     try {
       const res = await getAthleteOnboardingResponse(athleteId);
       setRecord(res);
+      const sc = await getAthleteSignedContract(athleteId);
+      setSignedContract(sc);
     } catch (e) {
       console.error('Errore caricamento anamnesi atleta:', e);
     } finally {
@@ -374,11 +383,71 @@ export const CoachAnamnesisDossier: React.FC<CoachAnamnesisDossierProps> = ({
         </div>
       )}
 
+      {/* ─── STATO CONTRATTO & PATTO TESTIMONIANZA NEL DOSSIER ─── */}
+      <div className="p-5 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-2xl bg-amber-400/20 text-amber-400 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                Fascicolo Contrattuale &amp; Patto di Testimonianza
+              </h4>
+              {signedContract ? (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase">
+                  Firmato
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-black uppercase">
+                  In Attesa di Firma
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {signedContract
+                ? `Firmato digitalmente il ${new Date(signedContract.signedAt).toLocaleDateString('it-IT')}. Termini di servizio, liberatoria video e intervista con bonus.`
+                : 'L’atleta non ha ancora sottoscritto l’accordo con liberatoria e patto di testimonianza.'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsContractModalOpen(true)}
+          className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition-all shadow shrink-0 cursor-pointer ${
+            signedContract
+              ? 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700'
+              : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/20'
+          }`}
+        >
+          {signedContract ? (
+            <>
+              <Printer className="w-3.5 h-3.5" />
+              <span>Visualizza / Stampa PDF</span>
+            </>
+          ) : (
+            <>
+              <Eye className="w-3.5 h-3.5" />
+              <span>Anteprima Contratto</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      <ContractSignatureModal
+        isOpen={isContractModalOpen}
+        onClose={() => setIsContractModalOpen(false)}
+        athleteId={athleteId}
+        athleteName={athleteName}
+        readOnly={true}
+      />
+
       {/* ─── PULSANTI AZIONE RAPIDA COACH ─── */}
       <div className="p-5 rounded-3xl bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-xl flex flex-wrap items-center justify-between gap-4 print:hidden">
         <div className="space-y-0.5">
-          <h4 className="text-sm font-black text-white">Azioni Rapide di Programmazione</h4>
-          <p className="text-xs text-slate-400">
+          <h4 className="text-sm font-black text-slate-900 dark:text-white">Azioni Rapide di Programmazione</h4>
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             Utilizza direttamente i parametri dell'anamnesi per costruire la scheda e il piano nutrizionale.
           </p>
         </div>
@@ -411,18 +480,18 @@ export const CoachAnamnesisDossier: React.FC<CoachAnamnesisDossierProps> = ({
         <button
           type="button"
           onClick={() => setShowRawAnswers((prev) => !prev)}
-          className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-900/50 transition-colors cursor-pointer"
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 dark:hover:bg-slate-900/50 transition-colors cursor-pointer"
         >
-          <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
             <FileText className="w-4 h-4 text-[var(--color-primary)]" />
             Visualizza Tutte le Risposte Integrali (Audit Anamnesi)
           </span>
-          {showRawAnswers ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          {showRawAnswers ? <ChevronUp className="w-4 h-4 text-slate-500 dark:text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-500 dark:text-slate-400" />}
         </button>
 
         {showRawAnswers && (
-          <div className="p-5 border-t border-slate-800/80 bg-slate-950/60 space-y-3 font-mono text-xs text-slate-300">
-            <pre className="overflow-x-auto p-4 rounded-2xl bg-slate-950 border border-slate-800 text-[11px] leading-relaxed text-slate-200">
+          <div className="p-5 border-t border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950/60 space-y-3 font-mono text-xs text-slate-800 dark:text-slate-300">
+            <pre className="overflow-x-auto p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[11px] leading-relaxed text-slate-800 dark:text-slate-200">
               {JSON.stringify(answers, null, 2)}
             </pre>
           </div>
