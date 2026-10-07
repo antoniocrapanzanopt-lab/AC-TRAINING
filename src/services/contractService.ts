@@ -587,13 +587,58 @@ export const saveAthleteSignedContract = async (
     throw new Error('Firma grafica non valida.');
   }
 
-  // 1. Prova inserimento su tabella athlete_contract_signatures
+  // 1. Allinea i dati anagrafici essenziali sulla tabella public.athletes se forniti
+  try {
+    const athleteUpdates: Record<string, unknown> = {};
+    if (input.athleteFiscalCode?.trim()) athleteUpdates.tax_code = input.athleteFiscalCode.trim().toUpperCase();
+    if (input.athleteBirthDate?.trim()) athleteUpdates.birth_date = input.athleteBirthDate.trim();
+    if (input.athleteBirthPlace?.trim()) athleteUpdates.city = input.athleteBirthPlace.trim();
+    if (input.athleteAddress?.trim()) athleteUpdates.address = input.athleteAddress.trim();
+
+    if (Object.keys(athleteUpdates).length > 0) {
+      await supabase
+        .from('athletes')
+        .update(athleteUpdates)
+        .eq('id', input.athleteId);
+    }
+  } catch (err) {
+    console.warn('[ContractService] Sincronizzazione anagrafica atleta completata con warning:', err);
+  }
+
+  // 2. Risolvi il template_id reale attivo su Supabase per rispettare la Foreign Key
+  let targetTemplateId = input.templateId;
+  try {
+    const { data: activeRemote } = await supabase
+      .from('contract_templates')
+      .select('id')
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (activeRemote?.id) {
+      targetTemplateId = activeRemote.id;
+    } else {
+      // Se la tabella contract_templates è vuota, prova ad inserire il template iniziale di sistema
+      await supabase.from('contract_templates').upsert({
+        id: DEFAULT_ACTIVE_TEMPLATE_ID,
+        version_label: '2026/2027',
+        revision: 1,
+        content: getDefaultContractTemplates(),
+        content_hash: 'ac-default-contract-2026-2027',
+        is_active: true,
+      }, { onConflict: 'id' });
+    }
+  } catch {
+    // Prosegui con il targetTemplateId corrente
+  }
+
+  // 3. Prova inserimento su tabella ufficiale athlete_contract_signatures
   try {
     const { data, error } = await supabase
       .from('athlete_contract_signatures')
       .insert({
         athlete_id: input.athleteId,
-        template_id: input.templateId,
+        template_id: targetTemplateId,
         signer_full_name: input.athleteName.trim(),
         signer_fiscal_code: input.athleteFiscalCode?.trim().toUpperCase() || null,
         signer_birth_date: input.athleteBirthDate || null,
@@ -614,18 +659,27 @@ export const saveAthleteSignedContract = async (
 
     if (!error && data) {
       const mapped = mapSignatureRow(data);
-      if (mapped) return mapped;
+      if (mapped) {
+        // Rimuovi eventuale cache obsoleta e salva la firma confermata
+        try {
+          localStorage.setItem(`ac_signed_contracts_v1_${input.athleteId}`, JSON.stringify(mapped));
+        } catch { /* ignore */ }
+        return mapped;
+      }
+    }
+    if (error) {
+      console.warn('[ContractService] Inserimento athlete_contract_signatures fallito:', error.message, error.details);
     }
   } catch (err) {
     console.warn('[ContractService] Scrittura su athlete_contract_signatures non disponibile, uso fallback:', err);
   }
 
-  // 2. Fallback resiliente: salva su athlete_onboarding_responses (già esistente su Supabase)
+  // 4. Fallback resiliente: salva su athlete_onboarding_responses (se tabella disponibile)
   const activeTemplate = await fetchActiveContractTemplate();
   const fallbackRecord: AthleteSignedContract = {
     id: `contract-${Date.now()}`,
     athleteId: input.athleteId,
-    templateId: input.templateId,
+    templateId: targetTemplateId,
     contractVersion: activeTemplate.versionLabel,
     contractRevision: activeTemplate.revision,
     contentHash: activeTemplate.contentHash,

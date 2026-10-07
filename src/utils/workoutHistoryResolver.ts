@@ -34,7 +34,7 @@ export interface PreviousExerciseHistory {
 /**
  * Normalizza il nome dell'esercizio per massimizzare il matching storico
  */
-function normalizeName(name: string): string {
+export function normalizeName(name: string): string {
   return (name || '')
     .toLowerCase()
     .normalize('NFD')
@@ -57,7 +57,9 @@ export async function fetchAthletePreviousExerciseHistory(
       .select(`
         id,
         start_time,
+        end_time,
         created_at,
+        status,
         notes,
         exercise_logs (
           id,
@@ -73,27 +75,57 @@ export async function fetchAthletePreviousExerciseHistory(
         )
       `)
       .eq('athlete_id', athleteId)
-      .order('start_time', { ascending: false })
-      .limit(60);
+      .neq('status', 'skipped')
+      .order('start_time', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .limit(150);
 
     if (error) {
       console.warn('Impossibile recuperare lo storico precedente da Supabase:', error.message);
     }
 
-    const sessionsData = data || [];
+    const rawSessions = (data || []) as Array<{
+      id: string;
+      start_time?: string | null;
+      end_time?: string | null;
+      created_at?: string | null;
+      status?: string | null;
+      notes?: string | null;
+      exercise_logs?: Array<{
+        id?: string;
+        exercise_id?: string;
+        exercise_name?: string;
+        set_number?: number;
+        reps_completed?: number | null;
+        weight_kg?: number | null;
+        notes?: string | null;
+        workout_exercises?: { id?: string; name?: string } | null;
+      }> | null;
+    }>;
 
-    // Mappa accumulatori per ogni esercizio
+    // 1. Ordina le sessioni rigorosamente in memoria per data reale più recente (end_time || start_time || created_at)
+    // Garantisce che la sessione svolta più di recente sia SEMPRE scansionata per prima
+    const sessionsData = [...rawSessions].sort((a, b) => {
+      const timeA = new Date(a.end_time || a.start_time || a.created_at || 0).getTime();
+      const timeB = new Date(b.end_time || b.start_time || b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
+
+    // Accumulatore per esercizio (chiave primaria = nome normalizzato dell'esercizio)
+    // Questo raggruppa le prestazioni dello STESSO esercizio anche se svolto in settimane diverse con UUID differenti
     const accumulatorMap = new Map<string, {
-      name: string;
+      canonicalName: string;
+      associatedIds: Set<string>;
       latestDate: string;
       latestFormattedDate: string;
       latestSets: PreviousSetData[];
+      hasValidLoads: boolean;
       pastSessions: PastSessionHistoryEntry[];
     }>();
 
-    // Scansiona le sessioni dalla più recente alla più vecchia
+    // 2. Scansiona le sessioni dalla più recente alla più vecchia
     for (const session of sessionsData) {
-      const sessionDate = session.start_time || session.created_at;
+      const sessionDate = session.end_time || session.start_time || session.created_at;
       if (!sessionDate) continue;
 
       const dateObj = new Date(sessionDate);
@@ -103,27 +135,35 @@ export async function fetchAthletePreviousExerciseHistory(
         year: dateObj.getFullYear() !== new Date().getFullYear() ? '2-digit' : undefined,
       });
 
-      const logs = (session.exercise_logs as unknown as Array<{
-        exercise_id?: string;
-        exercise_name?: string;
-        set_number: number;
-        reps_completed: number | null;
-        weight_kg: number | null;
-        notes?: string | null;
-        workout_exercises?: { id?: string; name?: string } | null;
-      }>) || [];
+      const logs = session.exercise_logs || [];
+      if (logs.length === 0) continue;
 
-      // Raggruppa i log di QUESTA sessione per esercizio
-      const sessionExMap = new Map<string, { name: string; sets: PreviousSetData[]; notes?: string | null; feedback?: string | null }>();
+      // Raggruppa i log di QUESTA specifica sessione per esercizio
+      const sessionExMap = new Map<string, {
+        name: string;
+        exerciseIds: Set<string>;
+        sets: PreviousSetData[];
+        feedback?: string | null;
+      }>();
 
       for (const log of logs) {
-        const exId = log.exercise_id || log.workout_exercises?.id || '';
-        const exName = log.exercise_name || log.workout_exercises?.name || 'Esercizio';
-        const key = exId || normalizeName(exName);
+        const exId = (log.exercise_id || log.workout_exercises?.id || '').trim();
+        const rawName = (log.workout_exercises?.name || log.exercise_name || '').trim();
+        const exName = rawName || 'Esercizio';
+        const normKey = normalizeName(exName) || (exId ? `id_${exId}` : 'esercizio_ignoto');
 
-        if (!sessionExMap.has(key)) {
-          sessionExMap.set(key, { name: exName, sets: [], notes: session.notes, feedback: null });
+        if (!sessionExMap.has(normKey)) {
+          sessionExMap.set(normKey, {
+            name: exName,
+            exerciseIds: new Set<string>(),
+            sets: [],
+            feedback: null,
+          });
         }
+
+        const currentEntry = sessionExMap.get(normKey)!;
+        if (exId) currentEntry.exerciseIds.add(exId);
+        if (rawName && currentEntry.name === 'Esercizio') currentEntry.name = rawName;
 
         // Estrai l'eventuale feedback scritto dall'atleta per questo esercizio (es. "Feedback: ...")
         let logFeedback: string | null = null;
@@ -136,26 +176,23 @@ export async function fetchAthletePreviousExerciseHistory(
           }
         }
 
-        const currentEntry = sessionExMap.get(key)!;
         if (logFeedback && !currentEntry.feedback) {
           currentEntry.feedback = logFeedback;
         }
 
         currentEntry.sets.push({
           setNumber: log.set_number || 1,
-          reps: log.reps_completed,
-          weightKg: log.weight_kg,
-          notes: log.notes,
+          reps: log.reps_completed ?? null,
+          weightKg: log.weight_kg ?? null,
+          notes: log.notes || null,
         });
       }
 
-      // Aggiorna l'accumulatore
-      for (const [key, val] of sessionExMap.entries()) {
+      // 3. Aggiorna l'accumulatore globale con i dati di questa sessione
+      for (const [normKey, val] of sessionExMap.entries()) {
         val.sets.sort((a, b) => a.setNumber - b.setNumber);
 
-        // La nota dell'esercizio è preferibilmente il feedback specifico dell'atleta o la nota della sessione
-        const displayNote = val.feedback || val.notes || null;
-
+        const displayNote = val.feedback || session.notes || null;
         const entry: PastSessionHistoryEntry = {
           sessionId: session.id,
           sessionDate,
@@ -164,47 +201,69 @@ export async function fetchAthletePreviousExerciseHistory(
           notes: displayNote,
         };
 
-        if (!accumulatorMap.has(key)) {
-          accumulatorMap.set(key, {
-            name: val.name,
+        // Verifica se questa sessione contiene carichi o ripetizioni reali inseriti
+        const hasRealLoadsInSession = val.sets.some(
+          (s) => (s.weightKg !== null && s.weightKg !== undefined && s.weightKg > 0) ||
+                 (s.reps !== null && s.reps !== undefined && s.reps > 0)
+        );
+
+        if (!accumulatorMap.has(normKey)) {
+          accumulatorMap.set(normKey, {
+            canonicalName: val.name,
+            associatedIds: new Set<string>(val.exerciseIds),
             latestDate: sessionDate,
             latestFormattedDate: formattedDate,
             latestSets: val.sets,
+            hasValidLoads: hasRealLoadsInSession,
             pastSessions: [entry],
           });
         } else {
-          accumulatorMap.get(key)!.pastSessions.push(entry);
+          const acc = accumulatorMap.get(normKey)!;
+          // Unisci tutti gli ID esercizio associati storicamente
+          val.exerciseIds.forEach((id) => acc.associatedIds.add(id));
+          acc.pastSessions.push(entry);
+
+          // Se l'accumulatore non aveva ancora carichi validi (ad es. la sessione più recente era vuota)
+          // ma questa sessione ha carichi reali registrati, aggiorna latestSets con questi carichi reali
+          if (!acc.hasValidLoads && hasRealLoadsInSession) {
+            acc.latestDate = sessionDate;
+            acc.latestFormattedDate = formattedDate;
+            acc.latestSets = val.sets;
+            acc.hasValidLoads = true;
+          }
         }
       }
     }
 
-    // Costruzione dizionario finale con chiavi multiple per matching infallibile (UUID, nome raw, nome normalizzato)
+    // 4. Costruzione dizionario finale con chiavi multiple (UUID, nome raw, lowercase, normalizzato)
     const historyMap: Record<string, PreviousExerciseHistory> = {};
 
-    for (const [key, acc] of accumulatorMap.entries()) {
+    for (const [normKey, acc] of accumulatorMap.entries()) {
+      const primaryExerciseId = acc.associatedIds.values().next().value || normKey;
+
       const historyItem: PreviousExerciseHistory = {
-        exerciseId: key,
-        exerciseName: acc.name,
+        exerciseId: primaryExerciseId,
+        exerciseName: acc.canonicalName,
         sessionDate: acc.latestDate,
         formattedDate: acc.latestFormattedDate,
         sets: acc.latestSets,
         allPastSessions: acc.pastSessions,
       };
 
-      // 1. Per chiave primaria (UUID o nome)
-      historyMap[key] = historyItem;
-
-      // 2. Per nome lowercase
-      const lowerKey = acc.name.toLowerCase().trim();
-      if (!historyMap[lowerKey]) {
-        historyMap[lowerKey] = historyItem;
+      // A. Mappa su TUTTI gli UUID associati a questo esercizio nelle varie settimane o template
+      for (const exId of acc.associatedIds) {
+        historyMap[exId] = historyItem;
       }
 
-      // 3. Per nome normalizzato
-      const normKey = normalizeName(acc.name);
-      if (!historyMap[normKey]) {
-        historyMap[normKey] = historyItem;
-      }
+      // B. Mappa su chiave normalizzata infallibile
+      historyMap[normKey] = historyItem;
+
+      // C. Mappa su nome lowercase
+      const lowerKey = acc.canonicalName.toLowerCase().trim();
+      historyMap[lowerKey] = historyItem;
+
+      // D. Mappa su nome originale
+      historyMap[acc.canonicalName] = historyItem;
     }
 
     return historyMap;

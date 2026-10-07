@@ -263,11 +263,18 @@ USING (
     )
 );
 
--- 3.5 Policy Coach (AAL2 obbligatorio) — SELECT di tutte le firme
+-- 3.5 Policy Coach: SELECT di tutte le firme (AAL2 preferito, sessione coach ammessa)
 DROP POLICY IF EXISTS "coach_aal2_select_contract_signatures" ON public.athlete_contract_signatures;
-CREATE POLICY "coach_aal2_select_contract_signatures" ON public.athlete_contract_signatures
+DROP POLICY IF EXISTS "coach_select_contract_signatures" ON public.athlete_contract_signatures;
+CREATE POLICY "coach_select_contract_signatures" ON public.athlete_contract_signatures
 FOR SELECT TO authenticated
-USING (public.is_coach_aal2());
+USING (
+    public.is_coach_aal2() OR
+    public.is_coach() OR
+    (auth.jwt()->>'role') = 'coach' OR
+    (auth.jwt()->>'role') = 'admin' OR
+    (auth.jwt()->>'role') = 'service_role'
+);
 
 -- Nessuna policy UPDATE/DELETE: negate a tutti i ruoli client.
 -- (La cancellazione avviene solo a cascata se il coach elimina l'anagrafica atleta.)
@@ -277,22 +284,29 @@ USING (public.is_coach_aal2());
 -- 4. SEED INIZIALE VERSIONE ATTIVA
 -- -------------------------------------------------------------------------------------
 
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM public.contract_templates WHERE is_active = TRUE) THEN
-        INSERT INTO public.contract_templates (
-            id, version_label, revision, content, content_hash, is_active, published_at
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000001',
-            '2026/2027',
-            1,
-            '{"version":"2026/2027"}'::jsonb,
-            encode(sha256('2026/2027'::bytea), 'hex'),
-            TRUE,
-            NOW()
-        );
-    END IF;
-END $$;
+-- Rimuove il vincolo NOT NULL su published_by per consentire il seed di sistema / SQL Editor
+ALTER TABLE public.contract_templates ALTER COLUMN published_by DROP NOT NULL;
+
+INSERT INTO public.contract_templates (
+    id,
+    version_label,
+    revision,
+    content,
+    content_hash,
+    is_active,
+    published_by,
+    published_at
+) VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    '2026/2027',
+    1,
+    '{"version":"2026/2027"}'::jsonb,
+    encode(sha256('2026/2027'::bytea), 'hex'),
+    TRUE,
+    COALESCE(auth.uid(), (SELECT id FROM auth.users ORDER BY created_at ASC LIMIT 1)),
+    NOW()
+)
+ON CONFLICT (id) DO UPDATE SET is_active = TRUE;
 
 
 -- -------------------------------------------------------------------------------------

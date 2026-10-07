@@ -51,6 +51,27 @@ const EMPTY_CONSENTS: ContractConsents = {
   testimonialPact: false,
 };
 
+// ─── Utility sicura formattazione date ───────────────────────────────────────────────
+const formatDateSafely = (dateStr?: string | null): string => {
+  if (!dateStr || typeof dateStr !== 'string' || !dateStr.trim()) return '—';
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+      }
+    }
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('it-IT');
+  } catch {
+    return dateStr || '—';
+  }
+};
+
 // ─── Sotto-componenti di presentazione ────────────────────────────────────────────────
 
 interface AccordionProps {
@@ -158,11 +179,12 @@ export const ContractDossierView: React.FC<ContractDossierViewProps> = ({
 
   const [clientData, setClientData] = useState({
     name: athleteName || 'Atleta',
-    birthDate: athleteBirthDate,
-    birthPlace: athleteBirthPlace,
-    address: athleteAddress,
-    fiscalCode: athleteFiscalCode,
+    birthDate: athleteBirthDate || '',
+    birthPlace: athleteBirthPlace || '',
+    address: athleteAddress || '',
+    fiscalCode: athleteFiscalCode || '',
   });
+  const [isDataDirty, setIsDataDirty] = useState(false);
 
   const [consents, setConsents] = useState<ContractConsents>(EMPTY_CONSENTS);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
@@ -200,15 +222,18 @@ export const ContractDossierView: React.FC<ContractDossierViewProps> = ({
     };
   }, [athleteId, load]);
 
+  // Sincronizza i dati dai props solo se l'utente non ha ancora iniziato a digitarli autonomamente
   useEffect(() => {
-    setClientData({
-      name: athleteName || 'Atleta',
-      birthDate: athleteBirthDate,
-      birthPlace: athleteBirthPlace,
-      address: athleteAddress,
-      fiscalCode: athleteFiscalCode,
-    });
-  }, [athleteName, athleteBirthDate, athleteBirthPlace, athleteAddress, athleteFiscalCode]);
+    if (!isDataDirty) {
+      setClientData({
+        name: athleteName || 'Atleta',
+        birthDate: athleteBirthDate || '',
+        birthPlace: athleteBirthPlace || '',
+        address: athleteAddress || '',
+        fiscalCode: athleteFiscalCode || '',
+      });
+    }
+  }, [athleteName, athleteBirthDate, athleteBirthPlace, athleteAddress, athleteFiscalCode, isDataDirty]);
 
   // Modalità di visualizzazione
   const isSigningMode = !readOnly && needsSignature && Boolean(activeTemplate);
@@ -225,14 +250,41 @@ export const ContractDossierView: React.FC<ContractDossierViewProps> = ({
     isSigningMode &&
     areRequiredConsentsGiven(consents) &&
     Boolean(signatureDataUrl) &&
-    Boolean(clientData.name.trim());
+    Boolean(clientData.name.trim()) &&
+    Boolean(clientData.fiscalCode.trim()) &&
+    Boolean(clientData.birthDate.trim()) &&
+    Boolean(clientData.address.trim());
 
   const toggleSection = (key: SectionKey) =>
     setExpandedSection((prev) => (prev === key ? 'all' : key));
 
   const handleSignConfirm = async () => {
-    if (!canSign || !signatureDataUrl || !activeTemplate) {
-      showError('Firma incompleta', 'Spunta tutte le dichiarazioni obbligatorie e apponi la firma.');
+    if (!clientData.name.trim()) {
+      showError('Nome mancante', 'Verifica il nominativo dell\'atleta firmatario.');
+      return;
+    }
+    if (!clientData.fiscalCode.trim()) {
+      showError('Codice Fiscale obbligatorio', 'Inserisci il Codice Fiscale dell\'atleta firmatario.');
+      return;
+    }
+    if (!clientData.birthDate.trim()) {
+      showError('Data di nascita obbligatoria', 'Inserisci la data di nascita dell\'atleta.');
+      return;
+    }
+    if (!clientData.address.trim()) {
+      showError('Indirizzo obbligatorio', 'Inserisci l\'indirizzo di residenza per il contratto.');
+      return;
+    }
+    if (!areRequiredConsentsGiven(consents)) {
+      showError('Consensi obbligatori mancanti', 'Spunta tutte le caselle contrassegnate come obbligatorie.');
+      return;
+    }
+    if (!signatureDataUrl) {
+      showError('Firma mancante', 'Apponi la tua firma grafica nell\'apposito riquadro prima di confermare.');
+      return;
+    }
+    if (!activeTemplate) {
+      showError('Errore modello', 'Nessun modello contrattuale disponibile per la sottoscrizione.');
       return;
     }
 
@@ -252,7 +304,7 @@ export const ContractDossierView: React.FC<ContractDossierViewProps> = ({
       setSignedRecord(saved);
       setNeedsSignature(false);
       setConsents(saved.consents);
-      showSuccess('Documento firmato', 'Termini, consensi e liberatoria sono stati registrati.');
+      showSuccess('Documento firmato', 'Termini, consensi e liberatoria sono stati registrati con successo.');
       onSignedSuccess?.(saved);
     } catch (err) {
       showError('Firma non registrata', err instanceof Error ? err.message : 'Riprova tra qualche istante.');
@@ -383,63 +435,114 @@ export const ContractDossierView: React.FC<ContractDossierViewProps> = ({
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/80 space-y-1.5 shadow-2xs">
-            <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">Cliente / Atleta</span>
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/80 space-y-2.5 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">Cliente / Atleta</span>
+              {isSigningMode && (
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                  📝 Dati Anagrafici Firmatario
+                </span>
+              )}
+            </div>
+
             <p className="font-bold text-slate-900 dark:text-white text-sm">
               {showSignedVersion && signedRecord ? signedRecord.athleteName : clientData.name}
             </p>
-            <p className="text-slate-600 dark:text-slate-400">
-              {(showSignedVersion && signedRecord ? signedRecord.athleteAddress : clientData.address) || 'Indirizzo non indicato'}
-            </p>
-            <div className="pt-1 text-[11px] space-y-0.5 text-slate-500 dark:text-slate-400 font-mono">
-              <p>
-                Nato/a il:{' '}
-                <span className="text-slate-900 dark:text-slate-200 font-semibold">
-                  {(() => {
-                    const bd = showSignedVersion && signedRecord ? signedRecord.athleteBirthDate : clientData.birthDate;
-                    return bd ? new Date(bd).toLocaleDateString('it-IT') : '—';
-                  })()}
-                </span>
-                {(() => {
-                  const bp = showSignedVersion && signedRecord ? signedRecord.athleteBirthPlace : clientData.birthPlace;
-                  return bp ? ` a ${bp}` : '';
-                })()}
-              </p>
-              <p>
-                C.F.:{' '}
-                <span className="text-slate-900 dark:text-slate-200 font-semibold">
-                  {(showSignedVersion && signedRecord ? signedRecord.athleteFiscalCode : clientData.fiscalCode) || '—'}
-                </span>
-              </p>
-            </div>
 
-            {isSigningMode && (!clientData.fiscalCode || !clientData.address || !clientData.birthPlace) && (
-              <div className="pt-2">
-                <p className="text-[10px] text-amber-700 dark:text-amber-400/90 font-medium">
-                  💡 Completa i dati anagrafici per la corretta intestazione del documento:
+            {isSigningMode ? (
+              <div className="pt-1 space-y-2.5">
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
+                  Completa o verifica i dati anagrafici necessari per la corretta intestazione del contratto:
                 </p>
-                <div className="grid grid-cols-2 gap-2 mt-1.5">
-                  <input
-                    type="text"
-                    placeholder="Codice Fiscale"
-                    value={clientData.fiscalCode}
-                    onChange={(e) => setClientData((prev) => ({ ...prev, fiscalCode: e.target.value.toUpperCase() }))}
-                    className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-400 uppercase"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Luogo di nascita"
-                    value={clientData.birthPlace}
-                    onChange={(e) => setClientData((prev) => ({ ...prev, birthPlace: e.target.value }))}
-                    className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-400"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Indirizzo e Città"
-                    value={clientData.address}
-                    onChange={(e) => setClientData((prev) => ({ ...prev, address: e.target.value }))}
-                    className="col-span-2 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-400"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      Codice Fiscale <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Codice Fiscale (16 caratteri)"
+                      maxLength={16}
+                      value={clientData.fiscalCode}
+                      onChange={(e) => {
+                        setIsDataDirty(true);
+                        setClientData((prev) => ({ ...prev, fiscalCode: e.target.value.toUpperCase().trim() }));
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-400 uppercase"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      Data di Nascita <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={clientData.birthDate}
+                      max={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        setIsDataDirty(true);
+                        setClientData((prev) => ({ ...prev, birthDate: e.target.value }));
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      Luogo di Nascita (Città)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="es. Milano"
+                      value={clientData.birthPlace}
+                      onChange={(e) => {
+                        setIsDataDirty(true);
+                        setClientData((prev) => ({ ...prev, birthPlace: e.target.value }));
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      Indirizzo di Residenza <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="es. Via Roma 10, Milano"
+                      value={clientData.address}
+                      onChange={(e) => {
+                        setIsDataDirty(true);
+                        setClientData((prev) => ({ ...prev, address: e.target.value }));
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-slate-600 dark:text-slate-400">
+                  {(showSignedVersion && signedRecord ? signedRecord.athleteAddress : clientData.address) || 'Indirizzo non indicato'}
+                </p>
+                <div className="pt-1 text-[11px] space-y-0.5 text-slate-500 dark:text-slate-400 font-mono">
+                  <p>
+                    Nato/a il:{' '}
+                    <span className="text-slate-900 dark:text-slate-200 font-semibold">
+                      {formatDateSafely(showSignedVersion && signedRecord ? signedRecord.athleteBirthDate : clientData.birthDate)}
+                    </span>
+                    {(() => {
+                      const bp = showSignedVersion && signedRecord ? signedRecord.athleteBirthPlace : clientData.birthPlace;
+                      return bp ? ` a ${bp}` : '';
+                    })()}
+                  </p>
+                  <p>
+                    C.F.:{' '}
+                    <span className="text-slate-900 dark:text-slate-200 font-semibold">
+                      {(showSignedVersion && signedRecord ? signedRecord.athleteFiscalCode : clientData.fiscalCode) || '—'}
+                    </span>
+                  </p>
                 </div>
               </div>
             )}

@@ -31,7 +31,8 @@ import { WorkoutCelebrationModal } from '../../components/workouts/WorkoutCelebr
 import { SkipWorkoutModal } from '../../components/workouts/SkipWorkoutModal';
 import {
   fetchAthletePreviousExerciseHistory,
-  PreviousExerciseHistory
+  PreviousExerciseHistory,
+  normalizeName
 } from '../../utils/workoutHistoryResolver';
 import {
   parseWeightToNumber,
@@ -158,6 +159,18 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
   // STORICO SESSIONI PRECEDENTI (GHOST LOG)
   const [previousHistoryMap, setPreviousHistoryMap] = useState<Record<string, PreviousExerciseHistory>>({});
+
+  // Risolutore unificato e infallibile per lo storico esercizi (combina ID e nome normalizzato)
+  const resolvePreviousHistory = useCallback((exId?: string, exName?: string): PreviousExerciseHistory | undefined => {
+    if (!exId && !exName) return undefined;
+    if (exId && previousHistoryMap[exId]) return previousHistoryMap[exId];
+    const norm = normalizeName(exName || '');
+    if (norm && previousHistoryMap[norm]) return previousHistoryMap[norm];
+    const lower = (exName || '').toLowerCase().trim();
+    if (lower && previousHistoryMap[lower]) return previousHistoryMap[lower];
+    if (exName && previousHistoryMap[exName]) return previousHistoryMap[exName];
+    return undefined;
+  }, [previousHistoryMap]);
 
   // Rileva se l'atleta ha inserito almeno un dato o spuntato una serie
   const hasAnyProgress = useMemo(() => {
@@ -1215,7 +1228,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                   isActive={isActive}
                   isCompleted={isCompleted}
                   completedSetsMap={completedSets[ex.id] || []}
-                  previousHistory={previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()]}
+                  previousHistory={resolvePreviousHistory(ex.id, ex.name)}
                   onOpenExecutionModal={() => setActiveExerciseModalIndex(idx)}
                   circuitMode={isCircuitMode}
                   circuitRound={currentRound}
@@ -1298,7 +1311,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             logs={logs[currentEx.id] || []}
             completedSetsMap={completedSets[currentEx.id] || []}
             noteFeedback={exerciseNotes[currentEx.id] || ''}
-            previousHistory={previousHistoryMap[currentEx.id] || previousHistoryMap[currentEx.name.toLowerCase().trim()]}
+            previousHistory={resolvePreviousHistory(currentEx.id, currentEx.name)}
             restTimer={restTimer}
             totalRestSeconds={totalRestSeconds}
             onSkipRest={handleSkipRest}
@@ -1355,7 +1368,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               w = parseWeightToNumber(ex.target_weight).weightKg;
             }
             if (isDone && w === 0) {
-              const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
+              const hist = resolvePreviousHistory(ex.id, ex.name);
               const histSet = hist?.sets?.[i] || hist?.sets?.[hist.sets.length - 1];
               if (histSet?.weightKg) {
                 w = parseWeightToNumber(histSet.weightKg).weightKg;
@@ -1365,7 +1378,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               r = parseRepsToNumber(ex.reps_target, 10);
             }
             if (isDone && r === 0) {
-              const hist = previousHistoryMap[ex.id] || previousHistoryMap[ex.name.toLowerCase().trim()];
+              const hist = resolvePreviousHistory(ex.id, ex.name);
               const histSet = hist?.sets?.[i] || hist?.sets?.[hist.sets.length - 1];
               r = parseRepsToNumber(histSet?.reps, 10);
             }
