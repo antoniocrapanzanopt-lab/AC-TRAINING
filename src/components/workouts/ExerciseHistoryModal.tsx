@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, History, Dumbbell, Award, Calendar, Zap } from 'lucide-react';
-import { PreviousExerciseHistory, PastSessionHistoryEntry } from '../../utils/workoutHistoryResolver';
+import { PreviousExerciseHistory, PastSessionHistoryEntry, isRampingOrMavProtocol } from '../../utils/workoutHistoryResolver';
 
 interface ExerciseHistoryModalProps {
   isOpen: boolean;
@@ -105,10 +105,24 @@ export const ExerciseHistoryModal: React.FC<ExerciseHistoryModalProps> = ({
                     : 'bg-[var(--color-panel)] border-[var(--color-border)]'
                 }`}
               >
-                <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-[var(--color-border)]">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-[var(--color-border)] flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <Calendar className="w-4 h-4 text-[var(--color-text-muted)]" />
                     <span className="text-xs font-black text-[var(--color-text)]">{sess.formattedDate}</span>
+                    {sess.dayName && (
+                      <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 text-[9px] font-black border border-slate-700">
+                        {sess.dayName}
+                      </span>
+                    )}
+                    {isRampingOrMavProtocol(sess.repsTarget, sess.exerciseNotes) ? (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[9px] font-black border border-amber-500/30">
+                        MAV / Ramping
+                      </span>
+                    ) : sess.repsTarget ? (
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 text-[9px] font-black border border-purple-500/30">
+                        {sess.setsPrescribed || sess.sets.length}×{sess.repsTarget}
+                      </span>
+                    ) : null}
                     {idx === 0 && (
                       <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-700 dark:text-sky-300 text-[9px] font-black border border-sky-500/30">
                         Ultima Volta

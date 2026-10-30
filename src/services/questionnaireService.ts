@@ -391,25 +391,40 @@ export const saveOnboardingDraft = async (
     console.warn('[QuestionnaireService] Salvataggio locale bozza fallito:', err);
   }
 
-  // 2. Sync asincrono con Supabase
-  try {
-    const summary = generateExecutiveSummary(answers);
-    const { error } = await supabase
-      .from('athlete_onboarding_responses')
-      .upsert(
-        {
-          athlete_id: athleteId,
-          version: 'v2.0_standard',
-          status: 'draft',
-          current_step: currentStep,
-          answers: answers,
-          summary: summary,
-          photo_urls: answers.progressPhotos || [],
-          document_urls: answers.documentAttachments || [],
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'athlete_id,version' }
-      );
+    // 2. Sync asincrono con Supabase (preservando eventuale signedContract già presente)
+    try {
+      const summary = generateExecutiveSummary(answers);
+      let existingSignedContract: unknown = (answers as Record<string, unknown>).signedContract;
+      if (!existingSignedContract) {
+        try {
+          const rawLocalContract = localStorage.getItem(`ac_signed_contracts_v1_${athleteId}`);
+          if (rawLocalContract) {
+            existingSignedContract = JSON.parse(rawLocalContract);
+          }
+        } catch {
+          // ignore
+        }
+      }
+      const answersToSave = existingSignedContract
+        ? { ...answers, signedContract: existingSignedContract }
+        : answers;
+
+      const { error } = await supabase
+        .from('athlete_onboarding_responses')
+        .upsert(
+          {
+            athlete_id: athleteId,
+            version: 'v2.0_standard',
+            status: 'draft',
+            current_step: currentStep,
+            answers: answersToSave,
+            summary: summary,
+            photo_urls: answers.progressPhotos || [],
+            document_urls: answers.documentAttachments || [],
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'athlete_id,version' }
+        );
 
     if (error) {
       console.warn('[QuestionnaireService] Upsert draft su Supabase non riuscito (modalità offline attiva):', error.message);
@@ -433,6 +448,40 @@ export const completeOnboardingQuestionnaire = async (
     const summary = generateExecutiveSummary(answers);
     const nowIso = new Date().toISOString();
 
+    // Preserva eventuale signedContract già salvato in answers su Supabase o in locale
+    let existingSignedContract: unknown = (answers as unknown as Record<string, unknown>).signedContract;
+    if (!existingSignedContract) {
+      try {
+        const { data: existingRow } = await supabase
+          .from('athlete_onboarding_responses')
+          .select('answers')
+          .eq('athlete_id', athleteId)
+          .maybeSingle();
+        if (existingRow?.answers && typeof existingRow.answers === 'object') {
+          const prevAns = existingRow.answers as Record<string, unknown>;
+          if (prevAns.signedContract) {
+            existingSignedContract = prevAns.signedContract;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (!existingSignedContract) {
+      try {
+        const rawLocalContract = localStorage.getItem(`ac_signed_contracts_v1_${athleteId}`);
+        if (rawLocalContract) {
+          existingSignedContract = JSON.parse(rawLocalContract);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const mergedAnswers: OnboardingQuestionnaireData = existingSignedContract
+      ? ({ ...answers, signedContract: existingSignedContract } as OnboardingQuestionnaireData)
+      : answers;
+
     // 1. Salva / Aggiorna la tabella athlete_onboarding_responses su Supabase
     const { data: savedRecord, error: respError } = await supabase
       .from('athlete_onboarding_responses')
@@ -442,7 +491,7 @@ export const completeOnboardingQuestionnaire = async (
           version: 'v2.0_standard',
           status: 'completed',
           current_step: 7,
-          answers: answers,
+          answers: mergedAnswers,
           summary: summary,
           photo_urls: answers.progressPhotos || [],
           document_urls: answers.documentAttachments || [],

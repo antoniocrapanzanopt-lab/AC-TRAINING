@@ -7,7 +7,7 @@ import {
   Dumbbell,
   User,
   TrendingUp,
-  MessageCircle,
+  MessagesSquare,
   Settings,
 } from 'lucide-react';
 import { AthleteDashboard } from './AthleteDashboard';
@@ -19,8 +19,12 @@ import { AthleteSettingsView } from './AthleteSettingsView';
 import { WorkoutTemplate, WorkoutExercise } from '../../types/workout';
 import { getActiveWorkoutDraft } from '../../lib/offline/offlineWorkoutStorage';
 import { useMetrics } from '../../context/MetricsContext';
+import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 
 export const AthleteLayout: React.FC = () => {
+  // Mantiene sempre attivo lo schermo dello smartphone nel Portale Atleta
+  useScreenWakeLock(true);
+
   const { user, logout } = useAuth();
   const { athletes } = useAthletes();
   const { messages } = useMessages();
@@ -111,8 +115,8 @@ export const AthleteLayout: React.FC = () => {
     },
     {
       id: 'messages',
-      label: 'Messaggi',
-      icon: MessageCircle,
+      label: 'Community',
+      icon: MessagesSquare,
       badgeCount: unreadMessagesCount,
     },
     {
@@ -176,7 +180,9 @@ export const AthleteLayout: React.FC = () => {
           />
         )}
 
-        {activeTab === 'progress' && <AthleteProgressView targetAthleteId={athleteId} />}
+        {activeTab === 'progress' && (
+          <AthleteProgressView targetAthleteId={currentAthlete?.id || user?.athleteId} />
+        )}
 
         {activeTab === 'messages' && <AthleteChat />}
 

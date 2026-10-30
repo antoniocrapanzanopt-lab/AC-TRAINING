@@ -96,10 +96,6 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
       showError('Campo Obbligatorio', 'Il peso corporeo è richiesto dal tuo coach.');
       return;
     }
-    if (req?.waist && !waist.trim()) {
-      showError('Campo Obbligatorio', 'La circonferenza vita è richiesta dal tuo coach.');
-      return;
-    }
 
     if (photoReq === 'mandatory' && photos.length === 0) {
       showError('Foto Obbligatorie', 'Il tuo coach richiede almeno una foto progressi per completare il check.');
@@ -156,16 +152,16 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
   };
 
   const circumferenceFields = [
-    { key: 'waist', label: 'Vita', value: waist, setter: setWaist, required: Boolean(req?.waist), placeholder: 'Es. 78' },
-    { key: 'chest', label: 'Torace', value: chest, setter: setChest, required: Boolean(req?.chest), placeholder: 'Es. 102' },
-    { key: 'hips', label: 'Fianchi', value: hips, setter: setHips, required: Boolean(req?.hips), placeholder: 'Es. 96' },
-    { key: 'bicepRight', label: 'Braccio Dx', value: bicepRight, setter: setBicepRight, required: Boolean(req?.biceps), placeholder: 'Es. 37' },
-    { key: 'bicepLeft', label: 'Braccio Sx', value: bicepLeft, setter: setBicepLeft, required: Boolean(req?.biceps), placeholder: 'Es. 37' },
-    { key: 'thighRight', label: 'Coscia Dx', value: thighRight, setter: setThighRight, required: Boolean(req?.thighs), placeholder: 'Es. 58' },
-    { key: 'thighLeft', label: 'Coscia Sx', value: thighLeft, setter: setThighLeft, required: Boolean(req?.thighs), placeholder: 'Es. 58' },
-    { key: 'shoulders', label: 'Spalle', value: shoulders, setter: setShoulders, required: Boolean(req?.shoulders), placeholder: 'Es. 118' },
-    { key: 'neck', label: 'Collo', value: neck, setter: setNeck, required: Boolean(req?.neck), placeholder: 'Es. 39' },
-    { key: 'calfRight', label: 'Polpaccio', value: calfRight, setter: setCalfRight, required: Boolean(req?.calves), placeholder: 'Es. 38' },
+    { key: 'waist', label: 'Vita', value: waist, setter: setWaist, required: false, recommended: true, placeholder: 'Es. 78' },
+    { key: 'chest', label: 'Torace', value: chest, setter: setChest, required: Boolean(req?.chest), recommended: false, placeholder: 'Es. 102' },
+    { key: 'hips', label: 'Fianchi', value: hips, setter: setHips, required: Boolean(req?.hips), recommended: false, placeholder: 'Es. 96' },
+    { key: 'bicepRight', label: 'Braccio Dx', value: bicepRight, setter: setBicepRight, required: Boolean(req?.biceps), recommended: false, placeholder: 'Es. 37' },
+    { key: 'bicepLeft', label: 'Braccio Sx', value: bicepLeft, setter: setBicepLeft, required: Boolean(req?.biceps), recommended: false, placeholder: 'Es. 37' },
+    { key: 'thighRight', label: 'Coscia Dx', value: thighRight, setter: setThighRight, required: Boolean(req?.thighs), recommended: false, placeholder: 'Es. 58' },
+    { key: 'thighLeft', label: 'Coscia Sx', value: thighLeft, setter: setThighLeft, required: Boolean(req?.thighs), recommended: false, placeholder: 'Es. 58' },
+    { key: 'shoulders', label: 'Spalle', value: shoulders, setter: setShoulders, required: Boolean(req?.shoulders), recommended: false, placeholder: 'Es. 118' },
+    { key: 'neck', label: 'Collo', value: neck, setter: setNeck, required: Boolean(req?.neck), recommended: false, placeholder: 'Es. 39' },
+    { key: 'calfRight', label: 'Polpaccio', value: calfRight, setter: setCalfRight, required: Boolean(req?.calves), recommended: false, placeholder: 'Es. 38' },
   ];
 
   return (
@@ -334,6 +330,11 @@ export const GuidedMetricsCheckInModal: React.FC<GuidedMetricsCheckInModalProps>
                       {field.label}
                       {field.required && <span className="text-sky-400 font-black ml-1">*</span>}
                     </span>
+                    {field.recommended && (
+                      <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/30">
+                        Consigliato
+                      </span>
+                    )}
                   </div>
                   <div className="relative flex items-center">
                     <input

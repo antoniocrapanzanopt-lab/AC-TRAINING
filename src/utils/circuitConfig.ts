@@ -62,14 +62,7 @@ function isDayMatch(d1: string, d2: string): boolean {
   const n1 = normalizeDay(d1);
   const n2 = normalizeDay(d2);
   if (!n1 || !n2) return false;
-  if (n1 === n2) return true;
-  if (n1.startsWith(n2) || n2.startsWith(n1)) return true;
-
-  const id1 = extractDayIdentifier(d1);
-  const id2 = extractDayIdentifier(d2);
-  if (id1 && id2 && id1 === id2) return true;
-
-  return false;
+  return n1 === n2;
 }
 
 function storageKey(workoutId: string, dayName: string): string {
@@ -80,14 +73,12 @@ function storageKey(workoutId: string, dayName: string): string {
  * Risolve la configurazione circuito per il giorno dato.
  * Priorità:
  * 1. Tag [CIRCUIT:X:Y] presente nelle note degli esercizi del giorno (dal DB Supabase)
- * 2. Chiave esatta in localStorage (circuit_config_${workoutId}_${dayName})
- * 3. Fuzzy matching delle chiavi localStorage per lo stesso workout (es. "Giorno 1 - Explosive" vs "Giorno 1")
- * 4. Ultima configurazione recente memorizzata
+ * 2. Chiave esatta in localStorage per lo specifico workoutId e dayName
  */
 export function getCircuitConfig(
   workoutId?: string,
   dayName?: string,
-  exercises?: WorkoutExercise[]
+  exercises?: Partial<WorkoutExercise>[]
 ): CircuitDayConfig {
   const day = dayName || 'Giorno 1';
 
@@ -108,9 +99,12 @@ export function getCircuitConfig(
         }
       }
     }
+    // Se gli esercizi del giorno sono caricati e nessuno ha il tag [CIRCUIT:...],
+    // il giorno NON è un circuito HIIT.
+    return { ...DEFAULT_CIRCUIT_CONFIG };
   }
 
-  // 2. Chiave esatta in localStorage
+  // 2. Chiave esatta in localStorage (solo per lo stesso workoutId)
   if (workoutId) {
     try {
       const exact = localStorage.getItem(storageKey(workoutId, day));
@@ -121,75 +115,27 @@ export function getCircuitConfig(
     } catch {
       // ignore
     }
-
-    // 3. Fuzzy search tra tutte le chiavi relative a questo workout
-    try {
-      const prefix = `circuit_config_${workoutId}_`;
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(prefix)) {
-          const keyDay = key.slice(prefix.length);
-          if (isDayMatch(keyDay, day)) {
-            const raw = localStorage.getItem(key);
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              return { ...DEFAULT_CIRCUIT_CONFIG, ...parsed };
-            }
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  // 4. Fallback su qualsiasi chiave recente per lo stesso giorno (anche se workoutId è variato o provvisorio)
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('circuit_config_')) {
-        const parts = key.split('_');
-        const keyDay = parts.slice(3).join('_') || parts[parts.length - 1];
-        if (isDayMatch(keyDay, day)) {
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed.isCircuit === 'boolean') {
-              return { ...DEFAULT_CIRCUIT_CONFIG, ...parsed };
-            }
-          }
-        }
-      }
-    }
-  } catch {
-    // ignore
   }
 
   return { ...DEFAULT_CIRCUIT_CONFIG };
 }
 
 /**
- * Salva la configurazione circuito sia con chiave esatta che normalizzata,
- * e notifica tutti i componenti/tab attivi in tempo reale.
+ * Salva la configurazione circuito per lo specifico workout e giorno,
+ * e notifica i componenti attivi in tempo reale.
  */
 export function saveCircuitConfig(workoutId: string | undefined, dayName: string, config: CircuitDayConfig): void {
   try {
     const wId = workoutId || 'global';
     const key = storageKey(wId, dayName);
-    const data = JSON.stringify(config);
-    localStorage.setItem(key, data);
-
-    // Salva anche con identificatore normalizzato del giorno (es. "1" o "giorno 1") per resilienza
-    const dayId = extractDayIdentifier(dayName);
-    if (dayId) {
-      localStorage.setItem(`circuit_config_${wId}_giorno_${dayId}`, data);
-      localStorage.setItem(`circuit_config_latest_giorno_${dayId}`, data);
+    if (!config.isCircuit) {
+      clearCircuitConfig(workoutId, dayName);
+      localStorage.setItem(key, JSON.stringify(config));
+    } else {
+      localStorage.setItem(key, JSON.stringify(config));
     }
-    localStorage.setItem('circuit_config_latest', data);
-    // Notifica cross-tab
     localStorage.setItem('circuit_config_ping', Date.now().toString());
 
-    // Notifica in-tab / in-window
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('circuit-config-changed', {
         detail: { workoutId: wId, dayName, config }
@@ -207,7 +153,9 @@ export function clearCircuitConfig(workoutId: string | undefined, dayName: strin
     const dayId = extractDayIdentifier(dayName);
     if (dayId) {
       localStorage.removeItem(`circuit_config_${wId}_giorno_${dayId}`);
+      localStorage.removeItem(`circuit_config_latest_giorno_${dayId}`);
     }
+    localStorage.removeItem('circuit_config_latest');
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('circuit-config-changed', {
         detail: { workoutId: wId, dayName, config: DEFAULT_CIRCUIT_CONFIG }

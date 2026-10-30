@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { getAdherenceRank } from '../utils/adherenceRanks';
+import { isCompletedSession } from './workoutProgressService';
 
 export interface AdherencePillar {
   name: string;
@@ -283,7 +284,7 @@ export async function fetchAthleteAdherenceData(athleteId: string, forceRefresh 
       const [sessionsRes, assignedRes, athRecordRes] = await Promise.all([
         supabase
           .from('workout_sessions')
-          .select('id, athlete_id, status, skip_reason, start_time, rpe, notes')
+          .select('id, athlete_id, status, skip_reason, start_time, end_time, rpe, notes')
           .eq('athlete_id', athleteId)
           .gte('start_time', dateLimit),
         supabase
@@ -342,13 +343,27 @@ export async function fetchAthleteAdherenceData(athleteId: string, forceRefresh 
       if (sessions.length === 0 && matchingIds.size > 1) {
         const { data: fallbackSessions } = await supabase
           .from('workout_sessions')
-          .select('id, athlete_id, status, skip_reason, start_time, rpe, notes')
+          .select('id, athlete_id, status, skip_reason, start_time, end_time, rpe, notes')
           .in('athlete_id', idList)
           .gte('start_time', dateLimit);
         if (fallbackSessions) sessions = fallbackSessions;
       }
 
-      const completedSessions = sessions.filter((s) => s.status === 'completed').length;
+      // Se non ci sono sessioni negli ultimi 28 gg, recupera le ultime sessioni storiche dell'atleta
+      // per non mostrare 0% a chi ha uno storico attivo (es. al cambio scheda o rientro)
+      if (sessions.length === 0) {
+        const { data: recentHistoricalSessions } = await supabase
+          .from('workout_sessions')
+          .select('id, athlete_id, status, skip_reason, start_time, end_time, rpe, notes')
+          .in('athlete_id', idList)
+          .order('start_time', { ascending: false })
+          .limit(12);
+        if (recentHistoricalSessions && recentHistoricalSessions.length > 0) {
+          sessions = recentHistoricalSessions;
+        }
+      }
+
+      const completedSessions = sessions.filter((s) => isCompletedSession(s)).length;
       const skippedWithReasonSessions = sessions.filter((s) => s.status === 'skipped' && Boolean(s.skip_reason)).length;
 
       // 4. Determina giorni a settimana dal join o cache
@@ -483,7 +498,7 @@ export async function fetchBatchAthletesAdherence(athleteIds: string[]): Promise
     const [sessionsRes, assignedRes, onboardingRes, athletesRes, notesRes] = await Promise.all([
       supabase
         .from('workout_sessions')
-        .select('id, athlete_id, status, skip_reason, start_time, rpe, notes')
+        .select('id, athlete_id, status, skip_reason, start_time, end_time, rpe, notes')
         .in('athlete_id', idsToFetch)
         .gte('start_time', dateLimit),
       supabase
@@ -568,7 +583,7 @@ export async function fetchBatchAthletesAdherence(athleteIds: string[]): Promise
     // 3. Calcola il punteggio per ogni atleta
     idsToFetch.forEach((athId) => {
       const sessions = sessionsByAthlete.get(athId) || [];
-      const completedSessions = sessions.filter((s) => s.status === 'completed').length;
+      const completedSessions = sessions.filter((s) => isCompletedSession(s)).length;
       const skippedWithReasonSessions = sessions.filter((s) => s.status === 'skipped' && Boolean(s.skip_reason)).length;
 
       const assignment = assignedByAthlete.get(athId);

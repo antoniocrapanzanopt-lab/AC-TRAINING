@@ -5,12 +5,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { uploadChatAttachment } from '../../lib/chatStorage';
 import { SecureChatAttachment } from './SecureChatAttachment';
+import { TeamGroupChat } from './TeamGroupChat';
 
 export const FloatingChatWidget: React.FC = () => {
   const { conversations, activeConversation, setActiveConversation, messages, sendMessage, markAsRead, markAsUnread, deleteMessage } = useMessages();
   const { user } = useAuth();
   const { athletes } = useAthletes();
   const [isOpen, setIsOpen] = useState(false);
+  const [isDirectWidgetStandby] = useState(true);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -183,8 +185,34 @@ export const FloatingChatWidget: React.FC = () => {
         </button>
       )}
 
-      {/* CHAT WINDOW */}
+      {/* CHAT WINDOW: CHAT DI GRUPPO TEAM (Chat individuali in stand-by) */}
       {isOpen && (
+        <div className="fixed bottom-6 right-6 w-[380px] sm:w-[420px] h-[580px] bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-2xl rounded-2xl flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--color-panel-border)] bg-[var(--color-panel)] shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                <MessageSquare className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-white">Chat di Gruppo Team</h3>
+            </div>
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                setActiveConversation(null);
+              }}
+              className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              title="Chiudi"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 flex flex-col">
+            <TeamGroupChat teamCount={athletes.length + 1} />
+          </div>
+        </div>
+      )}
+
+      {!isDirectWidgetStandby && isOpen && (
         <div className="fixed bottom-6 right-6 w-[360px] h-[550px] bg-[var(--color-panel)] border border-[var(--color-panel-border)] shadow-2xl rounded-2xl flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-5">
           
           {/* HEADER */}

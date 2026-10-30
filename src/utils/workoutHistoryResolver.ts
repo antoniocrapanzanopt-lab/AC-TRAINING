@@ -20,6 +20,11 @@ export interface PastSessionHistoryEntry {
   formattedDate: string;
   sets: PreviousSetData[];
   notes?: string | null;
+  dayName?: string | null;
+  weekNumber?: number | null;
+  repsTarget?: string | null;
+  setsPrescribed?: number | null;
+  exerciseNotes?: string | null;
 }
 
 export interface PreviousExerciseHistory {
@@ -29,6 +34,15 @@ export interface PreviousExerciseHistory {
   formattedDate: string;
   sets: PreviousSetData[];
   allPastSessions: PastSessionHistoryEntry[];
+  matchedDayName?: string | null;
+  matchedProtocolLabel?: string | null;
+}
+
+export interface HistoryMatchContext {
+  dayName?: string | null;
+  sets?: number | null;
+  repsTarget?: string | null;
+  notes?: string | null;
 }
 
 /**
@@ -41,6 +55,82 @@ export function normalizeName(name: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]/g, '')
     .trim();
+}
+
+/**
+ * Rileva se un esercizio o una sessione utilizza un protocollo Ramping / MAV / Top Set
+ */
+export function isRampingOrMavProtocol(repsTarget?: string | null, notes?: string | null): boolean {
+  const combined = `${repsTarget || ''} ${notes || ''}`.toLowerCase();
+  return /\b(mav|ramp|ramping|top\s*set|backoff|back-off|back\s*off|salita)\b/i.test(combined);
+}
+
+/**
+ * Seleziona la sessione passata più pertinente per l'esercizio corrente:
+ * - Se l'esercizio è svolto più volte a settimana (es. Panca Giorno 1 MAV vs Panca Giorno 3 Volume),
+ *   dà priorità alla sessione con lo stesso Giorno / Protocollo (MAV vs Serie Costanti / Stesse Reps),
+ *   evitando di sovrascrivere i carichi di una seduta tecnica/volume con quelli del MAV e viceversa.
+ */
+export function selectContextualPreviousHistory(
+  baseHistory: PreviousExerciseHistory | undefined,
+  context?: HistoryMatchContext
+): PreviousExerciseHistory | undefined {
+  if (!baseHistory) return undefined;
+  const sessions = baseHistory.allPastSessions || [];
+  if (sessions.length <= 1 || !context) return baseHistory;
+
+  const targetDayNorm = normalizeName(context.dayName || '');
+  const targetIsMav = isRampingOrMavProtocol(context.repsTarget, context.notes);
+  const targetRepsNorm = (context.repsTarget || '').trim().toLowerCase();
+
+  // Filtra solo sessioni che hanno carichi o ripetizioni effettivamente compilati
+  const validSessions = sessions.filter((s) =>
+    s.sets.some(
+      (set) =>
+        (set.weightKg !== null && set.weightKg !== undefined && set.weightKg > 0) ||
+        (set.reps !== null && set.reps !== undefined && set.reps > 0)
+    )
+  );
+
+  const pool = validSessions.length > 0 ? validSessions : sessions;
+
+  // 1. Match esatto per nome del Giorno (es. "Giorno 1" con "Giorno 1", o "Giorno 3" con "Giorno 3")
+  if (targetDayNorm) {
+    const sameDaySession = pool.find((s) => normalizeName(s.dayName || '') === targetDayNorm);
+    if (sameDaySession) {
+      const sessIsMav = isRampingOrMavProtocol(sameDaySession.repsTarget, sameDaySession.exerciseNotes);
+      return {
+        ...baseHistory,
+        sessionDate: sameDaySession.sessionDate,
+        formattedDate: sameDaySession.formattedDate,
+        sets: sameDaySession.sets,
+        matchedDayName: sameDaySession.dayName || context.dayName || null,
+        matchedProtocolLabel: sessIsMav ? 'MAV / Ramping' : sameDaySession.repsTarget ? `${sameDaySession.setsPrescribed || sameDaySession.sets.length}×${sameDaySession.repsTarget}` : null,
+      };
+    }
+  }
+
+  // 2. Match per stesso protocollo (MAV/Ramping vs Serie regolari) o stesso schema reps_target
+  const sameProtocolSession = pool.find((s) => {
+    const sessIsMav = isRampingOrMavProtocol(s.repsTarget, s.exerciseNotes);
+    if (targetIsMav !== sessIsMav) return false;
+    if (targetRepsNorm && (s.repsTarget || '').trim().toLowerCase() === targetRepsNorm) return true;
+    return targetIsMav === sessIsMav;
+  });
+
+  if (sameProtocolSession) {
+    const sessIsMav = isRampingOrMavProtocol(sameProtocolSession.repsTarget, sameProtocolSession.exerciseNotes);
+    return {
+      ...baseHistory,
+      sessionDate: sameProtocolSession.sessionDate,
+      formattedDate: sameProtocolSession.formattedDate,
+      sets: sameProtocolSession.sets,
+      matchedDayName: sameProtocolSession.dayName || null,
+      matchedProtocolLabel: sessIsMav ? 'MAV / Ramping' : sameProtocolSession.repsTarget ? `${sameProtocolSession.setsPrescribed || sameProtocolSession.sets.length}×${sameProtocolSession.repsTarget}` : null,
+    };
+  }
+
+  return baseHistory;
 }
 
 /**
@@ -61,6 +151,8 @@ export async function fetchAthletePreviousExerciseHistory(
         created_at,
         status,
         notes,
+        day_name,
+        week_number,
         exercise_logs (
           id,
           exercise_id,
@@ -70,7 +162,12 @@ export async function fetchAthletePreviousExerciseHistory(
           notes,
           workout_exercises (
             id,
-            name
+            name,
+            day_name,
+            week_number,
+            sets,
+            reps_target,
+            notes
           )
         )
       `)
@@ -91,6 +188,8 @@ export async function fetchAthletePreviousExerciseHistory(
       created_at?: string | null;
       status?: string | null;
       notes?: string | null;
+      day_name?: string | null;
+      week_number?: number | null;
       exercise_logs?: Array<{
         id?: string;
         exercise_id?: string;
@@ -99,7 +198,15 @@ export async function fetchAthletePreviousExerciseHistory(
         reps_completed?: number | null;
         weight_kg?: number | null;
         notes?: string | null;
-        workout_exercises?: { id?: string; name?: string } | null;
+        workout_exercises?: {
+          id?: string;
+          name?: string;
+          day_name?: string | null;
+          week_number?: number | null;
+          sets?: number | null;
+          reps_target?: string | null;
+          notes?: string | null;
+        } | null;
       }> | null;
     }>;
 
@@ -144,6 +251,11 @@ export async function fetchAthletePreviousExerciseHistory(
         exerciseIds: Set<string>;
         sets: PreviousSetData[];
         feedback?: string | null;
+        dayName?: string | null;
+        weekNumber?: number | null;
+        repsTarget?: string | null;
+        setsPrescribed?: number | null;
+        exerciseNotes?: string | null;
       }>();
 
       for (const log of logs) {
@@ -158,16 +270,35 @@ export async function fetchAthletePreviousExerciseHistory(
             exerciseIds: new Set<string>(),
             sets: [],
             feedback: null,
+            dayName: log.workout_exercises?.day_name || session.day_name || null,
+            weekNumber: log.workout_exercises?.week_number ?? session.week_number ?? null,
+            repsTarget: log.workout_exercises?.reps_target || null,
+            setsPrescribed: log.workout_exercises?.sets ?? null,
+            exerciseNotes: log.workout_exercises?.notes || null,
           });
         }
 
         const currentEntry = sessionExMap.get(normKey)!;
         if (exId) currentEntry.exerciseIds.add(exId);
         if (rawName && currentEntry.name === 'Esercizio') currentEntry.name = rawName;
+        if (!currentEntry.dayName && (log.workout_exercises?.day_name || session.day_name)) {
+          currentEntry.dayName = log.workout_exercises?.day_name || session.day_name || null;
+        }
+        if (!currentEntry.repsTarget && log.workout_exercises?.reps_target) {
+          currentEntry.repsTarget = log.workout_exercises.reps_target;
+        }
+        if (!currentEntry.exerciseNotes && log.workout_exercises?.notes) {
+          currentEntry.exerciseNotes = log.workout_exercises.notes;
+        }
 
         // Estrai l'eventuale feedback scritto dall'atleta per questo esercizio (es. "Feedback: ...")
         let logFeedback: string | null = null;
+        let extractedRpe: string | null = null;
         if (log.notes) {
+          const rpeMatch = log.notes.match(/RPE:\s*([0-9.,]+)/i);
+          if (rpeMatch && rpeMatch[1]) {
+            extractedRpe = rpeMatch[1].trim();
+          }
           const fbMatch = log.notes.match(/Feedback:\s*([^|]+)/i);
           if (fbMatch && fbMatch[1]) {
             logFeedback = fbMatch[1].trim();
@@ -184,6 +315,7 @@ export async function fetchAthletePreviousExerciseHistory(
           setNumber: log.set_number || 1,
           reps: log.reps_completed ?? null,
           weightKg: log.weight_kg ?? null,
+          rpe: extractedRpe,
           notes: log.notes || null,
         });
       }
@@ -199,6 +331,11 @@ export async function fetchAthletePreviousExerciseHistory(
           formattedDate,
           sets: val.sets,
           notes: displayNote,
+          dayName: val.dayName || session.day_name || null,
+          weekNumber: val.weekNumber ?? session.week_number ?? null,
+          repsTarget: val.repsTarget || null,
+          setsPrescribed: val.setsPrescribed ?? val.sets.length,
+          exerciseNotes: val.exerciseNotes || null,
         };
 
         // Verifica se questa sessione contiene carichi o ripetizioni reali inseriti

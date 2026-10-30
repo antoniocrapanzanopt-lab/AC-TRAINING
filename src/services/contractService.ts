@@ -470,11 +470,16 @@ export const getAthleteSignedContract = async (
 
   // 2. Prova dalle risposte questionario di Supabase (persistenza legacy/onboarding)
   try {
-    const { data: onb } = await supabase
+    const { data: onbRows } = await supabase
       .from('athlete_onboarding_responses')
-      .select('answers')
+      .select('answers, updated_at')
       .eq('athlete_id', athleteId)
-      .maybeSingle();
+      .order('updated_at', { ascending: false })
+      .limit(5);
+
+    const onb = onbRows?.find(
+      (r) => r.answers && typeof r.answers === 'object' && (r.answers as Record<string, unknown>).signedContract
+    );
 
     if (onb && onb.answers && typeof onb.answers === 'object') {
       const answersObj = onb.answers as Record<string, unknown>;
@@ -494,7 +499,7 @@ export const getAthleteSignedContract = async (
           athleteBirthPlace: sc.athleteBirthPlace ? String(sc.athleteBirthPlace) : undefined,
           athleteAddress: sc.athleteAddress ? String(sc.athleteAddress) : undefined,
           signedAt: String(sc.signedAt || new Date().toISOString()),
-          signatureDataUrl: String(sc.signatureDataUrl || ''),
+          signatureDataUrl: String(sc.signatureDataUrl || sc.signatureImage || ''),
           consents: {
             serviceTerms: Boolean(rawConsents.serviceTerms ?? sc.serviceTermsAccepted ?? true),
             specificClauses: Boolean(rawConsents.specificClauses ?? true),
@@ -512,13 +517,91 @@ export const getAthleteSignedContract = async (
     // fallback
   }
 
-  // 3. Fallback cache locale (se precedentemente salvato in locale)
+  // 2.5 Prova dal backup cloud in athlete_notes ([AC_SIGNED_CONTRACT]: o [AC_ONBOARDING_DATA]:)
+  try {
+    const { data: notes } = await supabase
+      .from('athlete_notes')
+      .select('id, content, created_at')
+      .eq('athlete_id', athleteId)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (notes && notes.length > 0) {
+      for (const n of notes) {
+        if (!n.content) continue;
+        if (n.content.startsWith('[AC_SIGNED_CONTRACT]:')) {
+          const parsed = JSON.parse(n.content.replace('[AC_SIGNED_CONTRACT]:', ''));
+          if (parsed && (parsed.signatureDataUrl || parsed.signatureImage)) {
+            return {
+              id: String(parsed.id || n.id),
+              athleteId: String(parsed.athleteId || athleteId),
+              templateId: String(parsed.templateId || DEFAULT_ACTIVE_TEMPLATE_ID),
+              contractVersion: String(parsed.contractVersion || '2026/2027'),
+              contractRevision: Number(parsed.contractRevision || 1),
+              contentHash: String(parsed.contentHash || 'legacy'),
+              athleteName: String(parsed.athleteName || 'Atleta'),
+              athleteFiscalCode: parsed.athleteFiscalCode,
+              athleteBirthDate: parsed.athleteBirthDate,
+              athleteBirthPlace: parsed.athleteBirthPlace,
+              athleteAddress: parsed.athleteAddress,
+              signedAt: String(parsed.signedAt || n.created_at),
+              signatureDataUrl: String(parsed.signatureDataUrl || parsed.signatureImage || ''),
+              consents: parsed.consents || {
+                serviceTerms: true,
+                specificClauses: true,
+                healthDeclaration: true,
+                healthData: true,
+                videoInternal: true,
+                videoPublic: false,
+                testimonialPact: false,
+              },
+              snapshot: parseContractContent(parsed.snapshot),
+            };
+          }
+        } else if (n.content.startsWith('[AC_ONBOARDING_DATA]:')) {
+          const parsed = JSON.parse(n.content.replace('[AC_ONBOARDING_DATA]:', ''));
+          const sc = parsed?.answers?.signedContract || parsed?.signedContract;
+          if (sc && typeof sc === 'object') {
+            return {
+              id: String(sc.id || n.id),
+              athleteId: String(sc.athleteId || athleteId),
+              templateId: String(sc.templateId || DEFAULT_ACTIVE_TEMPLATE_ID),
+              contractVersion: String(sc.contractVersion || '2026/2027'),
+              contractRevision: Number(sc.contractRevision || 1),
+              contentHash: String(sc.contentHash || 'legacy'),
+              athleteName: String(sc.athleteName || 'Atleta'),
+              athleteFiscalCode: sc.athleteFiscalCode,
+              athleteBirthDate: sc.athleteBirthDate,
+              athleteBirthPlace: sc.athleteBirthPlace,
+              athleteAddress: sc.athleteAddress,
+              signedAt: String(sc.signedAt || n.created_at),
+              signatureDataUrl: String(sc.signatureDataUrl || sc.signatureImage || ''),
+              consents: sc.consents || {
+                serviceTerms: true,
+                specificClauses: true,
+                healthDeclaration: true,
+                healthData: true,
+                videoInternal: true,
+                videoPublic: false,
+                testimonialPact: false,
+              },
+              snapshot: parseContractContent(sc.snapshot),
+            };
+          }
+        }
+      }
+    }
+  } catch {
+    // fallback
+  }
+
+  // 3. Fallback cache locale (se precedentemente salvato in locale) + auto-sync verso Supabase
   try {
     const raw = localStorage.getItem(`ac_signed_contracts_v1_${athleteId}`);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && (parsed.signatureDataUrl || parsed.signatureImage)) {
-        return {
+        const localContract: AthleteSignedContract = {
           id: parsed.id || `contract-${athleteId}`,
           athleteId: parsed.athleteId || athleteId,
           templateId: parsed.templateId || DEFAULT_ACTIVE_TEMPLATE_ID,
@@ -543,6 +626,65 @@ export const getAthleteSignedContract = async (
           },
           snapshot: parseContractContent(parsed.snapshot),
         };
+
+        // Auto-sync in background su Supabase così che il Coach lo veda subito nel portale
+        void (async () => {
+          try {
+            await supabase.from('athlete_contract_signatures').insert({
+              athlete_id: athleteId,
+              template_id: localContract.templateId || DEFAULT_ACTIVE_TEMPLATE_ID,
+              signer_full_name: localContract.athleteName,
+              signer_fiscal_code: localContract.athleteFiscalCode || null,
+              signer_birth_date: localContract.athleteBirthDate || null,
+              signer_birth_place: localContract.athleteBirthPlace || null,
+              signer_address: localContract.athleteAddress || null,
+              signature_image: localContract.signatureDataUrl,
+              consent_service_terms: localContract.consents.serviceTerms,
+              consent_specific_clauses: localContract.consents.specificClauses,
+              consent_health_declaration: localContract.consents.healthDeclaration,
+              consent_health_data: localContract.consents.healthData,
+              consent_video_internal: localContract.consents.videoInternal,
+              consent_video_public: localContract.consents.videoPublic,
+              consent_testimonial_pact: localContract.consents.testimonialPact,
+            });
+          } catch {
+            // ignore
+          }
+          try {
+            const { data: existingRows } = await supabase
+              .from('athlete_onboarding_responses')
+              .select('answers, status, current_step, summary, photo_urls, document_urls, completed_at')
+              .eq('athlete_id', athleteId)
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            const existing = existingRows?.[0];
+            const currentAnswers =
+              existing?.answers && typeof existing.answers === 'object'
+                ? (existing.answers as Record<string, unknown>)
+                : {};
+            if (!currentAnswers.signedContract) {
+              await supabase.from('athlete_onboarding_responses').upsert(
+                {
+                  athlete_id: athleteId,
+                  version: 'v2.0_standard',
+                  status: existing?.status || 'draft',
+                  current_step: existing?.current_step || 1,
+                  summary: existing?.summary || {},
+                  photo_urls: existing?.photo_urls || [],
+                  document_urls: existing?.document_urls || [],
+                  completed_at: existing?.completed_at || null,
+                  answers: { ...currentAnswers, signedContract: localContract },
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'athlete_id,version' }
+              );
+            }
+          } catch {
+            // ignore
+          }
+        })();
+
+        return localContract;
       }
     }
   } catch {
@@ -695,12 +837,14 @@ export const saveAthleteSignedContract = async (
   };
 
   try {
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from('athlete_onboarding_responses')
-      .select('answers')
+      .select('answers, status, current_step, summary, photo_urls, document_urls, completed_at')
       .eq('athlete_id', input.athleteId)
-      .maybeSingle();
+      .order('updated_at', { ascending: false })
+      .limit(1);
 
+    const existing = existingRows?.[0];
     const currentAnswers =
       existing && existing.answers && typeof existing.answers === 'object'
         ? (existing.answers as Record<string, unknown>)
@@ -710,6 +854,12 @@ export const saveAthleteSignedContract = async (
       {
         athlete_id: input.athleteId,
         version: 'v2.0_standard',
+        status: existing?.status || 'draft',
+        current_step: existing?.current_step || 1,
+        summary: existing?.summary || {},
+        photo_urls: existing?.photo_urls || [],
+        document_urls: existing?.document_urls || [],
+        completed_at: existing?.completed_at || null,
         answers: {
           ...currentAnswers,
           signedContract: fallbackRecord,
@@ -720,6 +870,20 @@ export const saveAthleteSignedContract = async (
     );
   } catch (err) {
     console.warn('[ContractService] Sync fallback su athlete_onboarding_responses:', err);
+  }
+
+  // Backup cloud aggiuntivo su athlete_notes per visibilità immediata lato Coach
+  try {
+    await supabase.from('athlete_notes').insert({
+      athlete_id: input.athleteId,
+      content: `[AC_SIGNED_CONTRACT]:${JSON.stringify(fallbackRecord)}`,
+      category: 'general',
+      visibility: 'coach',
+      author_id: input.athleteId,
+      author_name: input.athleteName.trim() || 'Atleta',
+    });
+  } catch {
+    // ignore
   }
 
   // Salva anche in cache locale di backup

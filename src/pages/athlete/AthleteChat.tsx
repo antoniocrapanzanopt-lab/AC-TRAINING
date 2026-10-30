@@ -21,6 +21,7 @@ import { useToast } from '../../context/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { uploadChatAttachment } from '../../lib/chatStorage';
 import { SecureChatAttachment } from '../../components/chat/SecureChatAttachment';
+import { TeamGroupChat } from '../../components/chat/TeamGroupChat';
 
 interface AthleteChatProps {
   onBack?: () => void;
@@ -41,6 +42,7 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
   const [isSending, setIsSending] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [attachment, setAttachment] = useState<Attachment | null>(null);
+  const [chatMode] = useState<'direct' | 'group'>('group');
 
   // Typing Indicator State
   const [isCoachTyping] = useState(false);
@@ -288,7 +290,9 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-bg)] text-[var(--color-text)] font-sans relative overflow-hidden">
-      
+      {/* Chat di Gruppo Team attiva come canale principale (Chat 1:1 individuale in stand-by) */}
+      {chatMode === 'direct' ? (
+        <>
       {/* ─── HEADER CHAT SATINATO & ELEGANTE ─── */}
       <div className="bg-[var(--color-surface)]/90 backdrop-blur-2xl border-b border-[var(--color-border)] px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm shrink-0">
         <div className="flex items-center gap-3">
@@ -592,6 +596,12 @@ export const AthleteChat: React.FC<AthleteChatProps> = ({ onBack }) => {
               className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-slate-800"
             />
           </div>
+        </div>
+      )}
+        </>
+      ) : (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <TeamGroupChat isAthletePortal />
         </div>
       )}
     </div>

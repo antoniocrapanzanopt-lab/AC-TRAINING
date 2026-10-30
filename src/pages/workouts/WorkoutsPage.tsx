@@ -58,6 +58,7 @@ export const WorkoutsPage: React.FC = () => {
     folders, 
     allAssignedWorkouts,
     assignWorkoutToAthlete,
+    archiveWorkoutForAthlete,
     unassignWorkoutFromAthlete,
     createFolder, 
     updateFolder, 
@@ -95,10 +96,13 @@ export const WorkoutsPage: React.FC = () => {
 
   // ─── STATO LIBRERIA TEMPLATE MASTER ───
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [isFoldersSectionOpen, setIsFoldersSectionOpen] = useState(true);
   const [templateSearchTerm, setTemplateSearchTerm] = useState('');
   const [templateObjective, setTemplateObjective] = useState<TemplateObjectiveFilter>('all');
   const [templateDuration, setTemplateDuration] = useState<TemplateDurationFilter>('all');
   const [templateSort, setTemplateSort] = useState<TemplateSortOption>('updated_desc');
+  const [templateLayoutMode, setTemplateLayoutMode] = useState<'grid' | 'list'>('grid');
+  const [isAutoOrganizing, setIsAutoOrganizing] = useState(false);
 
   // Modali
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
@@ -401,6 +405,35 @@ export const WorkoutsPage: React.FC = () => {
     }
     return currentFolderId ? f.parent_id === currentFolderId : !f.parent_id;
   });
+
+  // Auto-organizzazione intelligente: sposta le schede nominali nelle rispettive cartelle atleta esistenti
+  const handleAutoOrganizeTemplates = async () => {
+    setIsAutoOrganizing(true);
+    let movedCount = 0;
+    try {
+      const rootTemplates = coachTemplates.filter((t) => !t.folder_id);
+      for (const template of rootTemplates) {
+        const titleNorm = template.title.toUpperCase().replace(/[^A-Z0-9\s]/g, ' ');
+        const matchingFolder = folders.find((f) => {
+          const folderNorm = f.name.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, ' ');
+          return folderNorm.length >= 3 && titleNorm.includes(folderNorm);
+        });
+        if (matchingFolder) {
+          const res = await moveWorkoutToFolder(template.id, matchingFolder.id);
+          if (res.success) movedCount++;
+        }
+      }
+      if (movedCount > 0) {
+        showSuccess(`${movedCount} ${movedCount === 1 ? 'scheda organizzata' : 'schede organizzate'} automaticamente nelle rispettive cartelle!`);
+      } else {
+        showSuccess('Tutte le schede corrispondenti alle cartelle sono già organizzate.');
+      }
+    } catch {
+      showError('Errore durante l\'organizzazione automatica delle cartelle.');
+    } finally {
+      setIsAutoOrganizing(false);
+    }
+  };
 
   // Filtro e Ordinamento Template Master
   const filteredAndSortedTemplates = useMemo(() => {
@@ -944,14 +977,25 @@ export const WorkoutsPage: React.FC = () => {
 
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 setIsActiveCardMenuOpen(false);
-                                setIsHistoryOpen(true);
+                                if (selectedAthleteData.activeWorkout) {
+                                  const res = await archiveWorkoutForAthlete(
+                                    selectedAthleteData.athlete.id,
+                                    selectedAthleteData.activeWorkout.id
+                                  );
+                                  if (res.success) {
+                                    setIsHistoryOpen(true);
+                                    showSuccess('Scheda inserita nello storico programmi.');
+                                  } else {
+                                    showError(res.error || 'Impossibile spostare la scheda nello storico.');
+                                  }
+                                }
                               }}
                               className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-900 flex items-center gap-2 transition-colors cursor-pointer"
                             >
                               <Folder className="w-4 h-4 text-purple-400" />
-                              <span>Visualizza storico</span>
+                              <span>Inserisci nello storico</span>
                             </button>
 
                             <button
@@ -1927,8 +1971,8 @@ export const WorkoutsPage: React.FC = () => {
       {/* VISTA 2: LIBRERIA TEMPLATE MASTER & CARTELLE GLOBALI               */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {mainViewTab === 'templates' && (
-        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-4 sm:p-6 space-y-6 shadow-xl animate-in fade-in duration-200">
-          {/* Header Template Master: Breadcrumbs & Azioni Cartella */}
+        <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-4 sm:p-6 space-y-5 shadow-xl animate-in fade-in duration-200">
+          {/* Header Template Master: Breadcrumbs & Azioni Cartella + Layout Switcher */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div className="flex items-center gap-1.5 overflow-x-auto text-sm font-bold custom-scrollbar py-1">
               {getBreadcrumbs().map((crumb, idx, arr) => {
@@ -1949,7 +1993,20 @@ export const WorkoutsPage: React.FC = () => {
               })}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {folders.length > 0 && !currentFolderId && (
+                <button
+                  type="button"
+                  disabled={isAutoOrganizing}
+                  onClick={handleAutoOrganizeTemplates}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-xs font-bold rounded-xl border border-amber-500/30 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                  title="Sposta automaticamente le schede con nome atleta nelle rispettive cartelle"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{isAutoOrganizing ? 'Organizzazione...' : 'Auto-organizza in cartelle'}</span>
+                </button>
+              )}
+
               <button 
                 type="button"
                 onClick={() => {
@@ -1957,24 +2014,39 @@ export const WorkoutsPage: React.FC = () => {
                   setFolderNameInput('');
                   setIsFolderModalOpen(true);
                 }}
-                className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold rounded-xl border border-slate-800 transition-all cursor-pointer shadow-sm"
+                className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold rounded-xl border border-slate-800 transition-all cursor-pointer shadow-sm"
               >
                 <FolderPlus className="w-4 h-4 text-[var(--color-primary)]" />
-                <span>Nuova Cartella Master</span>
+                <span>Nuova Cartella</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setBuilderTargetAthleteId(undefined);
-                  setEditingWorkout(null);
-                  setIsBuilderOpen(true);
-                }}
-                className="flex items-center gap-2 px-3.5 py-1.5 bg-[var(--color-primary)] text-slate-950 text-xs font-black rounded-xl hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer shadow-sm"
-              >
-                <Plus className="w-4 h-4 stroke-[3]" />
-                <span>Nuovo Template</span>
-              </button>
+              {/* Switcher Vista Lista / Griglia */}
+              <div className="flex items-center gap-1 p-1 bg-slate-950 border border-slate-800 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setTemplateLayoutMode('list')}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    templateLayoutMode === 'list'
+                      ? 'bg-[var(--color-primary)] text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Vista Lista Compatta"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTemplateLayoutMode('grid')}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    templateLayoutMode === 'grid'
+                      ? 'bg-[var(--color-primary)] text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Vista Griglia"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1985,7 +2057,7 @@ export const WorkoutsPage: React.FC = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cerca template..."
+                placeholder="Cerca template o atleta..."
                 value={templateSearchTerm}
                 onChange={(e) => setTemplateSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--color-primary)]"
@@ -2039,75 +2111,106 @@ export const WorkoutsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* 1. SEZIONE CARTELLE MASTER */}
+          {/* 1. SEZIONE CARTELLE MASTER COMPATTA (APRIBILE / CHIUDIBILE) */}
           {currentFolders.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cartelle</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {currentFolders.map(folder => {
-                  const count = coachTemplates.filter(t => t.folder_id === folder.id).length;
-                  const subCount = folders.filter(f => f.parent_id === folder.id).length;
-                  return (
-                    <div
-                      key={folder.id}
-                      onClick={() => setCurrentFolderId(folder.id)}
-                      className="group flex items-center justify-between p-4 bg-slate-900/40 hover:bg-slate-900/80 border border-slate-800/80 hover:border-[var(--color-primary)]/40 rounded-2xl cursor-pointer transition-all shadow-sm"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 flex items-center justify-center text-[var(--color-primary)] shrink-0 group-hover:scale-105 transition-transform">
-                          <Folder className="w-5 h-5" />
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-bold text-white group-hover:text-[var(--color-primary)] transition-colors truncate">
-                            {folder.name}
-                          </h4>
-                          <span className="text-[11px] text-slate-500 block">
-                            {count} schede • {subCount} sottocartelle
-                          </span>
-                        </div>
-                      </div>
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setIsFoldersSectionOpen((prev) => !prev)}
+                  className="flex items-center gap-2 text-[11px] font-bold text-slate-300 hover:text-white uppercase tracking-wider px-2.5 py-1.5 rounded-xl bg-slate-900/70 hover:bg-slate-900 border border-slate-800 transition-all cursor-pointer"
+                >
+                  {isFoldersSectionOpen ? (
+                    <FolderOpen className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                  ) : (
+                    <Folder className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                  )}
+                  <span>Cartelle ({currentFolders.length})</span>
+                  {isFoldersSectionOpen ? (
+                    <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  )}
+                </button>
 
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingFolder(folder);
-                            setFolderNameInput(folder.name);
-                            setIsFolderModalOpen(true);
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
-                          title="Rinomina cartella"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingFolder(folder)}
-                          className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 cursor-pointer"
-                          title="Elimina cartella"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                <button
+                  type="button"
+                  onClick={() => setIsFoldersSectionOpen((prev) => !prev)}
+                  className="text-[11px] font-bold text-slate-400 hover:text-[var(--color-primary)] transition-colors cursor-pointer"
+                >
+                  {isFoldersSectionOpen ? 'Chiudi cartelle' : 'Apri cartelle'}
+                </button>
               </div>
+
+              {isFoldersSectionOpen && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 animate-in fade-in duration-150">
+                  {currentFolders.map(folder => {
+                    const count = coachTemplates.filter(t => t.folder_id === folder.id).length;
+                    const subCount = folders.filter(f => f.parent_id === folder.id).length;
+                    return (
+                      <div
+                        key={folder.id}
+                        onClick={() => setCurrentFolderId(folder.id)}
+                        className="group flex items-center justify-between px-3.5 py-2.5 bg-slate-900/50 hover:bg-slate-900 border border-slate-800/80 hover:border-[var(--color-primary)]/40 rounded-xl cursor-pointer transition-all shadow-sm"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/20 flex items-center justify-center text-[var(--color-primary)] shrink-0 group-hover:scale-105 transition-transform">
+                            <Folder className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-xs font-bold text-white group-hover:text-[var(--color-primary)] transition-colors truncate">
+                              {folder.name}
+                            </h4>
+                            <span className="text-[10px] text-slate-500 block">
+                              {count} {count === 1 ? 'scheda' : 'schede'}{subCount > 0 ? ` • ${subCount} sottocartelle` : ''}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingFolder(folder);
+                              setFolderNameInput(folder.name);
+                              setIsFolderModalOpen(true);
+                            }}
+                            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                            title="Rinomina cartella"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingFolder(folder)}
+                            className="p-1 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 cursor-pointer"
+                            title="Elimina cartella"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           {/* 2. SEZIONE TEMPLATE & SCHEDE */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Template Master & Modelli</h3>
-              <span className="text-xs text-slate-500">{filteredAndSortedTemplates.length} schede totali</span>
+              <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Template Master & Modelli
+              </h3>
+              <span className="text-xs text-slate-500 font-semibold">{filteredAndSortedTemplates.length} schede visualizzate</span>
             </div>
 
             {filteredAndSortedTemplates.length === 0 ? (
               <div className="p-12 text-center text-slate-400 bg-slate-900/20 border border-slate-800 rounded-3xl space-y-3">
                 <Dumbbell className="w-10 h-10 mx-auto text-slate-600" />
                 <p className="text-sm font-bold text-slate-300">Nessun template corrisponde ai filtri selezionati</p>
-                <p className="text-xs text-slate-500">Modifica i termini di ricerca o crea una nuova scheda master.</p>
+                <p className="text-xs text-slate-500">Modifica i filtri in alto o crea una nuova scheda master.</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -2120,47 +2223,156 @@ export const WorkoutsPage: React.FC = () => {
                   Crea Nuovo Template
                 </button>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            ) : templateLayoutMode === 'list' ? (
+              /* VISTA LISTA COMPATTA (TABELLARE) */
+              <div className="space-y-2">
                 {filteredAndSortedTemplates.map(template => {
                   const assignedList = allAssignedWorkouts.filter(a => a.workout_id === template.id);
                   const isDuplicating = duplicatingWorkoutId === template.id;
+                  const cleanDuration = String(template.estimated_duration_minutes || '')
+                    .replace(/\s*min$/i, '')
+                    .trim();
 
                   return (
                     <div
                       key={template.id}
-                      className="p-5 rounded-3xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/70 hover:border-slate-700 transition-all flex flex-col justify-between space-y-4 shadow-lg"
+                      onClick={() => {
+                        setEditingWorkout(template);
+                        setIsBuilderOpen(true);
+                      }}
+                      className="px-4 py-3 rounded-2xl bg-slate-900/40 hover:bg-slate-900/80 border border-slate-800/70 hover:border-[var(--color-primary)]/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer group"
                     >
-                      <div className="space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
-                            <Dumbbell className="w-5 h-5" />
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                            {template.estimated_duration_minutes && (
-                              <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/20">
-                                <Clock className="w-3 h-3" />
-                                {template.estimated_duration_minutes} min
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                          <Dumbbell className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-black text-white group-hover:text-[var(--color-primary)] transition-colors truncate">
+                              {template.title}
+                            </h4>
+                            <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 shrink-0">
+                              {template.total_weeks || 4} sett.
+                            </span>
+                            {cleanDuration && (
+                              <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md border border-sky-500/20 shrink-0">
+                                <Clock className="w-2.5 h-2.5" />
+                                {cleanDuration} min
                               </span>
                             )}
-                            <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${
+                                assignedList.length > 0
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                  : 'bg-slate-950 text-slate-500 border-slate-800'
+                              }`}
+                            >
+                              {assignedList.length} {assignedList.length === 1 ? 'atleta' : 'atleti'}
+                            </span>
+                          </div>
+                          {template.description && (
+                            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                              {template.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => setAssigningWorkout(template)}
+                          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          title="Assegna ad atleta"
+                        >
+                          <Users className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDuplicateWorkout(template)}
+                          disabled={isDuplicating}
+                          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                          title="Duplica template"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMovingWorkout(template)}
+                          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          title="Sposta in cartella"
+                        >
+                          <MoveRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingWorkout(template)}
+                          className="p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                          title="Elimina template"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingWorkout(template);
+                            setIsBuilderOpen(true);
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-[var(--color-primary)] text-slate-950 font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer shadow-sm flex items-center gap-1.5 ml-1"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          <span>Apri</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* VISTA GRIGLIA COMPATTA */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredAndSortedTemplates.map(template => {
+                  const assignedList = allAssignedWorkouts.filter(a => a.workout_id === template.id);
+                  const isDuplicating = duplicatingWorkoutId === template.id;
+                  const cleanDuration = String(template.estimated_duration_minutes || '')
+                    .replace(/\s*min$/i, '')
+                    .trim();
+
+                  return (
+                    <div
+                      key={template.id}
+                      className="p-4 rounded-2xl bg-slate-900/40 backdrop-blur-xl border border-slate-800/70 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3.5 shadow-lg"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                            <Dumbbell className="w-4 h-4" />
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                            {cleanDuration && (
+                              <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/20">
+                                <Clock className="w-3 h-3" />
+                                {cleanDuration} min
+                              </span>
+                            )}
+                            <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800">
                               {template.total_weeks || 4} sett.
                             </span>
                           </div>
                         </div>
 
                         <div>
-                          <h4 className="text-base font-black text-white line-clamp-1">{template.title}</h4>
-                          <p className="text-xs text-slate-400 line-clamp-2 mt-1 leading-relaxed">
+                          <h4 className="text-sm font-black text-white line-clamp-1">{template.title}</h4>
+                          <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">
                             {template.description || 'Nessuna descrizione specificata.'}
                           </p>
                         </div>
 
                         {/* Informazioni Utilizzi & Ultima Modifica */}
-                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs">
+                        <div className="px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1.5 text-slate-400">
                             <Users className="w-3.5 h-3.5 text-slate-500" />
-                            <span className="text-[11px] font-bold">
+                            <span className={`text-[11px] font-bold ${assignedList.length > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
                               {assignedList.length} {assignedList.length === 1 ? 'atleta in uso' : 'atleti in uso'}
                             </span>
                           </div>
@@ -2170,8 +2382,8 @@ export const WorkoutsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Azioni Card Template: Azione principale ("Apri template") + icone secondarie */}
-                      <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-xs">
+                      {/* Azioni Card Template */}
+                      <div className="flex items-center justify-between pt-2.5 border-t border-slate-800/80 text-xs">
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -2211,7 +2423,6 @@ export const WorkoutsPage: React.FC = () => {
                           </button>
                         </div>
 
-                        {/* Pulsante Principale "Apri template" */}
                         <button
                           type="button"
                           onClick={() => {

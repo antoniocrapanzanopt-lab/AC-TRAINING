@@ -12,7 +12,8 @@ import {
   Paperclip,
   Download,
   Mail,
-  CheckCheck
+  CheckCheck,
+  Users
 } from 'lucide-react';
 import { useMessages } from '../../context/MessagesContext';
 import { useAuth } from '../../context/AuthContext';
@@ -20,6 +21,8 @@ import { useAthletes } from '../../context/AthletesContext';
 import { useToast } from '../../context/ToastContext';
 import { uploadChatAttachment } from '../../lib/chatStorage';
 import { SecureChatAttachment } from '../../components/chat/SecureChatAttachment';
+import { TeamGroupChat } from '../../components/chat/TeamGroupChat';
+import { Athlete } from '../../types';
 
 export const MessagesPage: React.FC = () => {
   const { user } = useAuth();
@@ -51,6 +54,8 @@ export const MessagesPage: React.FC = () => {
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [newChatSearch, setNewChatSearch] = useState('');
   const [showChatMenu, setShowChatMenu] = useState(false);
+  const [isGroupChatOpen, setIsGroupChatOpen] = useState(true);
+  const [isDirectChatStandby] = useState(true);
 
   const handleCoachFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -122,13 +127,14 @@ export const MessagesPage: React.FC = () => {
     return messages.filter(m => validAthleteIds.has(m.sender_id) || validAthleteIds.has(m.receiver_id));
   }, [messages, activeConversation, athletes]);
 
-  const handleStartNewChat = (athlete: any) => {
+  const handleStartNewChat = (athlete: Athlete) => {
     // Usiamo ESCLUSIVAMENTE l'ID anagrafico (Primary Key) per aprire la chat
     const chatUserId = athlete.id;
     
     // La conversazione esiste sempre nel convMap grazie all'inizializzazione statica in MessagesContext
     const existing = conversations.find(c => c.athlete_id === chatUserId);
     if (existing) {
+      setIsGroupChatOpen(false);
       setActiveConversation(existing);
     }
     setShowNewChatModal(false);
@@ -226,34 +232,33 @@ export const MessagesPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Messaggi</h1>
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Chat di Gruppo Team</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Gestisci le conversazioni in tempo reale con i tuoi atleti.
+            Dialoga in tempo reale con tutti i ragazzi del team (le chat individuali sono attualmente in stand-by).
           </p>
         </div>
-        
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleMarkAllAsRead}
-            disabled={totalUnread === 0}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-bold text-xs hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <CheckCircle2 className="w-4 h-4" /> Segna lette
-          </button>
-          
-          <button
-            onClick={() => setShowNewChatModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-primary)] text-black font-black text-xs hover:bg-[var(--color-primary-hover)] transition-all shadow-lg"
-          >
-            Nuova Chat
-          </button>
-        </div>
+        {!isDirectChatStandby && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleMarkAllAsRead}
+              disabled={totalUnread === 0}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 font-bold text-xs hover:bg-slate-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CheckCircle2 className="w-4 h-4" /> Segna lette
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Main Layout (Master-Detail) */}
+      {/* Main Layout: Chat di Gruppo a Schermo Intero (Chat Individuali in Stand-By) */}
       <div className="flex-1 flex overflow-hidden rounded-2xl border border-[var(--color-panel-border)] bg-[var(--color-panel)] shadow-xl min-h-[600px] h-[calc(100vh-200px)]">
-        
-        {/* Left Side: Conversations List */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <TeamGroupChat teamCount={athletes.length + 1} />
+        </div>
+
+        {/* Left Side & 1:1 Chat in Stand-by */}
+        {!isDirectChatStandby && (
+        <>
         <div className="w-full md:w-80 lg:w-96 flex flex-col border-r border-[var(--color-panel-border)] bg-slate-950/30">
           
           {/* Header & Filters */}
@@ -311,6 +316,42 @@ export const MessagesPage: React.FC = () => {
 
           {/* List */}
           <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {/* Pinned Team Group Chat Row */}
+            <div className="p-3 border-b border-slate-800/70 bg-gradient-to-r from-[var(--color-primary)]/10 via-slate-900/40 to-transparent">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveConversation(null);
+                  setIsGroupChatOpen(true);
+                }}
+                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center gap-3 cursor-pointer ${
+                  isGroupChatOpen
+                    ? 'bg-[var(--color-primary)]/15 border-[var(--color-primary)] shadow-md'
+                    : 'bg-slate-900/70 border-slate-800 hover:border-[var(--color-primary)]/50'
+                }`}
+              >
+                <div className="relative shrink-0">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-amber-500 flex items-center justify-center text-slate-950 shadow-sm">
+                    <Users className="w-5 h-5 stroke-[2.5]" />
+                  </div>
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-950 rounded-full" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-1.5">
+                    <h4 className="text-sm font-black text-white truncate">
+                      Chat di Gruppo Team
+                    </h4>
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/40 text-[9px] font-black uppercase shrink-0">
+                      Community
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 truncate mt-0.5">
+                    Dialoga con tutti i ragazzi insieme ({athletes.length + 1} membri)
+                  </p>
+                </div>
+              </button>
+            </div>
+
             {filteredConversations.length === 0 ? (
               <div className="p-8 text-center text-slate-500 text-sm">
                 Nessuna conversazione trovata.
@@ -320,10 +361,10 @@ export const MessagesPage: React.FC = () => {
                 {filteredConversations.map(conv => (
                   <div
                     key={conv.athlete_id}
-                    className={`w-full group text-left p-4 hover:bg-slate-900/50 transition-colors flex items-start gap-3 ${activeConversation?.athlete_id === conv.athlete_id ? 'bg-slate-900/80 border-l-2 border-[var(--color-primary)]' : 'border-l-2 border-transparent'}`}
+                    className={`w-full group text-left p-4 hover:bg-slate-900/50 transition-colors flex items-start gap-3 ${!isGroupChatOpen && activeConversation?.athlete_id === conv.athlete_id ? 'bg-slate-900/80 border-l-2 border-[var(--color-primary)]' : 'border-l-2 border-transparent'}`}
                   >
                     {/* Avatar */}
-                    <div className="relative shrink-0 cursor-pointer" onClick={() => setActiveConversation(conv)}>
+                    <div className="relative shrink-0 cursor-pointer" onClick={() => { setIsGroupChatOpen(false); setActiveConversation(conv); }}>
                       {conv.athlete_avatar ? (
                         <img src={conv.athlete_avatar} alt={conv.athlete_name} className="w-12 h-12 rounded-full object-cover border border-slate-700" />
                       ) : (
@@ -335,7 +376,7 @@ export const MessagesPage: React.FC = () => {
                     </div>
 
                     {/* Info */}
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setActiveConversation(conv)}>
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setIsGroupChatOpen(false); setActiveConversation(conv); }}>
                       <div className="flex justify-between items-start mb-1">
                         <h4 className="text-sm font-bold text-white truncate pr-2">{conv.athlete_name}</h4>
                         {conv.last_message && (
@@ -387,7 +428,11 @@ export const MessagesPage: React.FC = () => {
         </div>
 
         {/* Right Side: Chat Window */}
-        {activeConversation ? (
+        {isGroupChatOpen ? (
+          <div className="flex-1 flex flex-col min-w-0">
+            <TeamGroupChat teamCount={athletes.length + 1} />
+          </div>
+        ) : activeConversation ? (
           <div className="flex-1 flex flex-col bg-slate-950/20" onClick={() => setShowChatMenu(false)}>
             {/* Chat Header */}
             <div className="h-16 px-6 border-b border-[var(--color-panel-border)] flex items-center justify-between bg-slate-900/30">
@@ -610,6 +655,8 @@ export const MessagesPage: React.FC = () => {
               Seleziona una conversazione dalla barra laterale o cerca un cliente per iniziare.
             </p>
           </div>
+        )}
+        </>
         )}
       </div>
 

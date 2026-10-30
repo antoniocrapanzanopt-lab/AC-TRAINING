@@ -13,6 +13,9 @@ import {
 import { STORAGE_KEYS } from '../config/storageKeys';
 import { useAuth } from './AuthContext';
 
+const isValidUuid = (val?: string | null): boolean =>
+  Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val));
+
 interface MetricsContextType {
   metrics: AthleteMetric[];
   maxLifts: AthleteMaxLift[];
@@ -288,7 +291,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [user]);
 
-  // Carica i massimali dal DB
+  // Carica i massimali dal DB preservando eventuali record locali in attesa di sync
   const fetchAllMaxLifts = useCallback(async (): Promise<void> => {
     try {
       if (user?.role === 'athlete') {
@@ -299,8 +302,24 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
           .eq('athlete_id', targetId)
           .order('date', { ascending: false });
 
-        if (!error && data) {
-          setMaxLifts(data as AthleteMaxLift[]);
+        if (!error && Array.isArray(data)) {
+          const remoteLifts = data as AthleteMaxLift[];
+          setMaxLifts(prev => {
+            const remoteIds = new Set(remoteLifts.map(r => r.id));
+            const remoteKeys = new Set(
+              remoteLifts.map(r => `${r.athlete_id}|${r.exercise_name}|${r.date}|${r.weight_kg}|${r.reps}`)
+            );
+            const pendingLocals = prev.filter(
+              l =>
+                String(l.athlete_id) === String(targetId) &&
+                !remoteIds.has(l.id) &&
+                !remoteKeys.has(`${l.athlete_id}|${l.exercise_name}|${l.date}|${l.weight_kg}|${l.reps}`)
+            );
+            const others = prev.filter(l => String(l.athlete_id) !== String(targetId));
+            const merged = [...pendingLocals, ...remoteLifts, ...others];
+            setStorageItem('builder_athlete_max_lifts', merged);
+            return merged;
+          });
         }
         return;
       }
@@ -311,10 +330,23 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .order('date', { ascending: false })
         .limit(2000);
 
-      if (!error && data) {
+      if (!error && Array.isArray(data)) {
         const remoteLifts = data as AthleteMaxLift[];
-        setMaxLifts(remoteLifts);
-        setStorageItem('builder_athlete_max_lifts', remoteLifts);
+        setMaxLifts(prev => {
+          const remoteIds = new Set(remoteLifts.map(r => r.id));
+          const remoteKeys = new Set(
+            remoteLifts.map(r => `${r.athlete_id}|${r.exercise_name}|${r.date}|${r.weight_kg}|${r.reps}`)
+          );
+          const pendingLocals = prev.filter(
+            l =>
+              String(l.id).startsWith('lift-') &&
+              !remoteIds.has(l.id) &&
+              !remoteKeys.has(`${l.athlete_id}|${l.exercise_name}|${l.date}|${l.weight_kg}|${l.reps}`)
+          );
+          const merged = [...pendingLocals, ...remoteLifts];
+          setStorageItem('builder_athlete_max_lifts', merged);
+          return merged;
+        });
       }
     } catch (err) {
       console.warn('Eccezione in fetchAllMaxLifts:', err);
@@ -568,7 +600,7 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
-  // Carica i massimali di uno specifico atleta da Supabase come fonte di verità
+  // Carica i massimali di uno specifico atleta da Supabase preservando e auto-sincronizzando eventuali record locali
   const fetchMaxLiftsForAthlete = useCallback(async (athleteId: string): Promise<AthleteMaxLift[]> => {
     setLoading(true);
     try {
@@ -585,18 +617,68 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       const remoteLifts = (data as AthleteMaxLift[]) || [];
+      let mergedAthleteLifts: AthleteMaxLift[] = remoteLifts;
 
       setMaxLifts(prev => {
         const others = prev.filter(l => String(l.athlete_id) !== String(athleteId));
-        const updated = [...remoteLifts, ...others];
+        const remoteIds = new Set(remoteLifts.map(r => r.id));
+        const remoteKeys = new Set(
+          remoteLifts.map(r => `${r.athlete_id}|${r.exercise_name}|${r.date}|${r.weight_kg}|${r.reps}`)
+        );
+        const pendingLocals = prev.filter(
+          l =>
+            String(l.athlete_id) === String(athleteId) &&
+            !remoteIds.has(l.id) &&
+            !remoteKeys.has(`${l.athlete_id}|${l.exercise_name}|${l.date}|${l.weight_kg}|${l.reps}`)
+        );
+
+        mergedAthleteLifts = [...pendingLocals, ...remoteLifts].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+        const updated = [...mergedAthleteLifts, ...others];
         setStorageItem('builder_athlete_max_lifts', updated);
         return updated;
       });
 
-      return remoteLifts;
+      // Tentativo di sincronizzazione automatica in background per i massimali locali con ID temporaneo
+      const unsynced = mergedAthleteLifts.filter(l => String(l.id).startsWith('lift-'));
+      if (unsynced.length > 0 && isValidUuid(athleteId)) {
+        void (async () => {
+          for (const localLift of unsynced) {
+            const payload: Record<string, unknown> = {
+              athlete_id: athleteId,
+              exercise_name: localLift.exercise_name,
+              weight_kg: localLift.weight_kg,
+              reps: localLift.reps,
+              calculated_1rm: localLift.calculated_1rm,
+              is_real_1rm: localLift.is_real_1rm,
+              date: localLift.date,
+              notes: localLift.notes || null,
+            };
+            if (localLift.exercise_id && isValidUuid(localLift.exercise_id)) {
+              payload.exercise_id = localLift.exercise_id;
+            }
+            const { data: syncedRow, error: syncErr } = await supabase
+              .from('athlete_max_lifts')
+              .insert([payload])
+              .select()
+              .single();
+            if (!syncErr && syncedRow) {
+              setMaxLifts(curr => {
+                const next = curr.map(item => (item.id === localLift.id ? (syncedRow as AthleteMaxLift) : item));
+                setStorageItem('builder_athlete_max_lifts', next);
+                return next;
+              });
+            }
+          }
+        })();
+      }
+
+      return mergedAthleteLifts;
     } catch (err) {
       console.error('Errore in fetchMaxLiftsForAthlete:', err);
-      return [];
+      const cached = getStorageItem<AthleteMaxLift[]>('builder_athlete_max_lifts', []);
+      return cached.filter(l => String(l.athlete_id) === String(athleteId));
     } finally {
       setLoading(false);
     }
@@ -611,9 +693,23 @@ export const MetricsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     try {
+      const insertPayload: Record<string, unknown> = {
+        athlete_id: liftData.athlete_id,
+        exercise_name: liftData.exercise_name,
+        weight_kg: liftData.weight_kg,
+        reps: liftData.reps,
+        calculated_1rm: liftData.calculated_1rm,
+        is_real_1rm: liftData.is_real_1rm,
+        date: liftData.date,
+        notes: liftData.notes || null,
+      };
+      if (liftData.exercise_id && isValidUuid(liftData.exercise_id)) {
+        insertPayload.exercise_id = liftData.exercise_id;
+      }
+
       const { data, error } = await supabase
         .from('athlete_max_lifts')
-        .insert([liftData])
+        .insert([insertPayload])
         .select()
         .single();
 

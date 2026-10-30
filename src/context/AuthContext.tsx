@@ -180,13 +180,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem(AUTH_USER_CACHE_KEY, JSON.stringify(athleteUser));
         } catch (_) {}
       } else {
-        console.warn('Security: utente non autorizzato, logout forzato.', email);
-        await supabase.auth.signOut();
-        try {
-          localStorage.removeItem(AUTH_USER_CACHE_KEY);
-        } catch (_) {}
-        setUser(null);
-        setSessionUser(null);
+        const cachedUser = getCachedAuthUser();
+        if (cachedUser && cachedUser.id === sessionUserArg.id) {
+          setUser(cachedUser);
+        } else if (!navigator.onLine) {
+          console.warn('[AuthContext] Offline: preservata sessione locale senza logout forzato.');
+        } else {
+          console.warn('Security: utente non autorizzato, logout forzato.', email);
+          await supabase.auth.signOut();
+          try {
+            localStorage.removeItem(AUTH_USER_CACHE_KEY);
+          } catch (_) {}
+          setUser(null);
+          setSessionUser(null);
+        }
       }
     } catch (err: unknown) {
       console.warn('Errore in checkUserRoleAndSet:', err);

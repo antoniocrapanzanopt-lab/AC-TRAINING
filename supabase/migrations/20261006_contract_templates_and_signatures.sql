@@ -238,20 +238,25 @@ CREATE TRIGGER athlete_contract_signatures_block_update_trg
     BEFORE UPDATE ON public.athlete_contract_signatures
     FOR EACH ROW EXECUTE FUNCTION public.athlete_contract_signatures_block_update();
 
--- 3.3 Policy Atleta (AAL1 ammesso) — INSERT solo per sé stesso
+-- 3.3 Policy Atleta (AAL1 ammesso) — INSERT solo per sé stesso (auth_user_id o email JWT)
 DROP POLICY IF EXISTS "athlete_insert_own_contract_signature" ON public.athlete_contract_signatures;
 CREATE POLICY "athlete_insert_own_contract_signature" ON public.athlete_contract_signatures
 FOR INSERT TO authenticated
 WITH CHECK (
-    public.is_athlete()
-    AND EXISTS (
+    EXISTS (
         SELECT 1 FROM public.athletes a
         WHERE a.id = athlete_contract_signatures.athlete_id
-          AND a.auth_user_id = auth.uid()
+          AND (
+              a.auth_user_id = auth.uid()
+              OR (
+                  COALESCE(auth.jwt()->>'email', '') <> ''
+                  AND LOWER(TRIM(COALESCE(a.email, ''))) = LOWER(TRIM(COALESCE(auth.jwt()->>'email', '')))
+              )
+          )
     )
 );
 
--- 3.4 Policy Atleta (AAL1 ammesso) — SELECT solo delle proprie firme
+-- 3.4 Policy Atleta (AAL1 ammesso) — SELECT solo delle proprie firme (auth_user_id o email JWT)
 DROP POLICY IF EXISTS "athlete_select_own_contract_signatures" ON public.athlete_contract_signatures;
 CREATE POLICY "athlete_select_own_contract_signatures" ON public.athlete_contract_signatures
 FOR SELECT TO authenticated
@@ -259,7 +264,13 @@ USING (
     EXISTS (
         SELECT 1 FROM public.athletes a
         WHERE a.id = athlete_contract_signatures.athlete_id
-          AND a.auth_user_id = auth.uid()
+          AND (
+              a.auth_user_id = auth.uid()
+              OR (
+                  COALESCE(auth.jwt()->>'email', '') <> ''
+                  AND LOWER(TRIM(COALESCE(a.email, ''))) = LOWER(TRIM(COALESCE(auth.jwt()->>'email', '')))
+              )
+          )
     )
 );
 

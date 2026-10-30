@@ -32,7 +32,8 @@ import { SkipWorkoutModal } from '../../components/workouts/SkipWorkoutModal';
 import {
   fetchAthletePreviousExerciseHistory,
   PreviousExerciseHistory,
-  normalizeName
+  normalizeName,
+  selectContextualPreviousHistory,
 } from '../../utils/workoutHistoryResolver';
 import {
   parseWeightToNumber,
@@ -52,6 +53,7 @@ import {
   ActiveWorkoutDraft,
   PendingCompletedWorkout,
 } from '../../lib/offline/offlineWorkoutStorage';
+import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 
 interface WorkoutPlayerProps {
   workout: WorkoutTemplate;
@@ -70,6 +72,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   targetDayName,
   onClose,
 }) => {
+  // Mantiene lo schermo dello smartphone sempre acceso durante l'esecuzione dell'allenamento
+  useScreenWakeLock(true);
+
   const { startWorkoutSession, endWorkoutSession, saveExerciseLogs } = useWorkouts();
   const { showSuccess, showError, showWarning } = useToast();
   const { checkAndUpdateAutoPR } = useMetrics();
@@ -157,20 +162,46 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
   const [completedSets, setCompletedSets] = useState<Record<string, boolean[]>>({});
   // NOTE FEEDBACK: Note dell'atleta per singolo esercizio
   const [exerciseNotes, setExerciseNotes] = useState<Record<string, string>>({});
+
+  // Individua l'indice dell'esercizio attivo corrente (il primo non ancora completato nel giro/sessione)
+  const currentActiveExerciseIndex = useMemo(() => {
+    const firstUnfinished = activeExercises.findIndex((ex) => {
+      const isDone = isCircuitMode
+        ? Boolean(completedSets[ex.id]?.[0])
+        : Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
+      return !isDone;
+    });
+    return firstUnfinished !== -1 ? firstUnfinished : 0;
+  }, [activeExercises, completedSets, isCircuitMode]);
+
   // STORICO SESSIONI PRECEDENTI (GHOST LOG)
   const [previousHistoryMap, setPreviousHistoryMap] = useState<Record<string, PreviousExerciseHistory>>({});
 
-  // Risolutore unificato e infallibile per lo storico esercizi (combina ID e nome normalizzato)
-  const resolvePreviousHistory = useCallback((exId?: string, exName?: string): PreviousExerciseHistory | undefined => {
-    if (!exId && !exName) return undefined;
-    if (exId && previousHistoryMap[exId]) return previousHistoryMap[exId];
-    const norm = normalizeName(exName || '');
-    if (norm && previousHistoryMap[norm]) return previousHistoryMap[norm];
-    const lower = (exName || '').toLowerCase().trim();
-    if (lower && previousHistoryMap[lower]) return previousHistoryMap[lower];
-    if (exName && previousHistoryMap[exName]) return previousHistoryMap[exName];
-    return undefined;
-  }, [previousHistoryMap]);
+  // Risolutore unificato e infallibile per lo storico esercizi (combina ID, nome normalizzato e match intelligente per Giorno/Protocollo)
+  const resolvePreviousHistory = useCallback((ex?: WorkoutExercise): PreviousExerciseHistory | undefined => {
+    if (!ex) return undefined;
+    const exId = ex.id;
+    const exName = ex.name;
+    let base: PreviousExerciseHistory | undefined;
+    if (exId && previousHistoryMap[exId]) base = previousHistoryMap[exId];
+    if (!base) {
+      const norm = normalizeName(exName || '');
+      if (norm && previousHistoryMap[norm]) base = previousHistoryMap[norm];
+    }
+    if (!base) {
+      const lower = (exName || '').toLowerCase().trim();
+      if (lower && previousHistoryMap[lower]) base = previousHistoryMap[lower];
+    }
+    if (!base && exName && previousHistoryMap[exName]) {
+      base = previousHistoryMap[exName];
+    }
+    return selectContextualPreviousHistory(base, {
+      dayName: ex.day_name || currentDayName,
+      sets: ex.sets,
+      repsTarget: ex.reps_target,
+      notes: ex.notes,
+    });
+  }, [previousHistoryMap, currentDayName]);
 
   // Rileva se l'atleta ha inserito almeno un dato o spuntato una serie
   const hasAnyProgress = useMemo(() => {
@@ -477,9 +508,17 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       });
     }
 
+    if (isCircuitMode) {
+      initOrResumeAudioContext();
+      setActiveExerciseModalIndex(currentActiveExerciseIndex);
+    }
+
     scheduleAutosave(true);
-    showSuccess('Allenamento Avviato', 'Cronometro partito! Buon allenamento 💪');
-  }, [elapsedTime, sessionId, workout.id, targetAthleteId, athleteId, startWorkoutSession, scheduleAutosave, showSuccess, showError]);
+    showSuccess(
+      isCircuitMode ? 'Circuito HIIT Avviato' : 'Allenamento Avviato',
+      isCircuitMode ? 'Timer del circuito attivo! Dai il massimo 🔥' : 'Cronometro partito! Buon allenamento 💪'
+    );
+  }, [elapsedTime, sessionId, workout.id, targetAthleteId, athleteId, startWorkoutSession, scheduleAutosave, showSuccess, showError, isCircuitMode, currentActiveExerciseIndex]);
 
   const handlePauseTimer = useCallback(() => {
     setIsTimerRunning(false);
@@ -951,17 +990,6 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     }
   };
 
-  // Individua l'indice dell'esercizio attivo corrente (il primo non ancora completato nel giro/sessione)
-  const currentActiveExerciseIndex = useMemo(() => {
-    const firstUnfinished = activeExercises.findIndex((ex) => {
-      const isDone = isCircuitMode
-        ? Boolean(completedSets[ex.id]?.[0])
-        : Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
-      return !isDone;
-    });
-    return firstUnfinished !== -1 ? firstUnfinished : 0;
-  }, [activeExercises, completedSets, isCircuitMode]);
-
   return (
     <div className="fixed inset-0 bg-[var(--color-bg)] z-50 flex flex-col font-sans overflow-hidden">
       {/* ── HEADER LIVE ELEGANTE & SPAZIOSO ── */}
@@ -1165,14 +1193,18 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    initOrResumeAudioContext();
-                    setActiveExerciseModalIndex(currentActiveExerciseIndex);
+                    if (!isWorkoutStarted) {
+                      handleStartOrResumeTimer();
+                    } else {
+                      initOrResumeAudioContext();
+                      setActiveExerciseModalIndex(currentActiveExerciseIndex);
+                    }
                   }}
                   className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white font-black text-xs rounded-xl shadow-md shadow-purple-600/30 flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all force-text-white"
                   title="Avvia il timer automatico del circuito"
                 >
                   <Play className="w-3.5 h-3.5 fill-white text-white" />
-                  <span className="text-white">Avvia Circuito</span>
+                  <span className="text-white">{isWorkoutStarted ? 'Riprendi Circuito' : 'Avvia Circuito'}</span>
                 </button>
 
                 <button
@@ -1228,7 +1260,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
                   isActive={isActive}
                   isCompleted={isCompleted}
                   completedSetsMap={completedSets[ex.id] || []}
-                  previousHistory={resolvePreviousHistory(ex.id, ex.name)}
+                  previousHistory={resolvePreviousHistory(ex)}
                   onOpenExecutionModal={() => setActiveExerciseModalIndex(idx)}
                   circuitMode={isCircuitMode}
                   circuitRound={currentRound}
@@ -1289,10 +1321,18 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             <button
               type="button"
               onClick={handleStartOrResumeTimer}
-              className="w-full py-4 sm:py-5 px-6 rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-base sm:text-lg flex items-center justify-center gap-3 shadow-xl shadow-[var(--color-primary)]/25 active:scale-[0.98] transition-all cursor-pointer"
+              className={`w-full py-4 sm:py-5 px-6 rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-3 shadow-xl active:scale-[0.98] transition-all cursor-pointer ${
+                isCircuitMode
+                  ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/30'
+                  : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 shadow-[var(--color-primary)]/25'
+              }`}
             >
-              <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
-              <span>Inizia Allenamento</span>
+              {isCircuitMode ? (
+                <Zap className="w-5 h-5 sm:w-6 sm:h-6 fill-white text-white" />
+              ) : (
+                <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
+              )}
+              <span>{isCircuitMode ? 'Avvia Circuito HIIT' : 'Inizia Allenamento'}</span>
             </button>
           </div>
         </div>
@@ -1311,7 +1351,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             logs={logs[currentEx.id] || []}
             completedSetsMap={completedSets[currentEx.id] || []}
             noteFeedback={exerciseNotes[currentEx.id] || ''}
-            previousHistory={resolvePreviousHistory(currentEx.id, currentEx.name)}
+            previousHistory={resolvePreviousHistory(currentEx)}
             restTimer={restTimer}
             totalRestSeconds={totalRestSeconds}
             onSkipRest={handleSkipRest}
@@ -1368,7 +1408,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               w = parseWeightToNumber(ex.target_weight).weightKg;
             }
             if (isDone && w === 0) {
-              const hist = resolvePreviousHistory(ex.id, ex.name);
+              const hist = resolvePreviousHistory(ex);
               const histSet = hist?.sets?.[i] || hist?.sets?.[hist.sets.length - 1];
               if (histSet?.weightKg) {
                 w = parseWeightToNumber(histSet.weightKg).weightKg;
@@ -1378,7 +1418,7 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
               r = parseRepsToNumber(ex.reps_target, 10);
             }
             if (isDone && r === 0) {
-              const hist = resolvePreviousHistory(ex.id, ex.name);
+              const hist = resolvePreviousHistory(ex);
               const histSet = hist?.sets?.[i] || hist?.sets?.[hist.sets.length - 1];
               r = parseRepsToNumber(histSet?.reps, 10);
             }

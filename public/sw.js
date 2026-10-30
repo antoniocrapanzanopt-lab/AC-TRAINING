@@ -43,6 +43,47 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// ─── 3.5 FETCH HANDLER (OFFLINE-FIRST APP SHELL & ASSETS PER PORTALE ATLETA) ──────────
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  // Non intercettare chiamate API esterne (es. Supabase REST/Auth/Realtime)
+  if (url.origin !== self.location.origin) return;
+
+  // Navigazione HTML (SPA): Network-first con fallback alla shell index.html in cache
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
+          return response;
+        })
+        .catch(() => caches.match('/index.html') || caches.match('/'))
+    );
+    return;
+  }
+
+  // Asset statici (JS, CSS, immagini, font): Stale-While-Revalidate / Cache-fallback
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      const networkFetch = fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => cachedResponse);
+
+      return cachedResponse || networkFetch;
+    })
+  );
+});
+
 // ─── 4. WEB PUSH NOTIFICATIONS ────────────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   let data = {

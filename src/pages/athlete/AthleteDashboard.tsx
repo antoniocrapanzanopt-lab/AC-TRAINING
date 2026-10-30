@@ -6,12 +6,16 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Calendar,
   ShieldCheck,
   AlertCircle,
   XCircle,
   Clock,
   Play,
+  FileText,
+  Eye,
 } from 'lucide-react';
 import { WorkoutTemplate, WorkoutExercise, AthleteAssignedWorkout } from '../../types/workout';
 import { useWorkouts } from '../../context/WorkoutsContext';
@@ -61,6 +65,7 @@ interface WorkoutDayListProps {
   completedMap: Record<string, boolean>;
   sessionDetailsMap: Record<string, { status?: string; skip_reason?: string; coach_justified?: boolean | null; skip_notes?: string }>;
   days: string[];
+  exercises: WorkoutExercise[];
   isLoadingDays?: boolean;
   /** Numero sessioni completate per settimana (numero settimana → conteggio).  
    *  Usato come fallback in calculateCurrentActiveWeek quando i nomi giorni non corrispondono. */
@@ -74,6 +79,7 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   completedMap,
   sessionDetailsMap,
   days,
+  exercises,
   isLoadingDays = false,
   completedSessionsPerWeek,
 }) => {
@@ -91,6 +97,8 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   }, [totalWeeks, days, completedMap, completedSessionsPerWeek]);
 
   const [selectedWeek, setSelectedWeek] = useState<number>(currentActiveWeek);
+  const [expandedPreviewDay, setExpandedPreviewDay] = useState<string | null>(null);
+  const [isCoachNotesOpen, setIsCoachNotesOpen] = useState<boolean>(false);
 
   useEffect(() => {
     setSelectedWeek(currentActiveWeek);
@@ -100,6 +108,12 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   const nextPendingDay = useMemo(() => {
     return days.find((d) => !completedMap[`${selectedWeek}-${d}`] && !completedMap[`${selectedWeek}-${normDay(d)}`]) || null;
   }, [days, completedMap, selectedWeek]);
+
+  const cleanCoachDescription = useMemo(() => {
+    const raw = (assigned.workout?.description || '').trim();
+    if (!raw || raw.toLowerCase().startsWith('importata automaticamente da file pdf')) return '';
+    return raw;
+  }, [assigned.workout?.description]);
 
   if (isLoadingDays && days.length === 0) {
     return <WorkoutDaysSkeleton />;
@@ -117,11 +131,38 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
   }
 
   return (
-    <div className="space-y-4 pt-2">
+    <div className="space-y-4 pt-1">
+      {/* ─── EVENTUALI NOTE / OBIETTIVI DEL COACH SULLA SCHEDA ─── */}
+      {cleanCoachDescription && (
+        <div className="rounded-2xl bg-[var(--color-panel)] border border-[var(--color-primary)]/30 px-3.5 py-2.5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setIsCoachNotesOpen((prev) => !prev)}
+            className="w-full flex items-center justify-between gap-2 text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <FileText className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
+              <span className="text-xs font-black text-[var(--color-text)] uppercase tracking-wider">
+                Indicazioni & Note del Coach
+              </span>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] font-bold text-[var(--color-primary)] shrink-0">
+              <span>{isCoachNotesOpen ? 'Chiudi' : 'Leggi'}</span>
+              {isCoachNotesOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </div>
+          </button>
+          {isCoachNotesOpen && (
+            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed whitespace-pre-line pt-2.5 mt-2 border-t border-[var(--color-border)]">
+              {cleanCoachDescription}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ─── SELETTORE SETTIMANE SCALABILE & TOUCH (SUPPORTA FINO A 12+ SETTIMANE) ─── */}
       <div className="space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <Calendar className="w-4 h-4 text-[var(--color-primary)]" />
             <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-[var(--color-text)]">
               Settimana {selectedWeek} di {totalWeeks}
@@ -173,17 +214,17 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
                   isSelected
                     ? 'bg-[var(--color-primary)] text-slate-950 font-black shadow-md shadow-[var(--color-primary)]/20 ring-2 ring-[var(--color-primary)]'
                     : isWeekDone
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30'
+                    ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/40 hover:bg-emerald-500/25'
                     : isCurrent
-                    ? 'bg-[var(--color-panel)] text-white border-2 border-[var(--color-primary)]/70'
-                    : 'bg-[var(--color-panel)] text-slate-300 border border-[var(--color-panel-border)] hover:text-white hover:border-slate-600'
+                    ? 'bg-[var(--color-panel)] text-[var(--color-text)] border-2 border-[var(--color-primary)]/70'
+                    : 'bg-[var(--color-panel)] text-[var(--color-text-muted)] border border-[var(--color-panel-border)] hover:text-[var(--color-text)] hover:border-[var(--color-primary)]/40'
                 }`}
               >
                 <span>Sett. {wNum}</span>
                 {isWeekDone ? (
-                  <span className="text-emerald-400 font-black text-sm">✓</span>
+                  <span className="text-emerald-500 font-black text-sm">✓</span>
                 ) : isCurrent && !isSelected ? (
-                  <span className="text-xs text-amber-400 font-black bg-amber-500/20 px-2 py-0.5 rounded-md">• Attiva</span>
+                  <span className="text-xs text-amber-500 font-black bg-amber-500/15 px-2 py-0.5 rounded-md">• Attiva</span>
                 ) : null}
               </button>
             );
@@ -217,153 +258,236 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
 
           const isNextUpcoming = !isDone && nextPendingDay === dayName && selectedWeek === currentActiveWeek && !isDraftForThisDay;
 
+          // Esercizi previsti per questo giorno e settimana (con fallback a settimana 1 se la settimana specifica non ha righe duplicate)
+          const dayExercises = exercises.filter(
+            (ex) => (ex.week_number || 1) === selectedWeek && matchDayNames(ex.day_name || '', dayName)
+          );
+          const resolvedDayExercises =
+            dayExercises.length > 0
+              ? dayExercises
+              : exercises.filter((ex) => matchDayNames(ex.day_name || '', dayName));
+
+          const totalSetsInDay = resolvedDayExercises.reduce((acc, ex) => acc + (Number(ex.sets) || 3), 0);
+          const estMinutes = resolvedDayExercises.length > 0 ? Math.max(20, Math.round(totalSetsInDay * 2.5 + 8)) : 0;
+          const isPreviewExpanded = expandedPreviewDay === dayName;
+
           return (
             <div
               key={dayName}
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                console.log('[WorkoutDayList] Clicked Day Card:', { dayName, selectedWeek, isDone, isSkipped, isNextUpcoming });
-                onStart(assigned, selectedWeek, dayName);
-              }}
-              className={`p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 transition-all flex items-center justify-between gap-3 sm:gap-4 shadow-md cursor-pointer select-none group active:scale-[0.99] relative z-10 touch-manipulation ${
+              className={`rounded-2xl sm:rounded-3xl border-2 transition-all shadow-md relative z-10 overflow-hidden ${
                 isSkipped
-                  ? 'bg-amber-950/20 border-amber-500/40 hover:border-amber-500/60'
+                  ? 'bg-amber-500/10 border-amber-500/40 hover:border-amber-500/60'
                   : isDone
-                  ? 'bg-[var(--color-panel)]/80 border-slate-700/60 hover:border-slate-600'
+                  ? 'bg-[var(--color-panel)] border-[var(--color-panel-border)] hover:border-emerald-500/40'
                   : isDraftForThisDay
-                  ? 'bg-amber-500/15 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/15 ring-2 ring-[var(--color-primary)]/40'
+                  ? 'bg-amber-500/10 border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/15 ring-2 ring-[var(--color-primary)]/40'
                   : isNextUpcoming
                   ? 'bg-[var(--color-panel)] border-[var(--color-primary)] hover:border-[var(--color-primary)] shadow-lg shadow-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/30'
                   : 'bg-[var(--color-panel)] border-[var(--color-panel-border)] hover:border-[var(--color-primary)]/50'
               }`}
             >
-              {/* Stato a Sinistra + Nome Giorno */}
-              <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
-                <div
-                  className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl flex items-center justify-center font-black text-base sm:text-lg shrink-0 transition-transform group-hover:scale-105 shadow-sm ${
-                    isSkipped
-                      ? detail?.coach_justified === true
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                        : detail?.coach_justified === false
-                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                        : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                      : isDone
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                      : isDraftForThisDay
-                      ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/30 animate-pulse font-black'
-                      : isNextUpcoming
-                      ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] border-2 border-[var(--color-primary)]/60 font-black'
-                      : 'bg-[var(--color-surface-strong)] text-slate-300 border border-slate-700 font-bold'
-                  }`}
-                >
-                  {isSkipped ? (
-                    detail?.coach_justified === true ? (
-                      <ShieldCheck className="w-6 h-6 text-emerald-400" />
-                    ) : detail?.coach_justified === false ? (
-                      <XCircle className="w-6 h-6 text-rose-400" />
-                    ) : (
-                      <AlertCircle className="w-6 h-6 text-amber-400" />
-                    )
-                  ) : isDone ? (
-                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-                  ) : isDraftForThisDay ? (
-                    <RotateCcw className="w-6 h-6" />
-                  ) : (
-                    dayIndex + 1
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
-                    <h4 className="text-base sm:text-xl font-black text-white group-hover:text-[var(--color-primary)] transition-colors truncate">
-                      {dayName}
-                    </h4>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  onStart(assigned, selectedWeek, dayName);
+                }}
+                className="p-4 sm:p-5 flex items-center justify-between gap-3 sm:gap-4 cursor-pointer select-none group active:scale-[0.99] touch-manipulation"
+              >
+                {/* Stato a Sinistra + Nome Giorno */}
+                <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
+                  <div
+                    className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl flex items-center justify-center font-black text-base sm:text-lg shrink-0 transition-transform group-hover:scale-105 shadow-sm ${
+                      isSkipped
+                        ? detail?.coach_justified === true
+                          ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/40'
+                          : detail?.coach_justified === false
+                          ? 'bg-rose-500/20 text-rose-500 border border-rose-500/40'
+                          : 'bg-amber-500/20 text-amber-500 border border-amber-500/40'
+                        : isDone
+                        ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/35'
+                        : isDraftForThisDay
+                        ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/30 animate-pulse font-black'
+                        : isNextUpcoming
+                        ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)] border-2 border-[var(--color-primary)]/60 font-black'
+                        : 'bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-[var(--color-border)] font-bold'
+                    }`}
+                  >
                     {isSkipped ? (
                       detail?.coach_justified === true ? (
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-black border border-emerald-500/40 shrink-0 flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5" /> Giustificato
-                        </span>
+                        <ShieldCheck className="w-6 h-6 text-emerald-500" />
                       ) : detail?.coach_justified === false ? (
-                        <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 text-xs font-black border border-rose-500/40 shrink-0 flex items-center gap-1">
-                          <XCircle className="w-3.5 h-3.5" /> Non Giustificato
-                        </span>
+                        <XCircle className="w-6 h-6 text-rose-500" />
                       ) : (
-                        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-black border border-amber-500/40 shrink-0 flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5" /> In attesa
-                        </span>
+                        <AlertCircle className="w-6 h-6 text-amber-500" />
                       )
                     ) : isDone ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-black border border-emerald-500/40 shrink-0">
-                        ✓ Completato
-                      </span>
+                      <CheckCircle2 className="w-6 h-6 text-emerald-500" />
                     ) : isDraftForThisDay ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/25 text-amber-300 text-xs font-black border border-amber-500/50 shrink-0">
-                        In corso
-                      </span>
-                    ) : isNextUpcoming ? (
-                      <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/25 text-[var(--color-primary)] text-xs font-black border border-[var(--color-primary)]/40 shrink-0">
-                        ★ Prossimo
-                      </span>
-                    ) : null}
+                      <RotateCcw className="w-6 h-6" />
+                    ) : (
+                      dayIndex + 1
+                    )}
                   </div>
-                  <p className="text-sm font-medium text-slate-300 mt-1 truncate">
-                    {isSkipped
-                      ? `Saltato: ${detail?.skip_reason || 'Motivi personali'}`
-                      : isDone
-                      ? 'Seduta già registrata'
-                      : isDraftForThisDay
-                      ? 'Sessione salvata in sospeso'
-                      : isNextUpcoming
-                      ? 'Pronta per essere svolta'
-                      : 'Seduta di allenamento'}
-                  </p>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+                      <h4 className="text-base sm:text-xl font-black text-[var(--color-text)] group-hover:text-[var(--color-primary)] transition-colors truncate">
+                        {dayName}
+                      </h4>
+                      {isSkipped ? (
+                        detail?.coach_justified === true ? (
+                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-xs font-black border border-emerald-500/35 shrink-0 flex items-center gap-1">
+                            <ShieldCheck className="w-3.5 h-3.5" /> Giustificato
+                          </span>
+                        ) : detail?.coach_justified === false ? (
+                          <span className="px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-500 text-xs font-black border border-rose-500/35 shrink-0 flex items-center gap-1">
+                            <XCircle className="w-3.5 h-3.5" /> Non Giustificato
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-500 text-xs font-black border border-amber-500/35 shrink-0 flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" /> In attesa
+                          </span>
+                        )
+                      ) : isDone ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-xs font-black border border-emerald-500/35 shrink-0">
+                          ✓ Completato
+                        </span>
+                      ) : isDraftForThisDay ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-500 text-xs font-black border border-amber-500/40 shrink-0">
+                          In corso
+                        </span>
+                      ) : isNextUpcoming ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs font-black border border-[var(--color-primary)]/40 shrink-0">
+                          ★ Prossimo
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* Metadati: Numero esercizi, Serie e Durata stimata */}
+                    {resolvedDayExercises.length > 0 ? (
+                      <div className="mt-1 flex items-center gap-1.5 flex-wrap text-xs font-bold text-[var(--color-text-muted)]">
+                        <span>{resolvedDayExercises.length} esercizi</span>
+                        <span className="opacity-50">•</span>
+                        <span>{totalSetsInDay} serie</span>
+                        <span className="opacity-50">•</span>
+                        <span className="text-[var(--color-primary)] flex items-center gap-1 font-black">
+                          <Clock className="w-3 h-3" /> ~{estMinutes} min
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-sm font-medium text-[var(--color-text-muted)] mt-1 truncate">
+                        {isSkipped
+                          ? `Saltato: ${detail?.skip_reason || 'Motivi personali'}`
+                          : isDone
+                          ? 'Seduta già registrata'
+                          : isDraftForThisDay
+                          ? 'Sessione salvata in sospeso'
+                          : isNextUpcoming
+                          ? 'Pronta per essere svolta'
+                          : 'Seduta di allenamento'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Azione a Destra + Anteprima */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {resolvedDayExercises.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedPreviewDay((prev) => (prev === dayName ? null : dayName));
+                      }}
+                      className={`w-10 h-10 rounded-xl sm:rounded-2xl flex items-center justify-center border transition-all cursor-pointer ${
+                        isPreviewExpanded
+                          ? 'bg-[var(--color-primary)] text-slate-950 border-[var(--color-primary)] shadow-sm'
+                          : 'bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] border-[var(--color-border)]'
+                      }`}
+                      title={isPreviewExpanded ? 'Chiudi anteprima esercizi' : 'Anteprima esercizi della seduta'}
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {isDone ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStart(assigned, selectedWeek, dayName);
+                      }}
+                      className="min-h-[44px] px-4 sm:px-5 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] text-xs sm:text-sm font-black transition-all cursor-pointer shadow-sm"
+                    >
+                      Rivedi
+                    </button>
+                  ) : isDraftForThisDay ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStart(assigned, selectedWeek, dayName);
+                      }}
+                      className="min-h-[44px] px-5 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-sm sm:text-base transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 flex items-center gap-2 active:scale-95"
+                    >
+                      <RotateCcw className="w-4 h-4 stroke-[2.5]" />
+                      <span>Riprendi</span>
+                    </button>
+                  ) : isNextUpcoming ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStart(assigned, selectedWeek, dayName);
+                      }}
+                      className="min-h-[44px] px-5 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-sm sm:text-base transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/25 flex items-center gap-2 active:scale-95"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>Inizia</span>
+                    </button>
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl sm:rounded-2xl flex items-center justify-center bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] group-hover:text-[var(--color-primary)] border border-[var(--color-border)] group-hover:border-[var(--color-primary)]/50 transition-all">
+                      <ChevronRight className="w-5 h-5 transition-transform group-hover:translate-x-0.5" />
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Azione a Destra */}
-              <div className="shrink-0">
-                {isDone ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStart(assigned, selectedWeek, dayName);
-                    }}
-                    className="min-h-[44px] px-4 sm:px-5 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface)] text-slate-200 hover:text-white border border-slate-700 text-xs sm:text-sm font-black transition-all cursor-pointer shadow-sm"
-                  >
-                    Rivedi
-                  </button>
-                ) : isDraftForThisDay ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStart(assigned, selectedWeek, dayName);
-                    }}
-                    className="min-h-[44px] px-5 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-sm sm:text-base transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/20 flex items-center gap-2 active:scale-95"
-                  >
-                    <RotateCcw className="w-4 h-4 stroke-[2.5]" />
-                    <span>Riprendi</span>
-                  </button>
-                ) : isNextUpcoming ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStart(assigned, selectedWeek, dayName);
-                    }}
-                    className="min-h-[44px] px-5 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 font-black text-sm sm:text-base transition-all cursor-pointer shadow-lg shadow-[var(--color-primary)]/25 flex items-center gap-2 active:scale-95"
-                  >
-                    <Play className="w-4 h-4 fill-current" />
-                    <span>Inizia</span>
-                  </button>
-                ) : (
-                  <div className="w-10 h-10 rounded-xl sm:rounded-2xl flex items-center justify-center bg-[var(--color-surface-strong)] text-slate-400 group-hover:text-[var(--color-primary)] border border-slate-700/60 group-hover:border-[var(--color-primary)]/50 transition-all">
-                    <ChevronRight className="w-5 h-5 transition-transform group-hover:translate-x-0.5" />
+              {/* ── CASSETTO ANTEPRIMA RAPIDA ESERCIZI DELLA SEDUTA (ARMONIZZATO TEMA CHIARO/SCURO) ── */}
+              {isPreviewExpanded && resolvedDayExercises.length > 0 && (
+                <div className="px-4 sm:px-5 pb-4 pt-3 border-t border-[var(--color-border)] bg-[var(--color-surface-strong)]/80 space-y-2 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] px-1">
+                    <span>Anteprima Esercizi ({resolvedDayExercises.length})</span>
+                    <span>Serie × Ripetizioni</span>
                   </div>
-                )}
-              </div>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {resolvedDayExercises.map((ex, idx) => (
+                      <div
+                        key={ex.id || idx}
+                        className="px-3 py-2 rounded-xl bg-[var(--color-panel)] border border-[var(--color-border)] flex items-center justify-between gap-3 text-xs shadow-2xs"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-5 h-5 rounded-md bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 font-mono font-black text-[10px] flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="font-bold text-[var(--color-text)] truncate">{ex.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+                          <span className="text-[var(--color-text)] font-black bg-[var(--color-surface-strong)] px-2 py-0.5 rounded-md border border-[var(--color-border)]">
+                            {ex.sets || 3} × {ex.reps_target || '10'}
+                          </span>
+                          {ex.target_weight && (
+                            <span className="text-[var(--color-primary)] font-black bg-[var(--color-primary)]/15 px-2 py-0.5 rounded-md border border-[var(--color-primary)]/30">
+                              {ex.target_weight} kg
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -450,6 +574,18 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   });
 
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState<boolean>(false);
   const [onboardingRecord, setOnboardingRecord] = useState<AthleteOnboardingRecord | null>(null);
   const [isLoadingOnboarding, setIsLoadingOnboarding] = useState<boolean>(false);
@@ -802,7 +938,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     } catch {}
   }, [user?.athleteId, user?.id, athleteId, firstAssigned?.workout_id]);
 
-  // Mappa giorni reali per ogni scheda assegnata
+  // Mappa giorni reali ed esercizi per ogni scheda assegnata
   const [workoutDaysMap, setWorkoutDaysMap] = useState<Record<string, string[]>>(() => {
     const initialMap: Record<string, string[]> = {};
     myAssignedWorkouts.forEach((assigned) => {
@@ -817,6 +953,21 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       } catch (_) {}
     });
     return initialMap;
+  });
+  const [workoutExercisesMap, setWorkoutExercisesMap] = useState<Record<string, WorkoutExercise[]>>(() => {
+    const initialExMap: Record<string, WorkoutExercise[]> = {};
+    myAssignedWorkouts.forEach((assigned) => {
+      try {
+        const cachedEx = localStorage.getItem(`ac_cached_exercises_v1_${assigned.workout_id}`);
+        if (cachedEx) {
+          const parsedEx = JSON.parse(cachedEx);
+          if (Array.isArray(parsedEx) && parsedEx.length > 0) {
+            initialExMap[assigned.workout_id] = parsedEx;
+          }
+        }
+      } catch (_) {}
+    });
+    return initialExMap;
   });
   const [loadingDaysMap, setLoadingDaysMap] = useState<Record<string, boolean>>({});
 
@@ -854,21 +1005,71 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       try {
         const { data, error } = await supabase
           .from('workout_exercises')
-          .select('workout_id, day_name')
+          .select('*')
           .in('workout_id', uniqueQueryIds)
+          .order('week_number', { ascending: true })
           .order('order_index', { ascending: true });
 
         if (!isMounted) return;
 
         if (error) {
-          console.warn('[AthleteDashboard] Errore caricamento giorni:', error.message);
+          console.warn('[AthleteDashboard] Errore caricamento giorni (uso cache offline):', error.message);
+          const fallbackDaysMap: Record<string, string[]> = {};
+          const fallbackExMap: Record<string, WorkoutExercise[]> = {};
+          myAssignedWorkouts.forEach((assigned) => {
+            const wId = assigned.workout_id;
+            const targetWIds = workoutToTargetIdsMap.get(wId) || [wId];
+            for (const tid of targetWIds) {
+              try {
+                const rawEx = localStorage.getItem(`ac_cached_exercises_v1_${tid}`);
+                if (rawEx) {
+                  const parsedEx = JSON.parse(rawEx) as WorkoutExercise[];
+                  if (Array.isArray(parsedEx) && parsedEx.length > 0) {
+                    fallbackExMap[wId] = parsedEx;
+                  }
+                  const unique: string[] = [];
+                  parsedEx.forEach((e) => {
+                    const d = (e.day_name || '').trim();
+                    if (d && !unique.includes(d)) unique.push(d);
+                  });
+                  if (unique.length > 0) {
+                    fallbackDaysMap[wId] = unique;
+                    break;
+                  }
+                }
+              } catch {}
+            }
+          });
+          if (Object.keys(fallbackDaysMap).length > 0) {
+            setWorkoutDaysMap((prev) => ({ ...prev, ...fallbackDaysMap }));
+          }
+          if (Object.keys(fallbackExMap).length > 0) {
+            setWorkoutExercisesMap((prev) => ({ ...prev, ...fallbackExMap }));
+          }
         } else if (data) {
           const newWorkoutDaysMap: Record<string, string[]> = {};
+          const newWorkoutExercisesMap: Record<string, WorkoutExercise[]> = {};
+
+          // Salva anche gli esercizi completi per ciascun workout_id nella cache offline
+          for (const qId of uniqueQueryIds) {
+            const rowsForId = data.filter((e) => e.workout_id === qId);
+            if (rowsForId.length > 0) {
+              try {
+                localStorage.setItem(`ac_cached_exercises_v1_${qId}`, JSON.stringify(rowsForId));
+              } catch (_) {}
+            }
+          }
 
           myAssignedWorkouts.forEach((assigned) => {
             const wId = assigned.workout_id;
             const targetWIds = workoutToTargetIdsMap.get(wId) || [wId];
-            const matchingRows = data.filter((e) => targetWIds.includes(e.workout_id));
+            const matchingRows = data.filter((e) => targetWIds.includes(e.workout_id)) as WorkoutExercise[];
+            if (matchingRows.length > 0) {
+              newWorkoutExercisesMap[wId] = matchingRows;
+              try {
+                localStorage.setItem(`ac_cached_exercises_v1_${wId}`, JSON.stringify(matchingRows));
+              } catch (_) {}
+            }
             const rawDays = matchingRows.map((e) => (e.day_name || '').trim()).filter(Boolean);
             const unique: string[] = [];
             rawDays.forEach((d) => {
@@ -882,9 +1083,10 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
           });
 
           setWorkoutDaysMap((prev) => ({ ...prev, ...newWorkoutDaysMap }));
+          setWorkoutExercisesMap((prev) => ({ ...prev, ...newWorkoutExercisesMap }));
         }
       } catch (fetchErr) {
-        console.warn('[AthleteDashboard] Eccezione fetch giorni:', fetchErr);
+        console.warn('[AthleteDashboard] Eccezione fetch giorni (modalità offline):', fetchErr);
       } finally {
         if (isMounted) {
           setLoadingDaysMap((prev) => {
@@ -1115,17 +1317,10 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   return (
     <div className="space-y-6 pb-32 font-sans max-w-3xl mx-auto animate-in fade-in duration-200">
       {/* ─── 1. HEADER: SALUTO PULITO & MINIMALE (0 MS) ─── */}
-      <div className="space-y-1">
+      <div>
         <h2 className="text-2xl sm:text-3xl font-black text-[var(--color-text)] tracking-tight">
           {athleteFirstName ? `Ciao ${athleteFirstName} 👋` : 'Il tuo Allenamento'}
         </h2>
-        <p className="text-xs sm:text-sm text-[var(--color-text-muted)]">
-          {firstAssigned?.workout?.title
-            ? `Programma attivo: ${firstAssigned.workout.title}`
-            : loading
-            ? 'Caricamento del tuo programma...'
-            : 'La tua home per raggiungere i tuoi obiettivi.'}
-        </p>
       </div>
 
       {/* ─── BANNER INVITO AGGIUNGI AC ALLA HOME ─── */}
@@ -1196,7 +1391,18 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         />
       )}
 
-      {/* ─── 3. BANNER CODA SINCRONIZZAZIONE OFFLINE ─── */}
+      {/* ─── 3. BANNER MODALITÀ OFFLINE E CODA SINCRONIZZAZIONE ─── */}
+      {!isOnline && (
+        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs text-amber-300 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <WifiOff className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>Modalità Offline attiva</strong> — La tua scheda è salvata sul dispositivo: puoi aprire ed eseguire tutti gli allenamenti anche senza connessione.
+            </span>
+          </div>
+        </div>
+      )}
+
       {pendingSyncCount > 0 && (
         <div className="p-3.5 rounded-2xl bg-[var(--color-panel)] border border-[var(--color-primary)]/30 flex items-center justify-between text-xs text-[var(--color-text)] shadow-sm">
           <div className="flex items-center gap-2">
@@ -1245,6 +1451,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
               completedMap={globalProgressMap}
               sessionDetailsMap={globalSessionDetailsMap}
               days={workoutDaysMap[assigned.workout_id] || []}
+              exercises={workoutExercisesMap[assigned.workout_id] || []}
               isLoadingDays={Boolean(loadingDaysMap[assigned.workout_id])}
               completedSessionsPerWeek={globalSessionsPerWeek}
             />
@@ -1252,10 +1459,11 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         </div>
       )}
 
-      {/* ─── 5. STORICO ALLENAMENTI COMPLETATI (TENDINA ELEGANTE) ─── */}
+      {/* ─── 5. STORICO ALLENAMENTI COMPLETATI (RAGGRUPPATO PER SCHEDA -> SETTIMANA) ─── */}
       <AthleteWorkoutHistory
         athleteId={athleteId}
         athleteIds={memoizedAthleteIds}
+        activeWorkoutId={firstAssigned?.workout_id}
         activeWorkoutTitle={firstAssigned?.workout?.title}
         initialSessions={cachedSessionsForHistory}
       />

@@ -82,6 +82,7 @@ interface WorkoutsContextType {
   deleteWorkoutTemplate: (workoutId: string) => Promise<{ success: boolean; error?: string }>;
   assignWorkoutToAthlete: (athleteId: string, workoutId: string, startDate?: string) => Promise<{ success: boolean; error?: string }>;
   assignWorkoutToAthletes: (athleteIds: string[], workoutId: string, startDate?: string) => Promise<{ success: boolean; error?: string }>;
+  archiveWorkoutForAthlete: (athleteId: string, workoutId: string) => Promise<{ success: boolean; error?: string }>;
   unassignWorkoutFromAthlete: (athleteId: string, workoutId: string, deletePrivateWorkout?: boolean) => Promise<{ success: boolean; error?: string }>;
   getAssignedWorkoutsForAthlete: (athleteId: string) => Promise<AthleteAssignedWorkout[]>;
   getExercisesForWorkout: (workoutId: string) => Promise<WorkoutExercise[]>;
@@ -788,6 +789,28 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  const archiveWorkoutForAthlete = async (athleteId: string, workoutId: string) => {
+    if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
+    try {
+      const { error } = await supabase
+        .from('athlete_assigned_workouts')
+        .update({ is_active: false })
+        .eq('athlete_id', athleteId)
+        .eq('workout_id', workoutId);
+
+      if (error) throw error;
+
+      await Promise.all([
+        loadAssignedWorkouts(),
+        loadCoachTemplates(),
+      ]);
+      return { success: true };
+    } catch (error: unknown) {
+      const msg = extractErrorMessage(error);
+      return { success: false, error: msg };
+    }
+  };
+
   const unassignWorkoutFromAthlete = async (athleteId: string, workoutId: string, deletePrivateWorkout: boolean = false) => {
     if (!user || !isCoachRole(user.role)) return { success: false, error: 'Unauthorized' };
     try {
@@ -850,18 +873,61 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const getExercisesForWorkout = async (workoutId: string): Promise<WorkoutExercise[]> => {
     if (!workoutId) return [];
-    const { data, error } = await supabase
-      .from('workout_exercises')
-      .select('*')
-      .eq('workout_id', workoutId)
-      .order('week_number', { ascending: true })
-      .order('order_index', { ascending: true });
+    const cacheKey = `ac_cached_exercises_v1_${workoutId}`;
 
-    if (error) {
-      technicalLogger.error('workouts', 'GET_EXERCISES_ERROR', error.message, { workoutId });
-      throw new Error(`Errore caricamento esercizi dal database: ${error.message}`);
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed as WorkoutExercise[];
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
-    return (data || []) as WorkoutExercise[];
+
+    try {
+      const { data, error } = await supabase
+        .from('workout_exercises')
+        .select('*')
+        .eq('workout_id', workoutId)
+        .order('week_number', { ascending: true })
+        .order('order_index', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        const exercises = data as WorkoutExercise[];
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(exercises));
+        } catch {
+          // ignore
+        }
+        return exercises;
+      }
+
+      if (error) {
+        technicalLogger.warn('workouts', 'GET_EXERCISES_FALLBACK_CACHE', error.message, { workoutId });
+      }
+    } catch (err) {
+      technicalLogger.warn('workouts', 'GET_EXERCISES_OFFLINE_FALLBACK', String(err), { workoutId });
+    }
+
+    // Fallback offline da cache locale
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          return parsed as WorkoutExercise[];
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return [];
   };
 
   const forkWorkoutForAthlete = async (originalWorkoutId: string, athleteId: string, newWorkoutData: Partial<WorkoutTemplate>, newExercises: Partial<WorkoutExercise>[]) => {
@@ -1174,6 +1240,40 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const serialized = JSON.stringify(validAssigned);
           localStorage.setItem(versionedCacheKey, serialized);
           localStorage.setItem('builder_cached_my_workouts', serialized);
+
+          // Pre-carica e salva in cache locale tutti gli esercizi delle schede assegnate per utilizzo 100% offline
+          const workoutIdsToPrefetch = Array.from(
+            new Set(
+              validAssigned.flatMap((a) => [
+                a.workout_id,
+                a.workout?.id,
+                a.workout?.parent_template_id,
+              ]).filter(Boolean) as string[]
+            )
+          );
+          if (workoutIdsToPrefetch.length > 0) {
+            void (async () => {
+              try {
+                const { data: allExData, error: allExErr } = await supabase
+                  .from('workout_exercises')
+                  .select('*')
+                  .in('workout_id', workoutIdsToPrefetch)
+                  .order('week_number', { ascending: true })
+                  .order('order_index', { ascending: true });
+
+                if (!allExErr && allExData && allExData.length > 0) {
+                  for (const wId of workoutIdsToPrefetch) {
+                    const exForW = allExData.filter((e) => e.workout_id === wId);
+                    if (exForW.length > 0) {
+                      localStorage.setItem(`ac_cached_exercises_v1_${wId}`, JSON.stringify(exForW));
+                    }
+                  }
+                }
+              } catch {
+                // ignore background prefetch errors
+              }
+            })();
+          }
         }
       } catch (cacheErr) {
         technicalLogger.warn('workouts', 'CACHE_WRITE_FAILED', String(cacheErr));
@@ -1484,6 +1584,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           deleteWorkoutTemplate,
           assignWorkoutToAthlete,
           assignWorkoutToAthletes,
+          archiveWorkoutForAthlete,
           unassignWorkoutFromAthlete,
           getAssignedWorkoutsForAthlete,
           getExercisesForWorkout,

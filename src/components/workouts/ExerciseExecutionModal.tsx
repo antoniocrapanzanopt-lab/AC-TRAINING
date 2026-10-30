@@ -30,7 +30,8 @@ import { playCountdownBeep, playRestCompleteTone, initOrResumeAudioContext, isRe
 import { ExerciseAnatomyModal } from './ExerciseAnatomyModal';
 import { ExerciseHistoryModal } from './ExerciseHistoryModal';
 import { InteractiveRestTimer } from './InteractiveRestTimer';
-import { PreviousExerciseHistory, PreviousSetData } from '../../utils/workoutHistoryResolver';
+import { PreviousExerciseHistory, PreviousSetData, isRampingOrMavProtocol } from '../../utils/workoutHistoryResolver';
+import { parseRepsToNumber, parseWeightToNumber } from '../../utils/weightParser';
 
 interface ExerciseExecutionModalProps {
   isOpen: boolean;
@@ -98,6 +99,11 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
   const [anatomyTargetExercise, setAnatomyTargetExercise] = useState<WorkoutExercise | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [justApplied, setJustApplied] = useState(false);
+  const [selectedSessionOverrideIdx, setSelectedSessionOverrideIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    setSelectedSessionOverrideIdx(null);
+  }, [exercise.id, exerciseIndex, isOpen]);
 
   // ── CIRCUITO / HIIT: TIMER GUIDATO AD ALTA PRECISIONE TIMESTAMP-BASED ──
   const workSecondsPlanned = useMemo(() => getExerciseWorkSeconds(exercise), [exercise]);
@@ -311,13 +317,38 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
   // Individua l'indice della prima serie attiva ancora da completare
   const activeSetIndex = completedSetsMap.findIndex((done) => !done);
 
+  // Rileva se l'esercizio corrente prevede MAV / Ramping / Top Set + Back-off
+  const isMavOrRamping = isRampingOrMavProtocol(exercise.reps_target, cleanNotes);
+
+  // Sessione storica attualmente visualizzata nel banner (consente switch rapido tra sedute diverse nella settimana, es. MAV vs Volume)
+  const allPastSessions = previousHistory?.allPastSessions || [];
+  const activeHistorySession = (() => {
+    if (selectedSessionOverrideIdx !== null && allPastSessions[selectedSessionOverrideIdx]) {
+      return allPastSessions[selectedSessionOverrideIdx];
+    }
+    if (!previousHistory) return null;
+    const matchedIdx = allPastSessions.findIndex((s) => s.sessionDate === previousHistory.sessionDate);
+    if (matchedIdx !== -1) return allPastSessions[matchedIdx];
+    return allPastSessions[0] || {
+      sessionId: 'default',
+      sessionDate: previousHistory.sessionDate,
+      formattedDate: previousHistory.formattedDate,
+      sets: previousHistory.sets,
+      dayName: previousHistory.matchedDayName,
+    };
+  })();
+
+  const displayedSets = activeHistorySession?.sets || previousHistory?.sets || [];
+  const displayedDate = activeHistorySession?.formattedDate || previousHistory?.formattedDate || '';
+  const displayedDayName = activeHistorySession?.dayName || previousHistory?.matchedDayName || null;
+
   // Copia i carichi e le ripetizioni precedenti
   const handleCopyPreviousLoads = (customSets?: PreviousSetData[]) => {
-    const sourceSets = customSets || previousHistory?.sets;
+    const sourceSets = customSets || displayedSets;
     if (!sourceSets || sourceSets.length === 0) return;
 
     sourceSets.forEach((s, idx) => {
-      if (idx < exercise.sets) {
+      if (idx < totalSetsCount) {
         if (s.reps !== null && s.reps !== undefined) {
           onLogChange(idx, 'reps', String(s.reps));
         }
@@ -330,13 +361,14 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
       }
     });
 
-    if (exercise.sets > sourceSets.length && sourceSets.length > 0) {
+    if (totalSetsCount > sourceSets.length && sourceSets.length > 0) {
       const lastSet = sourceSets[sourceSets.length - 1];
-      for (let idx = sourceSets.length; idx < exercise.sets; idx++) {
+      for (let idx = sourceSets.length; idx < totalSetsCount; idx++) {
         if (lastSet.reps !== null && lastSet.reps !== undefined) {
           onLogChange(idx, 'reps', String(lastSet.reps));
         }
-        if (lastSet.weightKg !== null && lastSet.weightKg !== undefined) {
+        // In caso di MAV / Ramping non copiamo lo stesso peso sulle serie extra successive
+        if (!isMavOrRamping && lastSet.weightKg !== null && lastSet.weightKg !== undefined) {
           onLogChange(idx, 'weight', String(lastSet.weightKg));
         }
         if (lastSet.rpe !== null && lastSet.rpe !== undefined) {
@@ -349,15 +381,53 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
     setTimeout(() => setJustApplied(false), 2500);
   };
 
-  // Applica target prescritti
+  // Applica target prescritti dal Coach (pulendo stringhe come "40s", "6-8", "MAV 5" in numeri validi per gli input)
   const handleApplyCoachTargets = () => {
-    const targetReps = exercise.reps_target || '10';
-    const targetWeight = exercise.target_weight ? String(exercise.target_weight) : '0';
+    const numericReps = parseRepsToNumber(
+      exercise.duration_seconds && exercise.duration_seconds > 0
+        ? exercise.duration_seconds
+        : exercise.reps_target,
+      10
+    );
+    const cleanRepsStr = String(numericReps > 0 ? numericReps : 10);
 
-    for (let idx = 0; idx < exercise.sets; idx++) {
-      onLogChange(idx, 'reps', targetReps);
-      if (exercise.target_weight) {
-        onLogChange(idx, 'weight', targetWeight);
+    const parsedWeight = parseWeightToNumber(exercise.target_weight);
+    const hasPrescribedWeight = Boolean(
+      exercise.target_weight &&
+      !parsedWeight.isPercentage &&
+      parsedWeight.weightKg > 0
+    );
+    const cleanWeightStr = hasPrescribedWeight ? String(parsedWeight.weightKg) : '';
+
+    // Estrae eventuale RPE o converte RIR in RPE (es. RIR 2 -> RPE 8)
+    let targetRpeStr = '';
+    if (exercise.rir_target && exercise.rir_target !== '-') {
+      const rawInt = exercise.rir_target.trim();
+      const numMatch = rawInt.match(/(\d+(?:[.,]\d+)?)/);
+      if (numMatch && numMatch[1]) {
+        const val = parseFloat(numMatch[1].replace(',', '.'));
+        if (!isNaN(val)) {
+          if (rawInt.toUpperCase().includes('RPE')) {
+            targetRpeStr = String(val);
+          } else {
+            const convertedRpe = Math.max(1, Math.min(10, 10 - val));
+            targetRpeStr = String(convertedRpe);
+          }
+        }
+      }
+    }
+
+    for (let idx = 0; idx < totalSetsCount; idx++) {
+      onLogChange(idx, 'reps', cleanRepsStr);
+      // Se è un MAV / Ramping, compila solo le ripetizioni target (o solo il peso di partenza sulla 1ª serie)
+      // così da non forzare un carico fisso uguale su tutte le serie di salita
+      if (hasPrescribedWeight) {
+        if (!isMavOrRamping || idx === 0) {
+          onLogChange(idx, 'weight', cleanWeightStr);
+        }
+      }
+      if (targetRpeStr && !isMavOrRamping) {
+        onLogChange(idx, 'rpe', targetRpeStr);
       }
     }
 
@@ -787,16 +857,74 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
           {(!isCircuitMode || showManualInputs) && (
             <>
               {/* 3. BANNER PRE-COMPILAZIONE CARICHI STORICI */}
-          {previousHistory && previousHistory.sets.length > 0 ? (
+          {previousHistory && displayedSets.length > 0 ? (
             <div className="p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-[var(--color-panel)] border border-sky-500/40 flex flex-col gap-3 shadow-sm text-xs sm:text-sm">
+              {/* Se ci sono più sedute con Giorni/Protocolli diversi (es. Panca Giorno 1 MAV vs Panca Giorno 3), mostra switch rapido */}
+              {(() => {
+                const distinctDaySessions: Array<{ idx: number; label: string; date: string; isSelected: boolean }> = [];
+                const seenKeys = new Set<string>();
+                allPastSessions.forEach((sess, idx) => {
+                  const isMav = isRampingOrMavProtocol(sess.repsTarget, sess.exerciseNotes);
+                  const dayLabel = (sess.dayName || '').trim();
+                  const protoLabel = isMav
+                    ? 'MAV'
+                    : sess.repsTarget
+                    ? `${sess.setsPrescribed || sess.sets.length}×${sess.repsTarget}`
+                    : '';
+                  const combinedKey = `${dayLabel.toLowerCase()}_${protoLabel.toLowerCase()}`;
+                  if (dayLabel || protoLabel) {
+                    if (!seenKeys.has(combinedKey) && distinctDaySessions.length < 3) {
+                      seenKeys.add(combinedKey);
+                      const fullLabel = [dayLabel, protoLabel].filter(Boolean).join(' • ');
+                      distinctDaySessions.push({
+                        idx,
+                        label: fullLabel || `Seduta ${sess.formattedDate}`,
+                        date: sess.formattedDate,
+                        isSelected: activeHistorySession?.sessionDate === sess.sessionDate,
+                      });
+                    }
+                  }
+                });
+
+                if (distinctDaySessions.length <= 1) return null;
+
+                return (
+                  <div className="flex items-center gap-1.5 flex-wrap pb-2 border-b border-sky-500/20">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-sky-400 mr-1">
+                      Protocollo di riferimento:
+                    </span>
+                    {distinctDaySessions.map((item) => (
+                      <button
+                        key={item.idx}
+                        type="button"
+                        onClick={() => setSelectedSessionOverrideIdx(item.idx)}
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-black border transition-all cursor-pointer ${
+                          item.isSelected
+                            ? 'bg-sky-500/20 text-sky-300 border-sky-400/60 shadow-xs'
+                            : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:text-white'
+                        }`}
+                      >
+                        {item.label} <span className="opacity-70 font-normal">({item.date})</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar py-0.5">
-                  <div className="flex items-center gap-1 text-sky-600 dark:text-sky-400 font-black uppercase tracking-wider text-xs shrink-0">
+                  <div className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400 font-black uppercase tracking-wider text-xs shrink-0">
                     <History className="w-4 h-4" />
-                    <span>Seduta {previousHistory.formattedDate}:</span>
+                    <span>Seduta {displayedDate}</span>
+                    {displayedDayName && (
+                      <span className="px-2 py-0.5 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[10px] font-black">
+                        {displayedDayName}
+                      </span>
+                    )}
+                    <span>:</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {previousHistory.sets.map((s, idx) => (
+                    {displayedSets.map((s, idx) => (
                       <span
                         key={idx}
                         className="bg-slate-100 dark:bg-[var(--color-surface)] px-2.5 py-1 rounded-xl border border-slate-300 dark:border-slate-700 font-mono text-xs sm:text-sm text-slate-900 dark:text-white shrink-0 font-bold"
@@ -807,23 +935,25 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleCopyPreviousLoads()}
-                  className={`min-h-[44px] px-4 py-2 rounded-xl sm:rounded-2xl border text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shrink-0 shadow-md ${
-                    justApplied
-                      ? 'bg-emerald-500 text-slate-950 border-emerald-400'
-                      : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 border-[var(--color-primary)]'
-                  }`}
-                >
-                  <Zap className="w-4 h-4 fill-current" />
-                  <span>{justApplied ? 'Carichi Applicati ✓' : 'Applica Carichi Precedenti'}</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyPreviousLoads()}
+                    className={`min-h-[44px] px-4 py-2 rounded-xl sm:rounded-2xl border text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shrink-0 shadow-md ${
+                      justApplied
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                        : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-slate-950 border-[var(--color-primary)]'
+                    }`}
+                  >
+                    <Zap className="w-4 h-4 fill-current" />
+                    <span>{justApplied ? 'Carichi Applicati ✓' : 'Applica Carichi Precedenti'}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Note / Feedback che l'atleta aveva segnato la volta precedente */}
               {(() => {
-                const pastNote = previousHistory.allPastSessions?.[0]?.notes;
+                const pastNote = activeHistorySession?.notes || previousHistory.allPastSessions?.[0]?.notes;
                 if (!pastNote) return null;
                 return (
                   <div className="pt-2 border-t border-sky-500/20 flex items-start gap-2 text-xs sm:text-sm text-sky-800 dark:text-sky-200/90 bg-sky-50 dark:bg-sky-950/30 p-2.5 rounded-xl border border-sky-500/25">
@@ -836,22 +966,42 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
                 );
               })()}
             </div>
-          ) : (
-            <div className="p-3.5 rounded-2xl bg-[var(--color-panel)] border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-              <div className="flex items-center gap-2 min-w-0">
-                <Sparkles className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />
-                <span className="truncate">Nessun carico registrato in precedenza per questo esercizio.</span>
+          ) : (() => {
+            // Verifica se i campi delle serie hanno già un valore o se non c'è un carico prescritto su un esercizio isometrico/a tempo
+            const hasUnfilledTarget = Array.from({ length: totalSetsCount }).some((_, idx) => {
+              const l = logs[idx];
+              return !l || !l.reps || !l.reps.trim();
+            });
+            const hasTargetWeight = Boolean(exercise.target_weight && parseWeightToNumber(exercise.target_weight).weightKg > 0);
+            const showPrecompileButton = !isTimeBased || hasTargetWeight || hasUnfilledTarget;
+
+            return (
+              <div className="p-3.5 rounded-2xl bg-[var(--color-panel)] border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sparkles className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />
+                  <span className="truncate">
+                    {isMavOrRamping
+                      ? 'Protocollo MAV / Ramping: inserisci i carichi progressivi serie dopo serie.'
+                      : 'Nessun carico registrato in precedenza per questo esercizio.'}
+                  </span>
+                </div>
+                {showPrecompileButton && (
+                  <button
+                    type="button"
+                    onClick={handleApplyCoachTargets}
+                    className={`min-h-[40px] px-3.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-sm ${
+                      justApplied
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                        : 'bg-slate-100 dark:bg-[var(--color-surface)] hover:bg-slate-200 dark:hover:bg-[var(--color-surface-strong)] text-slate-800 dark:text-white border-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    <Zap className={`w-3.5 h-3.5 ${justApplied ? 'text-slate-950 fill-current' : 'text-amber-500 dark:text-amber-400'}`} />
+                    <span>{justApplied ? 'Target Applicato ✓' : isMavOrRamping ? 'Pre-compila Reps MAV' : 'Pre-compila Target'}</span>
+                  </button>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={handleApplyCoachTargets}
-                className="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[var(--color-surface)] hover:bg-slate-200 dark:hover:bg-[var(--color-surface-strong)] text-slate-800 dark:text-white border border-slate-300 dark:border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-sm"
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-                <span>Pre-compila Target</span>
-              </button>
-            </div>
-          )}
+            );
+          })()}
 
           {/* 4. COMPILAZIONE SERIE INTERATTIVA CON ACTIVE FOCUS */}
           <div className="space-y-3 pt-2">
@@ -880,7 +1030,7 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
                 const setLog = logs[setIdx] || { reps: '', weight: '', rpe: '' };
                 const isSetCompleted = Boolean(completedSetsMap[setIdx]);
                 const isActive = setIdx === activeSetIndex;
-                const prevSet = previousHistory?.sets?.[setIdx];
+                const prevSet = displayedSets[setIdx];
                 const isExtraSet = setIdx >= (exercise.sets || 1);
 
                 return (
