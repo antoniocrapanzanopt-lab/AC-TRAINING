@@ -4,6 +4,7 @@ export interface GetAthleteWorkoutProgressParams {
   athleteId: string;
   authUserId?: string | null;
   assignedWorkoutId: string;
+  assignedDate?: string | null;
   parentTemplateId?: string | null;
   relatedWorkoutIds?: string[];
   totalWeeks?: number;
@@ -119,6 +120,34 @@ export function isCompletedSession(session: {
 }
 
 /**
+ * Regola uniforme per stabilire se una sessione appartiene al ciclo di assegnazione attivo.
+ * Se una scheda viene ri-attivata o riassegnata per un nuovo ciclo (nuovo assigned_date),
+ * le sessioni svolte nei cicli precedenti (prima di assignedDate - 12 ore di tolleranza fuso orario)
+ * rimangono nello storico generale ma non segnano già completata la nuova assegnazione.
+ */
+export function isSessionWithinAssignmentCycle(
+  session: {
+    start_time?: string | null;
+    end_time?: string | null;
+    completed_at?: string | null;
+  },
+  assignedDate?: string | null
+): boolean {
+  if (!assignedDate) return true;
+  const assignedMs = new Date(assignedDate).getTime();
+  if (!Number.isFinite(assignedMs) || assignedMs <= 0) return true;
+
+  const sessionIso = session.end_time || session.completed_at || session.start_time;
+  if (!sessionIso) return true;
+  const sessionMs = new Date(sessionIso).getTime();
+  if (!Number.isFinite(sessionMs) || sessionMs <= 0) return true;
+
+  // Tolleranza di 12 ore per gestire differenze UTC vs fuso locale quando assigned_date è salvato come YYYY-MM-DD
+  const graceWindowMs = 12 * 60 * 60 * 1000;
+  return sessionMs >= assignedMs - graceWindowMs;
+}
+
+/**
  * Risolve la lista sicura di ID programma correlati per lineage/versione.
  */
 export function resolveRelatedWorkoutIds(params: {
@@ -195,6 +224,7 @@ export async function getAthleteWorkoutProgress(
     athleteId,
     authUserId,
     assignedWorkoutId,
+    assignedDate = null,
     parentTemplateId = null,
     relatedWorkoutIds = [],
     totalWeeks = 4,
@@ -276,7 +306,10 @@ export async function getAthleteWorkoutProgress(
     }
 
     const exercises = (exercisesRes.data || []) as RawExerciseRow[];
-    const sessions = (sessionsRes.data || []) as RawSessionRow[];
+    const allFetchedSessions = (sessionsRes.data || []) as RawSessionRow[];
+    const sessions = allFetchedSessions.filter((s) =>
+      isSessionWithinAssignmentCycle(s, assignedDate)
+    );
 
     // 2. Calcolo struttura reale dei giorni della scheda
     // Preferisci gli esercizi collegati all'assignedWorkoutId se presenti, altrimenti parentTemplateId

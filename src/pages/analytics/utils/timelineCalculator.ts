@@ -1,5 +1,5 @@
 import { Athlete } from '../../../types';
-import { isCompletedSession, normalizeDayName, matchDayNames, resolveRelatedWorkoutIds } from '../../../services/workoutProgressService';
+import { isCompletedSession, isSessionWithinAssignmentCycle, normalizeDayName, matchDayNames, resolveRelatedWorkoutIds } from '../../../services/workoutProgressService';
 
 export type TimelineCategory = 'today' | 'late' | 'in_progress' | 'end_of_block' | 'no_activity';
 
@@ -133,7 +133,9 @@ export function buildAthleteTimelineItems(
       parentTemplateId: parentTemplateId,
     });
 
+    const activeAssignedDate = activeAssignment?.assigned_date || activeAssignment?.start_date || null;
     const relevantSessions = athleteSessions.filter((s) => {
+      if (!isSessionWithinAssignmentCycle(s, activeAssignedDate)) return false;
       if (!s.workout_id) return true;
       return relatedWorkoutIds.length === 0 || relatedWorkoutIds.includes(s.workout_id);
     });

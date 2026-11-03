@@ -59,9 +59,23 @@ export const PDFWorkoutImporterModal: React.FC<PDFWorkoutImporterModalProps> = (
 
   // ─── STATI DATI PARSATI E REVISIONABILI ───
   const [workoutTitle, setWorkoutTitle] = useState('Programma di Allenamento');
-  const [saveMode, setSaveMode] = useState<'template' | 'assign'>('template');
+  const [saveMode, setSaveMode] = useState<'template' | 'assign'>(() =>
+    targetAthleteId ? 'assign' : 'template'
+  );
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>(undefined);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>(targetAthleteId || '');
+
+  React.useEffect(() => {
+    if (isOpen) {
+      if (targetAthleteId) {
+        setSelectedAthleteId(targetAthleteId);
+        setSaveMode('assign');
+      } else {
+        setSelectedAthleteId('');
+        setSaveMode('template');
+      }
+    }
+  }, [isOpen, targetAthleteId]);
   
   // Dati strutturati su cui il coach può fare editing
   const [parsedWeeks, setParsedWeeks] = useState<{

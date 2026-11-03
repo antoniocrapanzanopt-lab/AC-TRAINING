@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { Athlete } from '../../../types';
 import { AthleteAssignedWorkout } from '../../../types/workout';
-import { isCompletedSession, normalizeDayName, matchDayNames } from '../../../services/workoutProgressService';
+import { isCompletedSession, isSessionWithinAssignmentCycle, normalizeDayName, matchDayNames } from '../../../services/workoutProgressService';
 
 export type AthleteProgramStatus =
   | 'completed'
@@ -243,6 +243,7 @@ export function useAthletesWorkoutProgress(
           const workout = activeAssignment.workout;
           const workoutId = workout.id;
           const parentTemplateId = workout.parent_template_id;
+          const activeAssignedDate = activeAssignment.assigned_date || activeAssignment.start_date || null;
           const totalWeeks = Math.max(1, Number(workout.total_weeks) || 4);
 
           // Esercizi del workout (o del parent template se la copia non ha ancora righe)
@@ -299,8 +300,9 @@ export function useAthletesWorkoutProgress(
               (parentTemplateId && s.workout_id === parentTemplateId);
             if (!isMatch) return;
 
-            // Condizione completata uniforme
+            // Condizione completata uniforme e appartenenza al ciclo attivo
             if (!isCompletedSession(s)) return;
+            if (!isSessionWithinAssignmentCycle(s, activeAssignedDate)) return;
 
             const w = Number(s.week_number);
             const rawD = (s.day_name || '').trim();

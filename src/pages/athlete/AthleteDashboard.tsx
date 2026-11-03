@@ -47,6 +47,7 @@ import {
 import { AthleteSignedContract } from '../../types/contract';
 import {
   isCompletedSession,
+  isSessionWithinAssignmentCycle,
   normalizeDayName,
   matchDayNames,
   resolveRelatedWorkoutIds,
@@ -884,10 +885,6 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
           const cached = localStorage.getItem(`builder_progress_${athId}_${firstAssigned.workout_id}`);
           if (cached) return JSON.parse(cached);
         }
-        if (athId && athId !== 'ath-local') {
-          const genCached = localStorage.getItem(`ac_cached_progress_map_${athId}`);
-          if (genCached) return JSON.parse(genCached);
-        }
       } catch {}
     }
     return {};
@@ -899,8 +896,8 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     if (typeof window !== 'undefined') {
       try {
         const athId = user?.athleteId || user?.id || athleteId;
-        if (athId && athId !== 'ath-local') {
-          const cached = localStorage.getItem(`ac_cached_details_map_${athId}`);
+        if (firstAssigned?.workout_id && athId && athId !== 'ath-local') {
+          const cached = localStorage.getItem(`ac_cached_details_map_${athId}_${firstAssigned.workout_id}`);
           if (cached) return JSON.parse(cached);
         }
       } catch {}
@@ -911,17 +908,29 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
   // Conteggio sessioni completate per settimana (fallback count-based per calculateCurrentActiveWeek)
   const [globalSessionsPerWeek, setGlobalSessionsPerWeek] = useState<Record<number, number>>({});
 
-  // Idratazione reattiva rapida della cache se i parametri atleta si stabilizzano post-render
+  // Idratazione reattiva della cache quando cambia la scheda attiva (firstAssigned.workout_id)
   useEffect(() => {
     const realAthId = user?.athleteId || user?.id || (athleteId !== 'ath-local' ? athleteId : '');
     if (!realAthId) return;
     try {
       if (firstAssigned?.workout_id) {
-        const progCached = localStorage.getItem(`builder_progress_${realAthId}_${firstAssigned.workout_id}`) || localStorage.getItem(`ac_cached_progress_map_${realAthId}`);
+        const progCached = localStorage.getItem(`builder_progress_${realAthId}_${firstAssigned.workout_id}`);
         if (progCached) {
-          const parsed = JSON.parse(progCached);
-          setGlobalProgressMap((prev) => (Object.keys(prev).length === 0 ? parsed : prev));
+          setGlobalProgressMap(JSON.parse(progCached));
+        } else {
+          setGlobalProgressMap({});
         }
+        const detailsCached = localStorage.getItem(`ac_cached_details_map_${realAthId}_${firstAssigned.workout_id}`);
+        if (detailsCached) {
+          setGlobalSessionDetailsMap(JSON.parse(detailsCached));
+        } else {
+          setGlobalSessionDetailsMap({});
+        }
+        setGlobalSessionsPerWeek({});
+      } else {
+        setGlobalProgressMap({});
+        setGlobalSessionDetailsMap({});
+        setGlobalSessionsPerWeek({});
       }
       const sessCached = localStorage.getItem(`ac_cached_sessions_${realAthId}`);
       if (sessCached) {
@@ -929,11 +938,6 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         if (Array.isArray(parsed) && parsed.length > 0) {
           setCachedSessionsForHistory((prev) => (prev.length === 0 ? parsed : prev));
         }
-      }
-      const detailsCached = localStorage.getItem(`ac_cached_details_map_${realAthId}`);
-      if (detailsCached) {
-        const parsed = JSON.parse(detailsCached);
-        setGlobalSessionDetailsMap((prev) => (Object.keys(prev).length === 0 ? parsed : prev));
       }
     } catch {}
   }, [user?.athleteId, user?.id, athleteId, firstAssigned?.workout_id]);
@@ -1139,18 +1143,11 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       ? currentFirstAssigned.workout.total_weeks
       : 1;
 
-    // Usa la ref per evitare closure stale su myAssignedWorkouts
-    const allWorkoutIds = myAssignedWorkoutsRef.current.flatMap((aw) => [
-      aw.workout_id,
-      aw.workout?.id,
-      aw.workout?.parent_template_id,
-    ].filter(Boolean) as string[]);
-
     const relatedWorkoutIds = resolveRelatedWorkoutIds({
       assignedWorkoutId: currentFirstAssigned.workout_id,
       parentTemplateId: currentFirstAssigned.workout?.parent_template_id,
-      relatedWorkoutIds: allWorkoutIds,
     });
+    const activeAssignedDate = currentFirstAssigned.assigned_date || currentFirstAssigned.start_date || null;
 
     try {
       let rawSessions: SessionRow[] = [];
@@ -1192,11 +1189,12 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         const isDone = isCompletedSession(s);
         const isSkipped = s.status === 'skipped';
 
-        // Solo le sessioni pertinenti alla scheda attiva o alla sua lineage con settimana e giorno validi
+        // Solo le sessioni pertinenti alla scheda attiva (e al ciclo corrente di assegnazione) con settimana e giorno validi
         const isCurrentWorkout = Boolean(
           s.workout_id &&
           relatedWorkoutIds.length > 0 &&
-          relatedWorkoutIds.includes(s.workout_id)
+          relatedWorkoutIds.includes(s.workout_id) &&
+          isSessionWithinAssignmentCycle(s, activeAssignedDate)
         );
 
         if (isCurrentWorkout && rawWeek > 0 && normD) {
@@ -1222,12 +1220,13 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       });
 
       // Riconciliazione avanzamento: se le sessioni completate in una settimana coprono il numero di giorni previsti
-      // CRITICO: filtra per il workout corrente (non tutte le sessioni dell'atleta)
+      // CRITICO: filtra per il workout corrente e per il ciclo di assegnazione attivo
       const currentWorkoutSessions = rawSessions.filter((s) =>
         isCompletedSession(s) &&
         relatedWorkoutIds.length > 0 &&
         s.workout_id != null &&
-        relatedWorkoutIds.includes(s.workout_id)
+        relatedWorkoutIds.includes(s.workout_id) &&
+        isSessionWithinAssignmentCycle(s, activeAssignedDate)
       );
       const completedSessionsByWeek = new Map<number, number>();
       currentWorkoutSessions.forEach((s) => {
@@ -1255,13 +1254,12 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       setGlobalSessionsPerWeek(sessionsPerWeekRecord);
       setCachedSessionsForHistory(rawSessions);
 
-      // Aggiorna anche localStorage come cache
+      // Aggiorna anche localStorage come cache (rigorosamente scoped per workout_id)
       athIds.forEach((aid) => {
         try {
           localStorage.setItem(`builder_progress_${aid}_${currentFirstAssigned.workout_id}`, JSON.stringify(currentMap));
-          localStorage.setItem(`ac_cached_progress_map_${aid}`, JSON.stringify(currentMap));
+          localStorage.setItem(`ac_cached_details_map_${aid}_${currentFirstAssigned.workout_id}`, JSON.stringify(detailsMap));
           localStorage.setItem(`ac_cached_sessions_${aid}`, JSON.stringify(rawSessions));
-          localStorage.setItem(`ac_cached_details_map_${aid}`, JSON.stringify(detailsMap));
         } catch (_) {}
       });
     } finally {
@@ -1269,9 +1267,9 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
     }
   }, [user?.athleteId, user?.id]);
 
-  // Esegui sync all'avvio e ad ogni evento di completamento con debounce
+  // Esegui sync all'avvio, al cambio scheda attiva e ad ogni evento di completamento con debounce
   useEffect(() => {
-    syncProgressFromDb();
+    syncProgressFromDb(true);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const handleWorkoutDone = () => {
       if (timer) clearTimeout(timer);
@@ -1284,7 +1282,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       window.removeEventListener('athlete_workout_completed', handleWorkoutDone);
       window.removeEventListener('athlete_workout_skipped', handleWorkoutDone);
     };
-  }, [syncProgressFromDb, firstAssigned?.workout_id]);
+  }, [syncProgressFromDb, firstAssigned?.workout_id, firstAssigned?.assigned_date]);
 
   // Quando workoutDaysMap si popola per la prima volta, forza un nuovo sync
   // così la riconciliazione settimanale può usare i giorni reali della scheda
@@ -1428,9 +1426,9 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
       )}
 
       {/* ─── 4. TUTTI I GIORNI DELLA SCHEDA IN ELENCO LINEARE PULITO ─── */}
-      {loading && myAssignedWorkouts.length === 0 ? (
+      {loading && !firstAssigned ? (
         <WorkoutDaysSkeleton />
-      ) : myAssignedWorkouts.length === 0 ? (
+      ) : !firstAssigned ? (
         <div className="bg-[var(--color-panel)] border border-[var(--color-panel-border)] rounded-3xl p-8 sm:p-12 text-center space-y-3 shadow-md">
           <div className="w-14 h-14 bg-[var(--color-surface-strong)] rounded-2xl flex items-center justify-center mx-auto text-[var(--color-text-muted)]">
             <Dumbbell className="w-7 h-7" />
@@ -1442,20 +1440,18 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         </div>
       ) : (
         <div className="space-y-4">
-          {myAssignedWorkouts.map((assigned: AthleteAssignedWorkout) => (
-            <WorkoutDayList
-              key={assigned.id}
-              assigned={assigned}
-              onStart={handleStartWorkout}
-              activeDraft={activeDraft}
-              completedMap={globalProgressMap}
-              sessionDetailsMap={globalSessionDetailsMap}
-              days={workoutDaysMap[assigned.workout_id] || []}
-              exercises={workoutExercisesMap[assigned.workout_id] || []}
-              isLoadingDays={Boolean(loadingDaysMap[assigned.workout_id])}
-              completedSessionsPerWeek={globalSessionsPerWeek}
-            />
-          ))}
+          <WorkoutDayList
+            key={firstAssigned.id}
+            assigned={firstAssigned}
+            onStart={handleStartWorkout}
+            activeDraft={activeDraft}
+            completedMap={globalProgressMap}
+            sessionDetailsMap={globalSessionDetailsMap}
+            days={workoutDaysMap[firstAssigned.workout_id] || []}
+            exercises={workoutExercisesMap[firstAssigned.workout_id] || []}
+            isLoadingDays={Boolean(loadingDaysMap[firstAssigned.workout_id])}
+            completedSessionsPerWeek={globalSessionsPerWeek}
+          />
         </div>
       )}
 
@@ -1465,6 +1461,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
         athleteIds={memoizedAthleteIds}
         activeWorkoutId={firstAssigned?.workout_id}
         activeWorkoutTitle={firstAssigned?.workout?.title}
+        activeAssignedDate={firstAssigned?.assigned_date || firstAssigned?.start_date}
         initialSessions={cachedSessionsForHistory}
       />
 

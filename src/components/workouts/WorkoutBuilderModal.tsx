@@ -1018,10 +1018,22 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     }));
 
     try {
+      const activeAssignmentRecord = allAssignedWorkouts.find(
+        (a) =>
+          a.athlete_id === assignedAthleteId &&
+          a.workout_id === initialWorkout?.id &&
+          a.is_active
+      ) || allAssignedWorkouts.find(
+        (a) =>
+          a.athlete_id === assignedAthleteId &&
+          a.workout_id === initialWorkout?.id
+      );
+
       const res = await getAthleteWorkoutProgress({
         athleteId: assignedAthleteId,
         authUserId: currentAthlete?.auth_user_id,
         assignedWorkoutId: initialWorkout?.id || '',
+        assignedDate: activeAssignmentRecord?.assigned_date || activeAssignmentRecord?.start_date || null,
         parentTemplateId: initialWorkout?.parent_template_id,
         totalWeeks,
         workoutTitle: title || initialWorkout?.title,

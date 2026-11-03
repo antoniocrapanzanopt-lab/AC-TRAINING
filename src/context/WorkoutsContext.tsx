@@ -1190,7 +1190,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .eq('is_active', true)
         .order('assigned_date', { ascending: false });
 
-      // 3. Fallback resiliente se is_active non è impostato o è null
+      // 3. Fallback resiliente se is_active non è impostato o è null (prende SOLO l'assegnazione più recente non archiviata)
       if (!error && (!data || data.length === 0)) {
         const fallbackRes = await supabase
           .from('athlete_assigned_workouts')
@@ -1199,7 +1199,9 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             workout:workouts(*)
           `)
           .eq('athlete_id', targetAthleteId)
-          .order('assigned_date', { ascending: false });
+          .is('is_active', null)
+          .order('assigned_date', { ascending: false })
+          .limit(1);
 
         if (!fallbackRes.error && fallbackRes.data && fallbackRes.data.length > 0) {
           data = fallbackRes.data;
@@ -1212,26 +1214,24 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
 
-      const validAssigned = ((data || []) as AthleteAssignedWorkout[]).filter(
-        (a) => a.workout != null
+      const allValidAssigned = ((data || []) as AthleteAssignedWorkout[]).filter(
+        (a) => a.workout != null && a.is_active !== false
       );
+      // Mantieni esclusivamente la scheda attiva più recente per evitare di mostrare vecchie schede completate
+      const validAssigned = allValidAssigned.slice(0, 1);
 
-      // 4. Regola di sicurezza Anti-Wipe: non cancellare la cache se la query è vuota ma esisteva già una scheda valida
+      // 4. Se il database risponde senza errori e l'atleta non ha più schede attive (es. archiviata dal coach),
+      // pulisci la cache anziché servire una vecchia scheda archiviata
       const versionedCacheKey = `ac_cached_my_workouts_v2_${targetAthleteId}`;
       if (validAssigned.length === 0) {
-        const existingCached = localStorage.getItem(versionedCacheKey) || localStorage.getItem('builder_cached_my_workouts');
-        if (existingCached) {
-          try {
-            const parsed = JSON.parse(existingCached);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              technicalLogger.warn('workouts', 'ANTI_WIPE_PREVENTED', 'Risposta vuota dal backend ignorata: conservata scheda valida esistente in cache.');
-              setMyAssignedWorkouts(parsed as AthleteAssignedWorkout[]);
-              return;
-            }
-          } catch {
-            // parsing non critico
-          }
+        setMyAssignedWorkouts([]);
+        try {
+          localStorage.removeItem(versionedCacheKey);
+          localStorage.removeItem('builder_cached_my_workouts');
+        } catch {
+          // ignore
         }
+        return;
       }
 
       setMyAssignedWorkouts(validAssigned);
@@ -1293,6 +1293,19 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       loadAssignedWorkouts();
     } else if (user && user.role === 'athlete') {
       refreshMyWorkouts();
+
+      const handleVisibilityOrFocus = () => {
+        if (document.visibilityState === 'visible') {
+          refreshMyWorkouts();
+        }
+      };
+
+      window.addEventListener('focus', handleVisibilityOrFocus);
+      document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+      return () => {
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+        document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      };
     }
   }, [user, loadFolders, loadCoachTemplates, loadAssignedWorkouts, refreshMyWorkouts]);
 

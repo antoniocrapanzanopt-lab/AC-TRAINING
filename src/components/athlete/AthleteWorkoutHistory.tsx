@@ -11,6 +11,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { isSessionWithinAssignmentCycle } from '../../services/workoutProgressService';
 
 interface PastSessionExercise {
   name: string;
@@ -57,6 +58,7 @@ interface AthleteWorkoutHistoryProps {
   athleteIds?: string[];
   activeWorkoutId?: string;
   activeWorkoutTitle?: string;
+  activeAssignedDate?: string | null;
   initialSessions?: SessionRow[];
 }
 
@@ -123,6 +125,7 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
   athleteIds,
   activeWorkoutId,
   activeWorkoutTitle,
+  activeAssignedDate,
   initialSessions,
 }) => {
   const mapSessions = React.useCallback(
@@ -460,12 +463,17 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
 
     pastSessions.forEach((s) => {
       const normalizedTitle = s.workoutTitle.toLowerCase();
+      const isWithinCurrentCycle = isSessionWithinAssignmentCycle(
+        { end_time: s.date },
+        activeAssignedDate
+      );
       const isMatchActive =
-        (activeWorkoutId && s.workoutId === activeWorkoutId) ||
-        (cleanedActiveTitle &&
-          normalizedTitle === cleanedActiveTitle.toLowerCase());
+        isWithinCurrentCycle &&
+        ((activeWorkoutId && s.workoutId === activeWorkoutId) ||
+          (cleanedActiveTitle &&
+            normalizedTitle === cleanedActiveTitle.toLowerCase()));
 
-      const groupKey = isMatchActive ? '__ACTIVE__' : normalizedTitle;
+      const groupKey = isMatchActive ? '__ACTIVE__' : `${normalizedTitle}__archived`;
       const displayTitle = isMatchActive ? cleanedActiveTitle : s.workoutTitle;
 
       if (!groupsMap.has(groupKey)) {
@@ -508,12 +516,13 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
       };
     });
 
-    // Se non è stato trovato un match esatto con activeWorkoutId ma ci sono gruppi,
-    // promuovi il gruppo più recente come principale in vista e gli altri in archivio
+    // Se l'atleta non ha un activeWorkoutId impostato (nessuna scheda attiva),
+    // promuovi il gruppo più recente; altrimenti se ha una nuova scheda attiva con 0 sessioni svolte,
+    // le vecchie schede restano ordinatamente in Archivio Schede Precedenti!
     let resolvedActive = allGroups.find((g) => g.isActiveWorkout) || null;
     let resolvedArchived = allGroups.filter((g) => !g.isActiveWorkout);
 
-    if (!resolvedActive && allGroups.length > 0) {
+    if (!resolvedActive && !activeWorkoutId && allGroups.length > 0) {
       resolvedActive = allGroups[0];
       resolvedArchived = allGroups.slice(1);
     }
@@ -522,9 +531,9 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
       activeGroup: resolvedActive,
       archivedGroups: resolvedArchived,
     };
-  }, [pastSessions, activeWorkoutId, activeWorkoutTitle]);
+  }, [pastSessions, activeWorkoutId, activeWorkoutTitle, activeAssignedDate]);
 
-  // Apri automaticamente la settimana più recente della scheda attiva
+  // Apri automaticamente la settimana più recente della scheda attiva (o apri l'archivio se la nuova scheda non ha ancora sedute)
   useEffect(() => {
     if (activeGroup && activeGroup.weeks.length > 0) {
       const latestWeek = activeGroup.weeks[0].weekNumber;
@@ -533,8 +542,10 @@ export const AthleteWorkoutHistory: React.FC<AthleteWorkoutHistoryProps> = ({
         if (Object.keys(prev).length > 0) return prev;
         return { [defaultKey]: true };
       });
+    } else if (!activeGroup && archivedGroups.length > 0) {
+      setIsArchiveOpen(true);
     }
-  }, [activeGroup]);
+  }, [activeGroup, archivedGroups.length]);
 
   const toggleWeekOpen = (weekKey: string) => {
     setOpenWeekKeys((prev) => ({
