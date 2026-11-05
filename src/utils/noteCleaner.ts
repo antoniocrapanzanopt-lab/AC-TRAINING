@@ -47,26 +47,107 @@ export function cleanExecutiveNotes(rawNotes?: string): string {
 }
 
 /**
- * Estrae l'eventuale tag di raggruppamento Super Serie / Circuito codificato nelle note (es. [GROUP:A] o [SS:1])
+ * Estrae l'eventuale tag di raggruppamento Super Serie / Jump Set / Circuito codificato nelle note (es. [GROUP:A] o [SS:1])
  */
 export function extractGroupTagFromNotes(rawNotes?: string): { groupTag?: string; cleanNotes: string } {
   if (!rawNotes) return { cleanNotes: '' };
-  const match = rawNotes.match(/^\[(?:GROUP|SS):([a-zA-Z0-9_\-]+)\]\s*/i);
+  const match = rawNotes.match(/\[(?:GROUP|SS|JS):([a-zA-Z0-9_\-]+)\]\s*/i);
   if (match) {
     const groupTag = match[1];
-    const cleanNotes = rawNotes.slice(match[0].length).trim();
+    const cleanNotes = rawNotes.replace(match[0], '').trim();
     return { groupTag, cleanNotes };
   }
   return { cleanNotes: rawNotes };
 }
 
 /**
- * Codifica il tag del gruppo Super Serie / Circuito nelle note per la persistenza sicura e retrocompatibile
+ * Codifica il tag del gruppo Super Serie / Jump Set / Circuito nelle note per la persistenza sicura e retrocompatibile
  */
 export function encodeGroupTagInNotes(cleanNotes?: string, groupTag?: string): string {
-  const baseNotes = (cleanNotes || '').trim();
+  const baseNotes = (cleanNotes || '').replace(/\[(?:GROUP|SS|JS):[a-zA-Z0-9_\-]+\]\s*/gi, '').trim();
   if (!groupTag) return baseNotes;
   return `[GROUP:${groupTag}] ${baseNotes}`.trim();
+}
+
+/**
+ * Rileva e assegna automaticamente group_tag anche per le schede già salvate nel DB prima dell'introduzione di [GROUP:...],
+ * riconoscendo:
+ * 1) Tag espliciti [GROUP:...], [SS:...], [JS:...] nelle note;
+ * 2) Menzioni di "Jump set", "Superserie", "Superset", "Biserie" nelle note;
+ * 3) Coppie di esercizi consecutivi nello stesso giorno dove il primo ha recupero 0s ("No Recupero" / Jump Set da PDF) e il successivo ha recupero > 0s.
+ */
+export function hydrateGroupTagsForExercises<T extends {
+  id?: string;
+  name?: string;
+  notes?: string;
+  group_tag?: string;
+  order_label?: string;
+  rest_seconds?: number;
+  week_number?: number;
+  day_name?: string;
+  is_time_based?: boolean;
+}>(exercises: T[]): T[] {
+  if (!exercises || exercises.length === 0) return exercises;
+
+  // 1. Estrai eventuali tag espliciti [GROUP:...] dalle note
+  const result = exercises.map((ex) => {
+    const { groupTag } = extractGroupTagFromNotes(ex.notes);
+    return {
+      ...ex,
+      group_tag: ex.group_tag || groupTag,
+    };
+  });
+
+  // 2. Raggruppa gli indici per (week_number, day_name) così da analizzare ogni seduta in ordine
+  const dayBuckets = new Map<string, number[]>();
+  result.forEach((ex, idx) => {
+    const key = `${ex.week_number || 1}__${(ex.day_name || 'Giorno A').trim().toLowerCase()}`;
+    const bucket = dayBuckets.get(key) || [];
+    bucket.push(idx);
+    dayBuckets.set(key, bucket);
+  });
+
+  const jumpRegex = /\b(jump\s*set|jumpset|jump\s*serie|jumpserie|super\s*serie|superserie|superset|biserie)\b/i;
+
+  dayBuckets.forEach((indices, dayKey) => {
+    for (let i = 0; i < indices.length - 1; i++) {
+      const currIdx = indices[i];
+      const nextIdx = indices[i + 1];
+      const curr = result[currIdx];
+      const next = result[nextIdx];
+
+      if (curr.group_tag && next.group_tag) continue;
+
+      const currText = `${curr.notes || ''} ${curr.name || ''}`;
+      const nextText = `${next.notes || ''} ${next.name || ''}`;
+      const hasExplicitNoteMention = jumpRegex.test(currText) || jumpRegex.test(nextText);
+
+      // Nei PDF importati o nelle schede con Jump Set:
+      // - il primo esercizio ha "No Recupero" (0s) oppure un recupero breve di transizione (<= 45s) seguito da esercizio con recupero più lungo (>= 75s)
+      // - oppure l'esercizio inizia con lettera numerata (es. "F1 ...", "F2 ...")
+      const hasNumberedPrefix =
+        /^[A-Z]\d+\s+/i.test((curr.name || '').trim()) &&
+        /^[A-Z]\d+\s+/i.test((next.name || '').trim());
+
+      const isJumpRestPair =
+        !curr.is_time_based &&
+        !next.is_time_based &&
+        typeof curr.rest_seconds === 'number' &&
+        typeof next.rest_seconds === 'number' &&
+        (
+          (curr.rest_seconds === 0 && next.rest_seconds > 0) ||
+          (curr.rest_seconds > 0 && curr.rest_seconds <= 45 && next.rest_seconds >= 75)
+        );
+
+      if (hasExplicitNoteMention || hasNumberedPrefix || isJumpRestPair) {
+        const tag = curr.group_tag || next.group_tag || `auto-ss-${dayKey}-${i}`;
+        result[currIdx] = { ...curr, group_tag: tag };
+        result[nextIdx] = { ...next, group_tag: tag };
+      }
+    }
+  });
+
+  return result;
 }
 
 /**

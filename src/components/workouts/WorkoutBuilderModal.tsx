@@ -557,11 +557,11 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     if (!currentEx) return;
 
     const currentWeek = currentEx.week_number || 1;
-    const currentDay = currentEx.day_name || 'Giorno A';
+    const currentDayClean = (currentEx.day_name || 'Giorno A').trim().toLowerCase();
 
     // Trova tutti gli indici del giorno attivo
     const dayIndices = exercises.reduce<number[]>((acc, e, i) => {
-      if ((e.week_number || 1) === currentWeek && (e.day_name || 'Giorno A') === currentDay) {
+      if ((e.week_number || 1) === currentWeek && (e.day_name || 'Giorno A').trim().toLowerCase() === currentDayClean) {
         acc.push(i);
       }
       return acc;
@@ -580,9 +580,30 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
     const targetGroupTag = currentEx.group_tag || nextEx.group_tag || `ss-${Date.now()}`;
 
     setExercises((prev) => {
-      const next = [...prev];
+      let next = [...prev];
       next[globalIndex] = { ...next[globalIndex], group_tag: targetGroupTag };
       next[nextGlobalIndex] = { ...next[nextGlobalIndex], group_tag: targetGroupTag };
+
+      // Propaga automaticamente la creazione della Super Serie / Jump Set anche alle altre settimane dello stesso giorno
+      if (totalWeeks > 1) {
+        for (let w = 1; w <= totalWeeks; w++) {
+          if (w === currentWeek) continue;
+          const wDayIndices = next.reduce<number[]>((acc, e, i) => {
+            if ((e.week_number || 1) === w && (e.day_name || 'Giorno A').trim().toLowerCase() === currentDayClean) {
+              acc.push(i);
+            }
+            return acc;
+          }, []);
+          if (posInDay < wDayIndices.length - 1) {
+            const wCurrIdx = wDayIndices[posInDay];
+            const wNextIdx = wDayIndices[posInDay + 1];
+            const wTag = `${targetGroupTag}-w${w}`;
+            next[wCurrIdx] = { ...next[wCurrIdx], group_tag: wTag };
+            next[wNextIdx] = { ...next[wNextIdx], group_tag: wTag };
+          }
+        }
+      }
+
       return next;
     });
 
@@ -598,7 +619,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
 
     const groupTag = targetEx.group_tag;
     const currentWeek = targetEx.week_number || 1;
-    const currentDay = targetEx.day_name || 'Giorno A';
+    const currentDayClean = (targetEx.day_name || 'Giorno A').trim().toLowerCase();
 
     setExercises((prev) => {
       let next = prev.map((ex, idx) => {
@@ -612,7 +633,7 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
       const remainingInGroup = next.filter(
         (e) =>
           (e.week_number || 1) === currentWeek &&
-          (e.day_name || 'Giorno A') === currentDay &&
+          (e.day_name || 'Giorno A').trim().toLowerCase() === currentDayClean &&
           e.group_tag === groupTag
       );
 
@@ -621,13 +642,60 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
         next = next.map((e) => {
           if (
             (e.week_number || 1) === currentWeek &&
-            (e.day_name || 'Giorno A') === currentDay &&
+            (e.day_name || 'Giorno A').trim().toLowerCase() === currentDayClean &&
             e.group_tag === groupTag
           ) {
             return { ...e, group_tag: undefined };
           }
           return e;
         });
+      }
+
+      // Propaga lo scollegamento anche alle altre settimane dello stesso giorno
+      if (totalWeeks > 1) {
+        const dayIndices = prev.reduce<number[]>((acc, e, i) => {
+          if ((e.week_number || 1) === currentWeek && (e.day_name || 'Giorno A').trim().toLowerCase() === currentDayClean) {
+            acc.push(i);
+          }
+          return acc;
+        }, []);
+        const posInDay = dayIndices.indexOf(globalIndex);
+        if (posInDay !== -1) {
+          for (let w = 1; w <= totalWeeks; w++) {
+            if (w === currentWeek) continue;
+            const wDayIndices = next.reduce<number[]>((acc, e, i) => {
+              if ((e.week_number || 1) === w && (e.day_name || 'Giorno A').trim().toLowerCase() === currentDayClean) {
+                acc.push(i);
+              }
+              return acc;
+            }, []);
+            if (posInDay < wDayIndices.length) {
+              const wTargetIdx = wDayIndices[posInDay];
+              const wGroupTag = next[wTargetIdx]?.group_tag;
+              if (wGroupTag) {
+                next[wTargetIdx] = { ...next[wTargetIdx], group_tag: undefined };
+                const wRem = next.filter(
+                  (e) =>
+                    (e.week_number || 1) === w &&
+                    (e.day_name || 'Giorno A').trim().toLowerCase() === currentDayClean &&
+                    e.group_tag === wGroupTag
+                );
+                if (wRem.length <= 1) {
+                  next = next.map((e) => {
+                    if (
+                      (e.week_number || 1) === w &&
+                      (e.day_name || 'Giorno A').trim().toLowerCase() === currentDayClean &&
+                      e.group_tag === wGroupTag
+                    ) {
+                      return { ...e, group_tag: undefined };
+                    }
+                    return e;
+                  });
+                }
+              }
+            }
+          }
+        }
       }
 
       return next;
@@ -908,6 +976,32 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
           // Estrai max settimane
           const maxW = Math.max(...mapped.map(e => e.week_number || 1), initialWorkout.total_weeks || 1);
 
+          // Se la scheda ha maxW > 1 ma tutti gli esercizi sono concentrati in una sola settimana (es. solo Sett. 4 con Sett. 1-3 a 0 es.),
+          // espandi automaticamente quella settimana su tutte le settimane 1..maxW in modo che Sett. 1, 2, 3 e 4 siano tutte popolate e complete
+          let hydratedExercises: Partial<WorkoutExercise>[] = mapped;
+          const weeksWithExercises = Array.from(new Set(mapped.map(e => e.week_number || 1))).sort((a, b) => a - b);
+
+          if (maxW > 1 && weeksWithExercises.length === 1 && mapped.length > 0) {
+            const donorWeek = weeksWithExercises[0];
+            const donorExercises = mapped.filter(e => (e.week_number || 1) === donorWeek);
+            const expanded: Partial<WorkoutExercise>[] = [];
+
+            for (let w = 1; w <= maxW; w++) {
+              if (w === donorWeek) {
+                expanded.push(...donorExercises);
+              } else {
+                donorExercises.forEach((ex, idx) => {
+                  expanded.push({
+                    ...ex,
+                    id: `w${w}-autofill-${Date.now()}-${idx}`,
+                    week_number: w,
+                  });
+                });
+              }
+            }
+            hydratedExercises = syncOrderIndices(expanded, finalDays);
+          }
+
           // Salva snapshot immutabile iniziale per controlli diagnostici pre-salvataggio
           originalSnapshotRef.current = {
             workoutId: initialWorkout.id,
@@ -919,10 +1013,11 @@ export const WorkoutBuilderModal: React.FC<WorkoutBuilderModalProps> = ({ athlet
           };
           explicitlyDeletedExerciseIdsRef.current.clear();
 
-          setExercises(mapped.length > 0 ? mapped : [
+          setExercises(hydratedExercises.length > 0 ? hydratedExercises : [
             { name: '', sets: 3, reps_target: '10', rest_seconds: 60, week_number: 1, day_name: finalDays[0], is_time_based: false }
           ]);
           setDaysList(finalDays);
+          setActiveWeek(1);
           setActiveDay(finalDays[0]);
           setTotalWeeks(maxW);
           setIsHydrated(true);
@@ -3681,15 +3776,63 @@ ${result.regole_adattamento || '-'}
                 <p className="text-[11px] text-slate-400">Il salvataggio è disabilitato per proteggere i dati esistenti.</p>
               </div>
             ) : currentWeekDayExercises.length === 0 ? (
-              <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-10 text-center">
-                <p className="text-sm text-slate-400 mb-3 font-medium">Nessun esercizio inserito per {activeDay} nella Settimana {activeWeek}.</p>
-                <button
-                  type="button"
-                  onClick={addExercise}
-                  className="px-5 py-2.5 bg-[var(--color-primary)] text-black text-xs font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors cursor-pointer shadow-md"
-                >
-                  + Inserisci Primo Esercizio
-                </button>
+              <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl p-10 text-center space-y-4">
+                <p className="text-sm text-slate-400 font-medium">
+                  Nessun esercizio inserito per <strong className="text-white">{activeDay}</strong> nella <strong className="text-white">Settimana {activeWeek}</strong>.
+                </p>
+                {(() => {
+                  const donorWeek = Array.from({ length: totalWeeks }, (_, idx) => idx + 1).find(
+                    w => w !== activeWeek && exercises.some(e => (e.week_number || 1) === w && (e.name || '').trim() !== '')
+                  );
+                  return (
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                      <button
+                        type="button"
+                        onClick={addExercise}
+                        className="px-5 py-2.5 bg-[var(--color-primary)] text-black text-xs font-bold rounded-xl hover:bg-[var(--color-primary-hover)] transition-colors cursor-pointer shadow-md"
+                      >
+                        + Inserisci Primo Esercizio
+                      </button>
+                      {donorWeek && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setActiveWeek(donorWeek)}
+                            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                          >
+                            Vai a Settimana {donorWeek} ({exercises.filter(e => (e.week_number || 1) === donorWeek).length} es.)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const donorExercises = exercises.filter(e => (e.week_number || 1) === donorWeek);
+                              const emptyWeeks = Array.from({ length: totalWeeks }, (_, idx) => idx + 1).filter(
+                                w => w !== donorWeek && exercises.filter(e => (e.week_number || 1) === w).length === 0
+                              );
+                              const cloned: Partial<WorkoutExercise>[] = [];
+                              emptyWeeks.forEach(w => {
+                                donorExercises.forEach((ex, idx) => {
+                                  cloned.push({
+                                    ...ex,
+                                    id: `w${w}-fill-${Date.now()}-${idx}`,
+                                    week_number: w,
+                                  });
+                                });
+                              });
+                              if (cloned.length > 0) {
+                                setExercises(prev => syncOrderIndices([...prev, ...cloned]));
+                                showSuccess('Settimane Popolate!', `Copiati ${donorExercises.length} esercizi da Settimana ${donorWeek} a tutte le settimane vuote.`);
+                              }
+                            }}
+                            className="px-4 py-2.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                          >
+                            ⚡ Popola tutte le settimane da Sett. {donorWeek}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="w-full overflow-x-auto pb-4">
@@ -4103,24 +4246,26 @@ ${result.regole_adattamento || '-'}
                                   type="button"
                                   tabIndex={-1}
                                   onClick={() => unlinkExerciseFromGroup(globalIdx)}
-                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  className={`px-2 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[10px] font-black ${
                                     groupInfo.groupType === 'superset'
                                       ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30'
                                       : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30'
                                   }`}
-                                  title={`Scollega ${groupInfo.label} da ${groupInfo.groupType === 'superset' ? 'Super Serie' : 'Circuito'}`}
+                                  title={`Scollega ${groupInfo.label} da ${groupInfo.groupType === 'superset' ? 'Super Serie / Jump Set' : 'Circuito'}`}
                                 >
                                   <Unlink2 className="w-3.5 h-3.5" />
+                                  <span>SS</span>
                                 </button>
                               ) : posInDay < totalInDay - 1 ? (
                                 <button
                                   type="button"
                                   tabIndex={-1}
                                   onClick={() => linkWithNextExercise(globalIdx)}
-                                  className="p-1.5 text-slate-500 opacity-50 group-hover/exrow:opacity-100 hover:text-purple-300 hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
-                                  title="Collega in Super Serie con l'esercizio successivo (es. A1 + A2)"
+                                  className="px-2 py-1 text-purple-300 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/25 rounded-lg transition-all cursor-pointer flex items-center gap-1 text-[10px] font-black"
+                                  title="Collega in Jump Set / Super Serie con l'esercizio successivo (es. A1 + A2)"
                                 >
                                   <Link2 className="w-3.5 h-3.5" />
+                                  <span>+SS</span>
                                 </button>
                               ) : null}
 

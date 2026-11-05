@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { ShieldAlert, ArrowRight, Lock, Loader2 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 export const MFAChallengeScreen: React.FC<{ onSuccess: () => void; onCancel: () => void }> = ({ onSuccess, onCancel }) => {
   const { mfa, refreshAuthProfile } = useAuth();
-  const { challengeFactor, verifyFactor, getPrimaryFactor } = mfa;
+  const { challengeFactor, getPrimaryFactor, loadMFAStatus } = mfa;
   const { showError } = useToast();
   
   const [code, setCode] = useState('');
-  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [, setChallengeId] = useState<string | null>(null);
   const [factorId, setFactorId] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,17 +55,45 @@ export const MFAChallengeScreen: React.FC<{ onSuccess: () => void; onCancel: () 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (code.length !== 6 || !factorId || !challengeId) return;
-    
+    if (code.length !== 6) return;
+
     setIsSubmitting(true);
     setErrorMsg('');
     try {
-      const success = await verifyFactor(factorId, challengeId, code);
+      // Rilegge i fattori direttamente da Supabase (evita stato React non ancora caricato)
+      const { data: factorsData, error: listError } = await supabase.auth.mfa.listFactors();
+      if (listError) throw listError;
+
+      const verifiedIds = (factorsData?.totp || [])
+        .filter((f) => f.status === 'verified')
+        .map((f) => f.id);
+      const orderedIds = factorId && verifiedIds.includes(factorId)
+        ? [factorId, ...verifiedIds.filter((id) => id !== factorId)]
+        : verifiedIds;
+
+      if (orderedIds.length === 0) {
+        setErrorMsg('Nessun Authenticator verificato trovato per questo account. Contatta l\'amministratore.');
+        return;
+      }
+
+      // challengeAndVerify crea sempre una challenge nuova (quelle vecchie scadono dopo pochi minuti)
+      let lastError = '';
+      let success = false;
+      for (const fid of orderedIds) {
+        const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId: fid, code });
+        if (!verifyError) {
+          success = true;
+          break;
+        }
+        lastError = verifyError.message;
+      }
+
       if (success) {
+        await loadMFAStatus();
         await refreshAuthProfile();
         onSuccess();
       } else {
-        setErrorMsg('Codice non valido o scaduto. Assicurati che l\'orario del telefono sia corretto.');
+        setErrorMsg(`Codice non valido o scaduto (${lastError || 'errore sconosciuto'}). Assicurati che l'orario del telefono sia impostato su automatico.`);
         showError('Codice non valido. Riprova.');
       }
     } catch (err: unknown) {

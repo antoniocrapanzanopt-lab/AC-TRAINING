@@ -24,6 +24,7 @@ import { useWorkouts } from '../../context/WorkoutsContext';
 import { useAthletes } from '../../context/AthletesContext';
 import { useToast } from '../../context/ToastContext';
 import { WorkoutExercise } from '../../types/workout';
+import { encodeGroupTagInNotes } from '../../utils/noteCleaner';
 
 interface PDFWorkoutImporterModalProps {
   isOpen: boolean;
@@ -155,15 +156,31 @@ export const PDFWorkoutImporterModal: React.FC<PDFWorkoutImporterModalProps> = (
       let globalCounter = 0;
       const mappedWeeks = pdfData.weeks.map((w) => ({
         weekNumber: w.weekNumber,
-        days: w.days.map((d) => ({
-          dayName: d.dayName,
-          exercises: d.exercises.map((ex) => {
+        days: w.days.map((d, dayIdx) => {
+          // Rilevamento automatico di Jump Set / Super Serie da orderLetter (es. A1, A2, B1, B2) o dalle note
+          const baseLetterCounts = new Map<string, number>();
+          d.exercises.forEach((ex) => {
+            const ol = (ex.orderLetter || '').trim().toUpperCase();
+            const baseMatch = ol.match(/^([A-Z])\d+$/);
+            if (baseMatch) {
+              const b = baseMatch[1];
+              baseLetterCounts.set(b, (baseLetterCounts.get(b) || 0) + 1);
+            }
+          });
+
+          const rawExercises = d.exercises.map((ex, exIdx) => {
             globalCounter++;
             const match = matchExerciseToCatalog(ex.rawName, libraryExercises);
-            
             const finalName = match.status === 'exact' && match.matchedExercise 
               ? match.matchedExercise.name 
               : ex.rawName;
+
+            const ol = (ex.orderLetter || '').trim().toUpperCase();
+            const baseMatch = ol.match(/^([A-Z])\d+$/);
+            let groupTag: string | undefined;
+            if (baseMatch && (baseLetterCounts.get(baseMatch[1]) || 0) >= 2) {
+              groupTag = `ss-w${w.weekNumber}-d${dayIdx}-${baseMatch[1]}`;
+            }
 
             return {
               id: `pdf-ex-${globalCounter}-${Date.now()}`,
@@ -179,11 +196,35 @@ export const PDFWorkoutImporterModal: React.FC<PDFWorkoutImporterModalProps> = (
               is_time_based: ex.isTimeBased || false,
               duration_seconds: ex.durationSeconds || undefined,
               alternative_exercise: ex.alternative_exercise || undefined,
+              group_tag: groupTag,
+              order_label: ol || String.fromCharCode(65 + exIdx),
               rawName: ex.rawName,
               matchResult: match,
             };
-          }),
-        })),
+          });
+
+          // Rileva anche note esplicite "Jump set con...", "Superserie con...", o "No Recupero (0s)" seguito da esercizio accoppiato
+          for (let i = 0; i < rawExercises.length - 1; i++) {
+            const curr = rawExercises[i];
+            const next = rawExercises[i + 1];
+            const combinedText = `${curr.notes || ''} ${curr.name || ''}`.toLowerCase();
+            const nextText = `${next.notes || ''} ${next.name || ''}`.toLowerCase();
+            const mentionsJumpOrSuper =
+              /\b(jump\s*set|jumpset|jump\s*serie|jumpserie|super\s*serie|superserie|superset|biserie)\b/i.test(combinedText) ||
+              /\b(jump\s*set|jumpset|jump\s*serie|jumpserie|super\s*serie|superserie|superset|biserie)\b/i.test(nextText);
+
+            if (!curr.group_tag && mentionsJumpOrSuper) {
+              const tag = next.group_tag || `ss-w${w.weekNumber}-d${dayIdx}-${i}`;
+              curr.group_tag = tag;
+              next.group_tag = tag;
+            }
+          }
+
+          return {
+            dayName: d.dayName,
+            exercises: rawExercises,
+          };
+        }),
       }));
 
       await delay(400);
@@ -323,11 +364,13 @@ export const PDFWorkoutImporterModal: React.FC<PDFWorkoutImporterModalProps> = (
             reps_target: String(ex.reps_target || '10'),
             rest_seconds: Number(ex.rest_seconds) || 60,
             order_index: index,
-            notes: ex.notes || undefined,
+            notes: encodeGroupTagInNotes(ex.notes, ex.group_tag) || undefined,
             day_name: d.dayName,
             week_number: w.weekNumber,
             is_time_based: ex.is_time_based || false,
             duration_seconds: ex.duration_seconds || undefined,
+            alternative_exercise: ex.alternative_exercise || undefined,
+            group_tag: ex.group_tag,
           });
         });
       });

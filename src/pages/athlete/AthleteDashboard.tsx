@@ -53,6 +53,9 @@ import {
   resolveRelatedWorkoutIds,
   calculateCurrentActiveWeek,
 } from '../../services/workoutProgressService';
+import { computeDayExerciseGroups } from '../../components/workouts/WorkoutBuilderModal';
+import { hydrateGroupTagsForExercises } from '../../utils/noteCleaner';
+import { Layers, Repeat } from 'lucide-react';
 
 interface AthleteDashboardProps {
   onStartWorkout: (workout: WorkoutTemplate, exercises: WorkoutExercise[], targetAthleteId?: string, targetWeekNumber?: number, targetDayName?: string) => void;
@@ -263,10 +266,11 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
           const dayExercises = exercises.filter(
             (ex) => (ex.week_number || 1) === selectedWeek && matchDayNames(ex.day_name || '', dayName)
           );
-          const resolvedDayExercises =
+          const resolvedDayExercises = hydrateGroupTagsForExercises(
             dayExercises.length > 0
               ? dayExercises
-              : exercises.filter((ex) => matchDayNames(ex.day_name || '', dayName));
+              : exercises.filter((ex) => matchDayNames(ex.day_name || '', dayName))
+          );
 
           const totalSetsInDay = resolvedDayExercises.reduce((acc, ex) => acc + (Number(ex.sets) || 3), 0);
           const estMinutes = resolvedDayExercises.length > 0 ? Math.max(20, Math.round(totalSetsInDay * 2.5 + 8)) : 0;
@@ -456,39 +460,89 @@ const WorkoutDayList: React.FC<WorkoutDayListProps> = ({
               </div>
 
               {/* ── CASSETTO ANTEPRIMA RAPIDA ESERCIZI DELLA SEDUTA (ARMONIZZATO TEMA CHIARO/SCURO) ── */}
-              {isPreviewExpanded && resolvedDayExercises.length > 0 && (
-                <div className="px-4 sm:px-5 pb-4 pt-3 border-t border-[var(--color-border)] bg-[var(--color-surface-strong)]/80 space-y-2 animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] px-1">
-                    <span>Anteprima Esercizi ({resolvedDayExercises.length})</span>
-                    <span>Serie × Ripetizioni</span>
+              {isPreviewExpanded && resolvedDayExercises.length > 0 && (() => {
+                const previewGroupInfos = computeDayExerciseGroups(resolvedDayExercises);
+                return (
+                  <div className="px-4 sm:px-5 pb-4 pt-3 border-t border-[var(--color-border)] bg-[var(--color-surface-strong)]/80 space-y-2 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-[var(--color-text-muted)] px-1">
+                      <span>Anteprima Esercizi ({resolvedDayExercises.length})</span>
+                      <span>Serie × Ripetizioni</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {resolvedDayExercises.map((ex, idx) => {
+                        const gInfo = previewGroupInfos[idx];
+                        const isGrouped = Boolean(gInfo?.isGrouped);
+                        const isSuperset = gInfo?.groupType === 'superset';
+                        const pairedNames = isGrouped
+                          ? resolvedDayExercises
+                              .filter((_, otherIdx) => otherIdx !== idx && previewGroupInfos[otherIdx]?.groupTag === gInfo.groupTag)
+                              .map((e) => e.name)
+                              .join(' + ')
+                          : '';
+                        return (
+                          <React.Fragment key={ex.id || idx}>
+                            {isGrouped && gInfo.isFirstInGroup && (
+                              <div
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-wider mt-1.5 ${
+                                  isSuperset
+                                    ? 'bg-purple-500/20 border-purple-500/50 text-purple-200'
+                                    : 'bg-cyan-500/20 border-cyan-500/50 text-cyan-200'
+                                }`}
+                              >
+                                {isSuperset ? <Layers className="w-3.5 h-3.5 text-purple-300" /> : <Repeat className="w-3.5 h-3.5 text-cyan-300" />}
+                                <span>
+                                  {isSuperset ? `⚡ JUMP SERIE / SUPER SERIE (${gInfo.baseLetter}1 + ${gInfo.baseLetter}2)` : `🔄 CIRCUITO ${gInfo.baseLetter}`} • Alterna con {pairedNames}
+                                </span>
+                              </div>
+                            )}
+                            <div
+                              className={`px-3 py-2 rounded-xl bg-[var(--color-panel)] border flex items-center justify-between gap-3 text-xs shadow-2xs ${
+                                isGrouped
+                                  ? isSuperset
+                                    ? 'border-purple-500/50 border-l-4 border-l-purple-500 bg-purple-950/15'
+                                    : 'border-cyan-500/50 border-l-4 border-l-cyan-500 bg-cyan-950/15'
+                                  : 'border-[var(--color-border)]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span
+                                  className={`min-w-[24px] h-5 px-1.5 rounded-md font-mono font-black text-[10px] flex items-center justify-center shrink-0 border ${
+                                    isGrouped
+                                      ? isSuperset
+                                        ? 'bg-purple-500/25 text-purple-200 border-purple-400/60'
+                                        : 'bg-cyan-500/25 text-cyan-200 border-cyan-400/60'
+                                      : 'bg-[var(--color-primary)]/15 text-[var(--color-primary)] border-[var(--color-primary)]/30'
+                                  }`}
+                                >
+                                  {isGrouped ? gInfo.label : idx + 1}
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="font-bold text-[var(--color-text)] truncate">{ex.name}</div>
+                                  {isGrouped && pairedNames && (
+                                    <div className="text-[10px] font-bold text-purple-300 truncate">
+                                      ⚡ In Jump Serie con: {pairedNames}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
+                                <span className="text-[var(--color-text)] font-black bg-[var(--color-surface-strong)] px-2 py-0.5 rounded-md border border-[var(--color-border)]">
+                                  {ex.sets || 3} × {ex.reps_target || '10'}
+                                </span>
+                                {ex.target_weight && (
+                                  <span className="text-[var(--color-primary)] font-black bg-[var(--color-primary)]/15 px-2 py-0.5 rounded-md border border-[var(--color-primary)]/30">
+                                    {ex.target_weight} kg
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 gap-1.5">
-                    {resolvedDayExercises.map((ex, idx) => (
-                      <div
-                        key={ex.id || idx}
-                        className="px-3 py-2 rounded-xl bg-[var(--color-panel)] border border-[var(--color-border)] flex items-center justify-between gap-3 text-xs shadow-2xs"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="w-5 h-5 rounded-md bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30 font-mono font-black text-[10px] flex items-center justify-center shrink-0">
-                            {idx + 1}
-                          </span>
-                          <span className="font-bold text-[var(--color-text)] truncate">{ex.name}</span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0 font-mono text-[11px]">
-                          <span className="text-[var(--color-text)] font-black bg-[var(--color-surface-strong)] px-2 py-0.5 rounded-md border border-[var(--color-border)]">
-                            {ex.sets || 3} × {ex.reps_target || '10'}
-                          </span>
-                          {ex.target_weight && (
-                            <span className="text-[var(--color-primary)] font-black bg-[var(--color-primary)]/15 px-2 py-0.5 rounded-md border border-[var(--color-primary)]/30">
-                              {ex.target_weight} kg
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           );
         })}
@@ -1056,7 +1110,7 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
 
           // Salva anche gli esercizi completi per ciascun workout_id nella cache offline
           for (const qId of uniqueQueryIds) {
-            const rowsForId = data.filter((e) => e.workout_id === qId);
+            const rowsForId = hydrateGroupTagsForExercises(data.filter((e) => e.workout_id === qId) as WorkoutExercise[]);
             if (rowsForId.length > 0) {
               try {
                 localStorage.setItem(`ac_cached_exercises_v1_${qId}`, JSON.stringify(rowsForId));
@@ -1067,7 +1121,9 @@ export const AthleteDashboard: React.FC<AthleteDashboardProps> = ({ onStartWorko
           myAssignedWorkouts.forEach((assigned) => {
             const wId = assigned.workout_id;
             const targetWIds = workoutToTargetIdsMap.get(wId) || [wId];
-            const matchingRows = data.filter((e) => targetWIds.includes(e.workout_id)) as WorkoutExercise[];
+            const matchingRows = hydrateGroupTagsForExercises(
+              data.filter((e) => targetWIds.includes(e.workout_id)) as WorkoutExercise[]
+            );
             if (matchingRows.length > 0) {
               newWorkoutExercisesMap[wId] = matchingRows;
               try {

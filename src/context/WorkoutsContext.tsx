@@ -5,6 +5,7 @@ import { WorkoutTemplate, WorkoutExercise, AthleteAssignedWorkout, WorkoutSessio
 import { parseWeightToNumber, parseRepsToNumber } from '../utils/weightParser';
 import { extractErrorMessage } from '../utils/errorUtils';
 import { technicalLogger } from '../utils/technicalLogger';
+import { hydrateGroupTagsForExercises } from '../utils/noteCleaner';
 
 // video_url è confermata nello schema (full_schema.sql riga 307) — nessuna probe query necessaria
 let isVideoUrlSupportedCache: boolean | null = true;
@@ -719,6 +720,29 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // 2. Carica gli esercizi originali
       const origExercises = await getExercisesForWorkout(workoutId);
+      const totalWeeksNum = Math.max(1, Number(original.total_weeks) || 1);
+
+      // Se la scheda originale ha esercizi solo in una singola settimana (es. solo Sett. 4 o solo Sett. 1)
+      // ma il programma prevede più settimane (es. 4 settimane), espandi automaticamente su tutte le settimane 1..totalWeeksNum
+      let exercisesToClone: Partial<WorkoutExercise>[] = origExercises || [];
+      if (totalWeeksNum > 1 && exercisesToClone.length > 0) {
+        const populatedWeeks = Array.from(new Set(exercisesToClone.map(e => Number(e.week_number) || 1)));
+        if (populatedWeeks.length === 1) {
+          const singleWeekExercises = exercisesToClone;
+          const expanded: Partial<WorkoutExercise>[] = [];
+          for (let w = 1; w <= totalWeeksNum; w++) {
+            singleWeekExercises.forEach((ex, idx) => {
+              const { id: _ignoreId, workout_id: _ignoreWid, ...rest } = ex;
+              expanded.push({
+                ...rest,
+                week_number: w,
+                order_index: typeof ex.order_index === 'number' ? ex.order_index : idx,
+              });
+            });
+          }
+          exercisesToClone = expanded;
+        }
+      }
 
       // 3. Clona tramite createWorkoutTemplate
       const newTitle = customTitle || `${original.title} (Copia)`;
@@ -728,10 +752,10 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           description: original.description || '',
           folder_id: original.folder_id || null,
           is_template: true,
-          total_weeks: original.total_weeks || 1,
+          total_weeks: totalWeeksNum,
           estimated_duration_minutes: original.estimated_duration_minutes || null,
         },
-        origExercises || []
+        exercisesToClone
       );
 
       if (!result.success) {
@@ -898,7 +922,7 @@ export const WorkoutsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .order('order_index', { ascending: true });
 
       if (!error && data && data.length > 0) {
-        const exercises = data as WorkoutExercise[];
+        const exercises = hydrateGroupTagsForExercises(data as WorkoutExercise[]);
         try {
           localStorage.setItem(cacheKey, JSON.stringify(exercises));
         } catch {

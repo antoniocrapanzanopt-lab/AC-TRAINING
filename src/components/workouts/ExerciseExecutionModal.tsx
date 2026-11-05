@@ -22,9 +22,12 @@ import {
   Plus,
   Trash2,
   MessageSquare,
+  Layers,
+  Repeat,
 } from 'lucide-react';
 import { WorkoutExercise } from '../../types/workout';
 import { cleanExecutiveNotes } from '../../utils/noteCleaner';
+import { DayExerciseGroupInfo } from './WorkoutBuilderModal';
 import { getExerciseWorkSeconds, getExerciseRestSeconds } from '../../utils/circuitConfig';
 import { playCountdownBeep, playRestCompleteTone, initOrResumeAudioContext, isRestAudioEnabled } from '../../utils/soundEffects';
 import { ExerciseAnatomyModal } from './ExerciseAnatomyModal';
@@ -39,6 +42,9 @@ interface ExerciseExecutionModalProps {
   exercise: WorkoutExercise;
   exerciseIndex: number;
   totalExercises: number;
+  groupInfo?: DayExerciseGroupInfo;
+  groupMembers?: Array<{ exercise: WorkoutExercise; index: number; groupInfo: DayExerciseGroupInfo }>;
+  onSelectExerciseIndex?: (targetIdx: number) => void;
   logs: { reps: string; weight: string; rpe: string }[];
   completedSetsMap: boolean[];
   noteFeedback: string;
@@ -71,6 +77,9 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
   exercise,
   exerciseIndex,
   totalExercises,
+  groupInfo,
+  groupMembers = [],
+  onSelectExerciseIndex,
   logs,
   completedSetsMap,
   noteFeedback,
@@ -493,6 +502,20 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
                 <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800/90 px-3 py-1 rounded-xl border border-slate-300 dark:border-slate-700 shrink-0">
                   Esercizio {exerciseIndex + 1} di {totalExercises}
                 </span>
+                {groupInfo?.isGrouped && (
+                  <span
+                    className={`px-3 py-1 rounded-xl text-xs sm:text-sm font-black border shrink-0 flex items-center gap-1.5 ${
+                      groupInfo.groupType === 'superset'
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/45'
+                        : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/45'
+                    }`}
+                  >
+                    {groupInfo.groupType === 'superset' ? <Layers className="w-3.5 h-3.5" /> : <Repeat className="w-3.5 h-3.5" />}
+                    <span>
+                      {groupInfo.groupType === 'superset' ? `Jump Set / Super Serie ${groupInfo.label}` : `Circuito ${groupInfo.label}`}
+                    </span>
+                  </span>
+                )}
                 {isAllSetsCompleted ? (
                   <span className="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs sm:text-sm font-black border border-emerald-500/40 shrink-0 flex items-center gap-1.5">
                     ✓ Fatto ({completedCount}/{totalSetsCount})
@@ -534,6 +557,46 @@ export const ExerciseExecutionModal: React.FC<ExerciseExecutionModalProps> = ({
               </h2>
             )}
           </div>
+
+          {/* Banner Switch Rapido tra Esercizi in Jump Set / Super Serie */}
+          {groupInfo?.isGrouped && groupMembers.length > 1 && (
+            <div
+              className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 flex-wrap ${
+                groupInfo.groupType === 'superset'
+                  ? 'bg-purple-950/35 border-purple-500/40'
+                  : 'bg-cyan-950/35 border-cyan-500/40'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 text-xs font-black text-purple-200 uppercase tracking-wider px-1">
+                {groupInfo.groupType === 'superset' ? <Layers className="w-3.5 h-3.5 text-purple-400" /> : <Repeat className="w-3.5 h-3.5 text-cyan-400" />}
+                <span>Alterna esercizi del blocco:</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {groupMembers.map((member) => {
+                  const isCurrent = member.index === exerciseIndex;
+                  return (
+                    <button
+                      key={member.exercise.id || member.index}
+                      type="button"
+                      onClick={() => {
+                        if (!isCurrent && onSelectExerciseIndex) {
+                          onSelectExerciseIndex(member.index);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isCurrent
+                          ? 'bg-purple-500 text-slate-950 border-purple-400 shadow-md'
+                          : 'bg-slate-900/90 text-slate-200 border-slate-700 hover:border-purple-400 hover:text-white'
+                      }`}
+                    >
+                      <span className="font-mono">{member.groupInfo.label}</span>
+                      <span className="truncate max-w-[150px] sm:max-w-[220px]">{member.exercise.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Action Pills Rapide: Video Tutorial 3D & Storico Seduta */}
           <div className="flex items-center gap-2.5 flex-wrap pt-0.5">

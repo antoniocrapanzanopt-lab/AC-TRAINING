@@ -19,6 +19,9 @@ import {
 
 import { WorkoutTemplate, WorkoutExercise, ExerciseLog } from '../../types/workout';
 import { getCircuitConfig, CircuitDayConfig } from '../../utils/circuitConfig';
+import { computeDayExerciseGroups } from '../../components/workouts/WorkoutBuilderModal';
+import { extractGroupTagFromNotes, hydrateGroupTagsForExercises } from '../../utils/noteCleaner';
+import { Layers, Repeat } from 'lucide-react';
 import { useWorkouts } from '../../context/WorkoutsContext';
 import { useToast } from '../../context/ToastContext';
 import { useMetrics } from '../../context/MetricsContext';
@@ -109,11 +112,21 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
     });
 
     const list = singleDayExercises.length > 0 ? singleDayExercises : exercises;
-    return list.map((ex) => ({
-      ...ex,
-      week_number: currentWeekNumber,
-    }));
+    return hydrateGroupTagsForExercises(
+      list.map((ex) => {
+        const { groupTag } = extractGroupTagFromNotes(ex.notes);
+        return {
+          ...ex,
+          group_tag: ex.group_tag || groupTag,
+          week_number: currentWeekNumber,
+        };
+      })
+    );
   }, [exercises, currentWeekNumber, targetDayName]);
+
+  const dayGroupInfos = useMemo(() => {
+    return computeDayExerciseGroups(activeExercises);
+  }, [activeExercises]);
 
   const currentDayName = useMemo(() => {
     return targetDayName || activeExercises?.[0]?.day_name || exercises?.[0]?.day_name || 'Giorno 1';
@@ -1246,29 +1259,162 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
           </div>
         )}
 
-          {activeExercises.map((ex, idx) => {
-            const isCompleted = isCircuitMode
-              ? Boolean(completedSets[ex.id]?.[0])
-              : Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
-            const isActive = idx === currentActiveExerciseIndex;
+          {(() => {
+            const elements: React.ReactNode[] = [];
+            let i = 0;
 
-            return (
-              <React.Fragment key={ex.id}>
-                <ExerciseCard
-                  exercise={isCircuitMode ? { ...ex, sets: 1 } : ex}
-                  index={idx}
-                  isActive={isActive}
-                  isCompleted={isCompleted}
-                  completedSetsMap={completedSets[ex.id] || []}
-                  previousHistory={resolvePreviousHistory(ex)}
-                  onOpenExecutionModal={() => setActiveExerciseModalIndex(idx)}
-                  circuitMode={isCircuitMode}
-                  circuitRound={currentRound}
-                  circuitTotalRounds={circuitConfig.totalRounds}
-                />
-              </React.Fragment>
-            );
-          })}
+            while (i < activeExercises.length) {
+              const ex = activeExercises[i];
+              const gInfo = dayGroupInfos[i];
+              const isGrouped = Boolean(gInfo?.isGrouped);
+
+              if (!isGrouped) {
+                const isCompleted = isCircuitMode
+                  ? Boolean(completedSets[ex.id]?.[0])
+                  : Boolean(completedSets[ex.id]?.length === ex.sets && completedSets[ex.id].every(Boolean));
+                const isActive = i === currentActiveExerciseIndex;
+                const currentIdx = i;
+
+                elements.push(
+                  <ExerciseCard
+                    key={ex.id}
+                    exercise={isCircuitMode ? { ...ex, sets: 1 } : ex}
+                    index={currentIdx}
+                    groupInfo={gInfo}
+                    isActive={isActive}
+                    isCompleted={isCompleted}
+                    completedSetsMap={completedSets[ex.id] || []}
+                    previousHistory={resolvePreviousHistory(ex)}
+                    onOpenExecutionModal={() => setActiveExerciseModalIndex(currentIdx)}
+                    circuitMode={isCircuitMode}
+                    circuitRound={currentRound}
+                    circuitTotalRounds={circuitConfig.totalRounds}
+                  />
+                );
+                i++;
+                continue;
+              }
+
+              // Raccogli tutti gli esercizi appartenenti allo stesso blocco Jump Serie / Circuito
+              const groupIndices: number[] = [i];
+              let j = i + 1;
+              while (
+                j < activeExercises.length &&
+                dayGroupInfos[j]?.isGrouped &&
+                dayGroupInfos[j]?.groupTag === gInfo.groupTag
+              ) {
+                groupIndices.push(j);
+                j++;
+              }
+
+              const isSuperset = gInfo.groupType === 'superset';
+              const groupExercises = groupIndices.map((idx) => activeExercises[idx]);
+
+              elements.push(
+                <div
+                  key={`group-block-${gInfo.groupTag}-${i}`}
+                  className={`rounded-3xl p-3 sm:p-4 space-y-2.5 border-2 shadow-lg transition-all my-3 ${
+                    isSuperset
+                      ? 'bg-purple-950/20 border-purple-500/60 shadow-purple-500/10'
+                      : 'bg-cyan-950/20 border-cyan-500/60 shadow-cyan-500/10'
+                  }`}
+                >
+                  {/* Header esplicito del Blocco Jump Serie / Super Serie */}
+                  <div
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3.5 py-2.5 rounded-2xl border ${
+                      isSuperset
+                        ? 'bg-purple-500/20 border-purple-400/50 text-purple-100'
+                        : 'bg-cyan-500/20 border-cyan-400/50 text-cyan-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-black ${
+                          isSuperset ? 'bg-purple-500 text-slate-950' : 'bg-cyan-500 text-slate-950'
+                        }`}
+                      >
+                        {isSuperset ? <Layers className="w-4 h-4 stroke-[2.5]" /> : <Repeat className="w-4 h-4 stroke-[2.5]" />}
+                      </div>
+                      <div>
+                        <div className="text-xs sm:text-sm font-black uppercase tracking-wider flex items-center gap-2">
+                          <span>
+                            {isSuperset
+                              ? `⚡ JUMP SERIE / SUPER SERIE (${gInfo.baseLetter}1 + ${gInfo.baseLetter}2)`
+                              : `🔄 CIRCUITO ${gInfo.baseLetter} (${groupExercises.length} ESERCIZI)`}
+                          </span>
+                        </div>
+                        <p className="text-[11px] sm:text-xs font-semibold text-purple-200/90 mt-0.5">
+                          Alterna 1 serie di{' '}
+                          <strong className="text-white font-black">{groupExercises[0]?.name}</strong> e 1 serie di{' '}
+                          <strong className="text-white font-black">
+                            {groupExercises.slice(1).map((e) => e.name).join(' + ')}
+                          </strong>{' '}
+                          fino a completare tutte le serie.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Schede Esercizi del Gruppo con connettore visivo tra l'una e l'altra */}
+                  <div className="space-y-2">
+                    {groupIndices.map((idx, posInArr) => {
+                      const groupEx = activeExercises[idx];
+                      const groupExInfo = dayGroupInfos[idx];
+                      const isCompleted = isCircuitMode
+                        ? Boolean(completedSets[groupEx.id]?.[0])
+                        : Boolean(completedSets[groupEx.id]?.length === groupEx.sets && completedSets[groupEx.id].every(Boolean));
+                      const isActive = idx === currentActiveExerciseIndex;
+                      const otherNames = groupExercises
+                        .filter((_, k) => k !== posInArr)
+                        .map((e) => e.name)
+                        .join(' + ');
+
+                      return (
+                        <React.Fragment key={groupEx.id}>
+                          <ExerciseCard
+                            exercise={isCircuitMode ? { ...groupEx, sets: 1 } : groupEx}
+                            index={idx}
+                            groupInfo={groupExInfo}
+                            pairedExerciseName={otherNames}
+                            isActive={isActive}
+                            isCompleted={isCompleted}
+                            completedSetsMap={completedSets[groupEx.id] || []}
+                            previousHistory={resolvePreviousHistory(groupEx)}
+                            onOpenExecutionModal={() => setActiveExerciseModalIndex(idx)}
+                            circuitMode={isCircuitMode}
+                            circuitRound={currentRound}
+                            circuitTotalRounds={circuitConfig.totalRounds}
+                          />
+                          {posInArr < groupIndices.length - 1 && (
+                            <div className="flex items-center justify-center py-0.5">
+                              <div
+                                className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border flex items-center gap-1.5 shadow-sm ${
+                                  isSuperset
+                                    ? 'bg-purple-500/25 border-purple-400/50 text-purple-200'
+                                    : 'bg-cyan-500/25 border-cyan-400/50 text-cyan-200'
+                                }`}
+                              >
+                                <Repeat className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '6s' }} />
+                                <span>
+                                  {groupEx.rest_seconds
+                                    ? `Recupera ${groupEx.rest_seconds}s e passa subito a ${groupExercises[posInArr + 1]?.name}`
+                                    : `Passa subito senza recupero a ${groupExercises[posInArr + 1]?.name}`}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+
+              i = j;
+            }
+
+            return elements;
+          })()}
 
 
           {/* Pulsante Termina e Salva Allenamento a fine scheda per atleti */}
@@ -1341,6 +1487,13 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
       {/* ── MODALE DI COMPILAZIONE FOCALIZZATA ESERCIZIO ── */}
       {activeExerciseModalIndex !== null && activeExercises[activeExerciseModalIndex] && (() => {
         const currentEx = activeExercises[activeExerciseModalIndex];
+        const currentGroupInfo = dayGroupInfos[activeExerciseModalIndex];
+        const groupMembers = currentGroupInfo?.isGrouped && currentGroupInfo.groupTag
+          ? activeExercises
+              .map((item, i) => ({ exercise: item, index: i, groupInfo: dayGroupInfos[i] }))
+              .filter((m) => m.groupInfo?.groupTag === currentGroupInfo.groupTag)
+          : [];
+
         return (
           <ExerciseExecutionModal
             key={`${currentEx.id}_${currentRound}`}
@@ -1348,6 +1501,9 @@ export const WorkoutPlayer: React.FC<WorkoutPlayerProps> = ({
             exercise={isCircuitMode ? { ...currentEx, sets: 1 } : currentEx}
             exerciseIndex={activeExerciseModalIndex}
             totalExercises={activeExercises.length}
+            groupInfo={currentGroupInfo}
+            groupMembers={groupMembers}
+            onSelectExerciseIndex={(targetIdx) => setActiveExerciseModalIndex(targetIdx)}
             logs={logs[currentEx.id] || []}
             completedSetsMap={completedSets[currentEx.id] || []}
             noteFeedback={exerciseNotes[currentEx.id] || ''}

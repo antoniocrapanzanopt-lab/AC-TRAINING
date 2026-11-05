@@ -626,6 +626,18 @@ export const WorkoutsPage: React.FC = () => {
       const res = await duplicateWorkoutTemplate(template.id);
       if (!res.success) throw new Error(res.error);
       showSuccess(`Scheda "${template.title}" duplicata con successo!`);
+      if (res.newWorkoutId) {
+        const { data: duplicated } = await supabase
+          .from('workouts')
+          .select('*')
+          .eq('id', res.newWorkoutId)
+          .maybeSingle();
+        if (duplicated) {
+          setBuilderTargetAthleteId(undefined);
+          setEditingWorkout(duplicated as WorkoutTemplate);
+          setIsBuilderOpen(true);
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Errore durante la duplicazione';
       showError(msg);

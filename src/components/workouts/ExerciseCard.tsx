@@ -11,10 +11,14 @@ import { WorkoutExercise } from '../../types/workout';
 import { ExerciseAnatomyModal } from './ExerciseAnatomyModal';
 import { PreviousExerciseHistory } from '../../utils/workoutHistoryResolver';
 import { getExerciseWorkSeconds } from '../../utils/circuitConfig';
+import { DayExerciseGroupInfo } from './WorkoutBuilderModal';
+import { Layers, Repeat } from 'lucide-react';
 
 interface ExerciseCardProps {
   exercise: WorkoutExercise;
   index: number;
+  groupInfo?: DayExerciseGroupInfo;
+  pairedExerciseName?: string;
   isActive?: boolean;
   isCompleted: boolean;
   logs?: { reps: string; weight: string; rpe: string }[];
@@ -35,6 +39,8 @@ interface ExerciseCardProps {
 export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
   exercise,
   index,
+  groupInfo,
+  pairedExerciseName,
   isActive = false,
   isCompleted,
   completedSetsMap = [],
@@ -93,6 +99,9 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
     return exercise.reps_target || '10-12';
   })();
 
+  const isGrouped = Boolean(groupInfo?.isGrouped);
+  const isSuperset = groupInfo?.groupType === 'superset';
+
   return (
     <div
       onClick={handleCardClick}
@@ -101,6 +110,10 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           ? 'bg-[var(--color-panel)]/75 border-emerald-500/35 hover:border-emerald-500 shadow-sm opacity-90 hover:opacity-100'
           : isActive
           ? 'bg-gradient-to-br from-[var(--color-surface)] to-[var(--color-panel)] border-2 border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20 shadow-xl shadow-[var(--color-primary)]/10 scale-[1.005]'
+          : isGrouped
+          ? isSuperset
+            ? 'bg-[var(--color-panel)] border-purple-500/45 border-l-4 border-l-purple-500 hover:border-purple-400 hover:bg-[var(--color-surface)] shadow-sm'
+            : 'bg-[var(--color-panel)] border-cyan-500/45 border-l-4 border-l-cyan-500 hover:border-cyan-400 hover:bg-[var(--color-surface)] shadow-sm'
           : 'bg-[var(--color-panel)] border-[var(--color-panel-border)]/80 hover:border-[var(--color-border)] hover:bg-[var(--color-surface)] shadow-sm opacity-85 hover:opacity-100'
       }`}
     >
@@ -120,16 +133,37 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           {/* Sinistra: Badge Numero + Stato Esercizio */}
           <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
             <div
-              className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center font-black text-sm sm:text-base shrink-0 transition-transform group-hover:scale-105 shadow-sm ${
+              className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center font-black text-sm sm:text-base shrink-0 transition-transform group-hover:scale-105 shadow-sm font-mono ${
                 isCompleted
                   ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
                   : isActive
                   ? 'bg-[var(--color-primary)] text-slate-950 shadow-md shadow-[var(--color-primary)]/30 font-black'
+                  : isGrouped
+                  ? isSuperset
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/50'
+                    : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
                   : 'bg-[var(--color-surface-strong)] text-slate-300 border border-slate-700 font-bold'
               }`}
             >
-              {isCompleted ? <Check className="w-5 h-5 stroke-[3.5]" /> : index + 1}
+              {isCompleted ? <Check className="w-5 h-5 stroke-[3.5]" /> : isGrouped && groupInfo ? groupInfo.label : index + 1}
             </div>
+
+            {isGrouped && groupInfo && (
+              <span
+                className={`px-3 py-1 rounded-full text-[11px] sm:text-xs font-black uppercase tracking-wider border flex items-center gap-1.5 shadow-sm ${
+                  isSuperset
+                    ? 'bg-purple-500/25 text-purple-200 border-purple-400/60 shadow-purple-500/15'
+                    : 'bg-cyan-500/25 text-cyan-200 border-cyan-400/60 shadow-cyan-500/15'
+                }`}
+              >
+                {isSuperset ? <Layers className="w-3.5 h-3.5 text-purple-300" /> : <Repeat className="w-3.5 h-3.5 text-cyan-300" />}
+                <span>
+                  {isSuperset
+                    ? `⚡ JUMP SERIE ${groupInfo.label} (${groupInfo.positionInGroup + 1}/${groupInfo.groupSize})`
+                    : `🔄 CIRCUITO ${groupInfo.label} (${groupInfo.positionInGroup + 1}/${groupInfo.groupSize})`}
+                </span>
+              </span>
+            )}
 
             {/* Pillola di Stato Dinamica */}
             {isCompleted ? (
@@ -142,11 +176,11 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
                 <span>{circuitMode ? `Giro ${circuitRound} / ${circuitTotalRounds}` : 'In Esecuzione'}</span>
                 {!circuitMode && completedCount > 0 && <span className="text-amber-300 font-bold ml-0.5">({completedCount}/{totalSets})</span>}
               </span>
-            ) : (
+            ) : !isGrouped ? (
               <span className="text-xs sm:text-sm font-bold text-slate-300 uppercase tracking-wider">
                 {circuitMode ? `Esercizio ${index + 1}` : `Esercizio ${index + 1}`}
               </span>
-            )}
+            ) : null}
           </div>
 
           {/* Destra: Azioni (Video Tutorial & CTA Trigger) */}
@@ -185,7 +219,7 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
         </div>
 
         {/* 2. Titolo Esercizio: Full-Width a 100% */}
-        <div className="w-full pt-0.5">
+        <div className="w-full pt-0.5 space-y-2">
           <h3
             className={`font-black text-lg sm:text-2xl leading-snug tracking-tight break-words line-clamp-2 sm:line-clamp-none transition-colors ${
               isActive
@@ -197,6 +231,24 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
           >
             {exercise.name}
           </h3>
+
+          {isGrouped && pairedExerciseName && (
+            <div
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs sm:text-sm font-bold ${
+                isSuperset
+                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-200'
+                  : 'bg-cyan-500/15 border-cyan-500/40 text-cyan-200'
+              }`}
+            >
+              <Repeat className={`w-4 h-4 shrink-0 ${isSuperset ? 'text-purple-400' : 'text-cyan-400'}`} />
+              <span>
+                {isSuperset ? 'Esegui in Jump Serie con: ' : 'Alterna in Circuito con: '}
+                <strong className="text-white font-black underline decoration-purple-400/60 underline-offset-2">
+                  {pairedExerciseName}
+                </strong>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* 3. Metriche Prescritte: Target Operativo Chiaro */}
@@ -237,10 +289,24 @@ export const ExerciseCard: React.FC<ExerciseCardProps> = React.memo(({
               </span>
             )}
 
-            {exercise.rest_seconds ? (
-              <span className="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 font-black border border-emerald-500/40 font-mono text-xs sm:text-sm flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-emerald-400" />
-                {exercise.rest_seconds}s
+            {exercise.rest_seconds !== undefined && exercise.rest_seconds !== null ? (
+              <span
+                className={`px-3 py-1 rounded-xl font-black border font-mono text-xs sm:text-sm flex items-center gap-1.5 ${
+                  isGrouped && groupInfo && groupInfo.positionInGroup < groupInfo.groupSize - 1
+                    ? 'bg-purple-500/20 text-purple-200 border-purple-500/45'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                }`}
+              >
+                <Clock
+                  className={`w-4 h-4 ${
+                    isGrouped && groupInfo && groupInfo.positionInGroup < groupInfo.groupSize - 1
+                      ? 'text-purple-300'
+                      : 'text-emerald-400'
+                  }`}
+                />
+                {isGrouped && groupInfo && groupInfo.positionInGroup < groupInfo.groupSize - 1
+                  ? `${exercise.rest_seconds}s → poi ${pairedExerciseName || '2° esercizio'}`
+                  : `${exercise.rest_seconds}s`}
               </span>
             ) : null}
           </div>

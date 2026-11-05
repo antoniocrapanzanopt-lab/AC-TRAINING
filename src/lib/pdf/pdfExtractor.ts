@@ -95,7 +95,7 @@ SCHEMA JSON OBBLIGATORIO DA RESTITUIRE:
 
 REGOLE CRITICHE DI ESTRAZIONE:
 1. ESTRAI TUTTI I GIORNI E TUTTE LE SETTIMANE (supporta da 1 a 12 esercizi per giorno).
-2. Se un giorno è impaginato su 2 colonne o griglie, mantieni TUTTI gli esercizi nell'ordine alfabetico corretto (A, B, C, D, E, F, G, H, I, J, K, L).
+2. Se un giorno è impaginato su 2 colonne o griglie, mantieni TUTTI gli esercizi nell'ordine alfabetico corretto (A, B, C, D, E, F, G, H, I, J, K, L). Se due o più esercizi sono in Jump Set / Super Serie / Biserie (es. "A1", "A2", "B1", "B2"), riporta esattamente "A1", "A2" nel campo "orderLetter".
 3. Se un esercizio presenta varianti (es. "Alternative: Leg Press..."), inseriscile nel campo "alternative_exercise".
 4. Se compaiono note sotto l'esercizio ("Note: ..."), inseriscile in "notes".
 5. Estrai correttamente serie intere ("Serie 3" -> 3), ripetizioni ("Ripetizioni 10-12") o tempi ("Periodo 00:30" -> isTimeBased: true, durationSeconds: 30).
@@ -423,7 +423,7 @@ function parsePageLines(lines: string[]) {
       inlineAlternative = parts[1].trim();
     }
 
-    const cardMatch = line.match(/^([A-Z])\s+(.+)$/);
+    const cardMatch = line.match(/^([A-Z]\d?)\s+(.+)$/);
 
     if (cardMatch) {
       const letter = cardMatch[1];
@@ -521,7 +521,7 @@ function groupExercisesByDays(exercises: any[]) {
   let dayCounter = 1;
 
   for (const ex of exercises) {
-    if (ex.orderLetter === 'A' && currentDayExercises.length > 0) {
+    if ((ex.orderLetter === 'A' || ex.orderLetter === 'A1') && currentDayExercises.length > 0 && currentDayExercises[0]?.orderLetter !== 'A1') {
       days.push({
         dayName: `GIORNO ${dayCounter}`,
         exercises: [...currentDayExercises],
